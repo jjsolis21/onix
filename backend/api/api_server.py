@@ -18,7 +18,18 @@ from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from init_db import initialize_database
+import sys
+from pathlib import Path
+
+# Añadimos la carpeta scripts al sistema para que encuentre init_db
+root_path = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root_path / "scripts"))
+
+try:
+    from init_db import initialize_database
+except ImportError:
+    # Si falla, intentamos importación relativa
+    from scripts.init_db import initialize_database
 
 # ---------------------------------------------------------------------------
 # Conexión a DB con check_same_thread=False
