@@ -90,7 +90,9 @@
     border-right: 1px solid var(--border-mid);
   }
 
-  .bm-topbar__brand svg { opacity: 0.85; }
+  .bm-topbar__brand svg {
+    opacity: 0.85;
+  }
 
   .bm-search-wrap {
     position: relative;
@@ -126,7 +128,9 @@
     box-shadow: var(--glow-cyan);
   }
 
-  .bm-input::placeholder { color: var(--text-muted); }
+  .bm-input::placeholder {
+    color: var(--text-muted);
+  }
 
   .bm-select {
     background: var(--bg-panel);
@@ -145,7 +149,9 @@
     background-position: right 8px center;
   }
 
-  .bm-select:focus { border-color: var(--accent-cyan); }
+  .bm-select:focus {
+    border-color: var(--accent-cyan);
+  }
 
   .bm-topbar__filters {
     display: flex;
@@ -204,7 +210,10 @@
     color: var(--text-primary);
   }
 
-  .bm-btn--sm { padding: 4px 9px; font-size: 10px; }
+  .bm-btn--sm {
+    padding: 4px 9px;
+    font-size: 10px;
+  }
 
   .bm-btn--danger {
     background: transparent;
@@ -212,7 +221,9 @@
     border-color: rgba(231, 76, 60, 0.35);
   }
 
-  .bm-btn--danger:hover { background: rgba(231, 76, 60, 0.12); }
+  .bm-btn--danger:hover {
+    background: rgba(231, 76, 60, 0.12);
+  }
 
   .bm-btn--cyan {
     background: transparent;
@@ -220,7 +231,9 @@
     border-color: rgba(0, 200, 224, 0.35);
   }
 
-  .bm-btn--cyan:hover { background: rgba(0, 200, 224, 0.08); }
+  .bm-btn--cyan:hover {
+    background: rgba(0, 200, 224, 0.08);
+  }
 
   .bm-topbar__right {
     display: flex;
@@ -240,7 +253,10 @@
     letter-spacing: 0.05em;
   }
 
-  .bm-stat span { color: var(--accent-cyan); font-weight: 700; }
+  .bm-stat span {
+    color: var(--accent-cyan);
+    font-weight: 700;
+  }
 
   /* ── Status bar ────────────────────────────────────────────────── */
   .bm-statusbar {
@@ -265,11 +281,20 @@
   }
 
   @keyframes bm-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.4;
+    }
   }
 
-  .bm-statusbar__msg { color: var(--text-secondary); }
+  .bm-statusbar__msg {
+    color: var(--text-secondary);
+  }
 
   /* ── Data Grid ─────────────────────────────────────────────────── */
   .bm-grid-wrap {
@@ -306,28 +331,69 @@
     text-overflow: ellipsis;
   }
 
-  .bm-table thead th:hover { color: var(--accent-cyan); }
-  .bm-table thead th:last-child { border-right: none; }
-  .bm-table thead th.sort-asc::after  { content: ' ▲'; color: var(--accent-cyan); }
-  .bm-table thead th.sort-desc::after { content: ' ▼'; color: var(--accent-cyan); }
+  .bm-table thead th:hover {
+    color: var(--accent-cyan);
+  }
+
+  .bm-table thead th:last-child {
+    border-right: none;
+  }
+
+  .bm-table thead th.sort-asc::after {
+    content: ' ▲';
+    color: var(--accent-cyan);
+  }
+
+  .bm-table thead th.sort-desc::after {
+    content: ' ▼';
+    color: var(--accent-cyan);
+  }
 
   /* Column widths */
-  .col-id      { width: 52px; }
-  .col-play    { width: 40px; }
-  .col-title   { width: auto; }
-  .col-artist  { width: 14%; }
-  .col-voz     { width: 70px; }
-  .col-cat1    { width: 100px; }
-  .col-cat2    { width: 90px; }
-  .col-dur     { width: 68px; }
-  .col-actions { width: 88px; }
+  .col-id {
+    width: 52px;
+  }
+
+  .col-play {
+    width: 40px;
+  }
+
+  .col-title {
+    width: auto;
+  }
+
+  .col-artist {
+    width: 14%;
+  }
+
+  .col-voz {
+    width: 70px;
+  }
+
+  .col-cat1 {
+    width: 100px;
+  }
+
+  .col-cat2 {
+    width: 90px;
+  }
+
+  .col-dur {
+    width: 68px;
+  }
+
+  .col-actions {
+    width: 88px;
+  }
 
   .bm-table tbody tr {
     border-bottom: 1px solid var(--border-subtle);
     transition: var(--transition);
   }
 
-  .bm-table tbody tr:hover { background: var(--bg-hover); }
+  .bm-table tbody tr:hover {
+    background: var(--bg-hover);
+  }
 
   .bm-table tbody tr.bm-row--playing {
     background: rgba(0, 200, 224, 0.06);
@@ -343,10 +409,19 @@
     white-space: nowrap;
   }
 
-  .bm-table td:last-child { border-right: none; }
+  .bm-table td:last-child {
+    border-right: none;
+  }
 
-  .bm-cell-id   { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
-  .bm-cell-play { text-align: center; }
+  .bm-cell-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .bm-cell-play {
+    text-align: center;
+  }
 
   .bm-play-btn {
     background: none;
@@ -375,8 +450,15 @@
     animation: bm-pulse 1.2s infinite;
   }
 
-  .bm-cell-title  { font-weight: 500; color: var(--text-primary); }
-  .bm-cell-artist { color: var(--text-secondary); font-size: 12px; }
+  .bm-cell-title {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .bm-cell-artist {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
 
   .bm-badge {
     display: inline-block;
@@ -389,22 +471,77 @@
     text-transform: uppercase;
   }
 
-  .badge-mujer  { background: rgba(123, 94, 167, 0.25); color: #b39ddb; border: 1px solid rgba(123, 94, 167, 0.4); }
-  .badge-hombre { background: rgba(30, 136, 229, 0.2);  color: #64b5f6; border: 1px solid rgba(30, 136, 229, 0.35); }
-  .badge-duo    { background: rgba(0, 200, 224, 0.15);  color: #80deea; border: 1px solid rgba(0, 200, 224, 0.3); }
-  .badge-grupo  { background: rgba(245, 166, 35, 0.15); color: #ffcc80; border: 1px solid rgba(245, 166, 35, 0.3); }
+  .badge-mujer {
+    background: rgba(123, 94, 167, 0.25);
+    color: #b39ddb;
+    border: 1px solid rgba(123, 94, 167, 0.4);
+  }
 
-  .bm-cell-cat1 { font-family: var(--font-mono); font-size: 11px; color: var(--accent-cyan); }
-  .bm-cell-cat2 { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
-  .bm-cell-dur  { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-align: right; }
+  .badge-hombre {
+    background: rgba(30, 136, 229, 0.2);
+    color: #64b5f6;
+    border: 1px solid rgba(30, 136, 229, 0.35);
+  }
 
-  .bm-actions { display: flex; gap: 4px; align-items: center; }
+  .badge-duo {
+    background: rgba(0, 200, 224, 0.15);
+    color: #80deea;
+    border: 1px solid rgba(0, 200, 224, 0.3);
+  }
+
+  .badge-grupo {
+    background: rgba(245, 166, 35, 0.15);
+    color: #ffcc80;
+    border: 1px solid rgba(245, 166, 35, 0.3);
+  }
+
+  .bm-cell-cat1 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-cyan);
+  }
+
+  .bm-cell-cat2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .bm-cell-dur {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  .bm-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
 
   /* Energy bar */
-  .bm-energy { display: flex; gap: 2px; align-items: center; padding: 2px 0; }
-  .bm-energy__dot { width: 4px; height: 12px; border-radius: 1px; background: var(--border-mid); }
-  .bm-energy__dot.on      { background: var(--accent-amber); }
-  .bm-energy__dot.on.high { background: var(--accent-red); }
+  .bm-energy {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    padding: 2px 0;
+  }
+
+  .bm-energy__dot {
+    width: 4px;
+    height: 12px;
+    border-radius: 1px;
+    background: var(--border-mid);
+  }
+
+  .bm-energy__dot.on {
+    background: var(--accent-amber);
+  }
+
+  .bm-energy__dot.on.high {
+    background: var(--accent-red);
+  }
 
   /* ── Mini Player ───────────────────────────────────────────────── */
   .bm-player {
@@ -418,11 +555,30 @@
     font-size: 11px;
   }
 
-  .bm-player__info { flex: 1; min-width: 0; }
-  .bm-player__title { color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bm-player__artist { color: var(--text-muted); font-size: 10px; }
+  .bm-player__info {
+    flex: 1;
+    min-width: 0;
+  }
 
-  .bm-player__timeline { flex: 2; display: flex; align-items: center; gap: 8px; }
+  .bm-player__title {
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bm-player__artist {
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  .bm-player__timeline {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
   .bm-timeline-track {
     flex: 1;
@@ -442,7 +598,12 @@
     transition: width 0.3s linear;
   }
 
-  .bm-time { color: var(--text-muted); font-size: 10px; min-width: 34px; text-align: center; }
+  .bm-time {
+    color: var(--text-muted);
+    font-size: 10px;
+    min-width: 34px;
+    text-align: center;
+  }
 
   /* ── Modal ─────────────────────────────────────────────────────── */
   /*
@@ -484,8 +645,15 @@
   }
 
   @keyframes bm-modal-in {
-    from { opacity: 0; transform: scale(0.96) translateY(12px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 
   .bm-modal__header {
@@ -532,7 +700,10 @@
     transition: var(--transition);
   }
 
-  .bm-modal__close:hover { background: rgba(231, 76, 60, 0.15); color: var(--accent-red); }
+  .bm-modal__close:hover {
+    background: rgba(231, 76, 60, 0.15);
+    color: var(--accent-red);
+  }
 
   .bm-modal__body {
     padding: 18px;
@@ -566,14 +737,43 @@
     margin-bottom: 2px;
   }
 
-  .bm-form-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .bm-form-grid--3    { grid-template-columns: 1fr 1fr 1fr; }
-  .bm-form-grid--full { grid-template-columns: 1fr; }
+  .bm-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
 
-  .bm-field { display: flex; flex-direction: column; gap: 4px; }
-  .bm-field label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; }
-  .bm-field .bm-input, .bm-field .bm-select { width: 100%; padding-left: 10px; }
-  .bm-field .bm-select { background-position: right 8px center; }
+  .bm-form-grid--3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .bm-form-grid--full {
+    grid-template-columns: 1fr;
+  }
+
+  .bm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .bm-field label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
+  .bm-field .bm-input,
+  .bm-field .bm-select {
+    width: 100%;
+    padding-left: 10px;
+  }
+
+  .bm-field .bm-select {
+    background-position: right 8px center;
+  }
 
   /* File drop zone */
   .bm-dropzone {
@@ -586,17 +786,33 @@
     background: var(--bg-base);
   }
 
-  .bm-dropzone:hover, .bm-dropzone.drag-over {
+  .bm-dropzone:hover,
+  .bm-dropzone.drag-over {
     border-color: var(--accent-amber);
     background: rgba(245, 166, 35, 0.04);
   }
 
-  .bm-dropzone svg { color: var(--text-muted); margin-bottom: 6px; }
-  .bm-dropzone p { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-  .bm-dropzone p strong { color: var(--accent-amber); }
+  .bm-dropzone svg {
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .bm-dropzone p {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .bm-dropzone p strong {
+    color: var(--accent-amber);
+  }
 
   /* Energy selector */
-  .bm-energy-selector { display: flex; gap: 4px; align-items: center; }
+  .bm-energy-selector {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
 
   .bm-energy-btn {
     width: 28px;
@@ -615,7 +831,10 @@
     justify-content: center;
   }
 
-  .bm-energy-btn:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
+  .bm-energy-btn:hover {
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+  }
 
   .bm-energy-btn.sel {
     background: var(--accent-amber);
@@ -625,7 +844,11 @@
   }
 
   /* Audio cue points */
-  .bm-cuepoints { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .bm-cuepoints {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
 
   .bm-cue {
     background: var(--bg-base);
@@ -637,9 +860,27 @@
     gap: 6px;
   }
 
-  .bm-cue__label { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
-  .bm-cue__value-row { display: flex; gap: 6px; align-items: center; }
-  .bm-cue__value-row .bm-input { font-size: 14px; font-weight: 700; color: var(--accent-cyan); text-align: center; padding: 4px 6px; }
+  .bm-cue__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .bm-cue__value-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .bm-cue__value-row .bm-input {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    text-align: center;
+    padding: 4px 6px;
+  }
 
   .bm-cue__mark-btn {
     background: var(--bg-panel);
@@ -654,7 +895,10 @@
     white-space: nowrap;
   }
 
-  .bm-cue__mark-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+  .bm-cue__mark-btn:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+  }
 
   /* Modal footer */
   .bm-modal__footer {
@@ -682,7 +926,8 @@
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 10000; /* encima del propio modal */
+    z-index: 10000;
+    /* encima del propio modal */
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -704,13 +949,28 @@
     min-width: 220px;
   }
 
-  .bm-toast--success { border-left: 3px solid var(--accent-green); }
-  .bm-toast--error   { border-left: 3px solid var(--accent-red); }
-  .bm-toast--info    { border-left: 3px solid var(--accent-cyan); }
+  .bm-toast--success {
+    border-left: 3px solid var(--accent-green);
+  }
+
+  .bm-toast--error {
+    border-left: 3px solid var(--accent-red);
+  }
+
+  .bm-toast--info {
+    border-left: 3px solid var(--accent-cyan);
+  }
 
   @keyframes bm-toast-in {
-    from { opacity: 0; transform: translateX(20px); }
-    to   { opacity: 1; transform: translateX(0); }
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 
   /* Empty state */
@@ -722,14 +982,34 @@
     font-size: 12px;
   }
 
-  .bm-empty svg { opacity: 0.3; margin-bottom: 12px; }
-  .bm-empty p   { margin-top: 6px; font-size: 11px; }
+  .bm-empty svg {
+    opacity: 0.3;
+    margin-bottom: 12px;
+  }
+
+  .bm-empty p {
+    margin-top: 6px;
+    font-size: 11px;
+  }
 
   /* Scrollbars */
-  #bm-root ::-webkit-scrollbar { width: 5px; height: 5px; }
-  #bm-root ::-webkit-scrollbar-track { background: var(--bg-base); }
-  #bm-root ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
-  #bm-root ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+  #bm-root ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  #bm-root ::-webkit-scrollbar-track {
+    background: var(--bg-base);
+  }
+
+  #bm-root ::-webkit-scrollbar-thumb {
+    background: var(--border-mid);
+    border-radius: 3px;
+  }
+
+  #bm-root ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-hi);
+  }
 </style>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -741,28 +1021,36 @@
   <div class="bm-topbar">
     <div class="bm-topbar__brand">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 18V5l12-2v13"/>
-        <circle cx="6" cy="18" r="3"/>
-        <circle cx="18" cy="16" r="3"/>
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
       </svg>
       BibMusical
     </div>
 
     <div class="bm-search-wrap">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <circle cx="11" cy="11" r="8"/>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
       <!-- FIX 3 (verificado): ID correcto bm-search -->
-      <input id="bm-search" class="bm-input" type="text" placeholder="Buscar título, artista…"/>
+      <input id="bm-search" class="bm-input" type="text" placeholder="Buscar título, artista…" />
     </div>
 
     <div class="bm-topbar__filters">
       <span class="bm-filter-label">Filtros:</span>
-      <select id="bm-filter-cat1" class="bm-select"><option value="">Género</option></select>
-      <select id="bm-filter-cat2" class="bm-select"><option value="">Rotación</option></select>
-      <select id="bm-filter-cat3" class="bm-select"><option value="">Extra</option></select>
-      <select id="bm-filter-voz" class="bm-select"><option value="">Voz</option></select>
+      <select id="bm-filter-cat1" class="bm-select">
+        <option value="">Género</option>
+      </select>
+      <select id="bm-filter-cat2" class="bm-select">
+        <option value="">Rotación</option>
+      </select>
+      <select id="bm-filter-cat3" class="bm-select">
+        <option value="">Extra</option>
+      </select>
+      <select id="bm-filter-voz" class="bm-select">
+        <option value="">Voz</option>
+      </select>
     </div>
 
     <div class="bm-topbar__right">
@@ -772,10 +1060,21 @@
         La delegación en document captura el click sobre este botón
         aunque el HTML haya sido inyectado dinámicamente por el Shell.
       -->
-      <button class="bm-btn bm-btn--amber" id="bm-btn-add">
+      <!--
+        FIX 5 — ONCLICK EXPLÍCITO
+        onclick="window.openModal()" se añade como mecanismo de respaldo
+        directo. El Shell Antigravy puede interrumpir el bubbling de eventos
+        antes de que lleguen al listener delegado en `document`
+        (p.ej. si algún handler intermedio llama stopPropagation).
+        Un atributo onclick resuelve en el scope global (window) y dispara
+        window.openModal() directamente, sin depender de la cadena de bubbling.
+        Funciona siempre que el IIFE haya corrido y window.openModal esté
+        definida — lo cual se garantiza en §16 justo antes de initApp().
+      -->
+      <button class="bm-btn bm-btn--amber" id="bm-btn-add" onclick="window.openModal()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
         Cargar Audio
       </button>
@@ -794,15 +1093,15 @@
     <table class="bm-table">
       <thead>
         <tr>
-          <th class="col-id"      data-sort="id">#ID</th>
+          <th class="col-id" data-sort="id">#ID</th>
           <th class="col-play"></th>
-          <th class="col-title"   data-sort="title">TÍTULO</th>
-          <th class="col-artist"  data-sort="artist">ARTISTA</th>
-          <th class="col-voz"     data-sort="voz">VOZ</th>
-          <th class="col-cat1"    data-sort="cat1">GÉNERO</th>
-          <th class="col-cat2"    data-sort="cat2">ROTACIÓN</th>
-          <th style="width:60px"  data-sort="energy">ENERG.</th>
-          <th class="col-dur"     data-sort="duration">DUR.</th>
+          <th class="col-title" data-sort="title">TÍTULO</th>
+          <th class="col-artist" data-sort="artist">ARTISTA</th>
+          <th class="col-voz" data-sort="voz">VOZ</th>
+          <th class="col-cat1" data-sort="cat1">GÉNERO</th>
+          <th class="col-cat2" data-sort="cat2">ROTACIÓN</th>
+          <th style="width:60px" data-sort="energy">ENERG.</th>
+          <th class="col-dur" data-sort="duration">DUR.</th>
           <th class="col-actions">OPS</th>
         </tr>
       </thead>
@@ -810,9 +1109,9 @@
     </table>
     <div id="bm-empty" class="bm-empty" style="display:none">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M9 18V5l12-2v13"/>
-        <circle cx="6" cy="18" r="3"/>
-        <circle cx="18" cy="16" r="3"/>
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
       </svg>
       <strong>Sin resultados</strong>
       <p>Ajusta los filtros o carga nuevos audios.</p>
@@ -823,11 +1122,11 @@
   <div class="bm-player" id="bm-player">
     <button class="bm-play-btn" id="bm-player-toggle" title="Play/Pause">
       <svg id="bm-player-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5,3 19,12 5,21"/>
+        <polygon points="5,3 19,12 5,21" />
       </svg>
     </button>
     <div class="bm-player__info">
-      <div class="bm-player__title"  id="bm-player-title">—</div>
+      <div class="bm-player__title" id="bm-player-title">—</div>
       <div class="bm-player__artist" id="bm-player-artist">Sin pista cargada</div>
     </div>
     <div class="bm-player__timeline">
@@ -853,11 +1152,11 @@
 
     <div class="bm-modal__header">
       <span class="bm-modal__id-badge" id="modal-badge">NUEVO</span>
-      <span class="bm-modal__title"    id="modal-title">Cargar Audio</span>
-      <button class="bm-modal__close"  id="bm-modal-close" title="Cerrar">
+      <span class="bm-modal__title" id="modal-title">Cargar Audio</span>
+      <button class="bm-modal__close" id="bm-modal-close" title="Cerrar">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <line x1="18" y1="6"  x2="6" y2="18"/>
-          <line x1="6"  y1="6"  x2="18" y2="18"/>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
     </div>
@@ -869,16 +1168,32 @@
         <div class="bm-form-section__label">🎵 Archivo de Audio</div>
         <div class="bm-dropzone" id="bm-dropzone">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
           <p><strong>Arrastra tu archivo</strong> o haz clic para seleccionar</p>
           <p style="margin-top:4px">MP3, WAV, FLAC · máx 200 MB</p>
-          <input type="file" id="modal-file" accept="audio/*" style="display:none"/>
+          <input type="file" id="modal-file" accept="audio/*" style="display:none" />
         </div>
         <div id="modal-file-info"
           style="font-family:var(--font-mono);font-size:11px;color:var(--accent-green);display:none;padding:4px 0">
+        </div>
+        <!-- Ruta staging: requerida por el backend para crear un audio nuevo.
+             Se oculta automáticamente al editar (id existente). Cuando el
+             operador arrastra un archivo, handleFile() puede pre-rellenarlo. -->
+        <div id="modal-staging-field" class="bm-field" style="margin-top:10px">
+          <label>Ruta en staging <span style="color:var(--accent-red)">*</span></label>
+          <input class="bm-input" id="modal-archivo-path" type="text"
+            placeholder="Ej: archivo.mp3  o  /media/onix/staging/cancion.mp3"
+            style="font-family:var(--font-mono);font-size:12px" />
+          <span style="font-size:11px;color:var(--text-disabled)">
+            Nombre o ruta del archivo ya subido a la carpeta staging del servidor.
+          </span>
+        </div>
+        <div id="modal-duracion-field" class="bm-field" style="margin-top:8px">
+          <label>Duración (segundos)</label>
+          <input class="bm-input" id="modal-duracion" type="number" placeholder="0" min="0" />
         </div>
       </div>
 
@@ -888,19 +1203,19 @@
         <div class="bm-form-grid">
           <div class="bm-field">
             <label>Título *</label>
-            <input class="bm-input" id="modal-title-input" type="text" placeholder="Nombre de la pista"/>
+            <input class="bm-input" id="modal-title-input" type="text" placeholder="Nombre de la pista" />
           </div>
           <div class="bm-field">
             <label>Artista *</label>
-            <input class="bm-input" id="modal-artist" type="text" placeholder="Nombre del artista"/>
+            <input class="bm-input" id="modal-artist" type="text" placeholder="Nombre del artista" />
           </div>
           <div class="bm-field">
             <label>Álbum</label>
-            <input class="bm-input" id="modal-album" type="text" placeholder="Nombre del álbum"/>
+            <input class="bm-input" id="modal-album" type="text" placeholder="Nombre del álbum" />
           </div>
           <div class="bm-field">
             <label>Año</label>
-            <input class="bm-input" id="modal-year" type="number" placeholder="2024" min="1900" max="2099"/>
+            <input class="bm-input" id="modal-year" type="number" placeholder="2024" min="1900" max="2099" />
           </div>
         </div>
       </div>
@@ -911,23 +1226,31 @@
         <div class="bm-form-grid--3 bm-form-grid">
           <div class="bm-field">
             <label>Cat1 · Género</label>
-            <select class="bm-select" id="modal-cat1"><option value="">— Seleccionar —</option></select>
+            <select class="bm-select" id="modal-cat1">
+              <option value="">— Seleccionar —</option>
+            </select>
           </div>
           <div class="bm-field">
             <label>Cat2 · Rotación</label>
-            <select class="bm-select" id="modal-cat2"><option value="">— Seleccionar —</option></select>
+            <select class="bm-select" id="modal-cat2">
+              <option value="">— Seleccionar —</option>
+            </select>
           </div>
           <div class="bm-field">
             <label>Cat3 · Extra</label>
-            <select class="bm-select" id="modal-cat3"><option value="">— Seleccionar —</option></select>
+            <select class="bm-select" id="modal-cat3">
+              <option value="">— Seleccionar —</option>
+            </select>
           </div>
           <div class="bm-field">
             <label>Voz</label>
-            <select class="bm-select" id="modal-voz"><option value="">— Seleccionar —</option></select>
+            <select class="bm-select" id="modal-voz">
+              <option value="">— Seleccionar —</option>
+            </select>
           </div>
           <div class="bm-field">
             <label>BPM</label>
-            <input class="bm-input" id="modal-bpm" type="number" placeholder="120" min="40" max="250"/>
+            <input class="bm-input" id="modal-bpm" type="number" placeholder="120" min="40" max="250" />
           </div>
           <div class="bm-field">
             <label>Idioma</label>
@@ -961,18 +1284,20 @@
           <div class="bm-cue">
             <div class="bm-cue__label">Intro (seg)</div>
             <div class="bm-cue__value-row">
-              <input class="bm-input" id="modal-cue-intro" type="number" value="0" min="0" step="0.1"/>
+              <input class="bm-input" id="modal-cue-intro" type="number" value="0" min="0" step="0.1" />
               <button class="bm-cue__mark-btn" data-cue="intro">⬡ Marcar</button>
             </div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">Inicio de voz / jingle</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">Inicio de voz / jingle
+            </div>
           </div>
           <div class="bm-cue">
             <div class="bm-cue__label">Mix Out (seg)</div>
             <div class="bm-cue__value-row">
-              <input class="bm-input" id="modal-cue-mix" type="number" value="0" min="0" step="0.1"/>
+              <input class="bm-input" id="modal-cue-mix" type="number" value="0" min="0" step="0.1" />
               <button class="bm-cue__mark-btn" data-cue="mix">⬡ Marcar</button>
             </div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">Punto de mezcla de salida</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">Punto de mezcla de salida
+            </div>
           </div>
         </div>
       </div>
@@ -983,8 +1308,7 @@
         <div class="bm-form-grid--full bm-form-grid">
           <div class="bm-field">
             <label>Observaciones internas</label>
-            <textarea class="bm-input" id="modal-notes" rows="2"
-              style="resize:vertical;font-size:12px;padding:8px 10px"
+            <textarea class="bm-input" id="modal-notes" rows="2" style="resize:vertical;font-size:12px;padding:8px 10px"
               placeholder="Notas para operadores…"></textarea>
           </div>
         </div>
@@ -1001,9 +1325,9 @@
         <button class="bm-btn bm-btn--ghost" id="bm-modal-cancel">Cancelar</button>
         <button class="bm-btn bm-btn--amber" id="bm-modal-save">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
+            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
           </svg>
           Guardar
         </button>
@@ -1021,48 +1345,45 @@
      JAVASCRIPT
      ═══════════════════════════════════════════════════════════════ -->
 <script>
-(function () {
   'use strict';
 
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.saveModal = saveModal;
+  console.log('>>> ÓNIX FM: Funciones vinculadas al scope global correctamente.');
+
   /* ══════════════════════════════════════════════════════════════
-     §1 · CATÁLOGO DINÁMICO JAZLER
-  ══════════════════════════════════════════════════════════════ */
-  const JAZLER_CATS = {
-    Cat1: ['Pop', 'Rock', 'Balada', 'Tropical', 'Salsa', 'Cumbia', 'Reggaetón',
-      'Electrónica', 'Jazz', 'Clásica', 'Folk', 'Hip-Hop', 'R&B',
-      'Country', 'Alternativa', 'Instrumental'],
-    Cat2: ['Alta', 'Media', 'Baja', 'Power', 'Extra', 'Archivo',
-      'Estreno', 'Vintage', 'Recurrente', 'Especial'],
-    Cat3: ['Ninguno', 'Navidad', 'Verano', 'Tanda Especial', 'Intros',
-      'Jingles', 'Cortinas', 'Sweepers', 'Promo', 'Overnight'],
-    Voz: ['Mujer', 'Hombre', 'Dúo', 'Grupo', 'Instrumental'],
+       §1 · CONFIGURACIÓN DE API
+       API_BASE vacío = same origin. Cambia a 'http://host:8000'
+       si el frontend se sirve desde un origen distinto al backend.
+    ══════════════════════════════════════════════════════════════ */
+  const API_BASE = '';
+
+  // schema se llena en initApp() con GET /api/v1/config/biblioteca/schema
+  // Estructura: { categorias: [{ nombre_interno, etiqueta_visible, valores:[{valor}] }] }
+  let schema = { categorias: [] };
+
+  // Ayudantes para consultar el schema dinámico
+  const getCatValues = nombre => {
+    const cat = schema.categorias.find(c => c.nombre_interno === nombre);
+    return cat ? cat.valores.map(v => v.valor) : [];
+  };
+  const getCatLabel = nombre => {
+    const cat = schema.categorias.find(c => c.nombre_interno === nombre);
+    return cat ? cat.etiqueta_visible : nombre;
   };
 
   /* ══════════════════════════════════════════════════════════════
-     §2 · DATOS SIMULADOS
+     §2 · ESTADO DE BIBLIOTECA
+     Vacío hasta que initApp() completa la carga desde la API.
   ══════════════════════════════════════════════════════════════ */
-  const generateLibrary = () => [
-    { id:1001, title:'Luna de Medianoche', artist:'Karla Vega',            voz:'Mujer',        cat1:'Balada',      cat2:'Power',    cat3:'Ninguno',  energy:4, duration:234, bpm:72,  intro:8.5,  mix:218.0, lang:'es' },
-    { id:1002, title:'Fuego en la Pista',  artist:'Los Soneros del Sur',   voz:'Grupo',        cat1:'Salsa',       cat2:'Alta',     cat3:'Ninguno',  energy:9, duration:298, bpm:165, intro:4.0,  mix:285.0, lang:'es' },
-    { id:1003, title:'Neon City Drive',    artist:'DJ Spectrum',           voz:'Instrumental', cat1:'Electrónica', cat2:'Extra',    cat3:'Ninguno',  energy:8, duration:342, bpm:128, intro:32.0, mix:326.0, lang:'en' },
-    { id:1004, title:'Te Recordaré',       artist:'Marco & Elena',         voz:'Dúo',          cat1:'Pop',         cat2:'Media',    cat3:'Ninguno',  energy:5, duration:215, bpm:98,  intro:6.0,  mix:202.0, lang:'es' },
-    { id:1005, title:'Café Amargo',        artist:'Rodrigo Saavedra',      voz:'Hombre',       cat1:'Rock',        cat2:'Alta',     cat3:'Ninguno',  energy:7, duration:272, bpm:142, intro:10.0, mix:256.0, lang:'es' },
-    { id:1006, title:'Ritmo Caribeño',     artist:'La Orquesta Imperial',  voz:'Grupo',        cat1:'Cumbia',      cat2:'Alta',     cat3:'Verano',   energy:9, duration:315, bpm:155, intro:5.5,  mix:300.0, lang:'es' },
-    { id:1007, title:'Midnight Jazz',      artist:'Trio Nocturno',         voz:'Grupo',        cat1:'Jazz',        cat2:'Baja',     cat3:'Overnight',energy:3, duration:384, bpm:88,  intro:0.0,  mix:370.0, lang:'en' },
-    { id:1008, title:'Corazón de Hielo',   artist:'Valentina Cruz',        voz:'Mujer',        cat1:'Balada',      cat2:'Power',    cat3:'Ninguno',  energy:5, duration:248, bpm:68,  intro:12.0, mix:230.0, lang:'es' },
-    { id:1009, title:'Street Anthem',      artist:'FiveKings',             voz:'Grupo',        cat1:'Hip-Hop',     cat2:'Estreno',  cat3:'Ninguno',  energy:8, duration:196, bpm:90,  intro:4.0,  mix:180.0, lang:'en' },
-    { id:1010, title:'Lluvia de Estrellas',artist:'Pablo Herrera',         voz:'Hombre',       cat1:'Pop',         cat2:'Media',    cat3:'Ninguno',  energy:6, duration:227, bpm:110, intro:7.0,  mix:210.0, lang:'es' },
-    { id:1011, title:'Tequila Sunrise Mix',artist:'DJ Morales',            voz:'Instrumental', cat1:'Electrónica', cat2:'Alta',     cat3:'Verano',   energy:9, duration:420, bpm:132, intro:16.0, mix:405.0, lang:'es' },
-    { id:1012, title:'Saudade Eterna',     artist:'Gabriela Monteiro',     voz:'Mujer',        cat1:'Folk',        cat2:'Baja',     cat3:'Ninguno',  energy:2, duration:262, bpm:58,  intro:0.0,  mix:248.0, lang:'pt' },
-  ];
-
-  let library   = generateLibrary();
-  let filtered  = [...library];
-  let sortKey   = null;
-  let sortDir   = 1;
+  let library = [];
+  let filtered = [];
+  let sortKey = null;
+  let sortDir = 1;
   let editingId = null;
   let playingId = null;
-  let audioEl   = null;
+  let audioEl = null;
   let playerTimer = null;
   let currentEnergy = null;
 
@@ -1073,12 +1394,12 @@
      Esto es esencial porque el Shell inyecta este HTML
      dinámicamente; los nodos pueden recrearse en cualquier momento.
   ══════════════════════════════════════════════════════════════ */
-  const $          = id  => document.getElementById(id);
-  const getOverlay = ()  => document.getElementById('bm-overlay');
-  const getTbody   = ()  => document.getElementById('bm-tbody');
-  const getCountEl = ()  => document.getElementById('bm-count');
+  const $ = id => document.getElementById(id);
+  const getOverlay = () => document.getElementById('bm-overlay');
+  const getTbody = () => document.getElementById('bm-tbody');
+  const getCountEl = () => document.getElementById('bm-count');
   const getStatusMsg = () => document.getElementById('bm-status-msg');
-  const getEmptyEl = ()  => document.getElementById('bm-empty');
+  const getEmptyEl = () => document.getElementById('bm-empty');
 
   /* ══════════════════════════════════════════════════════════════
      §4 · CONSTRUCCIÓN DE SELECTS
@@ -1097,17 +1418,18 @@
   };
 
   const buildFilters = () => {
-    populateSelect('bm-filter-cat1', JAZLER_CATS.Cat1, 'Género');
-    populateSelect('bm-filter-cat2', JAZLER_CATS.Cat2, 'Rotación');
-    populateSelect('bm-filter-cat3', JAZLER_CATS.Cat3, 'Extra');
-    populateSelect('bm-filter-voz',  JAZLER_CATS.Voz,  'Voz');
+    // Usa el schema cargado de la API; si aún está vacío los selects quedan solo con "Todos"
+    populateSelect('bm-filter-cat1', getCatValues('cat1'), getCatLabel('cat1') || 'Género');
+    populateSelect('bm-filter-cat2', getCatValues('cat2'), getCatLabel('cat2') || 'Rotación');
+    populateSelect('bm-filter-cat3', getCatValues('cat3'), getCatLabel('cat3') || 'Extra');
+    populateSelect('bm-filter-voz', getCatValues('voz'), getCatLabel('voz') || 'Voz');
   };
 
   const buildModalSelects = () => {
-    populateSelect('modal-cat1', JAZLER_CATS.Cat1, '— Seleccionar —');
-    populateSelect('modal-cat2', JAZLER_CATS.Cat2, '— Seleccionar —');
-    populateSelect('modal-cat3', JAZLER_CATS.Cat3, '— Seleccionar —');
-    populateSelect('modal-voz',  JAZLER_CATS.Voz,  '— Seleccionar —');
+    populateSelect('modal-cat1', getCatValues('cat1'), '— Seleccionar —');
+    populateSelect('modal-cat2', getCatValues('cat2'), '— Seleccionar —');
+    populateSelect('modal-cat3', getCatValues('cat3'), '— Seleccionar —');
+    populateSelect('modal-voz', getCatValues('voz'), '— Seleccionar —');
   };
 
   /* ══════════════════════════════════════════════════════════════
@@ -1132,7 +1454,7 @@
     document.querySelectorAll('.bm-energy-btn').forEach(b => {
       b.classList.toggle('sel', +b.dataset.val === val);
     });
-    const labels = ['','Tranquilo','Suave','Ligero','Moderado','Animado','Dinámico','Intenso','Potente','¡Máximo!'];
+    const labels = ['', 'Tranquilo', 'Suave', 'Ligero', 'Moderado', 'Animado', 'Dinámico', 'Intenso', 'Potente', '¡Máximo!'];
     const lbl = $('modal-energy-label');
     if (lbl) lbl.textContent = `${val} — ${labels[val] ?? ''}`;
   };
@@ -1146,7 +1468,7 @@
   };
 
   const voxBadge = voz => {
-    const cls = { 'Mujer':'badge-mujer', 'Hombre':'badge-hombre', 'Dúo':'badge-duo', 'Grupo':'badge-grupo' };
+    const cls = { 'Mujer': 'badge-mujer', 'Hombre': 'badge-hombre', 'Dúo': 'badge-duo', 'Grupo': 'badge-grupo' };
     return `<span class="bm-badge ${cls[voz] || 'badge-grupo'}">${voz}</span>`;
   };
 
@@ -1159,7 +1481,7 @@
   };
 
   const render = () => {
-    const tbody   = getTbody();
+    const tbody = getTbody();
     const countEl = getCountEl();
     const emptyEl = getEmptyEl();
     if (!tbody) return;
@@ -1180,8 +1502,8 @@
           <button class="bm-play-btn ${playingId === t.id ? 'playing' : ''}"
             data-id="${t.id}" title="Preescucha">
             ${playingId === t.id
-              ? `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
-              : `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
+        ? `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+        : `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
           </button>
         </td>
         <td class="bm-cell-title">${t.title}</td>
@@ -1205,18 +1527,18 @@
      §7 · FILTRADO Y ORDENAMIENTO
   ══════════════════════════════════════════════════════════════ */
   const applyFilters = () => {
-    const q    = ($('bm-search')?.value || '').toLowerCase();
+    const q = ($('bm-search')?.value || '').toLowerCase();
     const cat1 = $('bm-filter-cat1')?.value || '';
     const cat2 = $('bm-filter-cat2')?.value || '';
     const cat3 = $('bm-filter-cat3')?.value || '';
-    const voz  = $('bm-filter-voz')?.value  || '';
+    const voz = $('bm-filter-voz')?.value || '';
 
     filtered = library.filter(t =>
-      (!q    || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
+      (!q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
       (!cat1 || t.cat1 === cat1) &&
       (!cat2 || t.cat2 === cat2) &&
       (!cat3 || t.cat3 === cat3) &&
-      (!voz  || t.voz  === voz)
+      (!voz || t.voz === voz)
     );
 
     if (sortKey) {
@@ -1234,12 +1556,12 @@
      §8 · PREESCUCHA DE AUDIO (Mini Player)
   ══════════════════════════════════════════════════════════════ */
   const setPlayerInfo = track => {
-    if ($('bm-player-title'))  $('bm-player-title').textContent  = track ? track.title  : '—';
+    if ($('bm-player-title')) $('bm-player-title').textContent = track ? track.title : '—';
     if ($('bm-player-artist')) $('bm-player-artist').textContent = track ? track.artist : 'Sin pista cargada';
-    if ($('bm-player-cat'))    $('bm-player-cat').textContent    = track ? `${track.cat1} · ${track.cat2}` : '';
-    if ($('bm-time-total'))    $('bm-time-total').textContent    = track ? fmtDuration(track.duration) : '0:00';
+    if ($('bm-player-cat')) $('bm-player-cat').textContent = track ? `${track.cat1} · ${track.cat2}` : '';
+    if ($('bm-time-total')) $('bm-time-total').textContent = track ? fmtDuration(track.duration) : '0:00';
     if ($('bm-timeline-fill')) $('bm-timeline-fill').style.width = '0%';
-    if ($('bm-time-cur'))      $('bm-time-cur').textContent      = '0:00';
+    if ($('bm-time-cur')) $('bm-time-cur').textContent = '0:00';
   };
 
   const stopPlayer = () => {
@@ -1251,13 +1573,13 @@
       getTbody()?.querySelector(`tr[data-id="${prevId}"]`)?.classList.remove('bm-row--playing');
     }
     if ($('bm-timeline-fill')) $('bm-timeline-fill').style.width = '0%';
-    if ($('bm-time-cur'))      $('bm-time-cur').textContent = '0:00';
-    if ($('bm-player-icon'))   $('bm-player-icon').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+    if ($('bm-time-cur')) $('bm-time-cur').textContent = '0:00';
+    if ($('bm-player-icon')) $('bm-player-icon').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
   };
 
   const updateTimeline = (cur, total) => {
     if ($('bm-timeline-fill')) $('bm-timeline-fill').style.width = `${(cur / total) * 100}%`;
-    if ($('bm-time-cur'))      $('bm-time-cur').textContent = fmtDuration(Math.floor(cur));
+    if ($('bm-time-cur')) $('bm-time-cur').textContent = fmtDuration(Math.floor(cur));
   };
 
   const simulatePlayback = track => {
@@ -1289,8 +1611,8 @@
     audioEl.volume = 0.9;
     audioEl.play().catch(() => simulatePlayback(track));
     audioEl.addEventListener('timeupdate', () => updateTimeline(audioEl.currentTime, track.duration));
-    audioEl.addEventListener('ended',  () => { stopPlayer(); setPlayerInfo(null); render(); });
-    audioEl.addEventListener('error',  () => simulatePlayback(track));
+    audioEl.addEventListener('ended', () => { stopPlayer(); setPlayerInfo(null); render(); });
+    audioEl.addEventListener('error', () => simulatePlayback(track));
 
     render();
     wsCmd('PREVIEW', { id: track.id });
@@ -1299,10 +1621,10 @@
 
   /* ══════════════════════════════════════════════════════════════
      §9 · MODAL: ABRIR, CERRAR, GUARDAR
-
+ 
      openModal / closeModal siempre buscan #bm-overlay en tiempo
      de ejecución con getOverlay(). Nunca almacenan la referencia.
-
+ 
      FIX 4 — FUERZA BRUTA: además de añadir la clase .active,
      se asigna overlay.style.display = 'flex' como estilo inline.
      Un estilo inline tiene la mayor especificidad posible en CSS
@@ -1310,7 +1632,7 @@
      Shell). Esto garantiza la visibilidad del modal incluso si
      el Shell tiene reglas que anulan display en elementos fixed.
   ══════════════════════════════════════════════════════════════ */
-  const openModal = (id = null) => {
+  function openModal(id = null) {
     const overlay = getOverlay();
     if (!overlay) {
       console.warn('[BM] openModal: #bm-overlay no encontrado en el DOM');
@@ -1326,38 +1648,46 @@
       // Modo edición
       const t = library.find(x => x.id === id);
       if (!t) return;
-      if ($('modal-badge'))        $('modal-badge').textContent        = `ID ${t.id}`;
-      if ($('modal-title'))        $('modal-title').textContent        = 'Editar Audio';
-      if ($('modal-title-input'))  $('modal-title-input').value        = t.title;
-      if ($('modal-artist'))       $('modal-artist').value             = t.artist;
-      if ($('modal-album'))        $('modal-album').value              = t.album  || '';
-      if ($('modal-year'))         $('modal-year').value               = t.year   || '';
-      if ($('modal-bpm'))          $('modal-bpm').value                = t.bpm    || '';
-      if ($('modal-lang'))         $('modal-lang').value               = t.lang   || 'es';
-      if ($('modal-cat1'))         $('modal-cat1').value               = t.cat1;
-      if ($('modal-cat2'))         $('modal-cat2').value               = t.cat2;
-      if ($('modal-cat3'))         $('modal-cat3').value               = t.cat3;
-      if ($('modal-voz'))          $('modal-voz').value                = t.voz;
-      if ($('modal-cue-intro'))    $('modal-cue-intro').value          = t.intro;
-      if ($('modal-cue-mix'))      $('modal-cue-mix').value            = t.mix;
-      if ($('modal-notes'))        $('modal-notes').value              = t.notes  || '';
-      if ($('modal-dropzone-wrap'))$('modal-dropzone-wrap').style.display = 'none';
+      if ($('modal-badge')) $('modal-badge').textContent = `ID ${t.id}`;
+      if ($('modal-title')) $('modal-title').textContent = 'Editar Audio';
+      if ($('modal-title-input')) $('modal-title-input').value = t.title;
+      if ($('modal-artist')) $('modal-artist').value = t.artist;
+      if ($('modal-album')) $('modal-album').value = t.album || '';
+      if ($('modal-year')) $('modal-year').value = t.year || '';
+      if ($('modal-bpm')) $('modal-bpm').value = t.bpm || '';
+      if ($('modal-lang')) $('modal-lang').value = t.lang || 'es';
+      if ($('modal-cat1')) $('modal-cat1').value = t.cat1;
+      if ($('modal-cat2')) $('modal-cat2').value = t.cat2;
+      if ($('modal-cat3')) $('modal-cat3').value = t.cat3;
+      if ($('modal-voz')) $('modal-voz').value = t.voz;
+      if ($('modal-cue-intro')) $('modal-cue-intro').value = t.intro;
+      if ($('modal-cue-mix')) $('modal-cue-mix').value = t.mix;
+      if ($('modal-notes')) $('modal-notes').value = t.notes || '';
+      if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'none';
+      // En modo edición los campos de staging no son relevantes (el archivo ya existe en library)
+      if ($('modal-staging-field')) $('modal-staging-field').style.display = 'none';
+      if ($('modal-duracion-field')) $('modal-duracion-field').style.display = 'none';
       setEnergy(t.energy);
     } else {
       // Modo creación
-      if ($('modal-badge'))        $('modal-badge').textContent        = 'NUEVO';
-      if ($('modal-title'))        $('modal-title').textContent        = 'Cargar Audio';
-      ['modal-title-input','modal-artist','modal-album','modal-year','modal-bpm','modal-notes']
+      if ($('modal-badge')) $('modal-badge').textContent = 'NUEVO';
+      if ($('modal-title')) $('modal-title').textContent = 'Cargar Audio';
+      ['modal-title-input', 'modal-artist', 'modal-album', 'modal-year', 'modal-bpm', 'modal-notes']
         .forEach(fid => { const el = $(fid); if (el) el.value = ''; });
-      if ($('modal-lang'))         $('modal-lang').value               = 'es';
-      if ($('modal-cat1'))         $('modal-cat1').value               = '';
-      if ($('modal-cat2'))         $('modal-cat2').value               = '';
-      if ($('modal-cat3'))         $('modal-cat3').value               = '';
-      if ($('modal-voz'))          $('modal-voz').value                = '';
-      if ($('modal-cue-intro'))    $('modal-cue-intro').value          = '0';
-      if ($('modal-cue-mix'))      $('modal-cue-mix').value            = '0';
-      if ($('modal-dropzone-wrap'))$('modal-dropzone-wrap').style.display = 'block';
-      if ($('modal-file-info'))    $('modal-file-info').style.display  = 'none';
+      if ($('modal-lang')) $('modal-lang').value = 'es';
+      if ($('modal-cat1')) $('modal-cat1').value = '';
+      if ($('modal-cat2')) $('modal-cat2').value = '';
+      if ($('modal-cat3')) $('modal-cat3').value = '';
+      if ($('modal-voz')) $('modal-voz').value = '';
+      if ($('modal-cue-intro')) $('modal-cue-intro').value = '0';
+      if ($('modal-cue-mix')) $('modal-cue-mix').value = '0';
+      if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
+      if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
+      // En modo creación mostramos los campos de staging que el backend requiere
+      if ($('modal-staging-field')) { $('modal-staging-field').style.display = 'block'; }
+      if ($('modal-duracion-field')) { $('modal-duracion-field').style.display = 'block'; }
+      if ($('modal-archivo-path')) $('modal-archivo-path').value = '';
+      if ($('modal-duracion')) $('modal-duracion').value = '';
     }
 
     // Añadir clase semántica (útil para CSS y tests)
@@ -1369,80 +1699,211 @@
      * incluidas las del Shell que pudieran sobreescribir el display.
      * Es el seguro de último recurso cuando el cascading falla.
      */
-    overlay.style.display  = 'flex';
-    overlay.style.zIndex   = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.zIndex = '9999';
 
     // Focus al primer campo editable tras la transición de entrada
     setTimeout(() => { const inp = $('modal-title-input'); if (inp) inp.focus(); }, 120);
   };
 
-  const closeModal = () => {
+  function closeModal() {
     const overlay = getOverlay();
     if (!overlay) return;
 
     overlay.classList.remove('active');
     // Limpiar los estilos inline que pusimos en openModal
     overlay.style.display = '';
-    overlay.style.zIndex  = '';
+    overlay.style.zIndex = '';
 
     editingId = null;
-  };
+  }
 
-  const saveModal = () => {
-    const titleVal  = $('modal-title-input')?.value.trim();
+  async function saveModal() {
+    const titleVal = $('modal-title-input')?.value.trim();
     const artistVal = $('modal-artist')?.value.trim();
     if (!titleVal || !artistVal) {
       showToast('Título y artista son obligatorios', 'error');
       return;
     }
 
-    const payload = {
-      title:   titleVal,
-      artist:  artistVal,
-      album:   $('modal-album')?.value.trim()  || '',
-      year:    +($('modal-year')?.value)        || null,
-      bpm:     +($('modal-bpm')?.value)         || null,
-      lang:    $('modal-lang')?.value           || 'es',
-      cat1:    $('modal-cat1')?.value           || '',
-      cat2:    $('modal-cat2')?.value           || '',
-      cat3:    $('modal-cat3')?.value           || '',
-      voz:     $('modal-voz')?.value            || '',
-      energy:  currentEnergy                    || 5,
-      intro:   +($('modal-cue-intro')?.value)   || 0,
-      mix:     +($('modal-cue-mix')?.value)     || 0,
-      notes:   $('modal-notes')?.value.trim()   || '',
+    // Mapeo frontend → campos esperados por el backend (API v1)
+    // El backend usa: titulo, artista, album, bpm, fecha_lanzamiento,
+    // cat1, cat2, cat3, voz, archivo_path (requerido en POST)
+    const bpmVal = +($('modal-bpm')?.value) || null;
+    const yearVal = $('modal-year')?.value.trim() || null;
+
+    const apiPayload = {
+      titulo: titleVal,
+      artista: artistVal,
+      album: $('modal-album')?.value.trim() || null,
+      bpm: (bpmVal && bpmVal >= 40 && bpmVal <= 300) ? bpmVal : null,
+      fecha_lanzamiento: yearVal,
+      cat1: $('modal-cat1')?.value || null,
+      cat2: $('modal-cat2')?.value || null,
+      cat3: $('modal-cat3')?.value || null,
+      voz: $('modal-voz')?.value || null,
     };
 
-    if (editingId) {
-      const idx = library.findIndex(t => t.id === editingId);
-      if (idx !== -1) {
-        library[idx] = { ...library[idx], ...payload };
-        wsCmd('UPDATE', { id: editingId, ...payload });
-        showToast(`Actualizado: ${payload.title}`, 'success');
+    // Para crear un audio el backend requiere archivo_path (ruta en staging).
+    // El campo modal-archivo-path es un input de texto donde el operador
+    // escribe la ruta o lo rellenamos a partir del drag-drop.
+    if (!editingId) {
+      const archivoPath = $('modal-archivo-path')?.value.trim();
+      if (!archivoPath) {
+        showToast('Se requiere la ruta del archivo en staging', 'error');
+        return;
       }
-    } else {
-      const newId = Math.max(...library.map(t => t.id)) + 1;
-      library.push({ id: newId, duration: 180, ...payload });
-      wsCmd('UPLOAD', { id: newId, ...payload });
-      showToast(`Cargado: ${payload.title}`, 'success');
+      apiPayload.archivo_path = archivoPath;
+      apiPayload.duracion = +($('modal-duracion')?.value) || 0;
     }
 
-    closeModal();
-    applyFilters();
+    // Deshabilitar botón guardar mientras la petición está en vuelo
+    const btnSave = $('bm-modal-save');
+    if (btnSave) { btnSave.disabled = true; btnSave.textContent = 'Guardando…'; }
+
+    try {
+      let res, data;
+      if (editingId) {
+        // PUT actualiza solo los campos enviados
+        res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload),
+        });
+      } else {
+        res = await fetch(`${API_BASE}/api/v1/audios`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload),
+        });
+      }
+
+      data = await res.json();
+
+      if (!res.ok) {
+        // El backend devuelve detail con mensaje descriptivo
+        const detail = data.detail;
+        const msg = typeof detail === 'object'
+          ? (detail.mensaje || JSON.stringify(detail))
+          : (detail || `Error ${res.status}`);
+        showToast(msg, 'error');
+        return;
+      }
+
+      // Éxito: refrescar la tabla desde la API para mantener consistencia
+      wsCmd(editingId ? 'UPDATE' : 'UPLOAD', { id: data.data?.id, titulo: titleVal });
+      closeModal();
+      await loadAudios();
+      showToast(editingId ? `Actualizado: ${titleVal}` : `Cargado: ${titleVal}`, 'success');
+
+    } catch (err) {
+      showToast('Error de conexión con la API', 'error');
+      console.error('[BM·save]', err);
+    } finally {
+      if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'Guardar'; }
+    }
+  };
+
+  /* ══════════════════════════════════════════════════════════════
+     §9-A · CARGA DE AUDIOS DESDE API
+     Obtiene la lista paginada de GET /api/v1/audios y mapea los
+     nombres de columna del backend (titulo, artista, duracion…)
+     a los nombres internos del frontend (title, artist, duration…).
+     Los campos que no tienen equivalente en la API (energy, intro,
+     mix, lang) se inicializan con valores neutros; si en el futuro
+     el backend los soporta sólo hay que añadirlos al map.
+  ══════════════════════════════════════════════════════════════ */
+  const loadAudios = async () => {
+    try {
+      // Pedimos hasta 500 pistas; si la biblioteca crece habrá que paginar
+      const res = await fetch(`${API_BASE}/api/v1/audios?limit=500&offset=0`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Mapeo backend → frontend
+      // El backend expone subgenero→cat1, categoria→cat2, cat3→cat3, genero_vocal→voz
+      // porque la API ya unifica los alias Jazler en el alias cat1/cat2/cat3/voz
+      library = (data.data || []).map(a => ({
+        id: a.id,
+        title: a.titulo || '—',
+        artist: a.artista || '—',
+        album: a.album || '',
+        duration: a.duracion || 0,
+        bpm: a.bpm || null,
+        year: a.fecha_lanzamiento || null,
+        cat1: a.cat1 || '',
+        cat2: a.cat2 || '',
+        cat3: a.cat3 || '',
+        voz: a.voz || '',
+        archivo_path: a.archivo_path || '',
+        // Campos sin equivalente en API v1 — valores por defecto
+        energy: 5,
+        intro: 0,
+        mix: 0,
+        lang: 'es',
+      }));
+
+      filtered = [...library];
+      applyFilters();
+      const countEl = getCountEl();
+      if (countEl) countEl.textContent = library.length;
+
+    } catch (err) {
+      console.error('[BM·loadAudios]', err);
+      showToast('No se pudo cargar la biblioteca desde la API', 'error');
+    }
+  };
+
+  /* ══════════════════════════════════════════════════════════════
+     §9-B · INICIALIZACIÓN ASÍNCRONA
+     Secuencia correcta:
+       1. GET /schema  → llena `schema` con categorías dinámicas
+       2. buildFilters / buildModalSelects  → usan el schema real
+       3. GET /audios  → llena la tabla
+     Si el backend no está disponible muestra un toast y deja la
+     UI funcional pero vacía (no bloquea el render).
+  ══════════════════════════════════════════════════════════════ */
+  const initApp = async () => {
+    setStatus('Cargando schema de categorías…', false);
+
+    try {
+      const schRes = await fetch(`${API_BASE}/api/v1/config/biblioteca/schema`);
+      if (schRes.ok) {
+        schema = await schRes.json();
+        console.info('[BM·init] Schema cargado:', schema.categorias?.length, 'categorías');
+      } else {
+        console.warn('[BM·init] Schema no disponible, usando selects vacíos');
+      }
+    } catch (err) {
+      console.warn('[BM·init] Error cargando schema:', err.message);
+    }
+
+    // Con el schema (o sin él) construimos los selects
+    buildFilters();
+    buildModalSelects();
+    buildEnergySel();
+    setPlayerInfo(null);
+
+    setStatus('Cargando biblioteca…', false);
+    await loadAudios();
+
+    const n = library.length;
+    setStatus(`Sistema listo · ${n} pista${n !== 1 ? 's' : ''} cargada${n !== 1 ? 's' : ''}`, false);
+    showToast(`Biblioteca Musical lista · ${n} pistas`, 'success');
   };
 
   /* ══════════════════════════════════════════════════════════════
      §10 · DELEGACIÓN GLOBAL DE EVENTOS — CLICK
-
+ 
      FIX 2 — DELEGACIÓN REESCRITA
      Un único listener en `document` reemplaza todos los
      addEventListener directos sobre IDs individuales.
-
+ 
      ¿Por qué funciona aunque el elemento no exista aún?
      Porque el evento siempre burbujea desde el nodo origen
      hasta document, y es aquí donde interceptamos y preguntamos:
      "¿el elemento que originó el click coincide con este selector?"
-
+ 
      Esto es imprescindible porque el Shell inyecta este HTML
      vía fetch() y innerHTML, lo que destruye y recrea los nodos
      del DOM. Los listeners directos sobre esos nodos se pierden;
@@ -1503,15 +1964,28 @@
     /* ── Eliminar audio ──────────────────────────────────────── */
     const delBtn = e.target.closest('.bm-action-del');
     if (delBtn) {
-      const id    = +delBtn.dataset.id;
+      const id = +delBtn.dataset.id;
       const track = library.find(t => t.id === id);
-      if (track && confirm(`¿Eliminar "${track.title}"?`)) {
-        if (playingId === id) stopPlayer();
-        library = library.filter(t => t.id !== id);
-        wsCmd('DELETE', { id });
-        showToast(`Eliminado: ${track.title}`, 'error');
-        applyFilters();
-      }
+      if (!track) return;
+      if (!confirm(`¿Eliminar "${track.title}"?`)) return;
+
+      if (playingId === id) stopPlayer();
+
+      // Soft-delete en la API — marca activo=0, no destruye el registro
+      fetch(`${API_BASE}/api/v1/audios/${id}`, { method: 'DELETE' })
+        .then(async res => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.detail || `Error ${res.status} al eliminar`, 'error');
+            return;
+          }
+          wsCmd('DELETE', { id });
+          showToast(`Eliminado: ${track.title}`, 'error');
+          // Recarga la tabla para reflejar el estado real del servidor
+          loadAudios();
+        })
+        .catch(() => showToast('Error de conexión al eliminar', 'error'));
+
       return;
     }
 
@@ -1539,7 +2013,7 @@
     const tl = e.target.closest('#bm-timeline');
     if (tl && playingId) {
       const rect = tl.getBoundingClientRect();
-      const pct  = (e.clientX - rect.left) / rect.width;
+      const pct = (e.clientX - rect.left) / rect.width;
       if (audioEl && audioEl.duration) audioEl.currentTime = pct * audioEl.duration;
       return;
     }
@@ -1563,7 +2037,7 @@
     /* ── Botones de punto de cue ─────────────────────────────── */
     const cueBtn = e.target.closest('.bm-cue__mark-btn');
     if (cueBtn) {
-      const cue   = cueBtn.dataset.cue;
+      const cue = cueBtn.dataset.cue;
       const input = cue === 'intro' ? $('modal-cue-intro') : $('modal-cue-mix');
       if (input) {
         if (audioEl && !isNaN(audioEl.currentTime)) {
@@ -1583,9 +2057,9 @@
   /* ══════════════════════════════════════════════════════════════
      §11 · DELEGACIÓN GLOBAL — INPUT / CHANGE
   ══════════════════════════════════════════════════════════════ */
-  const FILTER_IDS = new Set(['bm-search','bm-filter-cat1','bm-filter-cat2','bm-filter-cat3','bm-filter-voz']);
+  const FILTER_IDS = new Set(['bm-search', 'bm-filter-cat1', 'bm-filter-cat2', 'bm-filter-cat3', 'bm-filter-voz']);
 
-  document.addEventListener('input',  e => { if (FILTER_IDS.has(e.target.id)) applyFilters(); });
+  document.addEventListener('input', e => { if (FILTER_IDS.has(e.target.id)) applyFilters(); });
   document.addEventListener('change', e => {
     if (FILTER_IDS.has(e.target.id)) applyFilters();
     if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]);
@@ -1616,7 +2090,7 @@
   ══════════════════════════════════════════════════════════════ */
   document.addEventListener('keydown', e => {
     const overlay = getOverlay(); // búsqueda en tiempo real
-    const isOpen  = overlay?.classList.contains('active');
+    const isOpen = overlay?.classList.contains('active');
 
     if (e.key === 'Escape' && isOpen) {
       closeModal();
@@ -1646,6 +2120,12 @@
       info.textContent = `✓ ${file.name}  ·  ${(file.size / 1048576).toFixed(1)} MB`;
       info.style.display = 'block';
     }
+    // Pre-rellenar el campo de ruta con el nombre del archivo.
+    // El operador deberá confirmar que el archivo ya fue copiado
+    // a la carpeta staging del servidor con este mismo nombre.
+    const archivoPat = $('modal-archivo-path');
+    if (archivoPat && !archivoPat.value) archivoPat.value = file.name;
+
     const titleInp = $('modal-title-input');
     if (titleInp && !titleInp.value) titleInp.value = file.name.replace(/\.[^.]+$/, '');
     wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
@@ -1675,8 +2155,8 @@
   };
 
   const showToast = (msg, type = 'info') => {
-    const icons    = { success:'✓', error:'✕', info:'•' };
-    const colorMap = { success:'accent-green', error:'accent-red', info:'accent-cyan' };
+    const icons = { success: '✓', error: '✕', info: '•' };
+    const colorMap = { success: 'accent-green', error: 'accent-red', info: 'accent-cyan' };
     const t = document.createElement('div');
     t.className = `bm-toast bm-toast--${type}`;
     t.innerHTML = `<span style="color:var(--${colorMap[type] || 'accent-cyan'})">${icons[type] || '•'}</span>${msg}`;
@@ -1690,13 +2170,56 @@
 
   /* ══════════════════════════════════════════════════════════════
      §16 · INICIALIZACIÓN
+     initApp() es async: primero carga el schema de categorías,
+     luego construye los selects con datos reales, luego carga
+     los audios. Todo lo que antes era síncrono y usaba mocks
+     ahora espera confirmación del backend antes de renderizar.
   ══════════════════════════════════════════════════════════════ */
-  buildFilters();
-  buildModalSelects();
-  buildEnergySel();
-  applyFilters();
-  setPlayerInfo(null);
-  showToast('Biblioteca Musical lista · ' + library.length + ' pistas', 'success');
 
-})();
+  /* ── FIX 5 · EXPORTAR AL SCOPE GLOBAL ────────────────────────
+   *
+   * POR QUÉ EL IIFE ROMPE LA ACCESIBILIDAD:
+   *
+   *   Todo este módulo está envuelto en (function() { ... })(),
+   *   un patrón IIFE que crea un scope léxico privado. Esto es
+   *   correcto para evitar contaminar el namespace global, pero
+   *   tiene una consecuencia cuando el Shell Antigravy inyecta
+   *   el HTML: los atributos onclick del HTML llaman funciones
+   *   desde window (el scope global), y openModal / closeModal /
+   *   saveModal sólo existen dentro del IIFE — no en window.
+   *
+   * POR QUÉ ESTO FALLA DENTRO DEL SHELL:
+   *
+   *   Dos rutas posibles de fallo:
+   *
+   *   1) El Shell llama stopPropagation() en algún handler propio
+   *      antes de que el click burbujee hasta el document listener
+   *      registrado en §10. En ese caso la delegación nunca llega
+   *      a ejecutar openModal(), aunque la función esté definida.
+   *
+   *   2) El Shell llama las funciones del módulo por nombre desde
+   *      su propio código JS: Antigravy.openModal() o window.openModal().
+   *      Sin la exportación, ambas llamadas fallan con
+   *      "openModal is not defined".
+   *
+   * POR QUÉ AQUÍ Y NO ANTES:
+   *
+   *   Las asignaciones deben ocurrir DESPUÉS de que todas las
+   *   funciones han sido declaradas con const. En JS, las
+   *   declaraciones const no se hoistan con valor (a diferencia
+   *   de function declarations), así que window.openModal = openModal
+   *   antes de la const openModal = () => {...} lanzaría un
+   *   ReferenceError. Al ponerlas aquí, justo antes de initApp(),
+   *   todas las funciones ya están definidas en el scope del IIFE.
+   *
+   * POR QUÉ window.openModal() EN EL onclick Y NO SOLO openModal():
+   *
+   *   El atributo onclick="openModal()" busca openModal en el scope
+   *   global (window). Escribir onclick="window.openModal()" es
+   *   semánticamente idéntico pero más explícito: documenta la
+   *   intención y evita confusión si alguien en el futuro intenta
+   *   entender por qué el onclick no usa el nombre bare.
+   * ──────────────────────────────────────────────────────────── */
+  initApp();
+
 </script>
