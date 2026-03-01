@@ -3,12 +3,6 @@
      Módulo: sections/02-biblioteca-musical/biblioteca-musical.html
      ============================================================ -->
 
-<script>
-  window.openModal = function (id) { console.warn("Módulo cargándose..."); };
-  window.closeModal = function () { };
-  window.saveModal = function () { };
-</script>
-
 <style>
   /* ── Variables heredadas del sistema (variables.css) ──────────── */
   :root {
@@ -1353,7 +1347,10 @@
 <script>
   'use strict';
 
-  console.log('>>> ÓNIX FM: Funciones vinculadas al scope global correctamente.');
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.saveModal = saveModal;
+  console.log('>>> [SISTEMA] Ónix FM: Funciones vinculadas al objeto window correctamente.');
 
   /* ══════════════════════════════════════════════════════════════
        §1 · CONFIGURACIÓN DE API
@@ -1635,7 +1632,7 @@
      Shell). Esto garantiza la visibilidad del modal incluso si
      el Shell tiene reglas que anulan display en elementos fixed.
   ══════════════════════════════════════════════════════════════ */
-  window.openModal = function (id = null) {
+  function openModal(id = null) {
     console.log(">>> Abriendo Modal Ónix FM");
     const overlay = getOverlay();
     if (!overlay) {
@@ -1710,7 +1707,7 @@
     setTimeout(() => { const inp = $('modal-title-input'); if (inp) inp.focus(); }, 120);
   };
 
-  window.closeModal = function () {
+  function closeModal() {
     const overlay = getOverlay();
     if (!overlay) return;
 
@@ -1722,7 +1719,7 @@
     editingId = null;
   };
 
-  window.saveModal = async function () {
+  async function saveModal() {
     const titleVal = $('modal-title-input')?.value.trim();
     const artistVal = $('modal-artist')?.value.trim();
     if (!titleVal || !artistVal) {
