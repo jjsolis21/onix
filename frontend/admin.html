@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ónix FM — Entorno de Trabajo Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+/* ═══════════════════════════════════════════════════════════
+   ADMIN.CSS — Ónix FM Entorno de Trabajo
+   Hereda el sistema de tokens del Studio (mismos valores)
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  /* ═══════════════════════════════════════════════════════
+     ÓNIX FM — ADMIN PANEL  ·  DEEP SEA EDITION  v3.0
+     Fondo: #001219  ·  Teal: #005f73  ·  Mint: #94d2bd  ·  Amber: #ee9b00
+  ═══════════════════════════════════════════════════════ */
+  --choc-0:#001219;--choc-1:#001e2b;--choc-2:#002a38;--choc-3:#003545;
+  --choc-4:#004558;--choc-5:#005f73;--choc-6:#0a9396;
+  --gold-0:#ee9b00;--gold-1:#f4a820;--gold-2:#ffc233;
+  --amber:#ca6702;--rust:#ae2012;
+  --green-on:#52b788;--green-dim:#2d8653;--red-live:#e63946;--blue-next:#48cae4;
+  --mint:#94d2bd;
+  --text-hi:#e9f5f3;--text-mid:#94d2bd;--text-lo:#4a8f87;--text-mono:#7cbfb5;
+  --font-display:'Bebas Neue',sans-serif;
+  --font-data:'DM Mono',monospace;
+  --font-ui:'Rajdhani',sans-serif;
+  --s1:.25rem;--s2:.5rem;--s3:.75rem;--s4:1rem;--s5:1.5rem;--s6:2rem;
+  --radius:4px;--radius-md:6px;--radius-lg:10px;
+  --glow-gold:0 0 12px rgba(238,155,0,.35);
+  --glow-green:0 0 10px rgba(82,183,136,.3);
+  --shadow:0 2px 14px rgba(0,0,0,.6);
+  --transition:150ms ease;
+  --sidebar-w:220px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{
+  background:var(--choc-1);color:var(--text-mid);
+  font-family:var(--font-ui);font-weight:500;
+  height:100dvh;overflow:hidden;
+  display:flex;flex-direction:column;
+  user-select:none;
+}
+button{cursor:pointer;border:none;background:none;font-family:inherit}
+input,select,textarea{font-family:var(--font-ui)}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--choc-1)}
+::-webkit-scrollbar-thumb{background:var(--choc-5);border-radius:3px}
+
+/* ── Admin Header ─────────────────────────────────────────── */
+.admin-header{
+  background:var(--choc-0);
+  border-bottom:2px solid var(--choc-5);
+  flex-shrink:0;
+  display:grid;
+  grid-template-columns:var(--sidebar-w) 1fr auto;
+  align-items:center;
+  padding:0 var(--s4);
+  height:52px;
+  gap:var(--s4);
+}
+.admin-brand{
+  display:flex;align-items:baseline;gap:var(--s2);
+}
+.admin-logo{
+  font-family:var(--font-display);font-size:1.35rem;
+  letter-spacing:.1em;color:var(--gold-1);
+  text-shadow:var(--glow-gold);
+}
+.admin-badge{
+  font-family:var(--font-data);font-size:.58rem;
+  letter-spacing:.18em;color:var(--amber);
+  border:1px solid var(--amber);
+  padding:1px 6px;border-radius:3px;
+}
+.admin-nav-center{
+  display:flex;align-items:center;gap:4px;
+}
+.admin-nav-btn{
+  padding:var(--s2) var(--s4);
+  font-family:var(--font-display);font-size:.85rem;
+  letter-spacing:.12em;color:var(--text-lo);
+  border-bottom:2px solid transparent;
+  transition:all var(--transition);
+  border-radius:var(--radius) var(--radius) 0 0;
+}
+.admin-nav-btn:hover{color:var(--text-mid);background:var(--choc-2)}
+.admin-nav-btn.active{
+  color:var(--gold-1);
+  border-bottom-color:var(--gold-0);
+  background:var(--choc-2);
+}
+.admin-right{
+  display:flex;align-items:center;gap:var(--s4);
+}
+.admin-clock{
+  font-family:var(--font-data);font-size:1rem;
+  color:var(--gold-0);letter-spacing:.06em;
+}
+.ws-indicator{font-size:.9rem;color:var(--choc-5);transition:color var(--transition)}
+.ws-indicator.connected{color:var(--green-on)}
+.ws-indicator.error{color:var(--rust)}
+.btn-studio{
+  font-family:var(--font-data);font-size:.6rem;letter-spacing:.1em;
+  padding:5px 12px;border:1px solid var(--choc-6);border-radius:var(--radius);
+  color:var(--text-lo);transition:all var(--transition);
+  text-decoration:none;display:flex;align-items:center;gap:4px;
+}
+.btn-studio:hover{border-color:var(--gold-0);color:var(--gold-0)}
+
+/* ── NOW PLAYING strip (mini) ─────────────────────────────── */
+.now-strip{
+  background:rgba(238,155,0,.06);
+  border-bottom:1px solid var(--choc-4);
+  padding:5px var(--s4);
+  display:flex;align-items:center;gap:var(--s3);
+  flex-shrink:0;
+  font-family:var(--font-data);font-size:.65rem;
+}
+.now-strip-label{color:var(--gold-0);letter-spacing:.12em}
+.now-strip-track{color:var(--text-mid)}
+.now-strip-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--red-live);
+  animation:blink .9s step-end infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── Main layout ──────────────────────────────────────────── */
+.admin-body{flex:1;overflow:hidden;display:flex}
+
+/* ── Sections (tabs) ─────────────────────────────────────── */
+.admin-section{
+  display:none;flex:1;overflow:hidden;
+  flex-direction:column;
+}
+.admin-section.active{display:flex}
+
+/* ── Section header ──────────────────────────────────────── */
+.sec-header{
+  padding:var(--s3) var(--s5);
+  border-bottom:1px solid var(--choc-3);
+  background:var(--choc-2);
+  flex-shrink:0;
+  display:flex;align-items:center;gap:var(--s4);
+}
+.sec-title{
+  font-family:var(--font-display);font-size:1.2rem;
+  letter-spacing:.15em;color:var(--text-hi);
+}
+.sec-subtitle{
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--text-lo);letter-spacing:.08em;
+}
+.sec-actions{margin-left:auto;display:flex;gap:var(--s2)}
+
+/* ── Shared form elements ─────────────────────────────────── */
+.field-group{display:flex;flex-direction:column;gap:4px}
+.field-lbl{
+  font-family:var(--font-data);font-size:.58rem;
+  letter-spacing:.12em;color:var(--text-lo);text-transform:uppercase;
+}
+.field-input,.field-select,.field-textarea{
+  background:var(--choc-0);border:1px solid var(--choc-5);
+  border-radius:var(--radius);color:var(--text-hi);
+  font-family:var(--font-ui);font-size:.8rem;
+  padding:6px 9px;outline:none;
+  transition:border-color var(--transition);width:100%;
+}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--gold-0)}
+.field-input::placeholder{color:var(--choc-6)}
+.field-select{
+  cursor:pointer;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b3a18'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;padding-right:26px;
+}
+.field-textarea{resize:vertical;min-height:52px}
+.field-sm{padding:4px 8px;font-size:.78rem}
+
+.btn-primary{
+  background:var(--choc-5);border:1px solid var(--gold-0);
+  color:var(--gold-1);font-family:var(--font-display);
+  font-size:.9rem;letter-spacing:.12em;
+  padding:8px var(--s5);border-radius:var(--radius-md);
+  transition:all var(--transition);
+}
+.btn-primary:hover{background:var(--gold-0);color:var(--choc-0);box-shadow:var(--glow-gold)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+
+.btn-secondary{
+  background:none;border:1px solid var(--choc-5);color:var(--text-lo);
+  font-family:var(--font-display);font-size:.8rem;letter-spacing:.1em;
+  padding:6px var(--s4);border-radius:var(--radius);
+  transition:all var(--transition);
+}
+.btn-secondary:hover{border-color:var(--gold-0);color:var(--gold-0)}
+
+.btn-danger{
+  background:none;border:1px solid var(--rust);color:var(--rust);
+  font-family:var(--font-data);font-size:.65rem;letter-spacing:.06em;
+  padding:4px 10px;border-radius:var(--radius);
+  transition:all var(--transition);
+}
+.btn-danger:hover{background:rgba(174,32,18,.15)}
+
+.btn-icon{
+  width:28px;height:28px;border-radius:var(--radius);
+  border:1px solid var(--choc-5);color:var(--text-lo);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.8rem;transition:all var(--transition);
+}
+.btn-icon:hover{border-color:var(--gold-0);color:var(--gold-1)}
+
+/* ── Feedback / Badges ────────────────────────────────────── */
+.feedback{
+  font-family:var(--font-data);font-size:.68rem;
+  padding:6px var(--s3);border-radius:var(--radius);display:none;
+}
+.feedback.success{
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  background:rgba(82,183,136,.1);border:1px solid var(--green-on);color:var(--green-on);
+  padding:.5rem .75rem;border-radius:var(--radius);
+}
+.fb-icon{font-size:1.1rem;flex-shrink:0}
+.fb-text{flex:1;min-width:0;line-height:1.4}
+.btn-play-now-admin{
+  flex-shrink:0;padding:5px 14px;
+  background:var(--gold-0);color:var(--choc-0);
+  border:none;border-radius:var(--radius);
+  font-family:var(--font-display);font-size:.8rem;letter-spacing:.07em;
+  cursor:pointer;transition:120ms ease;
+}
+.btn-play-now-admin:hover{background:var(--gold-1);transform:scale(1.03)}
+.feedback.error  {display:block;background:rgba(174,32,18,.1);border:1px solid var(--rust);color:var(--rust)}
+
+.badge{
+  font-family:var(--font-data);font-size:.55rem;letter-spacing:.1em;
+  padding:2px 8px;border-radius:10px;
+}
+.badge-musica   {background:rgba(238,155,0,.15);border:1px solid var(--choc-5);color:var(--gold-0)}
+.badge-efecto   {background:rgba(212,112,26,.15);border:1px solid rgba(212,112,26,.4);color:var(--amber)}
+.badge-cuña     {background:rgba(72,202,228,.12);border:1px solid rgba(72,202,228,.3);color:var(--blue-next)}
+.badge-tips     {background:rgba(82,183,136,.1);border:1px solid var(--green-dim);color:var(--green-on)}
+
+/* ══════════════════════════════════════════════════════════
+   SECCIÓN 1: CARGAR MATERIAL
+══════════════════════════════════════════════════════════ */
+.upload-layout{
+  flex:1;overflow:hidden;
+  display:grid;grid-template-columns:1fr 400px;
+}
+.upload-form-wrap{
+  overflow-y:auto;padding:var(--s5);
+  border-right:1px solid var(--choc-3);
+  display:flex;flex-direction:column;gap:var(--s4);
+}
+.upload-side{
+  overflow-y:auto;padding:var(--s4);
+  background:var(--choc-2);
+  display:flex;flex-direction:column;gap:var(--s4);
+}
+
+/* Tipo selector visual */
+.type-selector{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s2);
+}
+.type-btn{
+  padding:var(--s3) var(--s2);
+  border:2px solid var(--choc-5);border-radius:var(--radius-md);
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  transition:all var(--transition);color:var(--text-lo);
+}
+.type-btn:hover{border-color:var(--choc-6);color:var(--text-mid)}
+.type-btn.active{border-color:var(--gold-0);color:var(--gold-1);background:rgba(238,155,0,.06)}
+.type-btn .type-icon{font-size:1.4rem}
+.type-btn .type-lbl{
+  font-family:var(--font-display);font-size:.75rem;
+  letter-spacing:.1em;
+}
+
+/* Drop zone */
+.file-drop-zone{
+  border:2px dashed var(--choc-5);border-radius:var(--radius-md);
+  padding:var(--s5) var(--s4);text-align:center;cursor:pointer;
+  transition:all var(--transition);background:var(--choc-2);
+}
+.file-drop-zone:hover,.file-drop-zone.dragover{
+  border-color:var(--gold-0);background:rgba(238,155,0,.05);
+}
+.drop-content{display:flex;flex-direction:column;align-items:center;gap:var(--s2)}
+.drop-icon{font-size:2.2rem}
+.drop-text{
+  font-family:var(--font-data);font-size:.72rem;
+  color:var(--text-lo);letter-spacing:.06em;line-height:1.7;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+}
+.drop-text small{font-size:.6rem}
+
+/* Form grid */
+.form-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);
+}
+.field-span2{grid-column:span 2}
+
+.autocomplete-wrap{position:relative}
+.autocomplete-dropdown{
+  position:absolute;top:100%;left:0;right:0;z-index:300;
+  background:var(--choc-0);border:1px solid var(--gold-0);
+  border-radius:var(--radius);list-style:none;
+  max-height:160px;overflow-y:auto;display:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.7);
+}
+.autocomplete-dropdown.open{display:block}
+.autocomplete-dropdown li{
+  padding:6px 10px;font-size:.78rem;color:var(--text-mid);
+  cursor:pointer;border-bottom:1px solid var(--choc-3);
+  transition:background var(--transition);
+}
+.autocomplete-dropdown li:hover,.autocomplete-dropdown li.ac-active{
+  background:var(--choc-4);color:var(--gold-1);
+}
+.ac-highlight{color:var(--gold-1);font-weight:600}
+
+.e-row{display:flex;align-items:center;gap:var(--s2)}
+.e-slider{
+  flex:1;-webkit-appearance:none;height:3px;
+  background:var(--choc-4);border-radius:2px;outline:none;cursor:pointer;
+}
+.e-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--gold-1);cursor:pointer;box-shadow:var(--glow-gold);
+}
+.e-val{
+  font-family:var(--font-display);font-size:1.2rem;
+  color:var(--gold-1);min-width:1.2rem;text-align:center;
+}
+
+/* Historial de ingestas */
+.ingesta-history-title{
+  font-family:var(--font-data);font-size:.6rem;
+  letter-spacing:.15em;color:var(--text-lo);
+  padding-bottom:var(--s2);border-bottom:1px solid var(--choc-4);
+}
+.ingesta-history-list{
+  display:flex;flex-direction:column;gap:4px;
+}
+.ihl-item{
+  background:var(--choc-3);border-radius:var(--radius);
+  padding:8px 10px;display:flex;align-items:center;gap:var(--s2);
+}
+.ihl-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--green-on);flex-shrink:0;
+}
+.ihl-info{flex:1;overflow:hidden}
+.ihl-title{
+  font-size:.78rem;color:var(--text-hi);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.ihl-meta{
+  font-family:var(--font-data);font-size:.6rem;color:var(--text-lo);
+}
+
+/* ══════════════════════════════════════════════════════════
+   SECCIÓN 2: ORGANIZAR PAUTA
+══════════════════════════════════════════════════════════ */
+.pauta-layout{
+  flex:1;overflow:hidden;
+  display:grid;grid-template-columns:320px 1fr;
+}
+
+/* Panel izquierdo: lista de bloques */
+.bloques-panel{
+  border-right:1px solid var(--choc-3);
+  display:flex;flex-direction:column;
+  background:var(--choc-2);
+}
+.bloques-toolbar{
+  padding:var(--s3);border-bottom:1px solid var(--choc-4);
+  display:flex;gap:var(--s2);
+}
+.bloques-list{
+  flex:1;overflow-y:auto;
+  display:flex;flex-direction:column;
+  gap:2px;padding:var(--s2);
+}
+.bloque-card{
+  background:var(--choc-3);border:1px solid var(--choc-5);
+  border-radius:var(--radius-md);padding:var(--s3);
+  cursor:pointer;transition:all var(--transition);
+}
+.bloque-card:hover{border-color:var(--choc-6);background:var(--choc-4)}
+.bloque-card.selected{
+  border-color:var(--gold-0);background:rgba(238,155,0,.07);
+}
+.bloque-card-name{
+  font-family:var(--font-display);font-size:.9rem;
+  letter-spacing:.1em;color:var(--text-hi);
+}
+.bloque-card-hours{
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--gold-0);margin-top:2px;
+}
+.bloque-card-count{
+  font-family:var(--font-data);font-size:.58rem;
+  color:var(--text-lo);margin-top:4px;
+}
+.bloque-card-actions{
+  display:flex;gap:4px;margin-top:var(--s2);
+}
+.bloque-empty{
+  font-family:var(--font-data);font-size:.65rem;
+  color:var(--text-lo);text-align:center;
+  padding:var(--s5);letter-spacing:.1em;
+}
+
+/* Panel derecho: editor de bloque */
+.bloque-editor{
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.bloque-editor-header{
+  padding:var(--s4) var(--s5);
+  border-bottom:1px solid var(--choc-3);
+  background:var(--choc-2);flex-shrink:0;
+}
+.bloque-editor-title{
+  font-family:var(--font-display);font-size:1.1rem;
+  letter-spacing:.12em;color:var(--text-hi);
+}
+.bloque-editor-meta{
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--text-lo);margin-top:2px;
+}
+.bloque-editor-body{
+  flex:1;overflow:hidden;
+  display:grid;grid-template-columns:1fr 340px;
+}
+.bloque-tracks-wrap{
+  border-right:1px solid var(--choc-3);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.bloque-tracks-toolbar{
+  padding:var(--s2) var(--s3);
+  border-bottom:1px solid var(--choc-4);
+  display:flex;align-items:center;gap:var(--s2);
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--text-lo);
+}
+.bloque-tracks-list{
+  flex:1;overflow-y:auto;
+  display:flex;flex-direction:column;gap:2px;
+  padding:var(--s2);
+}
+.bt-item{
+  background:var(--choc-3);border:1px solid var(--choc-4);
+  border-radius:var(--radius);padding:8px 10px;
+  display:flex;align-items:center;gap:var(--s2);
+  transition:border-color var(--transition);
+}
+.bt-item:hover{border-color:var(--choc-6)}
+.bt-pos{
+  font-family:var(--font-display);font-size:.85rem;
+  color:var(--choc-6);min-width:24px;text-align:center;
+}
+.bt-info{flex:1;overflow:hidden}
+.bt-title{
+  font-size:.8rem;color:var(--text-hi);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.bt-artist{
+  font-family:var(--font-data);font-size:.6rem;color:var(--text-lo);
+}
+.bt-dur{
+  font-family:var(--font-data);font-size:.65rem;color:var(--text-lo);
+}
+.bt-empty{
+  font-family:var(--font-data);font-size:.65rem;
+  color:var(--text-lo);text-align:center;padding:var(--s5);
+  letter-spacing:.1em;
+}
+
+/* Selector de cuñas disponibles */
+.cunas-picker{
+  display:flex;flex-direction:column;overflow:hidden;
+  background:var(--choc-2);
+}
+.cunas-picker-header{
+  padding:var(--s2) var(--s3);
+  border-bottom:1px solid var(--choc-4);
+  display:flex;flex-direction:column;gap:4px;
+}
+.cunas-picker-title{
+  font-family:var(--font-data);font-size:.6rem;
+  letter-spacing:.12em;color:var(--text-lo);
+}
+.cunas-picker-search{
+  background:var(--choc-0);border:1px solid var(--choc-5);
+  border-radius:var(--radius);color:var(--text-hi);
+  font-family:var(--font-ui);font-size:.75rem;
+  padding:5px 9px;outline:none;width:100%;
+  transition:border-color var(--transition);
+}
+.cunas-picker-search:focus{border-color:var(--gold-0)}
+.cunas-picker-search::placeholder{color:var(--choc-6)}
+.cunas-list{
+  flex:1;overflow-y:auto;
+  display:flex;flex-direction:column;gap:1px;
+  padding:var(--s1);
+}
+.cuna-item{
+  padding:6px 8px;border-radius:var(--radius);
+  display:flex;align-items:center;gap:var(--s2);
+  cursor:pointer;transition:background var(--transition);
+}
+.cuna-item:hover{background:var(--choc-4)}
+.cuna-title{
+  flex:1;font-size:.75rem;color:var(--text-mid);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.cuna-dur{
+  font-family:var(--font-data);font-size:.6rem;color:var(--text-lo);
+}
+.btn-add-cuna{
+  width:20px;height:20px;border-radius:50%;
+  background:var(--choc-5);border:1px solid var(--gold-0);
+  color:var(--gold-0);font-size:.7rem;
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--transition);flex-shrink:0;
+}
+.btn-add-cuna:hover{background:var(--gold-0);color:var(--choc-0)}
+
+.bloque-placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:1;gap:var(--s2);
+  font-family:var(--font-data);font-size:.7rem;
+  color:var(--text-lo);letter-spacing:.1em;
+}
+.bloque-placeholder-icon{font-size:3rem;opacity:.2}
+
+/* Modal crear bloque */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);
+  z-index:500;display:none;
+  align-items:center;justify-content:center;
+}
+.modal-backdrop.open{display:flex}
+.modal{
+  background:var(--choc-2);border:1px solid var(--choc-5);
+  border-radius:var(--radius-lg);padding:var(--s5);
+  width:420px;max-width:90vw;
+  box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:var(--s4);
+}
+.modal-title{
+  font-family:var(--font-display);font-size:1.1rem;
+  letter-spacing:.15em;color:var(--text-hi);
+  padding-bottom:var(--s3);border-bottom:1px solid var(--choc-4);
+}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.modal-actions{display:flex;gap:var(--s2);justify-content:flex-end}
+
+/* ══════════════════════════════════════════════════════════
+   SECCIÓN 3: GESTOR DE BIBLIOTECA
+══════════════════════════════════════════════════════════ */
+.biblioteca-layout{
+  flex:1;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.biblioteca-toolbar{
+  padding:var(--s3) var(--s5);
+  border-bottom:1px solid var(--choc-3);
+  background:var(--choc-2);
+  display:flex;align-items:center;gap:var(--s3);
+  flex-shrink:0;
+}
+.bib-search{
+  flex:1;background:var(--choc-0);
+  border:1px solid var(--choc-5);border-radius:var(--radius);
+  color:var(--text-hi);font-family:var(--font-ui);font-size:.8rem;
+  padding:6px 10px;outline:none;transition:border-color var(--transition);
+}
+.bib-search:focus{border-color:var(--gold-0)}
+.bib-search::placeholder{color:var(--text-lo)}
+.filter-tabs{display:flex;gap:2px;background:var(--choc-0);padding:3px;border-radius:var(--radius-md)}
+.filter-tab{
+  font-family:var(--font-data);font-size:.6rem;letter-spacing:.1em;
+  padding:4px 10px;border-radius:var(--radius);color:var(--text-lo);
+  transition:all var(--transition);
+}
+.filter-tab:hover{color:var(--text-mid)}
+.filter-tab.active{background:var(--choc-4);color:var(--gold-1)}
+.bib-count{
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--text-lo);white-space:nowrap;
+}
+
+.biblioteca-table-wrap{flex:1;overflow-y:auto}
+.bib-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.bib-table thead{position:sticky;top:0;z-index:1;background:var(--choc-2)}
+.bib-table th{
+  font-family:var(--font-data);font-size:.58rem;letter-spacing:.12em;
+  color:var(--text-lo);text-align:left;
+  padding:var(--s2) var(--s3);
+  border-bottom:1px solid var(--choc-4);font-weight:400;white-space:nowrap;
+}
+.th-id    {width:44px;text-align:right}
+.th-title {width:auto}
+.th-dur   {width:46px;text-align:right}
+.th-tipo  {width:80px}
+.th-orig  {width:55px}
+.th-ener  {width:30px;text-align:center}
+.th-repro {width:52px;text-align:right}
+.th-act   {width:120px;text-align:right}
+
+.bib-table tbody tr{
+  border-bottom:1px solid var(--choc-3);
+  transition:background var(--transition);
+}
+.bib-table tbody tr:hover{background:var(--choc-3)}
+.bib-table tbody tr.row-editing{background:rgba(238,155,0,.05);border-color:var(--choc-5)}
+.bib-table tbody tr.row-now{background:rgba(238,155,0,.09);border-color:var(--choc-5)}
+.bib-table td{
+  padding:5px var(--s3);font-size:.78rem;color:var(--text-mid);vertical-align:middle;
+}
+.td-id{
+  font-family:var(--font-data);font-size:.62rem;
+  color:var(--choc-6);text-align:right;
+}
+.td-title-main{line-height:1.25}
+.td-title-span{
+  font-weight:600;color:var(--text-hi);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;
+}
+.td-artist-span{
+  font-family:var(--font-data);font-size:.6rem;color:var(--text-lo);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;
+}
+.td-dur-cell{
+  font-family:var(--font-data);font-size:.7rem;
+  color:var(--text-lo);text-align:right;
+}
+.td-repro-cell{
+  font-family:var(--font-data);font-size:.7rem;
+  color:var(--text-lo);text-align:right;
+}
+.td-actions-cell{
+  display:flex;gap:4px;align-items:center;justify-content:flex-end;
+}
+.btn-edit{
+  font-family:var(--font-data);font-size:.62rem;
+  padding:3px 8px;border:1px solid var(--choc-5);
+  border-radius:var(--radius);color:var(--text-lo);
+  transition:all var(--transition);
+}
+.btn-edit:hover{border-color:var(--gold-0);color:var(--gold-0)}
+.edit-inline-input{
+  background:var(--choc-0);border:1px solid var(--gold-0);
+  border-radius:3px;color:var(--text-hi);font-family:var(--font-ui);
+  font-size:.78rem;padding:3px 6px;outline:none;width:100%;
+}
+.loading-cell{
+  text-align:center;color:var(--text-lo);
+  font-family:var(--font-data);font-size:.7rem;
+  padding:var(--s6)!important;letter-spacing:.1em;
+}
+
+/* ── Toast ─────────────────────────────────────────────────── */
+.toast-container{
+  position:fixed;bottom:var(--s4);right:var(--s4);z-index:1000;
+  display:flex;flex-direction:column-reverse;gap:var(--s2);pointer-events:none;
+}
+.toast{
+  font-family:var(--font-data);font-size:.7rem;letter-spacing:.06em;
+  padding:8px 14px;border-radius:var(--radius-md);border:1px solid;
+  pointer-events:auto;animation:toast-in .2s ease;max-width:300px;
+}
+@keyframes toast-in{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast.info   {background:rgba(0,18,25,.95);border-color:var(--choc-6);color:var(--text-mid)}
+.toast.success{background:rgba(0,18,25,.95);border-color:var(--green-on);color:var(--green-on)}
+.toast.error  {background:rgba(0,18,25,.95);border-color:var(--rust);color:var(--rust)}
+.toast.warning{background:rgba(0,18,25,.95);border-color:var(--gold-0);color:var(--gold-1)}
+  
+/* ══════════════════════════════════════════════════════════
+   Sección de Escaneo de Carpetas — Deep Sea Edition
+══════════════════════════════════════════════════════════ */
+.escaneo-resumen{
+  display:flex;gap:var(--s4);margin:var(--s4) 0 var(--s5);flex-wrap:wrap;
+}
+.escaneo-stat{
+  display:flex;flex-direction:column;align-items:center;
+  background:var(--choc-3);border:1px solid var(--choc-5);
+  border-radius:var(--radius-md);padding:var(--s4) var(--s5);
+  min-width:130px;gap:var(--s1);
+}
+.escaneo-stat.ok   { border-color:var(--green-on); }
+.escaneo-stat.warn { border-color:var(--amber); }
+.estat-num{
+  font-family:var(--font-display);font-size:2.4rem;
+  color:var(--gold-0);line-height:1;
+}
+.escaneo-stat.ok   .estat-num { color:var(--green-on); }
+.escaneo-stat.warn .estat-num { color:var(--amber); }
+.estat-lbl{
+  font-size:.7rem;letter-spacing:.08em;color:var(--text-lo);
+  text-transform:uppercase;
+}
+.escaneo-section-title{
+  font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-mid);margin:var(--s4) 0 var(--s3);
+  border-bottom:1px solid var(--choc-5);padding-bottom:var(--s2);
+}
+.escaneo-section-title.warn-title{ color:var(--amber); border-color:var(--amber); }
+.escaneo-lista{
+  display:flex;flex-direction:column;gap:var(--s3);
+  max-height:420px;overflow-y:auto;
+  padding-right:var(--s2);margin-bottom:var(--s4);
+}
+.escaneo-item{
+  background:var(--choc-3);border:1px solid var(--choc-5);
+  border-radius:var(--radius-md);padding:var(--s3) var(--s4);
+  display:grid;grid-template-columns:28px 1fr auto;gap:var(--s3);
+  align-items:start;
+}
+.escaneo-item.selected{ border-color:var(--gold-0); }
+.escaneo-item-check{ margin-top:2px; accent-color:var(--gold-0); cursor:pointer; }
+.escaneo-item-meta{
+  display:grid;grid-template-columns:1fr 1fr;gap:var(--s2) var(--s4);
+}
+.escaneo-item-meta input, .escaneo-item-meta select{
+  background:var(--choc-4);border:1px solid var(--choc-5);
+  color:var(--text-hi);padding:5px var(--s3);border-radius:var(--radius);
+  font-family:var(--font-ui);font-size:.8rem;width:100%;
+}
+.escaneo-item-meta input:focus, .escaneo-item-meta select:focus{
+  outline:none;border-color:var(--gold-0);
+}
+.escaneo-item-path{
+  grid-column:1/-1;font-family:var(--font-data);font-size:.65rem;
+  color:var(--text-lo);word-break:break-all;
+}
+.escaneo-item-size{
+  font-family:var(--font-data);font-size:.7rem;color:var(--text-lo);
+  white-space:nowrap;padding-top:2px;
+}
+.escaneo-batch-actions{
+  display:flex;gap:var(--s3);flex-wrap:wrap;
+  padding:var(--s3) 0 var(--s5);
+}
+.escaneo-empty{
+  display:flex;flex-direction:column;align-items:center;
+  gap:var(--s3);padding:var(--s6) var(--s4);text-align:center;
+  color:var(--text-lo);
+}
+.escaneo-empty-icon{ font-size:3rem;opacity:.4; }
+.escaneo-empty-sub{ font-size:.8rem;max-width:480px;line-height:1.6; }
+
+/* Huérfano item */
+.huerfano-item{
+  background:var(--choc-3);border:1px solid var(--amber);
+  border-radius:var(--radius-md);padding:var(--s3) var(--s4);
+  display:flex;justify-content:space-between;align-items:center;gap:var(--s4);
+}
+.huerfano-info{ flex:1; }
+.huerfano-title{ color:var(--text-hi);font-size:.85rem; }
+.huerfano-path{
+  font-family:var(--font-data);font-size:.65rem;color:var(--amber);
+  word-break:break-all;
+}
+.huerfano-actions{ display:flex;gap:var(--s2); }
+</style>
+</head>
+<body>
+
+  <!-- ── ADMIN HEADER ───────────────────────────────────────────── -->
+  <header class="admin-header">
+    <div class="admin-brand">
+      <span class="admin-logo">ÓNIX FM</span>
+      <span class="admin-badge">ADMIN</span>
+    </div>
+
+    <nav class="admin-nav-center">
+      <button class="admin-nav-btn active" data-section="upload">
+        ⊕ CARGAR MATERIAL
+      </button>
+      <button class="admin-nav-btn" data-section="pauta">
+        📋 ORGANIZAR PAUTA
+      </button>
+      <button class="admin-nav-btn" data-section="biblioteca">
+        📚 BIBLIOTECA
+      </button>
+      <button class="admin-nav-btn" data-section="escaneo">
+        🔍 ESCANEAR CARPETAS
+      </button>
+    </nav>
+
+    <div class="admin-right">
+      <div class="admin-clock" id="adminClock">00:00:00</div>
+      <div class="ws-indicator" id="adminWsStatus" title="WebSocket">●</div>
+      <a href="/" class="btn-studio" title="Ir a la consola de emisión en vivo">🎙 VER STUDIO ↗</a>
+    </div>
+  </header>
+
+  <!-- ── NOW PLAYING STRIP ─────────────────────────────────────── -->
+  <div class="now-strip" id="nowStrip">
+    <span class="now-strip-dot" id="nowDot" style="opacity:0"></span>
+    <span class="now-strip-label">EN AIRE:</span>
+    <span class="now-strip-track" id="nowStripTrack">Sin reproducción activa</span>
+  </div>
+
+  <!-- ── BODY ──────────────────────────────────────────────────── -->
+  <div class="admin-body">
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 1: CARGAR MATERIAL
+    ══════════════════════════════════════════════════════════ -->
+    <section class="admin-section active" id="section-upload">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">CARGAR MATERIAL</div>
+          <div class="sec-subtitle">Ingesta de audio al sistema · los cambios se sincronizan con el Studio en tiempo real</div>
+        </div>
+      </div>
+
+      <div class="upload-layout">
+
+        <!-- Formulario de ingesta -->
+        <div class="upload-form-wrap">
+          <!-- Selector de tipo visual -->
+          <div class="type-selector" id="typeSelectorBtns">
+            <button class="type-btn active" data-tipo="Musica">
+              <span class="type-icon">🎵</span>
+              <span class="type-lbl">MÚSICA</span>
+            </button>
+            <button class="type-btn" data-tipo="Efecto">
+              <span class="type-icon">⚡</span>
+              <span class="type-lbl">JINGLE</span>
+            </button>
+            <button class="type-btn" data-tipo="Cuña">
+              <span class="type-icon">📢</span>
+              <span class="type-lbl">PUBLICIDAD</span>
+            </button>
+            <button class="type-btn" data-tipo="Tips">
+              <span class="type-icon">💡</span>
+              <span class="type-lbl">TIPS</span>
+            </button>
+          </div>
+
+          <form id="adminIngestaForm" enctype="multipart/form-data">
+            <!-- Drop zone -->
+            <div class="file-drop-zone" id="adminDropZone">
+              <input type="file" id="adminFileInput" name="archivo"
+                     accept="audio/*" required hidden />
+              <div class="drop-content" id="adminDropContent">
+                <span class="drop-icon">🎙</span>
+                <span class="drop-text">
+                  Arrastra el archivo aquí
+                  <small>MP3 · WAV · FLAC · OGG · AAC</small>
+                </span>
+              </div>
+            </div>
+
+            <!-- Campo tipo oculto (controlado por los botones) -->
+            <input type="hidden" name="tipo_audio" id="hiddenTipo" value="Musica" />
+
+            <!-- Grid de campos -->
+            <div class="form-grid" style="margin-top:var(--s3)">
+              <div class="field-group">
+                <label class="field-lbl" for="adminTitulo">TÍTULO *</label>
+                <input type="text" id="adminTitulo" name="titulo"
+                       class="field-input" placeholder="Nombre del contenido" required />
+              </div>
+
+              <div class="field-group autocomplete-wrap">
+                <label class="field-lbl" for="adminArtista">ARTISTA / CLIENTE *</label>
+                <input type="text" id="adminArtista" name="artista"
+                       class="field-input" placeholder="Artista o cliente"
+                       required autocomplete="off" />
+                <ul class="autocomplete-dropdown" id="adminArtistaDropdown" role="listbox"></ul>
+              </div>
+
+              <div class="field-group" id="origenGroup">
+                <label class="field-lbl" for="adminOrigen">ORIGEN</label>
+                <select id="adminOrigen" name="origen" class="field-select">
+                  <option value="Nacional">Nacional</option>
+                  <option value="Internacional">Internacional</option>
+                </select>
+              </div>
+
+              <div class="field-group" id="generoGroup">
+                <label class="field-lbl" for="adminGenero">GÉNERO VOCAL</label>
+                <select id="adminGenero" name="genero_vocal" class="field-select">
+                  <option value="Hombre">Hombre</option>
+                  <option value="Mujer">Mujer</option>
+                  <option value="Dueto">Dueto</option>
+                  <option value="Instrumental">Instrumental</option>
+                </select>
+              </div>
+
+              <div class="field-group field-span2" id="energiaGroup">
+                <label class="field-lbl">ENERGÍA</label>
+                <div class="e-row">
+                  <span>🌙</span>
+                  <input type="range" id="adminEnergia" name="energia"
+                         min="1" max="5" value="3" class="e-slider" />
+                  <span>⚡</span>
+                  <span class="e-val" id="adminEnergiaVal">3</span>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label class="field-lbl" for="adminIntro">INTRO (seg)</label>
+                <input type="number" id="adminIntro" name="intro_sec"
+                       class="field-input" value="0" min="0" step="0.5" />
+              </div>
+
+              <div class="field-group">
+                <label class="field-lbl" for="adminMixPoint">MIX POINT (seg)</label>
+                <input type="number" id="adminMixPoint" name="mix_point_sec"
+                       class="field-input" value="0" min="0" step="0.5" />
+              </div>
+
+              <div class="field-group field-span2">
+                <label class="field-lbl" for="adminNotas">NOTAS</label>
+                <textarea id="adminNotas" name="notas" class="field-textarea"
+                          rows="2" placeholder="Observaciones opcionales…"></textarea>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:var(--s3);margin-top:var(--s3)">
+              <button type="submit" class="btn-primary" id="btnAdminIngestar">
+                ⊕ INGESTAR AUDIO
+              </button>
+              <div class="feedback" id="adminIngestaFeedback"></div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lateral: últimas ingestas -->
+        <div class="upload-side">
+          <div class="ingesta-history-title">ÚLTIMAS INGESTAS</div>
+          <div class="ingesta-history-list" id="ingestaHistoryList">
+            <div style="font-family:var(--font-data);font-size:.62rem;color:var(--text-lo);text-align:center;padding:var(--s4)">
+              Sin ingestas recientes
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 2: ORGANIZAR PAUTA
+    ══════════════════════════════════════════════════════════ -->
+    <section class="admin-section" id="section-pauta">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">ORGANIZAR PAUTA</div>
+          <div class="sec-subtitle">Bloques horarios · arrastra cuñas para ordenar</div>
+        </div>
+        <div class="sec-actions">
+          <button class="btn-primary" id="btnNuevoBloque">+ NUEVO BLOQUE</button>
+        </div>
+      </div>
+
+      <div class="pauta-layout">
+
+        <!-- Lista de bloques -->
+        <div class="bloques-panel">
+          <div class="bloques-toolbar">
+            <span style="font-family:var(--font-data);font-size:.6rem;color:var(--text-lo);letter-spacing:.12em">
+              BLOQUES HORARIOS
+            </span>
+          </div>
+          <div class="bloques-list" id="bloquesList">
+            <div class="bloque-empty">Sin bloques — pulsa + NUEVO BLOQUE</div>
+          </div>
+        </div>
+
+        <!-- Editor de bloque seleccionado -->
+        <div class="bloque-editor" id="bloqueEditor">
+          <!-- Placeholder inicial -->
+          <div class="bloque-placeholder" id="bloquePlaceholder">
+            <span class="bloque-placeholder-icon">📋</span>
+            <span>Selecciona un bloque para editarlo</span>
+          </div>
+
+          <!-- Editor real (oculto hasta seleccionar) -->
+          <div id="bloqueEditorContent" style="display:none;flex:1;overflow:hidden;flex-direction:column;display:none">
+            <div class="bloque-editor-header">
+              <div class="bloque-editor-title" id="editorBloqueNombre">—</div>
+              <div class="bloque-editor-meta" id="editorBloqueMeta">—</div>
+            </div>
+            <div class="bloque-editor-body">
+              <!-- Tracks asignados al bloque -->
+              <div class="bloque-tracks-wrap">
+                <div class="bloque-tracks-toolbar">
+                  <span>CUÑAS EN ESTE BLOQUE</span>
+                  <span style="margin-left:auto" id="bloqueTotalDur">0:00 total</span>
+                </div>
+                <div class="bloque-tracks-list" id="bloqueTracksList">
+                  <div class="bt-empty">Sin cuñas asignadas</div>
+                </div>
+              </div>
+
+              <!-- Picker de cuñas disponibles -->
+              <div class="cunas-picker">
+                <div class="cunas-picker-header">
+                  <div class="cunas-picker-title">CUÑAS DISPONIBLES</div>
+                  <input type="text" class="cunas-picker-search" id="cunaPickerSearch"
+                         placeholder="Buscar cuña…" />
+                </div>
+                <div class="cunas-list" id="cunaPickerList">
+                  <!-- poblado por JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════
+         SECCIÓN 3: GESTOR DE BIBLIOTECA
+    ══════════════════════════════════════════════════════════ -->
+    <section class="admin-section" id="section-biblioteca">
+      <div class="sec-header">
+        <div>
+          <div class="sec-title">GESTOR DE BIBLIOTECA</div>
+          <div class="sec-subtitle">Edita y gestiona todos los audios cargados</div>
+        </div>
+      </div>
+
+      <div class="biblioteca-layout">
+        <div class="biblioteca-toolbar">
+          <input type="text" class="bib-search" id="bibSearch"
+                 placeholder="Buscar por título, artista…" />
+
+          <div class="filter-tabs" id="bibFilterTabs">
+            <button class="filter-tab active" data-tipo="">TODO</button>
+            <button class="filter-tab" data-tipo="Musica">MÚSICA</button>
+            <button class="filter-tab" data-tipo="Efecto">JINGLES</button>
+            <button class="filter-tab" data-tipo="Cuña">PUBLICIDAD</button>
+            <button class="filter-tab" data-tipo="Tips">TIPS</button>
+          </div>
+
+          <span class="bib-count" id="bibCount"></span>
+        </div>
+
+        <div class="biblioteca-table-wrap">
+          <table class="bib-table">
+            <thead>
+              <tr>
+                <th class="th-id">#</th>
+                <th class="th-title">TÍTULO / ARTISTA</th>
+                <th class="th-dur">DUR</th>
+                <th class="th-tipo">TIPO</th>
+                <th class="th-orig">ORIG</th>
+                <th class="th-ener">E</th>
+                <th class="th-repro">▶</th>
+                <th class="th-act">ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody id="bibTableBody">
+              <tr><td colspan="8" class="loading-cell">Cargando biblioteca…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    
+
+  <!-- ══════════════════════════════════════════════════════════════
+       SECCIÓN 4: ESCANEAR CARPETAS (Piloto 3 del brief)
+       Detecta archivos en disco que no están registrados en la BD,
+       y permite registrarlos sin duplicados.
+  ══════════════════════════════════════════════════════════════ -->
+  <section class="admin-section" id="section-escaneo">
+    <div class="sec-header">
+      <div>
+        <div class="sec-title">🔍 ESCANEAR CARPETAS</div>
+        <div class="sec-subtitle">
+          Detecta archivos de audio pegados manualmente en <code>media/</code>
+          y regístralos en la base de datos sin duplicados.
+        </div>
+      </div>
+      <button class="btn-primary" id="btnEscanear" onclick="Escaneo.lanzar()">
+        ▶ INICIAR ESCANEO
+      </button>
+    </div>
+
+    <!-- Resumen de resultados -->
+    <div id="escaneoResumen" class="escaneo-resumen" style="display:none">
+      <div class="escaneo-stat" id="estatNuevos">
+        <span class="estat-num" id="numNuevos">0</span>
+        <span class="estat-lbl">Nuevos</span>
+      </div>
+      <div class="escaneo-stat ok" id="estatConocidos">
+        <span class="estat-num" id="numConocidos">0</span>
+        <span class="estat-lbl">Ya registrados</span>
+      </div>
+      <div class="escaneo-stat warn" id="estatHuerfanos">
+        <span class="estat-num" id="numHuerfanos">0</span>
+        <span class="estat-lbl">Huérfanos (sin archivo)</span>
+      </div>
+    </div>
+
+    <!-- Archivos nuevos encontrados -->
+    <div id="escaneoNuevosWrap" style="display:none">
+      <div class="escaneo-section-title">
+        Archivos encontrados sin registrar — revisa y confirma cada uno:
+      </div>
+      <div id="escaneoNuevosLista" class="escaneo-lista">
+        <!-- Generado por Escaneo.renderNuevos() -->
+      </div>
+      <div class="escaneo-batch-actions" id="escaneoBatch" style="display:none">
+        <button class="btn-secondary" onclick="Escaneo.marcarTodos(true)">
+          ✓ SELECCIONAR TODOS
+        </button>
+        <button class="btn-secondary" onclick="Escaneo.marcarTodos(false)">
+          ✗ DESELECCIONAR
+        </button>
+        <button class="btn-primary" id="btnRegistrarSeleccionados"
+                onclick="Escaneo.registrarSeleccionados()">
+          ⊕ REGISTRAR SELECCIONADOS
+        </button>
+      </div>
+    </div>
+
+    <!-- Huérfanos: registros en BD sin archivo en disco -->
+    <div id="escaneoHuerfanosWrap" style="display:none">
+      <div class="escaneo-section-title warn-title">
+        ⚠ Registros sin archivo en disco (huérfanos):
+      </div>
+      <div id="escaneoHuerfanosLista" class="escaneo-lista">
+        <!-- Generado por Escaneo.renderHuerfanos() -->
+      </div>
+    </div>
+
+    <!-- Estado vacío -->
+    <div id="escaneoVacio" class="escaneo-empty">
+      <div class="escaneo-empty-icon">🔍</div>
+      <div>Presiona <strong>INICIAR ESCANEO</strong> para analizar la carpeta <code>media/</code></div>
+      <div class="escaneo-empty-sub">
+        El sistema buscará archivos .mp3, .wav, .flac y otros formatos de audio.
+        Los archivos ya registrados en la BD no se duplicarán.
+      </div>
+    </div>
+
+  </section>
+</section>
+
+  </div><!-- /.admin-body -->
+
+  <!-- ── MODAL: Crear / Editar Bloque ─────────────────────────── -->
+  <div class="modal-backdrop" id="modalBloqueBackdrop">
+    <div class="modal">
+      <div class="modal-title" id="modalBloqueTitle">NUEVO BLOQUE</div>
+      <input type="hidden" id="modalBloqueId" value="" />
+      <div class="modal-grid">
+        <div class="field-group field-span2" style="grid-column:span 2">
+          <label class="field-lbl" for="modalNombre">NOMBRE DEL BLOQUE *</label>
+          <input type="text" id="modalNombre" class="field-input"
+                 placeholder="Ej: Bloque Mañanero" />
+        </div>
+        <div class="field-group">
+          <label class="field-lbl" for="modalHoraInicio">HORA INICIO</label>
+          <input type="time" id="modalHoraInicio" class="field-input" value="08:00" />
+        </div>
+        <div class="field-group">
+          <label class="field-lbl" for="modalHoraFin">HORA FIN</label>
+          <input type="time" id="modalHoraFin" class="field-input" value="09:00" />
+        </div>
+        <div class="field-group" style="grid-column:span 2">
+          <label class="field-lbl" for="modalBloqueNotas">NOTAS</label>
+          <input type="text" id="modalBloqueNotas" class="field-input"
+                 placeholder="Observaciones…" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btnModalCancelar">CANCELAR</button>
+        <button class="btn-primary"   id="btnModalGuardar">GUARDAR BLOQUE</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="adminToastContainer"></div>
+
+  <script>
+/* ════════════════════════════════════════════════════════════
+   ADMIN.JS — Ónix FM Entorno de Trabajo
+   Sincronizado con Studio vía WebSocket /ws
+════════════════════════════════════════════════════════════ */
+"use strict";
+
+const API    = "";
+const WS_URL = `ws://${location.host}/ws`;
+
+/* ── Utilidades ──────────────────────────────────────────── */
+const $  = (s, c=document) => c.querySelector(s);
+const $$ = (s, c=document) => [...c.querySelectorAll(s)];
+
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+function esc(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fmtTime(sec) {
+  if (!sec||isNaN(sec)) return "0:00";
+  const m=Math.floor(sec/60), s=Math.floor(sec%60).toString().padStart(2,"0");
+  return `${m}:${s}`;
+}
+function toast(msg, type="info", ms=3500) {
+  const c=$("#adminToastContainer"); if(!c) return;
+  const el=document.createElement("div");
+  el.className=`toast ${type}`;el.textContent=msg;
+  c.appendChild(el);setTimeout(()=>el.remove(),ms);
+}
+
+/* ── Reloj ───────────────────────────────────────────────── */
+(function() {
+  const el=$("#adminClock"); if(!el) return;
+  const tick=()=>{ el.textContent=new Date().toTimeString().slice(0,8); };
+  tick(); setInterval(tick,1000);
+})();
+
+/* ── WebSocket ───────────────────────────────────────────── */
+const AdminWS = (()=>{
+  let ws=null, retryDelay=1500;
+  const handlers={};
+
+  function connect(){
+    ws=new WebSocket(WS_URL);
+    ws.onopen=()=>{
+      retryDelay=1500;
+      setWsStatus("connected");
+    };
+    ws.onmessage=({data})=>{
+      try {
+        const {event,data:payload}=JSON.parse(data);
+        (handlers[event]||[]).forEach(fn=>fn(payload));
+        (handlers["*"]  ||[]).forEach(fn=>fn(event,payload));
+      } catch(e){}
+    };
+    ws.onclose=()=>{
+      setWsStatus("error");
+      setTimeout(connect,retryDelay);
+      retryDelay=Math.min(retryDelay*2,20000);
+    };
+    ws.onerror=()=>setWsStatus("error");
+  }
+  function send(p){ if(ws?.readyState===WebSocket.OPEN) ws.send(JSON.stringify(p)); }
+  function onEvent(ev,fn){ handlers[ev]=handlers[ev]||[]; handlers[ev].push(fn); }
+  function setWsStatus(s){
+    const el=$("#adminWsStatus"); if(el) el.className="ws-indicator "+s;
+  }
+  connect();
+  return {send,onEvent};
+})();
+
+/* Escuchar eventos que afectan al Admin */
+AdminWS.onEvent("track_started",(data)=>{
+  const el=$("#nowStripTrack");
+  if(el) el.textContent=`${data.artista} — ${data.titulo}`;
+  const dot=$("#nowDot");
+  if(dot) dot.style.opacity="1";
+  // Destacar en tabla si está cargada
+  $$(".row-now").forEach(r=>r.classList.remove("row-now"));
+  const row=document.querySelector(`[data-audio-id="${data.audio_id}"]`);
+  if(row) row.classList.add("row-now");
+});
+
+AdminWS.onEvent("engine_stopped",()=>{
+  const el=$("#nowStripTrack");
+  if(el) el.textContent="Sin reproducción activa";
+  const dot=$("#nowDot");
+  if(dot) dot.style.opacity="0";
+});
+
+AdminWS.onEvent("library_updated",(data)=>{
+  // Si estamos en biblioteca, recargar
+  if($("#section-biblioteca").classList.contains("active")){
+    Biblioteca.load(true);
+  }
+});
+
+AdminWS.onEvent("bloques_updated",()=>{
+  if($("#section-pauta").classList.contains("active")){
+    Pauta.loadBloques();
+  }
+});
+
+/* ── Navegación principal ────────────────────────────────── */
+$$(".admin-nav-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    const sec=btn.dataset.section;
+    $$(".admin-nav-btn").forEach(b=>b.classList.remove("active"));
+    $$(".admin-section").forEach(s=>s.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(`section-${sec}`)?.classList.add("active");
+
+    // Lazy load
+    if(sec==="biblioteca") Biblioteca.load();
+    if(sec==="pauta")      Pauta.init();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════
+   MÓDULO: UPLOAD (Sección 1)
+════════════════════════════════════════════════════════════ */
+const Upload = (()=>{
+  const form      = $("#adminIngestaForm");
+  const dropZone  = $("#adminDropZone");
+  const fileInput = $("#adminFileInput");
+  const feedback  = $("#adminIngestaFeedback");
+  const eSlider   = $("#adminEnergia");
+  const eVal      = $("#adminEnergiaVal");
+  const hiddenTipo = $("#hiddenTipo");
+  const histList  = $("#ingestaHistoryList");
+
+  let selectedTipo = "Musica";
+
+  /* Tipo selector */
+  $$(".type-btn").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      $$(".type-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedTipo=btn.dataset.tipo;
+      if(hiddenTipo) hiddenTipo.value=selectedTipo;
+      updateFieldVisibility();
+    });
+  });
+
+  function updateFieldVisibility(){
+    const isMusica = selectedTipo==="Musica";
+    const isEfecto = selectedTipo==="Efecto";
+    const isTips   = selectedTipo==="Tips";
+    // Ocultar campos que no aplican a jingles/efectos/tips/publicidad
+    const ogGrp = $("#origenGroup");
+    const enGrp = $("#energiaGroup");
+    const geGrp = $("#generoGroup");
+    if(ogGrp) ogGrp.style.display = (isMusica) ? "" : "none";
+    if(enGrp) enGrp.style.display = (isMusica) ? "" : "none";
+    if(geGrp) geGrp.style.display = (isMusica) ? "" : "none";
+  }
+  updateFieldVisibility();
+
+  /* Energia slider */
+  eSlider?.addEventListener("input",()=>{ if(eVal) eVal.textContent=eSlider.value; });
+
+  /* Drop zone */
+  dropZone?.addEventListener("click",()=>fileInput.click());
+  dropZone?.addEventListener("dragover",e=>{e.preventDefault();dropZone.classList.add("dragover");});
+  dropZone?.addEventListener("dragleave",()=>dropZone.classList.remove("dragover"));
+  dropZone?.addEventListener("drop",e=>{
+    e.preventDefault();dropZone.classList.remove("dragover");
+    const f=e.dataTransfer.files[0];if(f) applyFile(f);
+  });
+  fileInput?.addEventListener("change",()=>{ if(fileInput.files[0]) applyFile(fileInput.files[0]); });
+
+  /* ✔ Autocompletado Artista/Título desde nombre de archivo */
+  function applyFile(file){
+    const dt=new DataTransfer();dt.items.add(file);fileInput.files=dt.files;
+
+    const dc=$("#adminDropContent");
+    if(dc) dc.innerHTML=`
+      <span class="drop-icon">✓</span>
+      <span class="drop-text">
+        <strong>${esc(file.name)}</strong>
+        <small>${(file.size/1024/1024).toFixed(1)} MB · archivo listo</small>
+      </span>
+    `;
+    if(dropZone) dropZone.style.borderColor="var(--green-on)";
+
+    /* Separar "Artista - Título.mp3" */
+    const base  = file.name.replace(/\.[^.]+$/,"");
+    const parts = base.split(/\s*[-–—]\s*/);
+    const tInput = $("#adminTitulo");
+    const aInput = $("#adminArtista");
+    if(parts.length>=2){
+      if(aInput && !aInput.value) aInput.value=parts[0].trim();
+      if(tInput && !tInput.value) tInput.value=parts.slice(1).join(" - ").trim();
+    } else {
+      if(tInput && !tInput.value) tInput.value=base;
+    }
+  }
+
+  /* Submit */
+  form?.addEventListener("submit",async e=>{
+    e.preventDefault();
+    const btn=$("#btnAdminIngestar");
+    btn.disabled=true;btn.textContent="Procesando…";
+    if(feedback){ feedback.className="feedback"; feedback.style.display="none"; }
+
+    try {
+      const fd=new FormData(form);
+      const res=await fetch(`${API}/api/v1/audios`,{method:"POST",body:fd});
+      if(!res.ok){
+        const err=await res.json().catch(()=>({}));
+        throw new Error(err.detail||`Error ${res.status}`);
+      }
+      const data=await res.json();
+      if(feedback){
+        feedback.className="feedback success";
+        // Construir feedback con botón "Reproducir Ahora".
+        // Al hacer clic llama al motor de audio para estrenar
+        // la pista recién ingresada sin abrir el Studio.
+        feedback.innerHTML=`
+          <span class="fb-icon">✓</span>
+          <span class="fb-text"><strong>${esc(data.titulo)}</strong> por <strong>${esc(data.artista)}</strong> — ID #${data.id}</span>
+          <button class="btn-play-now-admin" data-id="${data.id}" title="Reproducir ahora en el motor">
+            ▶ Reproducir Ahora
+          </button>
+        `;
+        feedback.querySelector(".btn-play-now-admin")?.addEventListener("click", async()=>{
+          try{
+            await fetch(`${API}/api/v1/play/${data.id}`,{method:"POST"});
+            toast(`▶ Reproduciendo: ${data.titulo}`,"info");
+          }catch(e){
+            toast(`Error al reproducir: ${e.message}`,"error");
+          }
+        });
+      }
+      toast(`✓ Ingresado: ${data.titulo}`, "success");
+      addToHistory({titulo:data.titulo,artista:data.artista,tipo:selectedTipo,id:data.id});
+      resetForm();
+    } catch(err){
+      if(feedback){
+        feedback.className="feedback error";
+        feedback.textContent=`✗ ${err.message}`;
+      }
+      toast(`Error: ${err.message}`,"error");
+    } finally {
+      btn.disabled=false;btn.textContent="⊕ INGESTAR AUDIO";
+    }
+  });
+
+  function resetForm(){
+    form.reset();
+    if(eVal) eVal.textContent="3";
+    if(dropZone) dropZone.style.borderColor="";
+    const dc=$("#adminDropContent");
+    if(dc) dc.innerHTML=`
+      <span class="drop-icon">🎙</span>
+      <span class="drop-text">Arrastra el archivo aquí<small>MP3 · WAV · FLAC · OGG · AAC</small></span>
+    `;
+    hiddenTipo.value=selectedTipo;
+  }
+
+  function addToHistory(item){
+    if(!histList) return;
+    const empty=histList.querySelector("[style*='sin ingestas']") ||
+                histList.querySelector("div");
+    if(empty && empty.textContent.toLowerCase().includes("sin ingestas")) empty.remove();
+
+    const typeClass={Musica:"badge-musica",Efecto:"badge-efecto",Cuña:"badge-cuña",Tips:"badge-tips"}[item.tipo]||"badge-musica";
+    const now=new Date().toTimeString().slice(0,8);
+
+    const el=document.createElement("div");
+    el.className="ihl-item";
+    el.innerHTML=`
+      <span class="ihl-dot"></span>
+      <div class="ihl-info">
+        <div class="ihl-title">${esc(item.titulo)}</div>
+        <div class="ihl-meta">${esc(item.artista)} · ${now} · <span class="badge ${typeClass}">${item.tipo}</span></div>
+      </div>
+    `;
+    histList.prepend(el);
+    while(histList.children.length>10) histList.lastChild?.remove();
+  }
+
+  /* Autocomplete artista */
+  const aInput    = $("#adminArtista");
+  const aDropdown = $("#adminArtistaDropdown");
+  if(aInput && aDropdown){
+    let suggestions=[], activeIdx=-1;
+    const fetchAC=debounce(async q=>{
+      if(q.length<2){aDropdown.classList.remove("open");return;}
+      try{
+        const res=await fetch(`${API}/api/v1/audios/autocomplete?q=${encodeURIComponent(q)}`);
+        suggestions=await res.json();
+        if(!suggestions.length){aDropdown.classList.remove("open");return;}
+        aDropdown.innerHTML=suggestions.map((s,i)=>
+          `<li data-idx="${i}">${esc(s)}</li>`).join("");
+        aDropdown.classList.add("open");
+        aDropdown.querySelectorAll("li").forEach(li=>{
+          li.addEventListener("mousedown",ex=>{
+            ex.preventDefault();aInput.value=suggestions[parseInt(li.dataset.idx)];
+            aDropdown.classList.remove("open");
+          });
+        });
+      }catch{}
+    },220);
+    aInput.addEventListener("input",()=>fetchAC(aInput.value.trim()));
+    aInput.addEventListener("blur",()=>setTimeout(()=>aDropdown.classList.remove("open"),160));
+  }
+})();
+
+/* ════════════════════════════════════════════════════════════
+   MÓDULO: PAUTA (Sección 2)
+════════════════════════════════════════════════════════════ */
+const Pauta = (()=>{
+  let bloques        = [];
+  let selectedBloque = null;
+  let allCunas       = [];
+
+  async function init(){
+    await Promise.all([loadBloques(), loadAllCunas()]);
+  }
+
+  async function loadBloques(){
+    try{
+      const res=await fetch(`${API}/api/v1/bloques`);
+      bloques=await res.json();
+      renderBloquesList();
+    }catch(e){ console.error("[Pauta] Error cargando bloques:",e); }
+  }
+
+  async function loadAllCunas(){
+    try{
+      const res=await fetch(`${API}/api/v1/audios?tipo=Cuña&limit=200`);
+      allCunas=await res.json();
+      renderCunaPicker("");
+    }catch(e){ console.error("[Pauta] Error cargando cuñas:",e); }
+  }
+
+  function renderBloquesList(){
+    const list=$("#bloquesList"); if(!list) return;
+    if(!bloques.length){
+      list.innerHTML=`<div class="bloque-empty">Sin bloques — pulsa + NUEVO BLOQUE</div>`;
+      return;
+    }
+    list.innerHTML="";
+    bloques.forEach(b=>{
+      const card=document.createElement("div");
+      card.className="bloque-card"+(selectedBloque?.id===b.id?" selected":"");
+      card.dataset.id=b.id;
+      const trackCount=b.tracks?.length||0;
+      card.innerHTML=`
+        <div class="bloque-card-name">${esc(b.nombre)}</div>
+        <div class="bloque-card-hours">🕐 ${b.hora_inicio} – ${b.hora_fin}</div>
+        <div class="bloque-card-count">${trackCount} cuña${trackCount!==1?"s":""}</div>
+        <div class="bloque-card-actions">
+          <button class="btn-icon" data-edit="${b.id}" title="Editar">✎</button>
+          <button class="btn-danger" data-del="${b.id}" title="Eliminar">✕</button>
+        </div>
+      `;
+      card.addEventListener("click",ev=>{
+        if(ev.target.dataset.edit||ev.target.dataset.del) return;
+        selectBloque(b);
+      });
+      card.querySelector("[data-edit]")?.addEventListener("click",()=>openModalEdit(b));
+      card.querySelector("[data-del]")?.addEventListener("click",()=>deleteBloque(b));
+      list.appendChild(card);
+    });
+  }
+
+  function selectBloque(b){
+    selectedBloque=b;
+    renderBloquesList(); // update selected highlight
+
+    const placeholder=$("#bloquePlaceholder");
+    const content    =$("#bloqueEditorContent");
+    if(placeholder) placeholder.style.display="none";
+    if(content)     {content.style.display="flex";}
+
+    $("#editorBloqueNombre").textContent=b.nombre;
+    $("#editorBloqueMeta").textContent=
+      `${b.hora_inicio} – ${b.hora_fin}${b.notas?" · "+b.notas:""}`;
+
+    renderBloqueTracksList(b.tracks||[]);
+  }
+
+  function renderBloqueTracksList(tracks){
+    const list=$("#bloqueTracksList"); if(!list) return;
+    if(!tracks.length){
+      list.innerHTML=`<div class="bt-empty">Sin cuñas · selecciona del panel derecho</div>`;
+      const dur=$("#bloqueTotalDur"); if(dur) dur.textContent="0:00 total";
+      return;
+    }
+    const total=tracks.reduce((a,t)=>a+(t.duracion_seg||0),0);
+    const dur=$("#bloqueTotalDur"); if(dur) dur.textContent=`${fmtTime(total)} total`;
+
+    list.innerHTML=tracks.map((t,i)=>`
+      <div class="bt-item" data-audio-id="${t.id}">
+        <span class="bt-pos">${i+1}</span>
+        <div class="bt-info">
+          <div class="bt-title">${esc(t.titulo)}</div>
+          <div class="bt-artist">${esc(t.artista||"")}</div>
+        </div>
+        <span class="bt-dur">${fmtTime(t.duracion_seg)}</span>
+        <button class="btn-danger" data-remove="${t.id}" style="flex-shrink:0">✕</button>
+      </div>
+    `).join("");
+
+    list.querySelectorAll("[data-remove]").forEach(btn=>{
+      btn.addEventListener("click",async()=>{
+        await removeTrackFromBloque(selectedBloque.id, parseInt(btn.dataset.remove));
+      });
+    });
+  }
+
+  function renderCunaPicker(q){
+    const list=$("#cunaPickerList"); if(!list) return;
+    const filtered=q
+      ? allCunas.filter(c=>c.titulo.toLowerCase().includes(q)||c.artista.toLowerCase().includes(q))
+      : allCunas;
+    if(!filtered.length){
+      list.innerHTML=`<div style="font-family:var(--font-data);font-size:.62rem;color:var(--text-lo);text-align:center;padding:var(--s4)">Sin resultados</div>`;
+      return;
+    }
+    list.innerHTML=filtered.map(c=>`
+      <div class="cuna-item" data-cid="${c.id}">
+        <span class="cuna-title">${esc(c.titulo)}</span>
+        <span class="cuna-dur">${fmtTime(c.duracion_seg)}</span>
+        <button class="btn-add-cuna" data-add="${c.id}" title="Agregar al bloque">+</button>
+      </div>
+    `).join("");
+
+    list.querySelectorAll("[data-add]").forEach(btn=>{
+      btn.addEventListener("click",async()=>{
+        if(!selectedBloque){ toast("Selecciona un bloque primero","warning"); return; }
+        await addTrackToBloque(selectedBloque.id, parseInt(btn.dataset.add));
+      });
+    });
+  }
+
+  async function addTrackToBloque(bloqueId, audioId){
+    try{
+      const res=await fetch(`${API}/api/v1/bloques/${bloqueId}/tracks`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({audio_id:audioId}),
+      });
+      if(!res.ok){
+        const err=await res.json().catch(()=>({}));
+        throw new Error(err.detail||"Error al agregar");
+      }
+      toast("✓ Cuña agregada al bloque","success",2000);
+      await loadBloques();
+      // Actualizar vista del bloque seleccionado
+      const updated=bloques.find(b=>b.id===bloqueId);
+      if(updated) selectBloque(updated);
+    }catch(e){ toast(`Error: ${e.message}`,"error"); }
+  }
+
+  async function removeTrackFromBloque(bloqueId, audioId){
+    try{
+      await fetch(`${API}/api/v1/bloques/${bloqueId}/tracks/${audioId}`,{method:"DELETE"});
+      toast("Cuña eliminada del bloque","info",2000);
+      await loadBloques();
+      const updated=bloques.find(b=>b.id===bloqueId);
+      if(updated) selectBloque(updated);
+    }catch(e){ toast(`Error: ${e.message}`,"error"); }
+  }
+
+  async function deleteBloque(b){
+    if(!confirm(`¿Eliminar bloque "${b.nombre}"? Esta acción no se puede deshacer.`)) return;
+    try{
+      await fetch(`${API}/api/v1/bloques/${b.id}`,{method:"DELETE"});
+      toast(`Bloque "${b.nombre}" eliminado`,"warning");
+      if(selectedBloque?.id===b.id){
+        selectedBloque=null;
+        const placeholder=$("#bloquePlaceholder");
+        const content    =$("#bloqueEditorContent");
+        if(placeholder) placeholder.style.display="";
+        if(content)     content.style.display="none";
+      }
+      await loadBloques();
+    }catch(e){ toast(`Error: ${e.message}`,"error"); }
+  }
+
+  /* Buscador de cuñas */
+  $("#cunaPickerSearch")?.addEventListener("input", debounce(e=>{
+    renderCunaPicker(e.target.value.toLowerCase().trim());
+  },200));
+
+  /* Modal crear/editar bloque */
+  function openModalCreate(){
+    $("#modalBloqueTitle").textContent="NUEVO BLOQUE";
+    $("#modalBloqueId").value="";
+    $("#modalNombre").value="";
+    $("#modalHoraInicio").value="08:00";
+    $("#modalHoraFin").value="09:00";
+    $("#modalBloqueNotas").value="";
+    openModal();
+  }
+
+  function openModalEdit(b){
+    $("#modalBloqueTitle").textContent="EDITAR BLOQUE";
+    $("#modalBloqueId").value=b.id;
+    $("#modalNombre").value=b.nombre;
+    $("#modalHoraInicio").value=b.hora_inicio;
+    $("#modalHoraFin").value=b.hora_fin;
+    $("#modalBloqueNotas").value=b.notas||"";
+    openModal();
+  }
+
+  function openModal(){ $("#modalBloqueBackdrop")?.classList.add("open"); }
+  function closeModal(){ $("#modalBloqueBackdrop")?.classList.remove("open"); }
+
+  $("#btnNuevoBloque")?.addEventListener("click",openModalCreate);
+  $("#btnModalCancelar")?.addEventListener("click",closeModal);
+  $("#modalBloqueBackdrop")?.addEventListener("click",e=>{
+    if(e.target===e.currentTarget) closeModal();
+  });
+
+  $("#btnModalGuardar")?.addEventListener("click",async()=>{
+    const id     = $("#modalBloqueId").value;
+    const nombre = $("#modalNombre").value.trim();
+    const hi     = $("#modalHoraInicio").value;
+    const hf     = $("#modalHoraFin").value;
+    const notas  = $("#modalBloqueNotas").value;
+
+    if(!nombre){ toast("El nombre es obligatorio","warning"); return; }
+
+    const body={nombre, hora_inicio:hi, hora_fin:hf, notas};
+    try{
+      let res;
+      if(id){
+        res=await fetch(`${API}/api/v1/bloques/${id}`,{
+          method:"PUT",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(body),
+        });
+      } else {
+        res=await fetch(`${API}/api/v1/bloques`,{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(body),
+        });
+      }
+      if(!res.ok){
+        const e=await res.json().catch(()=>({}));
+        throw new Error(e.detail||"Error al guardar");
+      }
+      toast(id?"Bloque actualizado":"Bloque creado","success");
+      closeModal();
+      await loadBloques();
+    }catch(e){ toast(`Error: ${e.message}`,"error"); }
+  });
+
+  return {init, loadBloques};
+})();
+
+/* ════════════════════════════════════════════════════════════
+   MÓDULO: BIBLIOTECA (Sección 3)
+════════════════════════════════════════════════════════════ */
+const Biblioteca = (()=>{
+  let allTracks  = [];
+  let filtered   = [];
+  let activeFilter = "";
+  let editingId  = null;
+  let loaded     = false;
+
+  async function load(force=false){
+    if(loaded && !force) return;
+    const tbody=$("#bibTableBody");
+    if(tbody) tbody.innerHTML=`<tr><td colspan="8" class="loading-cell">Cargando…</td></tr>`;
+
+    try{
+      const res=await fetch(`${API}/api/v1/audios?limit=2000`);
+      allTracks=await res.json();
+      loaded=true;
+      applyFilters();
+    }catch(e){
+      console.error("[Biblioteca] Error:",e);
+      if(tbody) tbody.innerHTML=`<tr><td colspan="8" class="loading-cell">Error al cargar</td></tr>`;
+    }
+  }
+
+  function applyFilters(){
+    const q=($("#bibSearch")?.value||"").toLowerCase().trim();
+    filtered=allTracks.filter(t=>{
+      const matchTipo   = !activeFilter || t.tipo_audio===activeFilter;
+      const matchSearch = !q ||
+        t.titulo.toLowerCase().includes(q) ||
+        t.artista.toLowerCase().includes(q);
+      return matchTipo && matchSearch;
+    });
+    renderTable();
+    const bc=$("#bibCount"); if(bc) bc.textContent=`${filtered.length} registros`;
+  }
+
+  const TIPO_BADGE = {
+    Musica:"badge-musica",Efecto:"badge-efecto",
+    Cuña:"badge-cuña",Tips:"badge-tips"
+  };
+
+  function renderTable(){
+    const tbody=$("#bibTableBody"); if(!tbody) return;
+    if(!filtered.length){
+      tbody.innerHTML=`<tr><td colspan="8" class="loading-cell">Sin resultados</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML=filtered.map(t=>`
+      <tr data-audio-id="${t.id}" class="">
+        <td class="td-id">${t.id}</td>
+        <td class="td-title-main">
+          <span class="td-title-span">${esc(t.titulo)}</span>
+          <span class="td-artist-span">${esc(t.artista)}</span>
+        </td>
+        <td class="td-dur-cell">${fmtTime(t.duracion_seg)}</td>
+        <td><span class="badge ${TIPO_BADGE[t.tipo_audio]||"badge-musica"}">${esc(t.tipo_audio)}</span></td>
+        <td style="font-family:var(--font-data);font-size:.62rem;color:var(--text-lo)">
+          ${t.origen==="Nacional"?"NAC":"INT"}
+        </td>
+        <td style="font-family:var(--font-data);font-size:.7rem;color:var(--amber);text-align:center">
+          ${t.energia??"—"}
+        </td>
+        <td class="td-repro-cell">${t.veces_reproducido??0}</td>
+        <td class="td-actions-cell">
+          <button class="btn-edit" data-edit-id="${t.id}">✎ EDITAR</button>
+          <button class="btn-danger" data-del-id="${t.id}">✕</button>
+        </td>
+      </tr>
+    `).join("");
+
+    /* Editar */
+    tbody.querySelectorAll("[data-edit-id]").forEach(btn=>{
+      btn.addEventListener("click",()=>startEdit(parseInt(btn.dataset.editId)));
+    });
+
+    /* Eliminar */
+    tbody.querySelectorAll("[data-del-id]").forEach(btn=>{
+      btn.addEventListener("click",async()=>{
+        const t=allTracks.find(x=>x.id===parseInt(btn.dataset.delId));
+        if(!t||!confirm(`¿Eliminar "${t.titulo}"?`)) return;
+        try{
+          await fetch(`${API}/api/v1/audios/${t.id}`,{method:"DELETE"});
+          toast(`"${t.titulo}" eliminado`,"warning");
+          allTracks=allTracks.filter(x=>x.id!==t.id);
+          applyFilters();
+        }catch(e){ toast("Error al eliminar","error"); }
+      });
+    });
+  }
+
+  function startEdit(id){
+    if(editingId===id){ cancelEdit(); return; }
+    cancelEdit();
+    editingId=id;
+    const track=allTracks.find(t=>t.id===id); if(!track) return;
+    const row=document.querySelector(`[data-audio-id="${id}"]`); if(!row) return;
+    row.classList.add("row-editing");
+
+    /* Inline edit: reemplazar celdas de titulo/artista */
+    const titleCell=row.cells[1];
+    titleCell.innerHTML=`
+      <input class="edit-inline-input" id="ei-titulo" value="${esc(track.titulo)}" placeholder="Título" />
+      <input class="edit-inline-input" id="ei-artista" value="${esc(track.artista)}" placeholder="Artista" style="margin-top:3px" />
+    `;
+
+    /* Reemplazar botón editar */
+    const actCell=row.cells[7];
+    actCell.innerHTML=`
+      <button class="btn-primary" id="btnSaveEdit" style="padding:4px 10px;font-size:.75rem">✓ GUARDAR</button>
+      <button class="btn-secondary" id="btnCancelEdit" style="padding:4px 8px;font-size:.75rem">✕</button>
+    `;
+    document.getElementById("btnSaveEdit")?.addEventListener("click",()=>saveEdit(id));
+    document.getElementById("btnCancelEdit")?.addEventListener("click",()=>cancelEdit());
+  }
+
+  async function saveEdit(id){
+    const titulo  =(document.getElementById("ei-titulo")?.value||"").trim();
+    const artista =(document.getElementById("ei-artista")?.value||"").trim();
+    if(!titulo||!artista){ toast("Título y artista son obligatorios","warning"); return; }
+    try{
+      await fetch(`${API}/api/v1/audios/${id}`,{
+        method:"PUT",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({titulo,artista}),
+      });
+      toast("✓ Guardado","success",2000);
+      // Actualizar cache local
+      const idx=allTracks.findIndex(t=>t.id===id);
+      if(idx>=0){allTracks[idx].titulo=titulo;allTracks[idx].artista=artista;}
+      editingId=null;
+      applyFilters();
+    }catch(e){ toast("Error al guardar","error"); }
+  }
+
+  function cancelEdit(){
+    if(!editingId) return;
+    editingId=null;
+    applyFilters();
+  }
+
+  /* Filtros */
+  $$(".filter-tab").forEach(tab=>{
+    tab.addEventListener("click",()=>{
+      $$(".filter-tab").forEach(t=>t.classList.remove("active"));
+      tab.classList.add("active");
+      activeFilter=tab.dataset.tipo||"";
+      applyFilters();
+    });
+  });
+
+  /* Búsqueda en tiempo real */
+  $("#bibSearch")?.addEventListener("input",debounce(applyFilters,200));
+
+  return {load};
+})();
+
+/* Ping periódico */
+setInterval(()=>AdminWS.send({cmd:"ping"}),25000);
+  
+
+/* ══════════════════════════════════════════════════════════════
+   MÓDULO: Escaneo de Carpetas
+   Llama a POST /api/v1/media/escanear para detectar archivos
+   nuevos en disco, y permite registrarlos con un click.
+══════════════════════════════════════════════════════════════ */
+const Escaneo = (() => {
+  "use strict";
+
+  // ── Estado interno ─────────────────────────────────────────
+  let _resultados = { nuevos: [], ya_conocidos: [], huerfanos: [] };
+  let _seleccionados = new Set(); // índices de nuevos marcados
+
+  // ── Lanzar escaneo ──────────────────────────────────────────
+  async function lanzar() {
+    const btn = document.getElementById("btnEscanear");
+    btn.disabled = true;
+    btn.textContent = "⏳ ESCANEANDO...";
+
+    // Ocultar todo y mostrar el empty mientras trabaja
+    _toggle("escaneoResumen",      false);
+    _toggle("escaneoNuevosWrap",   false);
+    _toggle("escaneoHuerfanosWrap",false);
+    _toggle("escaneoVacio",        true);
+    document.getElementById("escaneoVacio").innerHTML =
+      `<div class="escaneo-empty-icon">⏳</div>
+       <div>Analizando carpeta <code>media/</code>…</div>`;
+
+    try {
+      const res  = await fetch(`${API}/api/v1/media/escanear`, { method:"POST" });
+      const data = await res.json();
+      _resultados = data;
+      _seleccionados.clear();
+      _renderResultados(data);
+    } catch(err) {
+      toast(`Error en escaneo: ${err.message}`, "error");
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = "▶ INICIAR ESCANEO";
+    }
+  }
+
+  // ── Renderizar resultados ───────────────────────────────────
+  function _renderResultados(data) {
+    const r = data.resumen;
+
+    // Actualizar estadísticas
+    document.getElementById("numNuevos").textContent    = r.nuevos;
+    document.getElementById("numConocidos").textContent  = r.ya_conocidos;
+    document.getElementById("numHuerfanos").textContent  = r.huerfanos;
+    _toggle("escaneoResumen", true);
+    _toggle("escaneoVacio",   false);
+
+    // Archivos nuevos
+    if (data.nuevos.length > 0) {
+      _renderNuevos(data.nuevos);
+      _toggle("escaneoNuevosWrap", true);
+      _toggle("escaneoBatch",      true);
+    }
+
+    // Huérfanos
+    if (data.huerfanos.length > 0) {
+      _renderHuerfanos(data.huerfanos);
+      _toggle("escaneoHuerfanosWrap", true);
+    }
+
+    if (data.nuevos.length === 0 && data.huerfanos.length === 0) {
+      _toggle("escaneoVacio", true);
+      document.getElementById("escaneoVacio").innerHTML =
+        `<div class="escaneo-empty-icon">✅</div>
+         <div>Todo está en orden. Todos los archivos están registrados.</div>
+         <div class="escaneo-empty-sub">
+           ${r.ya_conocidos} archivo(s) registrado(s) en la BD coinciden con los archivos en disco.
+         </div>`;
+    }
+  }
+
+  function _renderNuevos(nuevos) {
+    const lista = document.getElementById("escaneoNuevosLista");
+    lista.innerHTML = "";
+    nuevos.forEach((item, idx) => {
+      const div = document.createElement("div");
+      div.className = "escaneo-item";
+      div.id = `escaneo-item-${idx}`;
+      div.innerHTML = `
+        <input type="checkbox" class="escaneo-item-check"
+               onchange="Escaneo.toggleItem(${idx}, this.checked)">
+        <div class="escaneo-item-meta">
+          <input type="text" id="ei-artista-${idx}" placeholder="Artista"
+                 value="${_esc(item.artista_sugerido)}">
+          <input type="text" id="ei-titulo-${idx}"  placeholder="Título"
+                 value="${_esc(item.titulo_sugerido)}">
+          <select id="ei-tipo-${idx}">
+            <option value="Musica"    ${item.tipo_detectado==="Musica"   ?"selected":""}>Música</option>
+            <option value="Efecto"    ${item.tipo_detectado==="Efecto"   ?"selected":""}>Jingle/Efecto</option>
+            <option value="Cuña"      ${item.tipo_detectado==="Cuña"     ?"selected":""}>Cuña/Publicidad</option>
+            <option value="Tips"      ${item.tipo_detectado==="Tips"     ?"selected":""}>Tips</option>
+          </select>
+          <select id="ei-genero-${idx}">
+            <option value="Instrumental">Instrumental</option>
+            <option value="Hombre">Hombre</option>
+            <option value="Mujer">Mujer</option>
+            <option value="Dueto">Dueto</option>
+          </select>
+          <select id="ei-origen-${idx}">
+            <option value="Nacional">Nacional</option>
+            <option value="Internacional">Internacional</option>
+          </select>
+          <input type="number" id="ei-energia-${idx}" placeholder="Energía 1-5"
+                 min="1" max="5" value="3">
+          <div class="escaneo-item-path">${_esc(item.ruta)}</div>
+        </div>
+        <div class="escaneo-item-size">${item.tamano_mb} MB</div>`;
+      lista.appendChild(div);
+    });
+  }
+
+  function _renderHuerfanos(huerfanos) {
+    const lista = document.getElementById("escaneoHuerfanosLista");
+    lista.innerHTML = "";
+    huerfanos.forEach(h => {
+      lista.innerHTML += `
+        <div class="huerfano-item">
+          <div class="huerfano-info">
+            <div class="huerfano-title">${_esc(h.titulo)} — <em>${_esc(h.artista)}</em></div>
+            <div class="huerfano-path">⚠ ${_esc(h.ruta)}</div>
+          </div>
+          <div class="huerfano-actions">
+            <button class="btn-small btn-danger"
+                    onclick="Escaneo.eliminarHuerfano(${h.id})">
+              🗑 Eliminar registro
+            </button>
+          </div>
+        </div>`;
+    });
+  }
+
+  // ── Selección ───────────────────────────────────────────────
+  function toggleItem(idx, checked) {
+    const el = document.getElementById(`escaneo-item-${idx}`);
+    if (checked) {
+      _seleccionados.add(idx);
+      el?.classList.add("selected");
+    } else {
+      _seleccionados.delete(idx);
+      el?.classList.remove("selected");
+    }
+  }
+
+  function marcarTodos(checked) {
+    _resultados.nuevos.forEach((_, idx) => {
+      const cb = document.querySelector(`#escaneo-item-${idx} .escaneo-item-check`);
+      if (cb) {
+        cb.checked = checked;
+        toggleItem(idx, checked);
+      }
+    });
+  }
+
+  // ── Registrar seleccionados ─────────────────────────────────
+  async function registrarSeleccionados() {
+    if (_seleccionados.size === 0) {
+      toast("Selecciona al menos un archivo antes de registrar.", "info");
+      return;
+    }
+
+    const btn = document.getElementById("btnRegistrarSeleccionados");
+    btn.disabled    = true;
+    btn.textContent = "⏳ REGISTRANDO...";
+
+    let ok = 0, err = 0;
+    const indices = Array.from(_seleccionados);
+
+    for (const idx of indices) {
+      const item = _resultados.nuevos[idx];
+      const body = {
+        ruta:        item.ruta,
+        titulo:      document.getElementById(`ei-titulo-${idx}`)?.value  || item.titulo_sugerido,
+        artista:     document.getElementById(`ei-artista-${idx}`)?.value || item.artista_sugerido,
+        tipo_audio:  document.getElementById(`ei-tipo-${idx}`)?.value    || item.tipo_detectado,
+        genero_vocal:document.getElementById(`ei-genero-${idx}`)?.value  || "Instrumental",
+        origen:      document.getElementById(`ei-origen-${idx}`)?.value  || "Nacional",
+        energia:     parseInt(document.getElementById(`ei-energia-${idx}`)?.value || "3"),
+      };
+
+      try {
+        const r = await fetch(`${API}/api/v1/media/registrar_encontrado`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) ok++;
+        else {
+          const d = await r.json();
+          toast(`Error en ${body.titulo}: ${d.detail || "desconocido"}`, "error");
+          err++;
+        }
+      } catch(e) {
+        err++;
+        toast(`Error de red para ${body.titulo}`, "error");
+      }
+    }
+
+    btn.disabled    = false;
+    btn.textContent = "⊕ REGISTRAR SELECCIONADOS";
+
+    if (ok > 0) {
+      toast(`${ok} archivo(s) registrado(s) exitosamente.`, "success");
+      setTimeout(() => lanzar(), 800); // re-scan to refresh
+    }
+  }
+
+  // ── Eliminar huérfano ──────────────────────────────────────
+  async function eliminarHuerfano(audioId) {
+    if (!confirm("¿Eliminar el registro de la base de datos? El archivo ya no existe en disco.")) return;
+    try {
+      const r = await fetch(`${API}/api/v1/audios/${audioId}`, { method: "DELETE" });
+      if (r.ok) {
+        toast("Registro eliminado.", "success");
+        lanzar(); // re-scan
+      } else {
+        toast("No se pudo eliminar el registro.", "error");
+      }
+    } catch(e) {
+      toast(`Error: ${e.message}`, "error");
+    }
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────
+  function _toggle(id, show) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? "" : "none";
+  }
+  function _esc(s) {
+    return String(s || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;");
+  }
+
+  return { lanzar, toggleItem, marcarTodos, registrarSeleccionados, eliminarHuerfano };
+})();
+
+
+/* ══════════════════════════════════════════════════════════════
+   MÓDULO: Mover Archivo (Sync física en Biblioteca)
+   Cuando el admin cambia el tipo_audio o categoría de un track
+   en la tabla de Biblioteca, ofrece mover el archivo físico
+   a la carpeta jerarquica correcta: media/{tipo}/{genero}/.
+══════════════════════════════════════════════════════════════ */
+const MoverArchivo = (() => {
+  "use strict";
+
+  /**
+   * Mueve un archivo de audio a la ruta jerárquica correcta.
+   * Si el archivo está en reproducción, el servidor lo difiere
+   * y lo moverá cuando termine la pista.
+   */
+  async function mover(audioId, tipo, genero, artista, titulo) {
+    try {
+      const r = await fetch(`${API}/api/v1/audios/${audioId}/mover`, {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo_audio: tipo, genero_vocal: genero,
+                               artista, titulo }),
+      });
+      const data = await r.json();
+
+      if (data.estado === "completado") {
+        toast(`Archivo movido → ${data.ruta_nueva.split("/").slice(-2).join("/")}`, "success");
+      } else if (data.estado === "diferido") {
+        toast("Archivo en reproducción. Se moverá al terminar la pista.", "info");
+      } else if (data.mensaje?.includes("ya está en la ruta")) {
+        toast("El archivo ya está en la carpeta correcta.", "info");
+      } else {
+        toast(data.detail || "Respuesta inesperada del servidor.", "error");
+      }
+    } catch(e) {
+      toast(`Error al mover archivo: ${e.message}`, "error");
+    }
+  }
+
+  return { mover };
+})();
+
+</script>
+</body>
+</html>

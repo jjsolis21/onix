@@ -1,0 +1,17 @@
+# Ignorar archivos de audio (Gestión local según Opción A)
+media/
+*.mp3
+*.wav
+*.flac
+*.m4a
+
+# Ignorar base de datos y librerías pesadas
+radio_core.db
+bass.dll
+*.pyc
+__pycache__/
+
+# Entorno y archivos de sistema
+.vscode/
+.idea/
+.env
