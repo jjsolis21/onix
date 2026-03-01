@@ -1,0 +1,1652 @@
+<!-- ============================================================
+     BIBLIOTECA MUSICAL — Jazler Shell · Deep Sea v3.0
+     Módulo: sections/02-biblioteca-musical/biblioteca-musical.html
+     ============================================================ -->
+
+<style>
+/* ── Variables heredadas del sistema (variables.css) ──────────── */
+:root {
+  --bg-base:        #070d14;
+  --bg-surface:     #0c1520;
+  --bg-panel:       #111d2b;
+  --bg-hover:       #162334;
+  --bg-active:      #1a2d42;
+  --border-subtle:  #1e3045;
+  --border-mid:     #274059;
+  --border-hi:      #2e5072;
+
+  --text-primary:   #cfe6f5;
+  --text-secondary: #7aa3be;
+  --text-muted:     #3d6278;
+  --text-disabled:  #264055;
+
+  --accent-cyan:    #00c8e0;
+  --accent-amber:   #f5a623;
+  --accent-green:   #2ecc71;
+  --accent-red:     #e74c3c;
+  --accent-violet:  #7b5ea7;
+  --accent-blue:    #1e88e5;
+
+  --font-mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-ui:        'IBM Plex Sans', 'DM Sans', sans-serif;
+
+  --radius-sm:      3px;
+  --radius-md:      5px;
+  --radius-lg:      8px;
+
+  --transition:     all 0.15s ease;
+  --shadow-panel:   0 4px 24px rgba(0,0,0,0.5);
+  --shadow-modal:   0 8px 48px rgba(0,0,0,0.75);
+  --glow-cyan:      0 0 12px rgba(0,200,224,0.25);
+  --glow-amber:     0 0 12px rgba(245,166,35,0.3);
+}
+
+/* ── Reset scope ───────────────────────────────────────────────── */
+#bm-root *, #bm-root *::before, #bm-root *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+#bm-root {
+  font-family: var(--font-ui);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ── TopBar ────────────────────────────────────────────────────── */
+.bm-topbar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.bm-topbar__brand {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-cyan);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 14px;
+  border-right: 1px solid var(--border-mid);
+}
+
+.bm-topbar__brand svg { opacity: 0.85; }
+
+.bm-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.bm-search-wrap svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.bm-input {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 10px 6px 30px;
+  outline: none;
+  transition: var(--transition);
+}
+
+.bm-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.bm-input::placeholder { color: var(--text-muted); }
+
+.bm-select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 24px 6px 8px;
+  outline: none;
+  cursor: pointer;
+  transition: var(--transition);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%233d6278'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.bm-select:focus { border-color: var(--accent-cyan); }
+
+.bm-topbar__filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.bm-filter-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.bm-btn--amber {
+  background: var(--accent-amber);
+  color: #1a0f00;
+  border-color: var(--accent-amber);
+}
+
+.bm-btn--amber:hover {
+  background: #ffc147;
+  box-shadow: var(--glow-amber);
+  transform: translateY(-1px);
+}
+
+.bm-btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-mid);
+}
+
+.bm-btn--ghost:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hi);
+  color: var(--text-primary);
+}
+
+.bm-btn--sm {
+  padding: 4px 9px;
+  font-size: 10px;
+}
+
+.bm-btn--danger {
+  background: transparent;
+  color: var(--accent-red);
+  border-color: rgba(231,76,60,0.35);
+}
+.bm-btn--danger:hover {
+  background: rgba(231,76,60,0.12);
+}
+
+.bm-btn--cyan {
+  background: transparent;
+  color: var(--accent-cyan);
+  border-color: rgba(0,200,224,0.35);
+}
+.bm-btn--cyan:hover {
+  background: rgba(0,200,224,0.08);
+}
+
+.bm-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Stats pill */
+.bm-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  letter-spacing: 0.05em;
+}
+
+.bm-stat span {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+/* ── Status bar ────────────────────────────────────────────────── */
+.bm-statusbar {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 5px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bm-statusbar__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  display: inline-block;
+  animation: bm-pulse 2s infinite;
+}
+
+@keyframes bm-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.bm-statusbar__msg { color: var(--text-secondary); }
+
+/* ── Data Grid ─────────────────────────────────────────────────── */
+.bm-grid-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.bm-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bm-table thead th {
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--border-mid);
+  border-right: 1px solid var(--border-subtle);
+  padding: 8px 10px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-table thead th:hover { color: var(--accent-cyan); }
+.bm-table thead th:last-child { border-right: none; }
+
+.bm-table thead th.sort-asc::after  { content: ' ▲'; color: var(--accent-cyan); }
+.bm-table thead th.sort-desc::after { content: ' ▼'; color: var(--accent-cyan); }
+
+/* Column widths */
+.col-id    { width: 52px; }
+.col-play  { width: 40px; }
+.col-title { width: auto; }
+.col-artist{ width: 14%; }
+.col-voz   { width: 70px; }
+.col-cat1  { width: 100px; }
+.col-cat2  { width: 90px; }
+.col-dur   { width: 68px; }
+.col-actions { width: 88px; }
+
+.bm-table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: var(--transition);
+}
+
+.bm-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.bm-table tbody tr.bm-row--playing {
+  background: rgba(0,200,224,0.06);
+  border-left: 2px solid var(--accent-cyan);
+}
+
+.bm-table td {
+  padding: 7px 10px;
+  border-right: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bm-table td:last-child { border-right: none; }
+
+.bm-cell-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bm-cell-play {
+  text-align: center;
+}
+
+.bm-play-btn {
+  background: none;
+  border: 1px solid var(--border-mid);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--accent-cyan);
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.bm-play-btn:hover {
+  background: rgba(0,200,224,0.12);
+  border-color: var(--accent-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+.bm-play-btn.playing {
+  background: rgba(0,200,224,0.15);
+  border-color: var(--accent-cyan);
+  animation: bm-pulse 1.2s infinite;
+}
+
+.bm-cell-title {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.bm-cell-artist {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.bm-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.badge-mujer  { background: rgba(123,94,167,0.25); color: #b39ddb; border: 1px solid rgba(123,94,167,0.4); }
+.badge-hombre { background: rgba(30,136,229,0.2);  color: #64b5f6; border: 1px solid rgba(30,136,229,0.35); }
+.badge-duo    { background: rgba(0,200,224,0.15);  color: #80deea; border: 1px solid rgba(0,200,224,0.3); }
+.badge-grupo  { background: rgba(245,166,35,0.15); color: #ffcc80; border: 1px solid rgba(245,166,35,0.3); }
+
+.bm-cell-cat1 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-cyan);
+}
+
+.bm-cell-cat2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.bm-cell-dur {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.bm-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Energy bar */
+.bm-energy {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.bm-energy__dot {
+  width: 4px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--border-mid);
+}
+
+.bm-energy__dot.on { background: var(--accent-amber); }
+.bm-energy__dot.on.high { background: var(--accent-red); }
+
+/* ── Mini Player ───────────────────────────────────────────────── */
+.bm-player {
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-mid);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.bm-player__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bm-player__title {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-player__artist {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.bm-player__timeline {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bm-timeline-track {
+  flex: 1;
+  height: 3px;
+  background: var(--border-mid);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.bm-timeline-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.3s linear;
+}
+
+.bm-time { color: var(--text-muted); font-size: 10px; min-width: 34px; text-align: center; }
+
+/* ── Modal ─────────────────────────────────────────────────────── */
+.bm-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(4,9,16,0.88);
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+}
+
+.bm-overlay.active { display: flex; }
+
+.bm-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  width: 720px;
+  max-width: 96vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: bm-modal-in 0.18s ease;
+}
+
+@keyframes bm-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.bm-modal__header {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-mid);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.bm-modal__title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.bm-modal__id-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-cyan);
+  background: rgba(0,200,224,0.1);
+  border: 1px solid rgba(0,200,224,0.25);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.bm-modal__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.bm-modal__close:hover { background: rgba(231,76,60,0.15); color: var(--accent-red); }
+
+.bm-modal__body {
+  padding: 18px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Form grid */
+.bm-form-section {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bm-form-section__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 2px;
+}
+
+.bm-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bm-form-grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+.bm-form-grid--full { grid-template-columns: 1fr; }
+
+.bm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bm-field label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.bm-field .bm-input,
+.bm-field .bm-select {
+  width: 100%;
+  padding-left: 10px;
+}
+
+.bm-field .bm-select {
+  background-position: right 8px center;
+}
+
+/* File drop zone */
+.bm-dropzone {
+  border: 2px dashed var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  background: var(--bg-base);
+}
+
+.bm-dropzone:hover, .bm-dropzone.drag-over {
+  border-color: var(--accent-amber);
+  background: rgba(245,166,35,0.04);
+}
+
+.bm-dropzone svg { color: var(--text-muted); margin-bottom: 6px; }
+.bm-dropzone p { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+.bm-dropzone p strong { color: var(--accent-amber); }
+
+/* Energy selector */
+.bm-energy-selector {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bm-energy-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bm-energy-btn:hover { border-color: var(--accent-amber); color: var(--accent-amber); }
+
+.bm-energy-btn.sel {
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
+  color: #1a0f00;
+  box-shadow: 0 0 8px rgba(245,166,35,0.4);
+}
+
+/* Audio cue points */
+.bm-cuepoints {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bm-cue {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bm-cue__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bm-cue__value-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bm-cue__value-row .bm-input {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  text-align: center;
+  padding: 4px 6px;
+}
+
+.bm-cue__mark-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.bm-cue__mark-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+/* Modal footer */
+.bm-modal__footer {
+  border-top: 1px solid var(--border-mid);
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-panel);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.bm-modal__ws-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Toast */
+.bm-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bm-toast {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-panel);
+  animation: bm-toast-in 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.bm-toast--success { border-left: 3px solid var(--accent-green); }
+.bm-toast--error   { border-left: 3px solid var(--accent-red); }
+.bm-toast--info    { border-left: 3px solid var(--accent-cyan); }
+
+@keyframes bm-toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Empty state */
+.bm-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.bm-empty svg { opacity: 0.3; margin-bottom: 12px; }
+.bm-empty p { margin-top: 6px; font-size: 11px; }
+
+/* Scrollbars */
+#bm-root ::-webkit-scrollbar { width: 5px; height: 5px; }
+#bm-root ::-webkit-scrollbar-track { background: var(--bg-base); }
+#bm-root ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+#bm-root ::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+</style>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HTML STRUCTURE
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="bm-root">
+
+  <!-- TOP BAR -->
+  <div class="bm-topbar">
+    <!-- Brand -->
+    <div class="bm-topbar__brand">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+      BibMusical
+    </div>
+
+    <!-- Search -->
+    <div class="bm-search-wrap">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="bm-search" class="bm-input" type="text" placeholder="Buscar título, artista…" />
+    </div>
+
+    <!-- Filters -->
+    <div class="bm-topbar__filters">
+      <span class="bm-filter-label">Filtros:</span>
+      <select id="bm-filter-cat1" class="bm-select">
+        <option value="">Género</option>
+      </select>
+      <select id="bm-filter-cat2" class="bm-select">
+        <option value="">Rotación</option>
+      </select>
+      <select id="bm-filter-cat3" class="bm-select">
+        <option value="">Extra</option>
+      </select>
+      <select id="bm-filter-voz" class="bm-select">
+        <option value="">Voz</option>
+      </select>
+    </div>
+
+    <!-- Right actions -->
+    <div class="bm-topbar__right">
+      <div class="bm-stat">Total: <span id="bm-count">0</span></div>
+      <button class="bm-btn bm-btn--amber" id="bm-btn-add">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Cargar Audio
+      </button>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="bm-statusbar">
+    <span class="bm-statusbar__dot"></span>
+    <span class="bm-statusbar__msg" id="bm-status-msg">Sistema listo · WebSocket conectado</span>
+    <span style="margin-left:auto;color:var(--text-disabled)">API v1 · /api/v1/audios</span>
+  </div>
+
+  <!-- DATA GRID -->
+  <div class="bm-grid-wrap">
+    <table class="bm-table">
+      <thead>
+        <tr>
+          <th class="col-id" data-sort="id">#ID</th>
+          <th class="col-play"></th>
+          <th class="col-title" data-sort="title">TÍTULO</th>
+          <th class="col-artist" data-sort="artist">ARTISTA</th>
+          <th class="col-voz" data-sort="voz">VOZ</th>
+          <th class="col-cat1" data-sort="cat1">GÉNERO</th>
+          <th class="col-cat2" data-sort="cat2">ROTACIÓN</th>
+          <th style="width:60px" data-sort="energy">ENERG.</th>
+          <th class="col-dur" data-sort="duration">DUR.</th>
+          <th class="col-actions">OPS</th>
+        </tr>
+      </thead>
+      <tbody id="bm-tbody">
+        <!-- Populated by JS -->
+      </tbody>
+    </table>
+    <div id="bm-empty" class="bm-empty" style="display:none">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+      <strong>Sin resultados</strong>
+      <p>Ajusta los filtros o carga nuevos audios.</p>
+    </div>
+  </div>
+
+  <!-- MINI PLAYER -->
+  <div class="bm-player" id="bm-player">
+    <button class="bm-play-btn" id="bm-player-toggle" title="Play/Pause">
+      <svg id="bm-player-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5,3 19,12 5,21"/>
+      </svg>
+    </button>
+    <div class="bm-player__info">
+      <div class="bm-player__title" id="bm-player-title">—</div>
+      <div class="bm-player__artist" id="bm-player-artist">Sin pista cargada</div>
+    </div>
+    <div class="bm-player__timeline">
+      <span class="bm-time" id="bm-time-cur">0:00</span>
+      <div class="bm-timeline-track" id="bm-timeline">
+        <div class="bm-timeline-fill" id="bm-timeline-fill"></div>
+      </div>
+      <span class="bm-time" id="bm-time-total">0:00</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)" id="bm-player-cat"></span>
+    </div>
+  </div>
+
+</div><!-- /#bm-root -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL — Jazler Upload/Edit Form
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="bm-overlay" id="bm-overlay">
+  <div class="bm-modal" role="dialog" aria-modal="true">
+
+    <div class="bm-modal__header">
+      <span class="bm-modal__id-badge" id="modal-badge">NUEVO</span>
+      <span class="bm-modal__title" id="modal-title">Cargar Audio</span>
+      <button class="bm-modal__close" id="bm-modal-close" title="Cerrar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="bm-modal__body">
+
+      <!-- FILE DROP -->
+      <div class="bm-form-section" id="modal-dropzone-wrap">
+        <div class="bm-form-section__label">🎵 Archivo de Audio</div>
+        <div class="bm-dropzone" id="bm-dropzone">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p><strong>Arrastra tu archivo</strong> o haz clic para seleccionar</p>
+          <p style="margin-top:4px">MP3, WAV, FLAC · máx 200 MB</p>
+          <input type="file" id="modal-file" accept="audio/*" style="display:none" />
+        </div>
+        <div id="modal-file-info" style="font-family:var(--font-mono);font-size:11px;color:var(--accent-green);display:none;padding:4px 0"></div>
+      </div>
+
+      <!-- METADATA -->
+      <div class="bm-form-section">
+        <div class="bm-form-section__label">📋 Metadata</div>
+        <div class="bm-form-grid">
+          <div class="bm-field">
+            <label>Título *</label>
+            <input class="bm-input" id="modal-title-input" type="text" placeholder="Nombre de la pista" />
+          </div>
+          <div class="bm-field">
+            <label>Artista *</label>
+            <input class="bm-input" id="modal-artist" type="text" placeholder="Nombre del artista" />
+          </div>
+          <div class="bm-field">
+            <label>Álbum</label>
+            <input class="bm-input" id="modal-album" type="text" placeholder="Nombre del álbum" />
+          </div>
+          <div class="bm-field">
+            <label>Año</label>
+            <input class="bm-input" id="modal-year" type="number" placeholder="2024" min="1900" max="2099" />
+          </div>
+        </div>
+      </div>
+
+      <!-- CATEGORÍAS DINÁMICAS (Jazler) -->
+      <div class="bm-form-section">
+        <div class="bm-form-section__label">🏷 Categorización Jazler</div>
+        <div class="bm-form-grid--3 bm-form-grid">
+          <div class="bm-field">
+            <label>Cat1 · Género</label>
+            <select class="bm-select" id="modal-cat1">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+          <div class="bm-field">
+            <label>Cat2 · Rotación</label>
+            <select class="bm-select" id="modal-cat2">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+          <div class="bm-field">
+            <label>Cat3 · Extra</label>
+            <select class="bm-select" id="modal-cat3">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+          <div class="bm-field">
+            <label>Voz</label>
+            <select class="bm-select" id="modal-voz">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+          <div class="bm-field">
+            <label>BPM</label>
+            <input class="bm-input" id="modal-bpm" type="number" placeholder="120" min="40" max="250" />
+          </div>
+          <div class="bm-field">
+            <label>Idioma</label>
+            <select class="bm-select" id="modal-lang">
+              <option value="es">Español</option>
+              <option value="en">Inglés</option>
+              <option value="pt">Portugués</option>
+              <option value="fr">Francés</option>
+              <option value="it">Italiano</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ENERGÍA -->
+      <div class="bm-form-section">
+        <div class="bm-form-section__label">⚡ Energía (1–9)</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="bm-energy-selector" id="modal-energy-sel">
+            <!-- Populated by JS -->
+          </div>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">
+            Nivel: <span id="modal-energy-label" style="color:var(--accent-amber)">—</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- PUNTOS DE AUDIO (Jazler cue points) -->
+      <div class="bm-form-section">
+        <div class="bm-form-section__label">🎚 Puntos de Audio</div>
+        <div class="bm-cuepoints">
+          <div class="bm-cue">
+            <div class="bm-cue__label">Intro (seg)</div>
+            <div class="bm-cue__value-row">
+              <input class="bm-input" id="modal-cue-intro" type="number" value="0" min="0" step="0.1" />
+              <button class="bm-cue__mark-btn" data-cue="intro">⬡ Marcar</button>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">
+              Inicio de voz / jingle
+            </div>
+          </div>
+          <div class="bm-cue">
+            <div class="bm-cue__label">Mix Out (seg)</div>
+            <div class="bm-cue__value-row">
+              <input class="bm-input" id="modal-cue-mix" type="number" value="0" min="0" step="0.1" />
+              <button class="bm-cue__mark-btn" data-cue="mix">⬡ Marcar</button>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">
+              Punto de mezcla de salida
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NOTAS -->
+      <div class="bm-form-section">
+        <div class="bm-form-section__label">📝 Notas</div>
+        <div class="bm-form-grid--full bm-form-grid">
+          <div class="bm-field">
+            <label>Observaciones internas</label>
+            <textarea class="bm-input" id="modal-notes" rows="2"
+              style="resize:vertical;font-size:12px;padding:8px 10px" placeholder="Notas para operadores…"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.bm-modal__body -->
+
+    <div class="bm-modal__footer">
+      <div class="bm-modal__ws-status">
+        <span class="bm-statusbar__dot" style="width:5px;height:5px"></span>
+        <span id="modal-ws-msg">WS listo</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="bm-btn bm-btn--ghost" id="bm-modal-cancel">Cancelar</button>
+        <button class="bm-btn bm-btn--amber" id="bm-modal-save">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Guardar
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /.bm-modal -->
+</div><!-- /.bm-overlay -->
+
+<!-- Toast container -->
+<div class="bm-toast-container" id="bm-toasts"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+(function () {
+  'use strict';
+
+  /* ── 1. CATÁLOGO DINÁMICO JAZLER ───────────────────────────── */
+  const JAZLER_CATS = {
+    Cat1: [
+      'Pop', 'Rock', 'Balada', 'Tropical', 'Salsa', 'Cumbia',
+      'Reggaetón', 'Electrónica', 'Jazz', 'Clásica', 'Folk',
+      'Hip-Hop', 'R&B', 'Country', 'Alternativa', 'Instrumental'
+    ],
+    Cat2: [
+      'Alta', 'Media', 'Baja', 'Power', 'Extra', 'Archivo',
+      'Estreno', 'Vintage', 'Recurrente', 'Especial'
+    ],
+    Cat3: [
+      'Ninguno', 'Navidad', 'Verano', 'Tanda Especial', 'Intros',
+      'Jingles', 'Cortinas', 'Sweepers', 'Promo', 'Overnight'
+    ],
+    Voz: ['Mujer', 'Hombre', 'Dúo', 'Grupo', 'Instrumental']
+  };
+
+  /* ── 2. DATOS SIMULADOS ─────────────────────────────────────── */
+  const generateLibrary = () => {
+    const tracks = [
+      { id: 1001, title: 'Luna de Medianoche', artist: 'Karla Vega', voz: 'Mujer', cat1: 'Balada', cat2: 'Power', cat3: 'Ninguno', energy: 4, duration: 234, bpm: 72, intro: 8.5, mix: 218.0, lang: 'es' },
+      { id: 1002, title: 'Fuego en la Pista', artist: 'Los Soneros del Sur', voz: 'Grupo', cat1: 'Salsa', cat2: 'Alta', cat3: 'Ninguno', energy: 9, duration: 298, bpm: 165, intro: 4.0, mix: 285.0, lang: 'es' },
+      { id: 1003, title: 'Neon City Drive', artist: 'DJ Spectrum', voz: 'Instrumental', cat1: 'Electrónica', cat2: 'Extra', cat3: 'Ninguno', energy: 8, duration: 342, bpm: 128, intro: 32.0, mix: 326.0, lang: 'en' },
+      { id: 1004, title: 'Te Recordaré', artist: 'Marco & Elena', voz: 'Dúo', cat1: 'Pop', cat2: 'Media', cat3: 'Ninguno', energy: 5, duration: 215, bpm: 98, intro: 6.0, mix: 202.0, lang: 'es' },
+      { id: 1005, title: 'Café Amargo', artist: 'Rodrigo Saavedra', voz: 'Hombre', cat1: 'Rock', cat2: 'Alta', cat3: 'Ninguno', energy: 7, duration: 272, bpm: 142, intro: 10.0, mix: 256.0, lang: 'es' },
+      { id: 1006, title: 'Ritmo Caribeño', artist: 'La Orquesta Imperial', voz: 'Grupo', cat1: 'Cumbia', cat2: 'Alta', cat3: 'Verano', energy: 9, duration: 315, bpm: 155, intro: 5.5, mix: 300.0, lang: 'es' },
+      { id: 1007, title: 'Midnight Jazz', artist: 'Trio Nocturno', voz: 'Grupo', cat1: 'Jazz', cat2: 'Baja', cat3: 'Overnight', energy: 3, duration: 384, bpm: 88, intro: 0.0, mix: 370.0, lang: 'en' },
+      { id: 1008, title: 'Corazón de Hielo', artist: 'Valentina Cruz', voz: 'Mujer', cat1: 'Balada', cat2: 'Power', cat3: 'Ninguno', energy: 5, duration: 248, bpm: 68, intro: 12.0, mix: 230.0, lang: 'es' },
+      { id: 1009, title: 'Street Anthem', artist: 'FiveKings', voz: 'Grupo', cat1: 'Hip-Hop', cat2: 'Estreno', cat3: 'Ninguno', energy: 8, duration: 196, bpm: 90, intro: 4.0, mix: 180.0, lang: 'en' },
+      { id: 1010, title: 'Lluvia de Estrellas', artist: 'Pablo Herrera', voz: 'Hombre', cat1: 'Pop', cat2: 'Media', cat3: 'Ninguno', energy: 6, duration: 227, bpm: 110, intro: 7.0, mix: 210.0, lang: 'es' },
+      { id: 1011, title: 'Tequila Sunrise Mix', artist: 'DJ Morales', voz: 'Instrumental', cat1: 'Electrónica', cat2: 'Alta', cat3: 'Verano', energy: 9, duration: 420, bpm: 132, intro: 16.0, mix: 405.0, lang: 'es' },
+      { id: 1012, title: 'Saudade Eterna', artist: 'Gabriela Monteiro', voz: 'Mujer', cat1: 'Folk', cat2: 'Baja', cat3: 'Ninguno', energy: 2, duration: 262, bpm: 58, intro: 0.0, mix: 248.0, lang: 'pt' },
+    ];
+    return tracks;
+  };
+
+  let library = generateLibrary();
+  let filtered = [...library];
+  let sortKey   = null;
+  let sortDir   = 1;
+  let editingId = null;
+  let playingId = null;
+  let audioEl   = null;
+  let playerTimer = null;
+
+  /* ── 3. DOM REFS ────────────────────────────────────────────── */
+  const $ = id => document.getElementById(id);
+  const tbody      = $('bm-tbody');
+  const emptyState = $('bm-empty');
+  const countEl    = $('bm-count');
+  const statusMsg  = $('bm-status-msg');
+  const overlay    = $('bm-overlay');
+
+  /* ── 4. POPULATE FILTER DROPDOWNS ──────────────────────────── */
+  const populateSelect = (selId, items, allLabel) => {
+    const sel = $(selId);
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>`;
+    items.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      if (v === current) o.selected = true;
+      sel.appendChild(o);
+    });
+  };
+
+  const buildFilters = () => {
+    populateSelect('bm-filter-cat1', JAZLER_CATS.Cat1, 'Género');
+    populateSelect('bm-filter-cat2', JAZLER_CATS.Cat2, 'Rotación');
+    populateSelect('bm-filter-cat3', JAZLER_CATS.Cat3, 'Extra');
+    populateSelect('bm-filter-voz',  JAZLER_CATS.Voz,  'Voz');
+  };
+
+  /* ── 5. MODAL SELECTS ───────────────────────────────────────── */
+  const buildModalSelects = () => {
+    populateSelect('modal-cat1', JAZLER_CATS.Cat1, '— Seleccionar —');
+    populateSelect('modal-cat2', JAZLER_CATS.Cat2, '— Seleccionar —');
+    populateSelect('modal-cat3', JAZLER_CATS.Cat3, '— Seleccionar —');
+    populateSelect('modal-voz',  JAZLER_CATS.Voz,  '— Seleccionar —');
+  };
+
+  /* ── 6. ENERGY SELECTOR ─────────────────────────────────────── */
+  const buildEnergySel = () => {
+    const wrap = $('modal-energy-sel');
+    wrap.innerHTML = '';
+    for (let i = 1; i <= 9; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bm-energy-btn';
+      btn.textContent = i;
+      btn.dataset.val = i;
+      btn.addEventListener('click', () => setEnergy(i));
+      wrap.appendChild(btn);
+    }
+  };
+
+  let currentEnergy = null;
+  const setEnergy = (val) => {
+    currentEnergy = val;
+    document.querySelectorAll('.bm-energy-btn').forEach(b => {
+      const v = +b.dataset.val;
+      b.classList.toggle('sel', v === val);
+    });
+    $('modal-energy-label').textContent = `${val} — ${['','Tranquilo','Suave','Ligero','Moderado','Animado','Dinámico','Intenso','Potente','¡Máximo!'][val]}`;
+  };
+
+  /* ── 7. RENDER TABLE ────────────────────────────────────────── */
+  const fmtDuration = s => {
+    const m = Math.floor(s / 60), sec = s % 60;
+    return `${m}:${String(sec).padStart(2,'0')}`;
+  };
+
+  const voxBadge = voz => {
+    const cls = { 'Mujer':'badge-mujer','Hombre':'badge-hombre','Dúo':'badge-duo','Grupo':'badge-grupo' };
+    return `<span class="bm-badge ${cls[voz] || 'badge-grupo'}">${voz}</span>`;
+  };
+
+  const energyBar = energy => {
+    let html = '<div class="bm-energy">';
+    for (let i = 1; i <= 9; i++) {
+      const on  = i <= energy ? 'on' : '';
+      const hi  = i >= 8 ? 'high' : '';
+      html += `<div class="bm-energy__dot ${on} ${hi}"></div>`;
+    }
+    return html + '</div>';
+  };
+
+  const render = () => {
+    countEl.textContent = filtered.length;
+    if (!filtered.length) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      return;
+    }
+    emptyState.style.display = 'none';
+    tbody.innerHTML = filtered.map(t => `
+      <tr data-id="${t.id}" class="${playingId === t.id ? 'bm-row--playing' : ''}">
+        <td class="bm-cell-id">${t.id}</td>
+        <td class="bm-cell-play">
+          <button class="bm-play-btn ${playingId === t.id ? 'playing' : ''}"
+            data-id="${t.id}" title="Preescucha">
+            ${playingId === t.id
+              ? `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+              : `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
+          </button>
+        </td>
+        <td class="bm-cell-title">${t.title}</td>
+        <td class="bm-cell-artist">${t.artist}</td>
+        <td>${voxBadge(t.voz)}</td>
+        <td class="bm-cell-cat1">${t.cat1}</td>
+        <td class="bm-cell-cat2">${t.cat2}</td>
+        <td>${energyBar(t.energy)}</td>
+        <td class="bm-cell-dur">${fmtDuration(t.duration)}</td>
+        <td>
+          <div class="bm-actions">
+            <button class="bm-btn bm-btn--sm bm-btn--cyan bm-action-edit" data-id="${t.id}" title="Editar">✎</button>
+            <button class="bm-btn bm-btn--sm bm-btn--danger bm-action-del" data-id="${t.id}" title="Eliminar">✕</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  };
+
+  /* ── 8. FILTER & SORT ───────────────────────────────────────── */
+  const applyFilters = () => {
+    const q    = $('bm-search').value.toLowerCase();
+    const cat1 = $('bm-filter-cat1').value;
+    const cat2 = $('bm-filter-cat2').value;
+    const cat3 = $('bm-filter-cat3').value;
+    const voz  = $('bm-filter-voz').value;
+
+    filtered = library.filter(t =>
+      (!q    || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
+      (!cat1 || t.cat1 === cat1) &&
+      (!cat2 || t.cat2 === cat2) &&
+      (!cat3 || t.cat3 === cat3) &&
+      (!voz  || t.voz  === voz)
+    );
+
+    if (sortKey) {
+      filtered.sort((a, b) => {
+        let va = a[sortKey], vb = b[sortKey];
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        return va < vb ? -sortDir : va > vb ? sortDir : 0;
+      });
+    }
+    render();
+  };
+
+  /* ── 9. SORT HEADERS ────────────────────────────────────────── */
+  document.querySelectorAll('.bm-table thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (sortKey === key) sortDir *= -1;
+      else { sortKey = key; sortDir = 1; }
+      document.querySelectorAll('.bm-table thead th').forEach(h => h.classList.remove('sort-asc','sort-desc'));
+      th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+      applyFilters();
+    });
+  });
+
+  /* ── 10. AUDIO PREVIEW ──────────────────────────────────────── */
+  const setPlayerInfo = (track) => {
+    $('bm-player-title').textContent  = track ? track.title  : '—';
+    $('bm-player-artist').textContent = track ? track.artist : 'Sin pista cargada';
+    $('bm-player-cat').textContent    = track ? `${track.cat1} · ${track.cat2}` : '';
+    $('bm-time-total').textContent    = track ? fmtDuration(track.duration) : '0:00';
+    $('bm-timeline-fill').style.width = '0%';
+    $('bm-time-cur').textContent      = '0:00';
+  };
+
+  const stopPlayer = () => {
+    if (audioEl) { audioEl.pause(); audioEl.src = ''; audioEl = null; }
+    clearInterval(playerTimer);
+    const prevId = playingId;
+    playingId = null;
+    if (prevId) {
+      const row = tbody.querySelector(`tr[data-id="${prevId}"]`);
+      if (row) row.classList.remove('bm-row--playing');
+    }
+    $('bm-timeline-fill').style.width = '0%';
+    $('bm-time-cur').textContent = '0:00';
+    // Update player icon
+    const icon = $('bm-player-icon');
+    icon.innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+  };
+
+  const playTrack = (track) => {
+    if (playingId === track.id) { stopPlayer(); setPlayerInfo(null); return; }
+    stopPlayer();
+    playingId = track.id;
+    setPlayerInfo(track);
+
+    const url = `/api/v1/audios/${track.id}/stream`;
+    audioEl = new Audio(url);
+    audioEl.volume = 0.9;
+    audioEl.play().catch(() => {
+      /* Simulated play — no real server, animate progress bar */
+      simulatePlayback(track);
+    });
+
+    audioEl.addEventListener('timeupdate', () => updateTimeline(audioEl.currentTime, track.duration));
+    audioEl.addEventListener('ended', () => { stopPlayer(); setPlayerInfo(null); render(); });
+
+    // If audio fails to load (no server), simulate
+    audioEl.addEventListener('error', () => simulatePlayback(track));
+
+    render();
+    wsCmd('PREVIEW', { id: track.id, url });
+    showToast(`▶ ${track.title}`, 'info');
+  };
+
+  const simulatePlayback = (track) => {
+    let t = 0;
+    playerTimer = setInterval(() => {
+      t += 0.5;
+      if (t >= track.duration) { clearInterval(playerTimer); stopPlayer(); setPlayerInfo(null); render(); return; }
+      updateTimeline(t, track.duration);
+    }, 500);
+    const icon = $('bm-player-icon');
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+  };
+
+  const updateTimeline = (cur, total) => {
+    $('bm-timeline-fill').style.width = `${(cur / total) * 100}%`;
+    $('bm-time-cur').textContent = fmtDuration(Math.floor(cur));
+  };
+
+  $('bm-player-toggle').addEventListener('click', () => {
+    if (playingId) stopPlayer();
+  });
+
+  // Click on timeline to seek
+  $('bm-timeline').addEventListener('click', e => {
+    if (!playingId) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct  = (e.clientX - rect.left) / rect.width;
+    if (audioEl && audioEl.duration) {
+      audioEl.currentTime = pct * audioEl.duration;
+    }
+  });
+
+  /* ── 11. TABLE EVENTS (delegation) ─────────────────────────── */
+  tbody.addEventListener('click', e => {
+    const playBtn = e.target.closest('.bm-play-btn');
+    const editBtn = e.target.closest('.bm-action-edit');
+    const delBtn  = e.target.closest('.bm-action-del');
+
+    if (playBtn) {
+      const id = +playBtn.dataset.id;
+      const track = library.find(t => t.id === id);
+      if (track) playTrack(track);
+    }
+    if (editBtn) {
+      const id = +editBtn.dataset.id;
+      openModal(id);
+    }
+    if (delBtn) {
+      const id = +delBtn.dataset.id;
+      const track = library.find(t => t.id === id);
+      if (track && confirm(`¿Eliminar "${track.title}"?`)) {
+        if (playingId === id) stopPlayer();
+        library = library.filter(t => t.id !== id);
+        wsCmd('DELETE', { id });
+        showToast(`Eliminado: ${track.title}`, 'error');
+        applyFilters();
+      }
+    }
+  });
+
+  /* ── 12. MODAL LOGIC ────────────────────────────────────────── */
+  const openModal = (id = null) => {
+    editingId = id;
+    buildModalSelects();
+    buildEnergySel();
+    currentEnergy = null;
+
+    if (id) {
+      const t = library.find(x => x.id === id);
+      $('modal-badge').textContent        = `ID ${t.id}`;
+      $('modal-title').textContent         = 'Editar Audio';
+      $('modal-title-input').value         = t.title;
+      $('modal-artist').value              = t.artist;
+      $('modal-album').value               = t.album  || '';
+      $('modal-year').value                = t.year   || '';
+      $('modal-bpm').value                 = t.bpm    || '';
+      $('modal-lang').value                = t.lang   || 'es';
+      $('modal-cat1').value                = t.cat1;
+      $('modal-cat2').value                = t.cat2;
+      $('modal-cat3').value                = t.cat3;
+      $('modal-voz').value                 = t.voz;
+      $('modal-cue-intro').value           = t.intro;
+      $('modal-cue-mix').value             = t.mix;
+      $('modal-notes').value               = t.notes  || '';
+      $('modal-dropzone-wrap').style.display = 'none';
+      setEnergy(t.energy);
+    } else {
+      $('modal-badge').textContent        = 'NUEVO';
+      $('modal-title').textContent         = 'Cargar Audio';
+      $('modal-title-input').value         = '';
+      $('modal-artist').value              = '';
+      $('modal-album').value               = '';
+      $('modal-year').value                = '';
+      $('modal-bpm').value                 = '';
+      $('modal-lang').value                = 'es';
+      $('modal-cat1').value                = '';
+      $('modal-cat2').value                = '';
+      $('modal-cat3').value                = '';
+      $('modal-voz').value                 = '';
+      $('modal-cue-intro').value           = '0';
+      $('modal-cue-mix').value             = '0';
+      $('modal-notes').value               = '';
+      $('modal-dropzone-wrap').style.display = 'block';
+      $('modal-file-info').style.display  = 'none';
+    }
+    overlay.classList.add('active');
+    setTimeout(() => $('modal-title-input').focus(), 120);
+  };
+
+  const closeModal = () => {
+    overlay.classList.remove('active');
+    editingId = null;
+  };
+
+  const saveModal = () => {
+    const title = $('modal-title-input').value.trim();
+    const artist = $('modal-artist').value.trim();
+    if (!title || !artist) { showToast('Título y artista son obligatorios', 'error'); return; }
+
+    const payload = {
+      title,
+      artist,
+      album:  $('modal-album').value.trim(),
+      year:   +$('modal-year').value  || null,
+      bpm:    +$('modal-bpm').value   || null,
+      lang:   $('modal-lang').value,
+      cat1:   $('modal-cat1').value,
+      cat2:   $('modal-cat2').value,
+      cat3:   $('modal-cat3').value,
+      voz:    $('modal-voz').value,
+      energy: currentEnergy || 5,
+      intro:  +$('modal-cue-intro').value || 0,
+      mix:    +$('modal-cue-mix').value   || 0,
+      notes:  $('modal-notes').value.trim(),
+    };
+
+    if (editingId) {
+      const idx = library.findIndex(t => t.id === editingId);
+      if (idx !== -1) {
+        library[idx] = { ...library[idx], ...payload };
+        wsCmd('UPDATE', { id: editingId, ...payload });
+        showToast(`Actualizado: ${payload.title}`, 'success');
+      }
+    } else {
+      const newId = Math.max(...library.map(t => t.id)) + 1;
+      const newTrack = { id: newId, duration: 180, ...payload };
+      library.push(newTrack);
+      wsCmd('UPLOAD', newTrack);
+      showToast(`Cargado: ${payload.title}`, 'success');
+    }
+
+    closeModal();
+    applyFilters();
+  };
+
+  $('bm-btn-add').addEventListener('click', () => openModal());
+  $('bm-modal-close').addEventListener('click', closeModal);
+  $('bm-modal-cancel').addEventListener('click', closeModal);
+  $('bm-modal-save').addEventListener('click', saveModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+  /* Drag & drop */
+  const dz = $('bm-dropzone');
+  dz.addEventListener('click', () => $('modal-file').click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    handleFile(e.dataTransfer.files[0]);
+  });
+  $('modal-file').addEventListener('change', e => handleFile(e.target.files[0]));
+
+  const handleFile = file => {
+    if (!file || !file.type.startsWith('audio/')) { showToast('Archivo no es audio', 'error'); return; }
+    const info = $('modal-file-info');
+    info.textContent = `✓ ${file.name}  ·  ${(file.size / 1048576).toFixed(1)} MB`;
+    info.style.display = 'block';
+    // Pre-fill title from filename if empty
+    if (!$('modal-title-input').value) {
+      $('modal-title-input').value = file.name.replace(/\.[^.]+$/, '');
+    }
+    wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
+  };
+
+  /* Cue mark buttons */
+  document.querySelectorAll('.bm-cue__mark-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cue  = btn.dataset.cue;
+      const input = cue === 'intro' ? $('modal-cue-intro') : $('modal-cue-mix');
+      if (audioEl && !isNaN(audioEl.currentTime)) {
+        input.value = audioEl.currentTime.toFixed(1);
+        showToast(`Punto ${cue} marcado: ${input.value}s`, 'info');
+      } else {
+        input.value = (Math.random() * 10 + 1).toFixed(1); // demo
+        showToast(`Demo: punto ${cue} = ${input.value}s`, 'info');
+      }
+    });
+  });
+
+  /* ── 13. WEBSOCKET BRIDGE ───────────────────────────────────── */
+  const wsCmd = (cmd, data = {}) => {
+    const msg = { module: 'biblioteca-musical', cmd, ts: Date.now(), data };
+    if (window.ShellWS && typeof window.ShellWS.send === 'function') {
+      window.ShellWS.send(JSON.stringify(msg));
+      setStatus(`WS ▶ ${cmd}`, true);
+    } else {
+      // Simulated fallback
+      console.info('[BM·WS]', msg);
+      setStatus(`[SIM] ${cmd} · ${data.title || data.id || ''}`, false);
+    }
+  };
+
+  const setStatus = (msg, live = true) => {
+    statusMsg.textContent = msg;
+    if (live) setTimeout(() => statusMsg.textContent = 'Sistema listo · WebSocket conectado', 3000);
+  };
+
+  /* ── 14. TOAST NOTIFICATIONS ────────────────────────────────── */
+  const showToast = (msg, type = 'info') => {
+    const icons = { success: '✓', error: '✕', info: '•' };
+    const t = document.createElement('div');
+    t.className = `bm-toast bm-toast--${type}`;
+    t.innerHTML = `<span style="color:var(--${type==='success'?'accent-green':type==='error'?'accent-red':'accent-cyan'})">${icons[type]}</span>${msg}`;
+    $('bm-toasts').appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(20px)'; t.style.transition = '0.3s'; setTimeout(() => t.remove(), 350); }, 2800);
+  };
+
+  /* ── 15. FILTER EVENTS ──────────────────────────────────────── */
+  ['bm-search','bm-filter-cat1','bm-filter-cat2','bm-filter-cat3','bm-filter-voz']
+    .forEach(id => $(id).addEventListener('input', applyFilters));
+
+  /* ── 16. KEYBOARD SHORTCUTS ─────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+    if (e.key === 'n' && !overlay.classList.contains('active') && e.ctrlKey) {
+      e.preventDefault(); openModal();
+    }
+    if (e.key === ' ' && !overlay.classList.contains('active') && e.target === document.body) {
+      e.preventDefault();
+      if (playingId) stopPlayer();
+    }
+  });
+
+  /* ── 17. INIT ───────────────────────────────────────────────── */
+  buildFilters();
+  buildModalSelects();
+  buildEnergySel();
+  applyFilters();
+  setPlayerInfo(null);
+
+  showToast('Biblioteca Musical lista · ' + library.length + ' pistas', 'success');
+
+})();
+</script>
