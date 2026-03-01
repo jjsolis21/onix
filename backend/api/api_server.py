@@ -455,6 +455,9 @@ class AudioUpdateRequest(BaseModel):
     cat2:  Optional[str] = Field(default=None)
     cat3:  Optional[str] = Field(default=None)
     voz:   Optional[str] = Field(default=None)
+    intro: Optional[float] = Field(default=None)
+    outro: Optional[float] = Field(default=None)
+    hook:  Optional[float] = Field(default=None)
 
 
 # ---- Helpers de archivos (Copy-and-Delete) ----
@@ -533,6 +536,9 @@ def create_audio(
     cat2: Optional[str] = Form(None),
     cat3: Optional[str] = Form(None),
     voz: Optional[str] = Form(None),
+    intro: Optional[float] = Form(None),
+    outro: Optional[float] = Form(None),
+    hook: Optional[float] = Form(None),
     file: UploadFile = File(...),
     conn: sqlite3.Connection = Depends(get_db),
 ):
@@ -580,8 +586,8 @@ def create_audio(
             INSERT INTO audios (
                 titulo, artista, album, duracion, archivo_path,
                 subgenero, categoria, cat3, genero_vocal,
-                bpm, fecha_lanzamiento
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                bpm, intro, outro, hook, fecha_lanzamiento
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
@@ -593,6 +599,9 @@ def create_audio(
             cat3,             # cat3
             voz,              # genero_vocal
             bpm,
+            intro,
+            outro,
+            hook,
             fecha_lanzamiento,
         ))
         nuevo_id = cursor.lastrowid
@@ -618,6 +627,9 @@ def create_audio(
             "cat2": cat2,
             "cat3": cat3,
             "voz": voz,
+            "intro": intro,
+            "outro": outro,
+            "hook": hook,
         }
     }
 
@@ -669,6 +681,9 @@ def update_audio(
     if body.album    is not None: campos_update["album"]           = body.album
     if body.duracion is not None: campos_update["duracion"]        = body.duracion
     if body.bpm      is not None: campos_update["bpm"]             = body.bpm
+    if body.intro    is not None: campos_update["intro"]           = body.intro
+    if body.outro    is not None: campos_update["outro"]           = body.outro
+    if body.hook     is not None: campos_update["hook"]            = body.hook
     if body.fecha_lanzamiento is not None:
         campos_update["fecha_lanzamiento"] = body.fecha_lanzamiento
 

@@ -1,0 +1,7 @@
+       API_BASE vacío = same origin. Cambia a 'http://host:8000'
+  const API_BASE = '';
+        res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, {
+        res = await fetch(`${API_BASE}/api/v1/audios`, {
+      const res = await fetch(`${API_BASE}/api/v1/audios?limit=500&offset=0`);
+      const schRes = await fetch(`${API_BASE}/api/v1/config/biblioteca/schema`);
+      fetch(`${API_BASE}/api/v1/audios/${id}`, { method: 'DELETE' })

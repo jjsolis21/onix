@@ -151,6 +151,18 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     """)
     logger.info("MIGRACIÓN: Índices de rendimiento: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 6 — Columnas de Mix (intro, outro, hook) en tabla audios
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando columnas de cueing en audios...")
+    if "intro" not in columnas_audios:
+        cursor.execute("ALTER TABLE audios ADD COLUMN intro REAL DEFAULT NULL")
+    if "outro" not in columnas_audios:
+        cursor.execute("ALTER TABLE audios ADD COLUMN outro REAL DEFAULT NULL")
+    if "hook" not in columnas_audios:
+        cursor.execute("ALTER TABLE audios ADD COLUMN hook REAL DEFAULT NULL")
+    logger.info("  → Columnas intro, outro, hook verificadas/añadidas: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 
@@ -185,6 +197,9 @@ def _create_base_schema(conn: sqlite3.Connection) -> None:
             subgenero       TEXT    DEFAULT NULL,
             genero_vocal    TEXT    DEFAULT NULL,
             bpm             INTEGER DEFAULT NULL,
+            intro           REAL    DEFAULT NULL,
+            outro           REAL    DEFAULT NULL,
+            hook            REAL    DEFAULT NULL,
             fecha_lanzamiento TEXT  DEFAULT NULL,
             activo          INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
