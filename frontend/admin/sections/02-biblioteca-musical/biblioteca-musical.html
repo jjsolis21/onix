@@ -3,6 +3,12 @@
      Módulo: sections/02-biblioteca-musical/biblioteca-musical.html
      ============================================================ -->
 
+<script>
+  window.openModal = function (id) { console.warn("Módulo cargándose..."); };
+  window.closeModal = function () { };
+  window.saveModal = function () { };
+</script>
+
 <style>
   /* ── Variables heredadas del sistema (variables.css) ──────────── */
   :root {
@@ -1347,9 +1353,6 @@
 <script>
   'use strict';
 
-  window.openModal = openModal;
-  window.closeModal = closeModal;
-  window.saveModal = saveModal;
   console.log('>>> ÓNIX FM: Funciones vinculadas al scope global correctamente.');
 
   /* ══════════════════════════════════════════════════════════════
@@ -1632,7 +1635,8 @@
      Shell). Esto garantiza la visibilidad del modal incluso si
      el Shell tiene reglas que anulan display en elementos fixed.
   ══════════════════════════════════════════════════════════════ */
-  function openModal(id = null) {
+  window.openModal = function (id = null) {
+    console.log(">>> Abriendo Modal Ónix FM");
     const overlay = getOverlay();
     if (!overlay) {
       console.warn('[BM] openModal: #bm-overlay no encontrado en el DOM');
@@ -1706,7 +1710,7 @@
     setTimeout(() => { const inp = $('modal-title-input'); if (inp) inp.focus(); }, 120);
   };
 
-  function closeModal() {
+  window.closeModal = function () {
     const overlay = getOverlay();
     if (!overlay) return;
 
@@ -1716,9 +1720,9 @@
     overlay.style.zIndex = '';
 
     editingId = null;
-  }
+  };
 
-  async function saveModal() {
+  window.saveModal = async function () {
     const titleVal = $('modal-title-input')?.value.trim();
     const artistVal = $('modal-artist')?.value.trim();
     if (!titleVal || !artistVal) {
