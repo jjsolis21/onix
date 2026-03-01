@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solís FM Digital — Consola de Emisión</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Rajdhani:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/main.css" />
   <style>
     /* ── Botón Panel Admin (Studio → Admin) ───────────────── */
@@ -23,20 +26,18 @@
       align-items: center;
       gap: 4px;
     }
+
     .btn-admin-link:hover {
       border-color: #c8860a;
       color: #c8860a;
     }
   </style>
 </head>
+
 <body>
 
-  <!-- ══════════════════════════════════════════════════════════
-       MASTER HEADER — Zona de Emisión Full Width
-  ══════════════════════════════════════════════════════════ -->
   <header class="master-header">
 
-    <!-- Strip superior: brand + estado + controles globales -->
     <div class="brand-strip">
       <div class="brand-left">
         <span class="brand-logo">SOLÍS FM</span>
@@ -51,7 +52,7 @@
       </div>
       <div class="brand-right">
         <div class="sys-clock" id="systemClock">00:00:00</div>
-        <div class="ws-indicator" id="wsStatus" title="Estado WebSocket">●</div>
+        <div class="ws-indicator" id="studioWsStatus" title="Estado WebSocket">●</div>
         <a href="/admin" class="btn-admin-link" title="Abrir panel de administración">⚙ ADMIN</a>
         <div class="mode-toggle-wrap">
           <span class="mode-lbl">MAN</span>
@@ -64,15 +65,13 @@
       </div>
     </div>
 
-    <!-- Fila de players: NOW — Transport — NEXT -->
     <div class="players-row">
 
-      <!-- NOW PLAYING -->
       <div class="player-block player-now">
         <div class="player-badge badge-now">NOW</div>
         <div class="player-info">
-          <div class="player-title" id="trackTitle">Esperando emisión…</div>
-          <div class="player-artist" id="trackArtist">—</div>
+          <div class="player-title" id="studioNowTitle">Esperando emisión…</div>
+          <div class="player-artist" id="studioNowArtist">—</div>
           <div class="player-meta-row">
             <span class="pmeta" id="badgeGenero">—</span>
             <span class="pmeta-sep">·</span>
@@ -87,21 +86,24 @@
         </div>
       </div>
 
-      <!-- Transport + VU + Progress -->
       <div class="transport-block">
         <div class="vu-pair">
           <div class="vu-col">
-            <div class="vu-track"><div class="vu-fill" id="vuBarL"></div></div>
+            <div class="vu-track">
+              <div class="vu-fill" id="vuBarL"></div>
+            </div>
             <span class="vu-lbl">L</span>
           </div>
           <div class="vu-col">
-            <div class="vu-track"><div class="vu-fill" id="vuBarR"></div></div>
+            <div class="vu-track">
+              <div class="vu-fill" id="vuBarR"></div>
+            </div>
             <span class="vu-lbl">R</span>
           </div>
         </div>
 
         <div class="progress-zone">
-          <div class="waveform-bar">
+          <div class="waveform-bar" id="studioProgressBar">
             <div class="progress-fill" id="progressFill"></div>
             <div class="crossfade-marker" id="crossfadeZone"></div>
             <div class="waveform-ticks" id="waveformTicks"></div>
@@ -122,7 +124,6 @@
         </div>
       </div>
 
-      <!-- NEXT -->
       <div class="player-block player-next">
         <div class="player-badge badge-next">NEXT</div>
         <div class="player-info">
@@ -140,21 +141,15 @@
         </div>
       </div>
 
-    </div><!-- /.players-row -->
-
-    <!-- Ducking strip (oculto por defecto) -->
+    </div>
     <div class="ducking-strip" id="duckingIndicator">
       <span class="duck-dot"></span> DUCKING ACTIVO — Efecto en canal paralelo
     </div>
 
   </header>
 
-  <!-- ══════════════════════════════════════════════════════════
-       CONSOLA PRINCIPAL — 3 columnas
-  ══════════════════════════════════════════════════════════ -->
   <main class="console-grid">
 
-    <!-- ── COL IZQUIERDA: PLAYLIST ─────────────────────────── -->
     <aside class="col-playlist">
       <div class="col-header">
         <span class="col-icon">≡</span>
@@ -179,10 +174,8 @@
       </div>
     </aside>
 
-    <!-- ── COL CENTRAL: HUB / BUSCADOR ────────────────────── -->
     <section class="col-hub">
 
-      <!-- Tabs de navegación -->
       <div class="hub-tabs">
         <button class="hub-tab active" data-tab="musica" data-tipo="Musica">
           <span>🎵</span> MÚSICA
@@ -198,12 +191,9 @@
         </button>
       </div>
 
-      <!-- Buscador (oculto en tab Ingesta) -->
       <div class="hub-search" id="hubSearch">
-        <!-- Barra de búsqueda de texto libre -->
         <input type="text" class="search-input" id="searchInput" placeholder="Buscar por título o artista…" />
 
-        <!-- Fila 1: filtro por Origen -->
         <div class="search-filters filter-row">
           <span class="filter-row-label">Origen</span>
           <button class="filter-pill active" data-origen="">TODO</button>
@@ -211,7 +201,6 @@
           <button class="filter-pill" data-origen="Internacional">INTERNAC.</button>
         </div>
 
-        <!-- Fila 2: filtro por Género Vocal (solo Música) -->
         <div class="search-filters filter-row" id="filterRowGenero">
           <span class="filter-row-label">Género</span>
           <button class="filter-pill active" data-genero="">TODOS</button>
@@ -221,7 +210,6 @@
           <button class="filter-pill" data-genero="Instrumental">♪ INST.</button>
         </div>
 
-        <!-- Fila 3: filtro por Energía 1-5 + limpiar -->
         <div class="search-filters filter-row" id="filterRowEnergia">
           <span class="filter-row-label">Energía</span>
           <button class="filter-pill active" data-energia="">TODAS</button>
@@ -236,10 +224,8 @@
         <span class="search-count" id="searchCount"></span>
       </div>
 
-      <!-- Paneles de contenido por tab -->
       <div class="hub-content">
 
-        <!-- TAB: MÚSICA -->
         <div class="tab-panel active" id="tab-musica">
           <div class="lib-table-wrap">
             <table class="lib-table">
@@ -253,14 +239,15 @@
                   <th class="th-act"></th>
                 </tr>
               </thead>
-              <tbody id="libraryList">
-                <tr><td colspan="6" class="loading-cell">Cargando biblioteca…</td></tr>
+              <tbody id="studioLibTableBody">
+                <tr>
+                  <td colspan="6" class="loading-cell">Cargando biblioteca…</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- TAB: PUBLICIDAD -->
         <div class="tab-panel" id="tab-publicidad">
           <div class="lib-table-wrap">
             <table class="lib-table">
@@ -272,13 +259,14 @@
                 </tr>
               </thead>
               <tbody id="adList">
-                <tr><td colspan="3" class="loading-cell">Cargando cuñas…</td></tr>
+                <tr>
+                  <td colspan="3" class="loading-cell">Cargando cuñas…</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- TAB: JINGLES -->
         <div class="tab-panel" id="tab-jingles">
           <div class="lib-table-wrap">
             <table class="lib-table">
@@ -290,13 +278,14 @@
                 </tr>
               </thead>
               <tbody id="jingleList">
-                <tr><td colspan="3" class="loading-cell">Cargando jingles…</td></tr>
+                <tr>
+                  <td colspan="3" class="loading-cell">Cargando jingles…</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- TAB: INGESTA -->
         <div class="tab-panel" id="tab-ingesta">
           <div class="ingesta-scroll">
 
@@ -314,11 +303,13 @@
               <div class="ingesta-grid">
                 <div class="field-group">
                   <label class="field-lbl" for="inputTitulo">TÍTULO *</label>
-                  <input type="text" id="inputTitulo" name="titulo" class="field-input" placeholder="Nombre de la canción" required />
+                  <input type="text" id="inputTitulo" name="titulo" class="field-input"
+                    placeholder="Nombre de la canción" required />
                 </div>
                 <div class="field-group autocomplete-wrap">
                   <label class="field-lbl" for="inputArtista">ARTISTA *</label>
-                  <input type="text" id="inputArtista" name="artista" class="field-input" placeholder="Nombre del artista" required autocomplete="off" />
+                  <input type="text" id="inputArtista" name="artista" class="field-input"
+                    placeholder="Nombre del artista" required autocomplete="off" />
                   <ul class="autocomplete-dropdown" id="artistaDropdown" role="listbox"></ul>
                 </div>
                 <div class="field-group">
@@ -356,15 +347,18 @@
                 </div>
                 <div class="field-group">
                   <label class="field-lbl" for="inputIntro">INTRO (seg)</label>
-                  <input type="number" id="inputIntro" name="intro_sec" class="field-input" value="0" min="0" step="0.5" />
+                  <input type="number" id="inputIntro" name="intro_sec" class="field-input" value="0" min="0"
+                    step="0.5" />
                 </div>
                 <div class="field-group">
                   <label class="field-lbl" for="inputMixPoint">MIX POINT (seg)</label>
-                  <input type="number" id="inputMixPoint" name="mix_point_sec" class="field-input" value="0" min="0" step="0.5" />
+                  <input type="number" id="inputMixPoint" name="mix_point_sec" class="field-input" value="0" min="0"
+                    step="0.5" />
                 </div>
                 <div class="field-group field-span2">
                   <label class="field-lbl" for="inputNotas">NOTAS</label>
-                  <textarea id="inputNotas" name="notas" class="field-textarea" rows="2" placeholder="Observaciones opcionales…"></textarea>
+                  <textarea id="inputNotas" name="notas" class="field-textarea" rows="2"
+                    placeholder="Observaciones opcionales…"></textarea>
                 </div>
               </div>
 
@@ -374,13 +368,13 @@
               </div>
             </form>
 
-            <!-- Config del motor debajo del formulario -->
             <div class="motor-config">
               <div class="mcfg-title">⚙ CONFIGURACIÓN DEL MOTOR</div>
               <div class="mcfg-grid">
                 <div class="field-group">
                   <label class="field-lbl">CROSSFADE (seg)</label>
-                  <input type="number" id="cfgCrossfade" class="field-input field-sm" value="4" min="0" max="20" step="0.5" />
+                  <input type="number" id="cfgCrossfade" class="field-input field-sm" value="4" min="0" max="20"
+                    step="0.5" />
                 </div>
                 <div class="field-group">
                   <label class="field-lbl">VENTANA ARTISTA (min)</label>
@@ -400,13 +394,11 @@
               <button class="btn-cfg" id="btnSaveConfig">GUARDAR CONFIGURACIÓN</button>
             </div>
 
-          </div><!-- /.ingesta-scroll -->
-        </div><!-- /#tab-ingesta -->
-
-      </div><!-- /.hub-content -->
+          </div>
+        </div>
+      </div>
     </section>
 
-    <!-- ── COL DERECHA: CARTUCHERA DUAL ──────────────────────── -->
     <aside class="col-cartuchera">
 
       <div class="cart-mode-bar">
@@ -418,33 +410,44 @@
         </button>
       </div>
 
-      <!-- Cartuchera de Jingles -->
       <div class="cart-panel active" id="cartPanelJingles">
         <div class="effects-grid" id="effectsGrid">
-          <button class="effect-btn empty" data-slot="1"><span class="eff-num">01</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="2"><span class="eff-num">02</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="3"><span class="eff-num">03</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="4"><span class="eff-num">04</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="5"><span class="eff-num">05</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="6"><span class="eff-num">06</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="7"><span class="eff-num">07</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn empty" data-slot="8"><span class="eff-num">08</span><span class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="1"><span class="eff-num">01</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="2"><span class="eff-num">02</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="3"><span class="eff-num">03</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="4"><span class="eff-num">04</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="5"><span class="eff-num">05</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="6"><span class="eff-num">06</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="7"><span class="eff-num">07</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn empty" data-slot="8"><span class="eff-num">08</span><span
+              class="eff-name">vacío</span></button>
         </div>
       </div>
 
-      <!-- Cartuchera de Publicidad -->
       <div class="cart-panel" id="cartPanelAds">
         <div class="effects-grid" id="adsGrid">
-          <button class="effect-btn effect-ad empty" data-slot="1"><span class="eff-num">A1</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn effect-ad empty" data-slot="2"><span class="eff-num">A2</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn effect-ad empty" data-slot="3"><span class="eff-num">A3</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn effect-ad empty" data-slot="4"><span class="eff-num">A4</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn effect-ad empty" data-slot="5"><span class="eff-num">A5</span><span class="eff-name">vacío</span></button>
-          <button class="effect-btn effect-ad empty" data-slot="6"><span class="eff-num">A6</span><span class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="1"><span class="eff-num">A1</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="2"><span class="eff-num">A2</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="3"><span class="eff-num">A3</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="4"><span class="eff-num">A4</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="5"><span class="eff-num">A5</span><span
+              class="eff-name">vacío</span></button>
+          <button class="effect-btn effect-ad empty" data-slot="6"><span class="eff-num">A6</span><span
+              class="eff-name">vacío</span></button>
         </div>
       </div>
 
-      <!-- Log de disparos recientes -->
       <div class="cart-log">
         <div class="cart-log-title">DISPAROS RECIENTES</div>
         <ul class="effects-log-list" id="effectsLogList">
@@ -459,4 +462,5 @@
   <div class="toast-container" id="toastContainer"></div>
   <script src="/static/js/app.js"></script>
 </body>
+
 </html>
