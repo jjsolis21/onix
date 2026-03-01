@@ -325,10 +325,24 @@ const playTrack = track => {
   playingId = track.id;
   setPlayerInfo(track);
 
-  audioEl = new Audio(`/api/v1/audios/${track.id}/stream`);
+  let streamUrl = `${API_BASE}/stream/unknown.mp3`;
+  if (track.archivo_path) {
+    // track.archivo_path suele ser C:\\media\\onix\\library\\artista\\archivo.mp3
+    // Queremos obtener "artista/archivo.mp3" para adjuntarlo a /stream/
+    const parts = track.archivo_path.replace(/\\/g, '/').split('/');
+    const rel = parts.slice(-2).join('/');
+    streamUrl = `${API_BASE || 'http://localhost:8000'}/stream/${rel}`;
+  }
+
+  console.log('Intentando reproducir:', streamUrl);
+  audioEl = new Audio(streamUrl);
   audioEl.volume = 0.9;
   audioEl.play().catch(() => simulatePlayback(track));
-  audioEl.addEventListener('timeupdate', () => updateTimeline(audioEl.currentTime, track.duration));
+  audioEl.addEventListener('timeupdate', () => {
+    if (audioEl && !isNaN(audioEl.duration)) {
+      updateTimeline(audioEl.currentTime, track.duration);
+    }
+  });
   audioEl.addEventListener('ended', () => { stopPlayer(); setPlayerInfo(null); render(); });
   audioEl.addEventListener('error', () => simulatePlayback(track));
 

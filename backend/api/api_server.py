@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocke
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import sys
@@ -89,6 +90,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Montar la carpeta de biblioteca interactiva para streaming
+app.mount("/stream", StaticFiles(directory=LIBRARY_DIR), name="stream")
 
 
 @app.exception_handler(RequestValidationError)
