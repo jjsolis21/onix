@@ -11,21 +11,27 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
-import sys
-from pathlib import Path
+from init_db import initialize_database
 
-# Agregar la carpeta scripts al camino de búsqueda de Python
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(BASE_DIR / "scripts"))
-
-# Ahora sí funcionará el import
-from init_db import initialize_database, get_connection
+# ---------------------------------------------------------------------------
+# Conexión a DB con check_same_thread=False
+# Esto es necesario porque FastAPI usa múltiples hilos y SQLite por defecto
+# rechaza conexiones creadas en un hilo distinto al que las usa.
+# ---------------------------------------------------------------------------
+def get_connection(db_path: str = None) -> sqlite3.Connection:
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(path, check_same_thread=False)  # FIX: multi-thread support
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    return conn
 
 # ---------------------------------------------------------------------------
 # Configuración
@@ -37,10 +43,30 @@ MEDIA_ROOT   = Path(os.getenv("RADIO_MEDIA_ROOT", "/media/onix"))
 STAGING_DIR  = MEDIA_ROOT / "staging"
 LIBRARY_DIR  = MEDIA_ROOT / "library"
 
+# ---------------------------------------------------------------------------
+# Lifespan — sustituto moderno de @app.on_event("startup") / "shutdown"
+# A partir de FastAPI 0.93+ el decorador on_event está deprecado.
+# El patrón lifespan usa un async context manager: el código antes del
+# "yield" corre al arrancar, el código después al apagar.
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── STARTUP ──────────────────────────────────────────────────────────
+    logger.info("Iniciando Ónix FM API v2.0...")
+    initialize_database(DB_PATH)
+    STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info("API lista.")
+    yield
+    # ── SHUTDOWN (cleanup si fuera necesario) ────────────────────────────
+    logger.info("Apagando Ónix FM API.")
+
+
 app = FastAPI(
     title="Ónix FM — Radio Core API",
     description="Backend del sistema de gestión de audio para Ónix FM.",
     version="2.0.0",
+    lifespan=lifespan,          # FIX: patrón lifespan moderno
 )
 
 app.add_middleware(
@@ -72,16 +98,7 @@ def get_db():
         yield conn
 
 
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-def on_startup():
-    logger.info("Iniciando Ónix FM API v2.0...")
-    initialize_database(DB_PATH)
-    STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
-    logger.info("API lista.")
+
 
 
 # ===========================================================================
@@ -95,12 +112,17 @@ class ValorCreateRequest(BaseModel):
     valor: str          = Field(..., min_length=1, max_length=100, description="Nuevo valor a insertar")
     orden: Optional[int] = Field(default=None, description="Posición de orden (auto si no se especifica)")
 
-    @validator("valor")
-    def valor_strip(cls, v):
+    # FIX: @field_validator reemplaza al deprecado @validator de Pydantic v1.
+    # La diferencia clave: field_validator recibe (cls, v) sin mode kwarg por
+    # defecto, y debe decorarse indicando el nombre del campo como string.
+    @field_validator("valor")
+    @classmethod
+    def valor_strip(cls, v: str) -> str:
         return v.strip()
 
-    @validator("nombre_interno")
-    def nombre_strip(cls, v):
+    @field_validator("nombre_interno")
+    @classmethod
+    def nombre_strip(cls, v: str) -> str:
         return v.strip().lower()
 
 
@@ -769,91 +791,99 @@ def health_check():
         return {"status": "ok", "db": "connected", "version": "2.0.0"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"DB no disponible: {e}")
-# ===========================================================================
-# ESTADÍSTICAS DE INVENTARIO
-# ===========================================================================
-@app.get("/api/v1/stats", tags=["Audios"])
+
+
+@app.get("/api/v1/stats", tags=["Sistema"])
 def get_stats(conn: sqlite3.Connection = Depends(get_db)):
-    """Retorna contadores de inventario por tipo de audio."""
-    # Mapeo de columnas de tu base de datos actual
-    # cat2 se usa para la categoría y genero_vocal para el tipo en este nuevo esquema
-    rows = conn.execute("""
-        SELECT genero_vocal as tipo, COUNT(*) as cnt 
-        FROM audios 
-        WHERE activo = 1 
-        GROUP BY genero_vocal
-    """).fetchall()
-    
-    stats = {r["tipo"]: r["cnt"] for r in rows}
-    
-    return {
-        "Musica": stats.get("Musica", 0),
-        "Efecto": stats.get("Efecto", 0),
-        "Cuña": stats.get("Cuña", 0),
-        "total": sum(stats.values())
+    """
+    Retorna estadísticas generales de la Biblioteca Musical.
+
+    Consulta directamente la tabla `audios` para producir métricas
+    útiles en dashboards y widgets del Shell de Ónix FM.
+
+    Ejemplo de respuesta:
+    {
+      "total_audios": 245,
+      "total_activos": 240,
+      "duracion_total_segundos": 58320,
+      "por_cat1": {"Romántica": 45, "Pop": 38, ...},
+      "por_cat2": {"Éxito": 80, "Clásico": 55, ...},
+      "por_voz": {"Hombre": 110, "Mujer": 90, ...}
     }
-# ===========================================================================
-# WEBSOCKETS — Comunicación en tiempo real
-# ===========================================================================
-from fastapi import WebSocket, WebSocketDisconnect
-import json
+    """
+    logger.info("GET /api/v1/stats → consultando métricas de audios")
 
-class ConnectionManager:
-    def __init__(self):
-        self.active = set()
+    # ── Totales generales ─────────────────────────────────────────────────
+    totales = conn.execute("""
+        SELECT
+            COUNT(*)                          AS total_audios,
+            SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS total_activos,
+            SUM(CASE WHEN activo = 0 THEN 1 ELSE 0 END) AS total_inactivos,
+            COALESCE(SUM(duracion), 0)        AS duracion_total_segundos,
+            COALESCE(AVG(bpm), 0)             AS bpm_promedio,
+            COUNT(DISTINCT artista)           AS total_artistas
+        FROM audios
+    """).fetchone()
 
-    async def connect(self, ws: WebSocket):
-        await ws.accept()
-        self.active.add(ws)
+    # ── Distribución por Género (cat1 ↔ subgenero) ────────────────────────
+    rows_cat1 = conn.execute("""
+        SELECT subgenero AS valor, COUNT(*) AS cantidad
+        FROM audios
+        WHERE activo = 1 AND subgenero IS NOT NULL
+        GROUP BY subgenero
+        ORDER BY cantidad DESC
+    """).fetchall()
 
-    def disconnect(self, ws: WebSocket):
-        self.active.discard(ws)
+    # ── Distribución por Rotación (cat2 ↔ categoria) ──────────────────────
+    rows_cat2 = conn.execute("""
+        SELECT categoria AS valor, COUNT(*) AS cantidad
+        FROM audios
+        WHERE activo = 1 AND categoria IS NOT NULL
+        GROUP BY categoria
+        ORDER BY cantidad DESC
+    """).fetchall()
 
-    async def broadcast_async(self, event: str, payload: dict):
-        message = json.dumps({"event": event, "data": payload})
-        dead = set()
-        for ws in self.active:
-            try:
-                await ws.send_text(message)
-            except Exception:
-                dead.add(ws)
-        self.active -= dead
+    # ── Distribución por Voz (voz ↔ genero_vocal) ─────────────────────────
+    rows_voz = conn.execute("""
+        SELECT genero_vocal AS valor, COUNT(*) AS cantidad
+        FROM audios
+        WHERE activo = 1 AND genero_vocal IS NOT NULL
+        GROUP BY genero_vocal
+        ORDER BY cantidad DESC
+    """).fetchall()
 
-ws_manager = ConnectionManager()
+    # ── Distribución por Subgénero (cat3) ─────────────────────────────────
+    rows_cat3 = conn.execute("""
+        SELECT cat3 AS valor, COUNT(*) AS cantidad
+        FROM audios
+        WHERE activo = 1 AND cat3 IS NOT NULL
+        GROUP BY cat3
+        ORDER BY cantidad DESC
+    """).fetchall()
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    await ws_manager.connect(ws)
-    # Enviamos un estado inicial simulado para que la UI no se quede colgada
-    await ws.send_text(json.dumps({"event": "status", "data": {"modo": "manual"}}))
-    try:
-        while True:
-            raw = await ws.receive_text()
-            msg = json.loads(raw)
-            cmd = msg.get("cmd")
-            
-            # Responder al ping para mantener viva la conexión
-            if cmd == "ping":
-                await ws.send_text(json.dumps({"event": "pong"}))
-                
-    except WebSocketDisconnect:
-        ws_manager.disconnect(ws)
-# ===========================================================================
-# FRONTEND ESTÁTICO
-# ===========================================================================
-FRONTEND_DIR = BASE_DIR / "frontend"
-ADMIN_DIR = FRONTEND_DIR / "admin"
+    duracion_total = totales["duracion_total_segundos"]
 
-@app.get("/")
-def serve_studio():
-    f = FRONTEND_DIR / "index.html"
-    return FileResponse(str(f)) if f.exists() else {"error": "index.html no encontrado"}
+    logger.info(
+        f"  → Stats: {totales['total_activos']} activos / "
+        f"{totales['total_artistas']} artistas / "
+        f"{duracion_total}s duración total"
+    )
 
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+    return {
+        "total_audios":             totales["total_audios"],
+        "total_activos":            totales["total_activos"],
+        "total_inactivos":          totales["total_inactivos"],
+        "total_artistas":           totales["total_artistas"],
+        "duracion_total_segundos":  duracion_total,
+        "duracion_total_horas":     round(duracion_total / 3600, 2),
+        "bpm_promedio":             round(totales["bpm_promedio"] or 0, 1),
+        "por_cat1_genero":   {r["valor"]: r["cantidad"] for r in rows_cat1},
+        "por_cat2_rotacion": {r["valor"]: r["cantidad"] for r in rows_cat2},
+        "por_cat3_subgenero":{r["valor"]: r["cantidad"] for r in rows_cat3},
+        "por_voz":           {r["valor"]: r["cantidad"] for r in rows_voz},
+    }
 
-if ADMIN_DIR.exists():
-    app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
