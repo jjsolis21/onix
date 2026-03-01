@@ -1,1141 +1,668 @@
 /**
- * app.js — Solís FM Digital
- * Consola de radio profesional. JavaScript ES6+ puro, sin frameworks.
+ * app.js — Ónix FM Digital  v3.0  ·  Studio Sync Module
+ * ============================================================
+ * Módulo de sincronización en tiempo real para la interfaz del
+ * operador (Studio). Se conecta vía WebSocket al api_server.py
+ * y mantiene la UI actualizada sin necesidad de recargar la página.
  *
- * MÓDULOS INTERNOS:
- *   Clock          — Reloj de sistema en tiempo real.
- *   SolisWS        — WebSocket con reconexión exponencial. Sistema de eventos
- *                    extensible: SolisWS.onEvent("nombre", handler).
- *   UIState        — Estado global reactivo (track actual, modo, historial).
- *   NowPlaying     — Actualiza el panel superior con track_started/track_ended.
- *   VUMeter        — Animación de vúmetros (simulada; reemplazable con datos reales).
- *   ProgressBar    — Barra de progreso y contadores de tiempo.
- *   Library        — Carga y renderiza las tablas de biblioteca por tab.
- *   HubTabs        — Lógica de cambio de pestañas sin recarga.
- *   Playlist       — Gestión visual de la cola de reproducción.
- *   CartucheraDual — Toggle Jingles/Publicidad + disparo de efectos.
- *   Autocomplete   — Predicción de artista con debounce y teclado.
- *   IngestaForm    — Formulario de carga de audio con drag-and-drop.
- *   ConfigManager  — Lectura y escritura de configuración del motor.
- *   Toast          — Notificaciones de esquina.
+ * ARQUITECTURA:
+ *   WebSocket(/ws)  ←→  api_server.py  ←→  audio_engine.py
+ *                              ↓
+ *                         app.js (este archivo)
+ *                              ↓
+ *                     Studio UI (index.html)
  *
- * EXTENSIÓN PARA MÓDULO DE PUBLICIDAD (futuro):
- *   SolisWS.onEvent("ad_scheduled", (data) => { ... })
- *   El backend emitirá ese evento. Este archivo solo necesita escucharlo.
+ * EVENTOS QUE ESCUCHA:
+ *   track_started    → Actualiza strip "Al aire" + barra de progreso
+ *   track_ended      → Limpia la UI del track activo
+ *   crossfade_start  → Muestra indicador de transición
+ *   mode_changed     → Refleja cambio Manual/Automático en la UI
+ *   effect_fired     → Feedback visual del jingle/efecto
+ *   engine_stopped   → Estado de pausa total
+ *   playback_error   → Muestra error con detalles
+ *   watchdog_recovery→ Alerta de recuperación automática
+ *   library_updated  → Recarga la biblioteca de tracks
+ *   stats_updated    → Refresca contadores de inventario
+ *   bloques_updated  → Recarga la pauta/bloques horarios
+ *
+ * COMANDOS QUE ENVÍA:
+ *   play        { cmd:"play",       audio_id }
+ *   queue       { cmd:"queue",      audio_id }
+ *   fire_effect { cmd:"fire_effect", audio_id, canal_offset }
+ *   set_mode    { cmd:"set_mode",   mode:"manual"|"automatico" }
+ *   ping        { cmd:"ping" }                 (keep-alive cada 25s)
+ *
+ * USO:
+ *   En index.html:
+ *     <script src="app.js"></script>
+ *   El módulo se inicializa solo (IIFE) y expone StudioApp al global.
  */
 
 "use strict";
 
-const API = "";                              // mismo origen que FastAPI
-const WS_URL = `ws://${location.host}/ws`;
-
-/* ════════════════════════════════════════════════════════════
-   UTILIDADES
-════════════════════════════════════════════════════════════ */
-const $ = (sel, ctx = document) => ctx.querySelector(sel);
-const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
-
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-// Convierte segundos a "M:SS"
-function fmtTime(sec) {
-  if (!sec || isNaN(sec)) return "0:00";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
-}
-
-// Convierte segundos a "H:MM:SS" para duraciones largas (playlist total)
-function fmtDuration(sec) {
-  if (!sec || isNaN(sec)) return "0:00:00";
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
-  const s = Math.floor(sec % 60).toString().padStart(2, "0");
-  return `${h}:${m}:${s}`;
-}
-
-/* ════════════════════════════════════════════════════════════
-   RELOJ DEL SISTEMA
-════════════════════════════════════════════════════════════ */
-(function Clock() {
-  const el = $("#systemClock");
-  const tick = () => { el.textContent = new Date().toTimeString().slice(0, 8); };
-  tick();
-  setInterval(tick, 1000);
-})();
-
-/* ════════════════════════════════════════════════════════════
-   TOASTS
-════════════════════════════════════════════════════════════ */
-function showToast(msg, type = "info", ms = 3500) {
-  const container = $("#toastContainer");
-  const el = document.createElement("div");
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), ms);
-}
-
-/* ════════════════════════════════════════════════════════════
-   UIState — Estado global de la interfaz
-════════════════════════════════════════════════════════════ */
-const UIState = {
-  currentTrack:  null,
-  nextTrack:     null,
-  mode:          "manual",
-  elapsedSec:    0,
-  playbackTimer: null,
-  library:       { Musica: [], Efecto: [], Cuña: [], Tips: [] },
-  queue:         [],
-  history:       [],
-
-  setTrack(track) {
-    // Mueve el track actual al historial antes de reemplazarlo
-    if (this.currentTrack) {
-      this.history.unshift({
-        titulo: this.currentTrack.titulo,
-        artista: this.currentTrack.artista,
-        ts: new Date().toTimeString().slice(0, 8),
-      });
-      if (this.history.length > 20) this.history.pop();
-      Playlist.renderHistory();
-    }
-    this.currentTrack = track;
-    this.elapsedSec = 0;
-    clearInterval(this.playbackTimer);
-    if (track) {
-      // Timer de 1 segundo que alimenta la barra de progreso
-      this.playbackTimer = setInterval(() => {
-        this.elapsedSec++;
-        ProgressBar.update();
-      }, 1000);
-    }
-  },
+/* ============================================================
+   CONFIGURACIÓN
+   ============================================================ */
+const STUDIO_CONFIG = {
+  wsUrl:         `ws://${location.host}/ws`,
+  apiBase:       "",                    // mismo host; ajustar si hay proxy
+  reconnectBase: 1500,                  // ms de espera inicial para reconexión
+  reconnectMax:  20000,                 // ms máximo entre intentos
+  pingInterval:  25000,                 // keep-alive WebSocket
+  libReloadDelay: 400,                  // ms tras library_updated antes de recargar
 };
 
-/* ════════════════════════════════════════════════════════════
-   SolisWS — WebSocket con reconexión automática
-════════════════════════════════════════════════════════════ */
-const SolisWS = (() => {
-  let ws = null;
-  let retryDelay = 1500;
-  const handlers = {};
-
-  function connect() {
-    ws = new WebSocket(WS_URL);
-
-    ws.onopen = () => {
-      retryDelay = 1500;
-      setStatus("connected");
-      showToast("Motor de audio conectado", "success", 2500);
-    };
-
-    ws.onmessage = ({ data }) => {
-      try {
-        const { event, data: payload } = JSON.parse(data);
-        // Despachar a suscriptores específicos y al comodín "*"
-        (handlers[event] || []).forEach(fn => fn(payload));
-        (handlers["*"]   || []).forEach(fn => fn(event, payload));
-      } catch (e) {
-        console.error("[WS] Error al parsear mensaje:", e);
-      }
-    };
-
-    ws.onclose = () => {
-      setStatus("error");
-      setTimeout(connect, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, 20000);
-    };
-
-    ws.onerror = () => setStatus("error");
-  }
-
-  function send(payload) {
-    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-  }
-
-  /**
-   * Suscribirse a un evento del motor.
-   * El módulo de publicidad futuro usará:
-   *   SolisWS.onEvent("ad_scheduled", handler)
-   */
-  function onEvent(event, fn) {
-    handlers[event] = handlers[event] || [];
-    handlers[event].push(fn);
-  }
-
-  function setStatus(state) {
-    const el = $("#wsStatus");
-    el.className = "ws-indicator " + state;
-  }
-
-  connect();
-  return { send, onEvent };
-})();
-
-/* ════════════════════════════════════════════════════════════
-   MANEJADORES DE EVENTOS DEL MOTOR
-   Cada evento emitido por el EventBus de Python llega aquí
-   y actualiza la interfaz correspondiente.
-════════════════════════════════════════════════════════════ */
-SolisWS.onEvent("track_started", (data) => {
-  UIState.setTrack(data);
-  NowPlaying.render(data);
-  showToast(`▶  ${data.artista} — ${data.titulo}`, "info", 4000);
-});
-
-SolisWS.onEvent("track_ended", () => {
-  clearInterval(UIState.playbackTimer);
-  $("#trackArt")?.classList.remove("spinning");
-  VUMeter.stop();
-});
-
-SolisWS.onEvent("crossfade_start", (data) => {
-  const marker = $("#crossfadeZone");
-  if (!marker) return;
-  const pct = (data.duracion_crossfade / (UIState.currentTrack?.duracion_seg || 1)) * 100;
-  marker.style.width = `${Math.min(pct, 25)}%`;
-  marker.classList.add("visible");
-  $("#crossfadeLabel").textContent = `⇄ CF ${data.duracion_crossfade}s`;
-  showToast("⇄ Crossfade iniciado", "info", 2000);
-});
-
-SolisWS.onEvent("mode_changed", (data) => {
-  UIState.mode = data.modo;
-  $("#modeToggle").checked = data.modo === "automatico";
-  showToast(`Modo: ${data.modo.toUpperCase()}`, "warning");
-});
-
-SolisWS.onEvent("effect_fired", (data) => {
-  $("#duckingIndicator").classList.add("active");
-  setTimeout(() => $("#duckingIndicator").classList.remove("active"), 8000);
-  CartucheraDual.logDisparo(data.audio_id);
-});
-
-SolisWS.onEvent("engine_stopped", () => {
-  VUMeter.stop();
-  showToast("Motor detenido", "warning");
-});
-
-// Estado inicial al conectar
-SolisWS.onEvent("status", (data) => {
-  UIState.mode = data.modo;
-  $("#modeToggle").checked = data.modo === "automatico";
-  if (data.current_track) {
-    UIState.currentTrack = data.current_track;
-    NowPlaying.render(data.current_track);
-  }
-});
-
-// ── Sincronización en tiempo real: Admin → Studio ─────────────────────────
-// Este listener es la pieza central de la sincronización en tiempo real.
-// Cuando el Admin sube una nueva canción, el backend emite "library_updated"
-// a todos los clientes WebSocket conectados. Al recibirlo aquí, se invalida
-// la caché del tipo afectado y se recarga la pestaña activa si corresponde.
-// Resultado: la canción aparece en el Studio sin que nadie tenga que recargar.
-SolisWS.onEvent("library_updated", (data) => {
-  const tipo   = data.tipo || null;
-  const action = data.action || "created";
-
-  // Invalidar el tipo afectado (o todos si no se especificó)
-  if (tipo) {
-    Library.invalidate(tipo);
-  } else {
-    ["Musica", "Efecto", "Cuña", "Tips"].forEach(t => Library.invalidate(t));
-  }
-
-  // Recargar el tab activo si muestra el tipo que cambió
-  const activeTab  = $(".hub-tab.active");
-  const activeTipo = activeTab?.dataset.tipo;
-  if (!tipo || activeTipo === tipo) {
-    // force=true fuerza la recarga aunque el tab esté "cargado"
-    Library.loadTab(activeTab?.dataset.tab, activeTipo, true);
-  }
-
-  // También recargar la cartuchera si cambió Efecto o Cuña
-  if (!tipo || tipo === "Efecto" || tipo === "Cuña") {
-    CartucheraDual.reload();
-  }
-
-  if (action === "created") showToast("📥 Nueva pista en biblioteca", "success", 2500);
-  if (action === "deleted")  showToast("🗑 Pista eliminada", "info", 2000);
-  if (action === "moved")    showToast("📂 Archivo movido", "info", 2000);
-});
-
-// ── Error de reproducción: archivo faltante o codec no soportado ──────────
-SolisWS.onEvent("playback_error", (data) => {
-  const msg = data.reason === "archivo_no_encontrado"
-    ? `⚠ Archivo no encontrado: ${data.path || "desconocido"}`
-    : `⚠ Error de reproducción (ID ${data.audio_id || "?"})`;
-  showToast(msg, "error", 5000);
-});
-
-// ── Watchdog: recuperación automática del motor ───────────────────────────
-SolisWS.onEvent("watchdog_recovery", (data) => {
-  const tipo = data.tipo === "silence" ? "Silencio" : "Fallo";
-  showToast(`🔄 Motor: ${tipo} detectado — recuperando...`, "warning", 4000);
-});
-
-SolisWS.onEvent("watchdog_recovered", (data) => {
-  const methods = {
-    resume:        "Stream reanudado",
-    next_track:    "Saltando a siguiente pista",
-    stall_restart: "Stream reiniciado (stall)",
-    stall_skip:    "Stall: saltando pista",
-  };
-  const msg = methods[data.method] || "Motor recuperado";
-  showToast(`✅ Motor OK — ${msg}`, "success", 3000);
-});
-
-SolisWS.onEvent("watchdog_stall", (data) => {
-  showToast(`⚠ Stall detectado (${data.stall_seg?.toFixed(1)}s) — reiniciando...`, "warning", 4000);
-});
-
-/* ════════════════════════════════════════════════════════════
-   NowPlaying — Panel superior: título, artista, badges
-════════════════════════════════════════════════════════════ */
-const NowPlaying = {
-  GENERO_ICONS: { Hombre: "♂", Mujer: "♀", Dueto: "⚤", Instrumental: "♪" },
-
-  render(track) {
-    if (!track) return;
-
-    $("#trackTitle").textContent  = track.titulo  || "—";
-    $("#trackArtist").textContent = track.artista || "—";
-
-    const gIcon = this.GENERO_ICONS[track.genero_vocal] || "";
-    $("#badgeGenero").textContent  = `${gIcon} ${track.genero_vocal || "—"}`;
-    $("#badgeOrigen").textContent  = track.origen || "—";
-    $("#badgeEnergia").textContent = `E${track.energia ?? "—"}`;
-
-    // Activar ON AIR
-    const badge = $("#onAirBadge");
-    badge.classList.add("active");
-    badge.querySelector(".on-air-text").textContent = "ON AIR";
-
-    VUMeter.start();
-  },
-};
-
-/* ════════════════════════════════════════════════════════════
-   VUMeter — Animación de vúmetros (simulada)
-   Para usar niveles reales del motor, reemplaza tick() con
-   datos enviados por WebSocket desde el backend de audio.
-════════════════════════════════════════════════════════════ */
-const VUMeter = (() => {
-  let timer = null;
-
-  function tick() {
-    // Simula niveles de audio con algo de naturalidad física
-    const base = 35 + Math.random() * 45;
-    const peak = Math.random() > 0.93 ? base + 25 : 0;
-    const L = Math.min(base + peak + (Math.random() - .5) * 12, 100);
-    const R = Math.min(base      + (Math.random() - .5) * 18, 100);
-    setBar("vuBarL", L);
-    setBar("vuBarR", R);
-  }
-
-  function setBar(id, pct) {
-    const el = document.getElementById(id);
-    if (el) el.style.height = `${pct}%`;
-  }
-
-  return {
-    start() {
-      if (timer) return;
-      timer = setInterval(tick, 85);
-    },
-    stop() {
-      clearInterval(timer);
-      timer = null;
-      setBar("vuBarL", 0);
-      setBar("vuBarR", 0);
-    },
-  };
-})();
-
-/* ════════════════════════════════════════════════════════════
-   ProgressBar — Barra de progreso y contadores de tiempo
-════════════════════════════════════════════════════════════ */
-const ProgressBar = {
-  update() {
-    const track = UIState.currentTrack;
-    if (!track) return;
-    const dur = track.duracion_seg || 0;
-    const el  = UIState.elapsedSec;
-    const pct = dur > 0 ? Math.min((el / dur) * 100, 100) : 0;
-
-    $("#progressFill").style.width     = `${pct}%`;
-    $("#timeElapsed").textContent      = fmtTime(el);
-    $("#timeRemainingBar").textContent = fmtTime(Math.max(0, dur - el));
-    $("#timeRemaining").textContent    = fmtTime(Math.max(0, dur - el));
-  },
-};
-
-/* ════════════════════════════════════════════════════════════
-   HubTabs — Cambio de pestañas del buscador central
-════════════════════════════════════════════════════════════ */
-const HubTabs = (() => {
-  const searchEl = $("#hubSearch");
-
-  function activate(tab) {
-    // Desactivar todos los tabs y paneles
-    $$(".hub-tab").forEach(t => t.classList.remove("active"));
-    $$(".tab-panel").forEach(p => p.classList.remove("active"));
-
-    // Activar el tab solicitado
-    const btn   = $(`.hub-tab[data-tab="${tab}"]`);
-    const panel = $(`#tab-${tab}`);
-    btn?.classList.add("active");
-    panel?.classList.add("active");
-
-    // El tab de ingesta oculta el buscador
-    if (tab === "ingesta") {
-      searchEl.classList.add("hidden");
-    } else {
-      searchEl.classList.remove("hidden");
-      // Cargar datos del tab si no están cargados aún
-      Library.loadTab(tab, btn?.dataset.tipo || "");
-    }
-  }
-
-  $$(".hub-tab").forEach(btn => {
-    btn.addEventListener("click", () => activate(btn.dataset.tab));
-  });
-
-  // Activar el tab inicial
-  activate("musica");
-
-  return { activate };
-})();
-
-/* ════════════════════════════════════════════════════════════
-   Library — Carga y renderiza las tablas de biblioteca
-════════════════════════════════════════════════════════════ */
-const Library = (() => {
-  const loaded = {}; // cache flag por tipo
-
-  // Mapeo tipo → tbody DOM ID (incluyendo Tips)
-  const TBODY_IDS = {
-    Musica: "libraryList",
-    Efecto: "jingleList",
-    Cuña:   "adList",
-    Tips:   "tipsList",
-  };
-
-  // Estado combinado de filtros — todos activos simultáneamente
-  const filters = {
-    q:       "",     // texto de búsqueda libre
-    origen:  null,   // "Nacional" | "Internacional" | null (todos)
-    genero:  null,   // "Hombre" | "Mujer" | "Dueto" | "Instrumental" | null (todos)
-    energia: null,   // 1-5 | null (todos)
-  };
-
-  // Carga datos del servidor y los mete en UIState.library[tipo]
-  // force=true omite la caché y siempre hace fetch (usado por library_updated)
-  async function loadTab(tab, tipo, force = false) {
-    if (!tipo) return;
-    // Usar caché si está disponible y no se fuerza recarga
-    if (loaded[tipo] && !force) {
-      return applyFiltersAndRender(tipo);
-    }
-    try {
-      const params = new URLSearchParams({ tipo, limit: 500 });
-      const res    = await fetch(`${API}/api/v1/audios?${params}`);
-      const tracks = await res.json();
-      UIState.library[tipo] = tracks;
-      loaded[tipo] = true;
-      applyFiltersAndRender(tipo);
-      $("#searchCount").textContent = `${tracks.length} registros`;
-    } catch (err) {
-      console.error("[Library] Error cargando tipo", tipo, err);
-    }
-  }
-
-  // Aplica los filtros activos sobre UIState.library[tipo] y renderiza
-  // Esta función es el núcleo del sistema de filtrado:
-  // combina búsqueda de texto, origen, género y energía en un solo paso.
-  function applyFiltersAndRender(tipo) {
-    if (!tipo || !UIState.library[tipo]) return;
-    const all = UIState.library[tipo];
-
-    const filtered = all.filter(t => {
-      // Filtro de texto: busca en título y artista (case-insensitive)
-      if (filters.q) {
-        const q = filters.q;
-        const match = t.titulo.toLowerCase().includes(q) ||
-                      t.artista.toLowerCase().includes(q);
-        if (!match) return false;
-      }
-      // Filtro de origen
-      if (filters.origen && t.origen !== filters.origen) return false;
-      // Filtro de género vocal (solo aplica a Música)
-      if (filters.genero && t.genero_vocal !== filters.genero) return false;
-      // Filtro de energía
-      if (filters.energia && t.energia !== filters.energia) return false;
-      return true;
-    });
-
-    renderTbody(tipo, filtered);
-    $("#searchCount").textContent = `${filtered.length} de ${all.length} registros`;
-  }
-
-  function renderTbody(tipo, tracks) {
-    const tbodyId = TBODY_IDS[tipo];
-    const tbody   = $(`#${tbodyId}`);
-    if (!tbody) return;
-
-    if (!tracks.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="loading-cell">Sin registros${filters.q || filters.origen || filters.genero ? " (prueba limpiar filtros)" : " para este tipo"}</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = tracks.map(t => `
-      <tr data-id="${t.id}" class="${UIState.currentTrack?.id === t.id ? "row-playing" : ""}">
-        <td class="td-main">
-          <span class="td-title-text">${esc(t.titulo)}</span>
-          <span class="td-artist-text">${esc(t.artista)}</span>
-        </td>
-        <td class="td-dur">${fmtTime(t.duracion_seg)}</td>
-        ${tipo === "Musica" ? `
-          <td class="td-tag">${esc(t.genero_vocal || "—")}</td>
-          <td class="td-tag ${t.origen === "Nacional" ? "tag-nac" : "tag-int"}">${t.origen === "Nacional" ? "NAC" : "INT"}</td>
-          <td class="td-e td-e--${t.energia ?? 0}">${t.energia ?? "—"}</td>
-        ` : `<td colspan="3" class="td-tag-empty"></td>`}
-        <td class="td-actions">
-          <button class="btn-row-play"  data-id="${t.id}" title="Reproducir ahora">▶</button>
-          <button class="btn-row-queue" data-id="${t.id}" title="Añadir a cola">+</button>
-        </td>
-      </tr>
-    `).join("");
-
-    // Delegación de eventos para play y queue
-    tbody.querySelectorAll(".btn-row-play").forEach(btn => {
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        playTrackById(parseInt(btn.dataset.id));
-      });
-    });
-    tbody.querySelectorAll(".btn-row-queue").forEach(btn => {
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        queueTrackById(parseInt(btn.dataset.id), tipo);
-      });
-    });
-  }
-
-  // ── Listeners de filtros ─────────────────────────────────────────────────
-  // Búsqueda de texto con debounce (180ms para no spamear mientras se escribe)
-  const searchInput = $("#searchInput");
-  searchInput?.addEventListener("input", debounce(() => {
-    filters.q = searchInput.value.trim().toLowerCase();
-    const tipo = $(".hub-tab.active")?.dataset.tipo;
-    applyFiltersAndRender(tipo);
-  }, 180));
-
-  // Pills de origen: Nacional / Internacional / Todos
-  $$(".filter-pill[data-origen]").forEach(pill => {
-    pill.addEventListener("click", () => {
-      $$(".filter-pill[data-origen]").forEach(p => p.classList.remove("active"));
-      pill.classList.add("active");
-      filters.origen = pill.dataset.origen || null;
-      const tipo = $(".hub-tab.active")?.dataset.tipo;
-      applyFiltersAndRender(tipo);
-    });
-  });
-
-  // Pills de género: Todos / Hombre / Mujer / Dueto / Instrumental
-  // (estos elementos deben existir en index.html con data-genero="...")
-  $$(".filter-pill[data-genero]").forEach(pill => {
-    pill.addEventListener("click", () => {
-      $$(".filter-pill[data-genero]").forEach(p => p.classList.remove("active"));
-      pill.classList.add("active");
-      filters.genero = pill.dataset.genero || null;
-      const tipo = $(".hub-tab.active")?.dataset.tipo;
-      applyFiltersAndRender(tipo);
-    });
-  });
-
-  // Pills de energía: 1-5
-  $$(".filter-pill[data-energia]").forEach(pill => {
-    pill.addEventListener("click", () => {
-      $$(".filter-pill[data-energia]").forEach(p => p.classList.remove("active"));
-      pill.classList.add("active");
-      const v = pill.dataset.energia;
-      filters.energia = v ? parseInt(v) : null;
-      const tipo = $(".hub-tab.active")?.dataset.tipo;
-      applyFiltersAndRender(tipo);
-    });
-  });
-
-  // ── Botón limpiar filtros ────────────────────────────────────────────────
-  $("#btnClearFilters")?.addEventListener("click", () => {
-    filters.q = "";
-    filters.origen = null;
-    filters.genero = null;
-    filters.energia = null;
-    if (searchInput) searchInput.value = "";
-    // Desmarcar todas las pills
-    $$(".filter-pill").forEach(p => p.classList.remove("active"));
-    // Marcar la pill "Todos" de origen si existe
-    $(".filter-pill[data-origen='']")?.classList.add("active");
-    $(".filter-pill[data-genero='']")?.classList.add("active");
-    const tipo = $(".hub-tab.active")?.dataset.tipo;
-    applyFiltersAndRender(tipo);
-  });
-
-  // ── Invalidar caché ──────────────────────────────────────────────────────
-  // Llamado por el handler de library_updated y por la ingesta local
-  function invalidate(tipo) {
-    if (tipo) {
-      loaded[tipo] = false;
-      UIState.library[tipo] = [];
-    } else {
-      // Sin tipo específico: invalidar todo
-      Object.keys(TBODY_IDS).forEach(t => {
-        loaded[t] = false;
-        UIState.library[t] = [];
-      });
-    }
-  }
-
-  return { loadTab, invalidate, applyFiltersAndRender };
-})();
-
-/* ════════════════════════════════════════════════════════════
-   Reproducción y cola
-════════════════════════════════════════════════════════════ */
-function playTrackById(id) {
-  SolisWS.send({ cmd: "play", audio_id: id });
-  fetch(`${API}/api/v1/play/${id}`, { method: "POST" }).catch(() => {});
-}
-
-function queueTrackById(id, tipo) {
-  // Buscar el track en la biblioteca para tenerlo disponible en la cola visual
-  const track = UIState.library[tipo]?.find(t => t.id === id);
-  if (!track) return;
-
-  UIState.queue.push(track);
-  SolisWS.send({ cmd: "queue", audio_id: id });
-  Playlist.render();
-  showToast(`+ Cola: ${track.titulo}`, "info", 2000);
-}
-
-/* ════════════════════════════════════════════════════════════
-   Playlist — Cola visual y historial
-════════════════════════════════════════════════════════════ */
-const Playlist = {
-  render() {
-    const el = $("#playlistList");
-    if (!UIState.queue.length) {
-      el.innerHTML = `<div class="empty-state"><span class="empty-icon">♪</span><span>Cola vacía</span></div>`;
-      $("#playlistDuration").textContent = "—";
-      return;
-    }
-
-    const totalSec = UIState.queue.reduce((acc, t) => acc + (t.duracion_seg || 0), 0);
-    $("#playlistDuration").textContent = fmtDuration(totalSec);
-
-    el.innerHTML = UIState.queue.map((t, i) => `
-      <div class="pl-item" data-index="${i}" data-id="${t.id}">
-        <span class="pl-pos">${i + 1}</span>
-        <div class="pl-info">
-          <div class="pl-title">${esc(t.titulo)}</div>
-          <div class="pl-artist">${esc(t.artista)}</div>
-        </div>
-        <span class="pl-dur">${fmtTime(t.duracion_seg)}</span>
-      </div>
-    `).join("");
-
-    // Doble click reproduce de inmediato
-    el.querySelectorAll(".pl-item").forEach(item => {
-      item.addEventListener("dblclick", () => playTrackById(parseInt(item.dataset.id)));
-    });
-  },
-
-  renderHistory() {
-    const el = $("#historyList");
-    if (!UIState.history.length) {
-      el.innerHTML = `<div class="empty-state-sm">Sin historial aún</div>`;
-      return;
-    }
-    el.innerHTML = UIState.history.map(h => `
-      <div class="hist-item">
-        <span class="hist-time">${h.ts}</span>
-        <span class="hist-title">${esc(h.titulo)} — ${esc(h.artista)}</span>
-      </div>
-    `).join("");
-  },
-};
-
-// Limpiar cola
-$("#btnClearQueue")?.addEventListener("click", () => {
-  UIState.queue = [];
-  Playlist.render();
-});
-
-/* ════════════════════════════════════════════════════════════
-   CartucheraDual — Toggle Jingles/Publicidad + disparo
-════════════════════════════════════════════════════════════ */
-const CartucheraDual = (() => {
-  let currentMode = "jingles";
-
-  async function loadEffects() {
-    try {
-      const [efectos, cuñas] = await Promise.all([
-        fetch(`${API}/api/v1/audios?tipo=Efecto&limit=8`).then(r => r.json()),
-        fetch(`${API}/api/v1/audios?tipo=Cuña&limit=6`).then(r  => r.json()),
-      ]);
-      renderGrid("effectsGrid", efectos, "jingle");
-      renderGrid("adsGrid",     cuñas,  "ad");
-
-      // Actualizar la biblioteca en cache
-      UIState.library["Efecto"] = efectos;
-      UIState.library["Cuña"]   = cuñas;
-    } catch (err) {
-      console.warn("[Cartuchera] Error cargando efectos:", err);
-    }
-  }
-
-  function renderGrid(gridId, tracks, colorClass) {
-    const grid  = $(`#${gridId}`);
-    if (!grid) return;
-    const slots = Math.max(tracks.length, gridId === "effectsGrid" ? 8 : 6);
-    grid.innerHTML = "";
-
-    for (let i = 0; i < slots; i++) {
-      const t   = tracks[i];
-      const btn = document.createElement("button");
-      btn.className = `effect-btn ${colorClass === "ad" ? "effect-ad " : ""}${t ? "" : "empty"}`;
-      btn.dataset.slot = i + 1;
-
-      const numLabel = colorClass === "ad" ? `A${i + 1}` : String(i + 1).padStart(2, "0");
-      btn.innerHTML = `
-        <span class="eff-num">${numLabel}</span>
-        <span class="eff-name">${t ? esc(t.titulo) : "vacío"}</span>
-      `;
-
-      if (t) {
-        btn.dataset.audioId = t.id;
-        btn.addEventListener("click", () => fireEffect(t.id, btn, i));
-      }
-      grid.appendChild(btn);
-    }
-  }
-
-  function fireEffect(audioId, btnEl, slotIndex) {
-    btnEl.classList.add("firing");
-    setTimeout(() => btnEl.classList.remove("firing"), 350);
-
-    SolisWS.send({ cmd: "fire_effect", audio_id: audioId, canal_offset: slotIndex % 6 });
-    fetch(`${API}/api/v1/effect/${audioId}?canal=${slotIndex % 6}`, { method: "POST" }).catch(() => {});
-  }
-
-  function logDisparo(audioId) {
-    const list  = $("#effectsLogList");
-    const track = [...UIState.library["Efecto"], ...UIState.library["Cuña"]]
-                    .find(t => t.id === audioId);
-    const name  = track?.titulo || `ID ${audioId}`;
-    const now   = new Date().toTimeString().slice(0, 8);
-
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="log-time">${now}</span><span>${esc(name)}</span>`;
-
-    const empty = list.querySelector(".log-empty");
-    if (empty) empty.remove();
-
-    list.prepend(li);
-    while (list.children.length > 8) list.lastChild?.remove();
-  }
-
-  // Toggle Jingles / Publicidad
-  $$(".cart-mode-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const mode = btn.dataset.mode;
-      if (mode === currentMode) return;
-      currentMode = mode;
-
-      $$(".cart-mode-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-
-      // Mostrar el panel correspondiente
-      $("#cartPanelJingles").classList.toggle("active", mode === "jingles");
-      $("#cartPanelAds").classList.toggle("active",     mode === "publicidad");
-    });
-  });
-
-  loadEffects();
-
-  return { logDisparo, reload: loadEffects };
-})();
-
-/* ════════════════════════════════════════════════════════════
-   Autocomplete — Campo Artista del formulario de ingesta
-════════════════════════════════════════════════════════════ */
-const Autocomplete = (() => {
-  const input    = $("#inputArtista");
-  const dropdown = $("#artistaDropdown");
-  if (!input) return {};
-
-  let suggestions = [];
-  let activeIdx   = -1;
-
-  function normalize(s) { return s.trim().toLowerCase().replace(/\s+/g, " "); }
-
-  function highlight(text, q) {
-    if (!q) return esc(text);
-    const idx = normalize(text).indexOf(normalize(q));
-    if (idx === -1) return esc(text);
-    return esc(text.slice(0, idx)) +
-           `<span class="ac-highlight">${esc(text.slice(idx, idx + q.length))}</span>` +
-           esc(text.slice(idx + q.length));
-  }
-
-  function render(q) {
-    if (!suggestions.length) { close(); return; }
-    dropdown.innerHTML = suggestions.map((s, i) =>
-      `<li role="option" data-idx="${i}">${highlight(s, q)}</li>`
-    ).join("");
-    dropdown.classList.add("open");
-    activeIdx = -1;
-
-    dropdown.querySelectorAll("li").forEach(li => {
-      li.addEventListener("mousedown", e => {
-        e.preventDefault();
-        select(parseInt(li.dataset.idx));
-      });
-    });
-  }
-
-  function close() { dropdown.classList.remove("open"); activeIdx = -1; }
-
-  function select(idx) { input.value = suggestions[idx]; close(); }
-
-  function setActive(idx) {
-    const items = $$("li", dropdown);
-    items.forEach(li => li.classList.remove("ac-active"));
-    if (idx >= 0 && idx < items.length) {
-      items[idx].classList.add("ac-active");
-      items[idx].scrollIntoView({ block: "nearest" });
-      activeIdx = idx;
-    }
-  }
-
-  const fetch_ = debounce(async (q) => {
-    if (q.length < 2) { close(); return; }
-    try {
-      const res = await fetch(`${API}/api/v1/audios/autocomplete?q=${encodeURIComponent(q)}`);
-      suggestions = await res.json();
-      render(q);
-
-      if (suggestions.some(s => normalize(s) === normalize(q)) && suggestions.length === 1) {
-        showToast("✓ Artista ya existe en la biblioteca", "success", 2000);
-      }
-    } catch {}
-  }, 220);
-
-  input.addEventListener("input",   () => fetch_(input.value.trim()));
-  input.addEventListener("blur",    () => setTimeout(close, 160));
-  input.addEventListener("keydown", e => {
-    if (!dropdown.classList.contains("open")) return;
-    const items = $$("li", dropdown);
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(activeIdx + 1, items.length - 1)); }
-    if (e.key === "ArrowUp")   { e.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
-    if (e.key === "Enter"   )  { if (activeIdx >= 0) { e.preventDefault(); select(activeIdx); } }
-    if (e.key === "Escape"  )  { close(); }
-  });
-})();
-
-/* ════════════════════════════════════════════════════════════
-   IngestaForm — Formulario de carga con drag-and-drop
-════════════════════════════════════════════════════════════ */
-const IngestaForm = (() => {
-  const form      = $("#ingestaForm");
-  const dropZone  = $("#fileDropZone");
-  const fileInput = $("#fileInput");
-  const feedback  = $("#ingestaFeedback");
-  const eSlider   = $("#sliderEnergia");
-  const eVal      = $("#energiaValue");
-
-  if (!form) return;
-
-  // Slider de energía
-  eSlider?.addEventListener("input", () => { eVal.textContent = eSlider.value; });
-
-  // Zona de drop
-  dropZone.addEventListener("click", () => fileInput.click());
-
-  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
-  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-  dropZone.addEventListener("drop", e => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    const file = e.dataTransfer.files[0];
-    if (file) { applyFile(file); }
-  });
-
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files[0]) applyFile(fileInput.files[0]);
-  });
-
-  function applyFile(file) {
-    // Crear una DataTransfer para asignar el archivo al input (workaround para drop)
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    fileInput.files = dt.files;
-
-    // Mostrar nombre en la zona
-    $("#dropContent").innerHTML = `
-      <span class="drop-icon">✓</span>
-      <span class="drop-text">
-        <strong>${esc(file.name)}</strong>
-        <small>archivo listo</small>
-      </span>
-    `;
-    dropZone.style.borderColor = "var(--green-on)";
-
-    // Auto-rellenar título/artista desde el nombre de archivo
-    // Formato esperado: "Artista - Título.mp3"
-    const name  = file.name.replace(/\.[^.]+$/, "");
-    const parts = name.split(/\s*[-–—]\s*/);
-    const artistaInput = $("#inputArtista");
-    const tituloInput  = $("#inputTitulo");
-    if (parts.length >= 2) {
-      if (!artistaInput.value) artistaInput.value = parts[0].trim();
-      if (!tituloInput.value)  tituloInput.value  = parts.slice(1).join(" - ").trim();
-    } else if (!tituloInput.value) {
-      tituloInput.value = name;
-    }
-  }
-
-  // Submit
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const btn = $("#btnIngestar");
-    btn.disabled   = true;
-    btn.textContent = "Procesando…";
-    feedback.className  = "ingesta-feedback";
-    feedback.style.display = "none";
-
-    try {
-      const res = await fetch(`${API}/api/v1/audios`, {
-        method: "POST",
-        body:   new FormData(form),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Error ${res.status}`);
-      }
-      const data = await res.json();
-      feedback.className   = "ingesta-feedback success";
-      // Construir la notificación con botón "Reproducir Ahora"
-      // El botón es inline y llama directamente al motor de audio.
-      // Esto permite estrenar una canción sin abrir la biblioteca.
-      feedback.innerHTML = `
-        <span class="fb-check">✓</span>
-        <span class="fb-info">
-          <strong>${esc(data.titulo)}</strong> de ${esc(data.artista)} — ID #${data.id}
-        </span>
-        <button class="btn-play-now" data-id="${data.id}" title="Reproducir ahora en el motor de audio">
-          ▶ Reproducir Ahora
-        </button>
-      `;
-      // Conectar el botón recién creado
-      feedback.querySelector(".btn-play-now")?.addEventListener("click", () => {
-        playTrackById(data.id);
-        showToast(`▶ Iniciando estreno: ${data.titulo}`, "info", 3000);
-      });
-
-      showToast(`✓ Ingresado: ${data.titulo}`, "success");
-
-      form.reset();
-      eVal.textContent = "3";
-      dropZone.style.borderColor = "";
-      $("#dropContent").innerHTML = `
-        <span class="drop-icon">🎙</span>
-        <span class="drop-text">Arrastra el archivo aquí<small>MP3 · WAV · FLAC · OGG</small></span>
-      `;
-
-      // Invalidar caches de biblioteca y recargar
-      // library_updated via WebSocket también lo hará, pero esta invalidación
-      // local garantiza la actualización incluso si el WS está desconectado.
-      const tipo = $("#selTipo").value;
-      Library.invalidate(tipo);
-      CartucheraDual.reload();
-
-    } catch (err) {
-      feedback.className   = "ingesta-feedback error";
-      feedback.textContent = `✗ ${err.message}`;
-      showToast(`Error: ${err.message}`, "error");
-    } finally {
-      btn.disabled    = false;
-      btn.textContent = "⊕ INGESTAR AUDIO";
-    }
-  });
-})();
-
-/* ════════════════════════════════════════════════════════════
-   ConfigManager — Configuración en caliente del motor
-════════════════════════════════════════════════════════════ */
-const ConfigManager = (() => {
-  async function load() {
-    try {
-      const res = await fetch(`${API}/api/v1/config`);
-      const cfg = await res.json();
-      if (cfg.crossfade_seg)       $("#cfgCrossfade").value      = cfg.crossfade_seg;
-      if (cfg.ventana_artista_min) $("#cfgVentana").value        = cfg.ventana_artista_min;
-      if (cfg.max_mismo_genero)    $("#cfgMaxGenero").value      = cfg.max_mismo_genero;
-      if (cfg.forzar_nacional)     $("#cfgForzarNacional").checked = cfg.forzar_nacional === "true";
-    } catch {}
-  }
-
-  async function save() {
-    const configs = {
-      crossfade_seg:       $("#cfgCrossfade").value,
-      ventana_artista_min: $("#cfgVentana").value,
-      max_mismo_genero:    $("#cfgMaxGenero").value,
-      forzar_nacional:     String($("#cfgForzarNacional").checked),
-    };
-
-    try {
-      await Promise.all(
-        Object.entries(configs).map(([clave, valor]) =>
-          fetch(`${API}/api/v1/config/${clave}`, {
-            method:  "PUT",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ valor }),
-          })
-        )
-      );
-      showToast("✓ Configuración guardada", "success");
-    } catch {
-      showToast("Error al guardar configuración", "error");
-    }
-  }
-
-  $("#btnSaveConfig")?.addEventListener("click", save);
-  load();
-})();
-
-/* ════════════════════════════════════════════════════════════
-   Toggle de modo Manual / Automático
-════════════════════════════════════════════════════════════ */
-$("#modeToggle")?.addEventListener("change", e => {
-  const mode = e.target.checked ? "automatico" : "manual";
-  SolisWS.send({ cmd: "set_mode", mode });
-  fetch(`${API}/api/v1/mode/${mode}`, { method: "POST" }).catch(() => {});
-});
-
-/* ════════════════════════════════════════════════════════════
-   Controles de transporte del header
-════════════════════════════════════════════════════════════ */
-$("#btnStop")?.addEventListener("click", () => {
-  SolisWS.send({ cmd: "stop" });
-});
-$("#btnSkip")?.addEventListener("click", () => {
-  SolisWS.send({ cmd: "skip" });
-});
-$("#btnFadeNext")?.addEventListener("click", () => {
-  SolisWS.send({ cmd: "fade_next" });
-});
-
-/* ════════════════════════════════════════════════════════════
-   UTILIDAD: escape HTML para prevenir XSS al insertar texto
-   de la base de datos en el DOM con innerHTML.
-════════════════════════════════════════════════════════════ */
-function esc(str) {
-  if (!str) return "";
-  return String(str)
+/* ============================================================
+   UTILIDADES GLOBALES
+   ============================================================ */
+
+/** Alias rápido para querySelector */
+const $s  = (sel, ctx = document) => ctx.querySelector(sel);
+/** Alias para querySelectorAll → Array */
+const $$s = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+/** Escapa HTML para inserción segura */
+function escHtml(s) {
+  return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 
-/* ════════════════════════════════════════════════════════════
-   CSS dinámico — filtros y botón "Reproducir Ahora"
-   Inyectado en runtime para no modificar index.html.
-   Paleta Deep Sea: --choc-5 (#005f73 teal), --gold-0 (#ee9b00 amber)
-════════════════════════════════════════════════════════════ */
-(function injectStyles() {
+/** Formatea segundos → m:ss */
+function fmtSec(sec) {
+  if (!sec || isNaN(sec)) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+/** Anti-rebote: ejecuta fn sólo si no la llamaron de nuevo en `ms` ms */
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+/**
+ * Sistema de notificaciones toast.
+ * Busca un contenedor #studioToastContainer; si no existe, lo crea.
+ * @param {string} msg    Texto a mostrar
+ * @param {"info"|"success"|"warning"|"error"} type
+ * @param {number} ms     Milisegundos antes de desaparecer
+ */
+function studioToast(msg, type = "info", ms = 3500) {
+  let container = $s("#studioToastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "studioToastContainer";
+    // Estilos inline para no depender de una hoja externa
+    Object.assign(container.style, {
+      position: "fixed", bottom: "20px", right: "20px",
+      display: "flex", flexDirection: "column-reverse", gap: "8px",
+      zIndex: "9999", pointerEvents: "none",
+    });
+    document.body.appendChild(container);
+  }
+  const el = document.createElement("div");
+  el.className = `studio-toast studio-toast--${type}`;
+  el.textContent = msg;
+  // Estilos base del toast (también se pueden mover a CSS)
+  const colorMap = { info: "#0a9396", success: "#52b788", warning: "#ee9b00", error: "#ae2012" };
+  Object.assign(el.style, {
+    background: "#001e2b", border: `1px solid ${colorMap[type] || colorMap.info}`,
+    color: "#e9f5f3", fontFamily: "monospace", fontSize: "13px",
+    padding: "8px 14px", borderRadius: "4px",
+    boxShadow: `0 0 10px rgba(0,0,0,.5)`,
+    animation: "studioSlideIn .2s ease",
+    pointerEvents: "auto",
+  });
+  container.appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+
+// Inyectar la keyframe de animación una sola vez
+(function injectToastStyle() {
+  if ($s("#studioToastStyle")) return;
   const style = document.createElement("style");
+  style.id = "studioToastStyle";
   style.textContent = `
-    /* Botón Reproducir Ahora en notificación de ingesta */
-    .btn-play-now {
-      display: inline-flex;
-      align-items: center;
-      gap: .4em;
-      padding: 4px 14px;
-      background: var(--gold-0, #ee9b00);
-      color: var(--choc-0, #001219);
-      border: none;
-      border-radius: 4px;
-      font-family: var(--font-display, 'Bebas Neue', sans-serif);
-      font-size: .85rem;
-      letter-spacing: .07em;
-      cursor: pointer;
-      transition: 120ms ease;
-      flex-shrink: 0;
+    @keyframes studioSlideIn {
+      from { transform: translateX(40px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
     }
-    .btn-play-now:hover { background: var(--gold-1, #f4a820); transform: scale(1.04); }
-
-    /* Layout del feedback de ingesta con botón */
-    .ingesta-feedback.success {
-      display: flex;
-      align-items: center;
-      gap: .75rem;
-      flex-wrap: wrap;
-    }
-    .fb-check { font-size: 1.2rem; flex-shrink: 0; }
-    .fb-info  { flex: 1; min-width: 0; }
-
-    /* Pills de género — misma paleta que las pills de origen */
-    .filter-row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
-    .filter-row-label {
-      font-size: .65rem;
-      letter-spacing: .1em;
-      color: var(--text-lo, #4a8f87);
-      text-transform: uppercase;
-      margin-right: .25rem;
-    }
-    .filter-pill[data-genero].active,
-    .filter-pill[data-energia].active {
-      background: var(--choc-5, #005f73);
-      border-color: var(--gold-0, #ee9b00);
-      color: var(--gold-0, #ee9b00);
-    }
-
-    /* Colorear las celdas de NAC/INT */
-    .tag-nac { color: var(--mint, #94d2bd); }
-    .tag-int { color: var(--amber, #ca6702); }
-
-    /* Energía con color semántico */
-    .td-e--1 { color: #52b788; }
-    .td-e--2 { color: #7cd5a0; }
-    .td-e--3 { color: var(--text-mono, #7cbfb5); }
-    .td-e--4 { color: var(--amber, #ca6702); }
-    .td-e--5 { color: var(--gold-0, #ee9b00); }
-
-    /* Botón limpiar filtros */
-    #btnClearFilters {
-      font-size: .65rem;
-      padding: 3px 10px;
-      border: 1px dashed var(--choc-5, #005f73);
-      border-radius: 3px;
-      color: var(--text-lo, #4a8f87);
-      background: none;
-      cursor: pointer;
-      transition: 120ms ease;
-    }
-    #btnClearFilters:hover { border-color: var(--gold-0, #ee9b00); color: var(--gold-0, #ee9b00); }
   `;
   document.head.appendChild(style);
 })();
 
-/* ════════════════════════════════════════════════════════════
-   Ping periódico para mantener la conexión WebSocket viva
-════════════════════════════════════════════════════════════ */
-setInterval(() => SolisWS.send({ cmd: "ping" }), 25000);
+
+/* ============================================================
+   MÓDULO: WEBSOCKET MANAGER
+   Gestiona conexión, reconexión exponencial y despacho de eventos.
+   ============================================================ */
+const StudioWS = (() => {
+  let ws = null;
+  let retryDelay = STUDIO_CONFIG.reconnectBase;
+  let pingTimer  = null;
+  const handlers = {};    // { event: [fn, fn, ...] }
+
+  /** Abre la conexión WebSocket y configura callbacks */
+  function connect() {
+    ws = new WebSocket(STUDIO_CONFIG.wsUrl);
+
+    ws.onopen = () => {
+      retryDelay = STUDIO_CONFIG.reconnectBase;  // resetear backoff
+      _setIndicator("connected");
+      studioToast("Studio conectado al servidor", "success", 2000);
+      _startPing();
+    };
+
+    ws.onmessage = ({ data }) => {
+      try {
+        const { event, data: payload } = JSON.parse(data);
+        // Disparar handlers específicos del evento
+        (handlers[event] ?? []).forEach(fn => fn(payload));
+        // Disparar handlers "catch-all" registrados con onEvent("*", fn)
+        (handlers["*"]  ?? []).forEach(fn => fn(event, payload));
+      } catch (err) {
+        console.warn("[StudioWS] Error al parsear mensaje:", err);
+      }
+    };
+
+    ws.onclose = () => {
+      _setIndicator("disconnected");
+      _stopPing();
+      // Reconexión con backoff exponencial
+      setTimeout(connect, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, STUDIO_CONFIG.reconnectMax);
+    };
+
+    ws.onerror = () => {
+      _setIndicator("error");
+      studioToast("Conexión con el servidor perdida. Reconectando…", "error");
+    };
+  }
+
+  /** Envía un comando al servidor vía WebSocket */
+  function send(payload) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      return true;
+    }
+    studioToast("Sin conexión con el servidor", "warning");
+    return false;
+  }
+
+  /**
+   * Registra un listener para un evento WebSocket.
+   * Usa "*" como evento para capturar todos los mensajes.
+   * @param {string}   event  Nombre del evento o "*"
+   * @param {Function} fn     Callback(payload) o callback(event, payload) para "*"
+   */
+  function onEvent(event, fn) {
+    if (!handlers[event]) handlers[event] = [];
+    handlers[event].push(fn);
+  }
+
+  function _setIndicator(state) {
+    // Buscar el indicador visual por id o clase; es un punto/ícono en la UI
+    const el = $s("#studioWsStatus") ?? $s(".ws-status-dot");
+    if (!el) return;
+    el.className = el.className.replace(/\b(connected|disconnected|error)\b/g, "").trim();
+    el.classList.add(state);
+    // Si tiene un atributo title, actualizarlo para accesibilidad
+    el.title = { connected: "Conectado", disconnected: "Desconectado", error: "Error" }[state] ?? state;
+  }
+
+  function _startPing() {
+    _stopPing();
+    pingTimer = setInterval(() => send({ cmd: "ping" }), STUDIO_CONFIG.pingInterval);
+  }
+
+  function _stopPing() {
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+  }
+
+  // Iniciar conexión al cargar el módulo
+  connect();
+
+  return { send, onEvent };
+})();
+
+
+/* ============================================================
+   MÓDULO: NOW PLAYING
+   Controla el strip "Al aire" con título, artista, barra de progreso.
+   ============================================================ */
+const NowPlaying = (() => {
+  let _progressTimer = null;
+  let _startedAt     = null;   // timestamp local cuando empezó el track
+  let _duration      = 0;
+  let _audioId       = null;
+
+  /** Actualiza el strip con los datos del track que acaba de empezar */
+  function setTrack(data) {
+    _audioId  = data.audio_id;
+    _duration = data.duracion_seg ?? 0;
+    _startedAt = Date.now();
+
+    // Campos de texto en la UI
+    _setText("#studioNowTitle",  `${escHtml(data.artista)} — ${escHtml(data.titulo)}`);
+    _setText("#studioNowGenre",  data.genero_vocal ?? "");
+    _setText("#studioNowType",   data.tipo_audio ?? "");
+    _setText("#studioNowDur",    fmtSec(_duration));
+
+    // Resaltar fila activa en la tabla de biblioteca si existe
+    $$s(".row-now").forEach(r => r.classList.remove("row-now"));
+    document.querySelector(`[data-audio-id="${_audioId}"]`)?.classList.add("row-now");
+
+    // Activar indicador parpadeante
+    const dot = $s("#studioLiveDot");
+    if (dot) dot.style.opacity = "1";
+
+    // Iniciar barra de progreso
+    _startProgress();
+  }
+
+  /** Limpia el strip cuando el motor se detiene */
+  function clearTrack() {
+    _stopProgress();
+    _audioId = null;
+    _setText("#studioNowTitle", "Sin reproducción activa");
+    _setText("#studioNowGenre", "");
+    _setText("#studioNowType",  "");
+    _setText("#studioNowDur",   "");
+    const bar = $s("#studioProgressBar");
+    if (bar) bar.style.width = "0%";
+    const dot = $s("#studioLiveDot");
+    if (dot) dot.style.opacity = "0";
+    $$s(".row-now").forEach(r => r.classList.remove("row-now"));
+  }
+
+  function _startProgress() {
+    _stopProgress();
+    if (!_duration) return;
+    _progressTimer = setInterval(() => {
+      const elapsed = (Date.now() - _startedAt) / 1000;
+      const pct = Math.min((elapsed / _duration) * 100, 100);
+      const bar = $s("#studioProgressBar");
+      if (bar) bar.style.width = `${pct.toFixed(1)}%`;
+      // Actualizar tiempo transcurrido
+      _setText("#studioNowElapsed", fmtSec(elapsed));
+      if (pct >= 100) _stopProgress();
+    }, 1000);
+  }
+
+  function _stopProgress() {
+    if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+  }
+
+  function _setText(sel, html) {
+    const el = $s(sel);
+    if (el) el.innerHTML = html;
+  }
+
+  return { setTrack, clearTrack };
+})();
+
+
+/* ============================================================
+   MÓDULO: LIBRARY
+   Carga y mantiene la lista de tracks disponibles en el Studio.
+   Permite reproducir, encolar y escuchar preescucha sin salir.
+   ============================================================ */
+const StudioLibrary = (() => {
+  let _tracks   = [];
+  let _filtered = [];
+  let _previewAudio = null;
+  let _previewId    = null;
+
+  /** Carga todos los tracks activos desde la API */
+  async function load(force = false) {
+    try {
+      const params = new URLSearchParams({ limit: "3000" });
+      const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/audios?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      _tracks = await res.json();
+      // Aplicar filtros actuales al nuevo set
+      applyFilters();
+    } catch (err) {
+      console.error("[StudioLibrary] Error al cargar biblioteca:", err);
+      studioToast("Error al cargar la biblioteca", "error");
+    }
+  }
+
+  /** Filtra en memoria según el texto del buscador */
+  function applyFilters() {
+    const q = ($s("#studioLibSearch")?.value ?? "").toLowerCase().trim();
+    const tipo = $s("#studioLibFilterTipo")?.value ?? "";
+
+    _filtered = _tracks.filter(t => {
+      if (tipo && t.tipo_audio !== tipo) return false;
+      if (q && !(
+        t.titulo.toLowerCase().includes(q)  ||
+        t.artista.toLowerCase().includes(q) ||
+        (t.genero_vocal ?? "").toLowerCase().includes(q)
+      )) return false;
+      return true;
+    });
+
+    render();
+    const counter = $s("#studioLibCount");
+    if (counter) counter.textContent = `${_filtered.length} / ${_tracks.length}`;
+  }
+
+  /** Renderiza la tabla de la biblioteca en el Studio */
+  function render() {
+    const tbody = $s("#studioLibTableBody");
+    if (!tbody) return;
+
+    if (!_filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;opacity:.5;padding:20px">Sin resultados</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = _filtered.map(t => `
+      <tr data-audio-id="${t.id}" class="${t.id === _getNowId() ? "row-now" : ""}">
+        <td class="lib-col-title">
+          <div class="lib-title">${escHtml(t.titulo)}</div>
+          <div class="lib-artist">${escHtml(t.artista)}</div>
+        </td>
+        <td class="lib-col-meta">${escHtml(t.genero_vocal ?? "")}</td>
+        <td class="lib-col-dur">${fmtSec(t.duracion_seg)}</td>
+        <td class="lib-col-energy">${"★".repeat(t.energia ?? 0)}</td>
+        <td class="lib-col-prev">
+          <button class="lib-btn-prev" data-prev-id="${t.id}" title="Preescuchar">▶</button>
+        </td>
+        <td class="lib-col-actions">
+          <button class="lib-btn-play"  data-play-id="${t.id}"  title="Reproducir ahora">▶ AIRE</button>
+          <button class="lib-btn-queue" data-queue-id="${t.id}" title="Añadir a cola">+ COLA</button>
+        </td>
+      </tr>
+    `).join("");
+
+    // Botones de reproducción
+    tbody.querySelectorAll("[data-play-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.playId);
+        StudioWS.send({ cmd: "play", audio_id: id });
+      });
+    });
+
+    // Botones de cola
+    tbody.querySelectorAll("[data-queue-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.queueId);
+        StudioWS.send({ cmd: "queue", audio_id: id });
+        const t = _tracks.find(x => x.id === id);
+        studioToast(`+ Cola: ${t?.titulo ?? id}`, "info");
+      });
+    });
+
+    // Botones de preescucha
+    tbody.querySelectorAll("[data-prev-id]").forEach(btn => {
+      btn.addEventListener("click", () => togglePreview(parseInt(btn.dataset.prevId), btn));
+    });
+  }
+
+  /** Obtiene el ID del track actualmente al aire (desde el strip) */
+  function _getNowId() {
+    return parseInt($s(".row-now")?.dataset?.audioId ?? "0") || null;
+  }
+
+  /** Alterna la preescucha en línea de un track */
+  function togglePreview(id, btnEl) {
+    // Mismo track: pausar
+    if (_previewId === id && _previewAudio) {
+      _previewAudio.pause();
+      _clearPreviewBtn(btnEl);
+      _previewAudio = null; _previewId = null;
+      return;
+    }
+    // Otro track activo: detenerlo primero
+    if (_previewAudio) {
+      _previewAudio.pause();
+      const oldBtn = document.querySelector(".lib-btn-prev.previewing");
+      if (oldBtn) _clearPreviewBtn(oldBtn);
+    }
+    // El endpoint /stream soporta Range headers — el <audio> puede saltar
+    _previewAudio = new Audio(`${STUDIO_CONFIG.apiBase}/api/v1/audios/${id}/stream`);
+    _previewId    = id;
+    btnEl.classList.add("previewing");
+    btnEl.textContent = "■";
+
+    _previewAudio.play().catch(err => {
+      studioToast(`No se pudo preescuchar: ${err.message}`, "warning");
+      _clearPreviewBtn(btnEl);
+      _previewAudio = null; _previewId = null;
+    });
+    _previewAudio.onended = () => {
+      _clearPreviewBtn(btnEl);
+      _previewAudio = null; _previewId = null;
+    };
+  }
+
+  function _clearPreviewBtn(btn) {
+    if (!btn) return;
+    btn.classList.remove("previewing");
+    btn.textContent = "▶";
+  }
+
+  // ── Filtros en tiempo real ─────────────────────────────────
+  $s("#studioLibSearch")?.addEventListener("input", debounce(applyFilters, 150));
+  $s("#studioLibFilterTipo")?.addEventListener("change", applyFilters);
+
+  return { load, applyFilters, render };
+})();
+
+
+/* ============================================================
+   MÓDULO: STATS BAR
+   Actualiza los contadores de inventario en el encabezado del Studio.
+   ============================================================ */
+const StudioStats = (() => {
+  async function load() {
+    try {
+      const data = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/stats`).then(r => r.json());
+      // Mapeamos cada tipo a un elemento en el DOM
+      // Ejemplo de HTML esperado: <span id="stat-Musica">0</span>
+      ["Musica", "Efecto", "Cuña", "Sweeper", "Programa", "Tips"].forEach(tipo => {
+        const el = $s(`#stat-${tipo}`) ?? $s(`[data-stat="${tipo}"]`);
+        if (el) el.textContent = data[tipo] ?? 0;
+      });
+      const total = $s("#stat-total") ?? $s('[data-stat="total"]');
+      if (total) total.textContent = data.total ?? 0;
+    } catch (err) {
+      console.warn("[StudioStats] Error al cargar stats:", err);
+    }
+  }
+  return { load };
+})();
+
+
+/* ============================================================
+   MÓDULO: MODE TOGGLE
+   Controla el botón Manual / Automático del Studio.
+   ============================================================ */
+const ModeToggle = (() => {
+  let _currentMode = "manual";
+
+  function setMode(mode) {
+    _currentMode = mode;
+    const btn = $s("#btnModeToggle") ?? $s(".btn-mode-toggle");
+    if (!btn) return;
+    btn.textContent = mode === "automatico" ? "⏸ MODO AUTO" : "▶ MODO MANUAL";
+    btn.classList.toggle("mode-auto", mode === "automatico");
+    btn.classList.toggle("mode-manual", mode === "manual");
+  }
+
+  // Click en el botón envía el comando de cambio de modo
+  ($s("#btnModeToggle") ?? $s(".btn-mode-toggle"))?.addEventListener("click", () => {
+    const newMode = _currentMode === "manual" ? "automatico" : "manual";
+    StudioWS.send({ cmd: "set_mode", mode: newMode });
+  });
+
+  return { setMode };
+})();
+
+
+/* ============================================================
+   MÓDULO: EFFECT PANEL
+   Gestiona los botones de jingles/efectos sonoros.
+   ============================================================ */
+const EffectPanel = (() => {
+  /**
+   * Registra un botón de efecto en el DOM.
+   * Busca todos los [data-effect-id] y les agrega el listener.
+   */
+  function init() {
+    $$s("[data-effect-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id     = parseInt(btn.dataset.effectId);
+        const canal  = parseInt(btn.dataset.effectCanal ?? "0");
+        StudioWS.send({ cmd: "fire_effect", audio_id: id, canal_offset: canal });
+        btn.classList.add("effect-fired");
+        setTimeout(() => btn.classList.remove("effect-fired"), 400);
+      });
+    });
+  }
+  return { init };
+})();
+
+
+/* ============================================================
+   MANEJADORES DE EVENTOS WEBSOCKET
+   Aquí conectamos los eventos del servidor con los módulos de UI.
+   ============================================================ */
+
+// ── Track empezó ──────────────────────────────────────────────
+StudioWS.onEvent("track_started", (data) => {
+  NowPlaying.setTrack(data);
+  studioToast(`▶ ${data.artista} — ${data.titulo}`, "info", 2500);
+});
+
+// ── Track terminó ─────────────────────────────────────────────
+StudioWS.onEvent("track_ended", () => {
+  // No limpiamos inmediatamente porque el siguiente track
+  // debería llegar pronto con track_started. Si no llega,
+  // el crossfade_start o engine_stopped lo harán.
+});
+
+// ── Crossfade iniciado ────────────────────────────────────────
+StudioWS.onEvent("crossfade_start", (data) => {
+  const el = $s("#studioCrossfadeIndicator");
+  if (el) {
+    el.style.display = "block";
+    // Ocultar después de la duración del crossfade
+    setTimeout(() => { el.style.display = "none"; }, (data?.duracion_seg ?? 3) * 1000);
+  }
+});
+
+// ── Motor detenido ────────────────────────────────────────────
+StudioWS.onEvent("engine_stopped", () => {
+  NowPlaying.clearTrack();
+  studioToast("Motor de audio detenido", "warning");
+});
+
+// ── Modo cambiado ─────────────────────────────────────────────
+StudioWS.onEvent("mode_changed", (data) => {
+  ModeToggle.setMode(data?.mode ?? "manual");
+  studioToast(`Modo: ${data?.mode?.toUpperCase() ?? "?"}`, "info", 2000);
+});
+
+// ── Efecto disparado ─────────────────────────────────────────
+StudioWS.onEvent("effect_fired", (data) => {
+  studioToast(`🎵 Efecto: ${data?.titulo ?? data?.audio_id}`, "info", 1800);
+});
+
+// ── Error de reproducción ─────────────────────────────────────
+StudioWS.onEvent("playback_error", (data) => {
+  const msg = data?.msg ?? "Error desconocido en reproducción";
+  studioToast(`⚠ ${msg}`, "error", 5000);
+  console.error("[Studio] playback_error:", data);
+});
+
+// ── Watchdog: recuperación automática ────────────────────────
+StudioWS.onEvent("watchdog_recovery", (data) => {
+  studioToast("⚡ Recuperación automática del motor", "warning", 4000);
+  console.warn("[Studio] watchdog_recovery:", data);
+});
+
+StudioWS.onEvent("watchdog_recovered", (data) => {
+  studioToast("✓ Motor recuperado", "success", 3000);
+});
+
+StudioWS.onEvent("watchdog_stall", (data) => {
+  studioToast("⚠ Motor estancado — revisar servidor", "error", 6000);
+  console.error("[Studio] watchdog_stall:", data);
+});
+
+// ── Pong (respuesta al ping keep-alive) ──────────────────────
+StudioWS.onEvent("pong", () => {
+  // Silencioso — solo para confirmar que la conexión sigue viva
+});
+
+// ── Biblioteca actualizada: recargar con pequeño delay ───────
+// El delay de 400ms evita que una ráfaga de cambios simultáneos
+// lance múltiples peticiones GET. El último sobrescribe los anteriores.
+const _debouncedLibLoad = debounce(() => StudioLibrary.load(), STUDIO_CONFIG.libReloadDelay);
+StudioWS.onEvent("library_updated", (data) => {
+  _debouncedLibLoad();
+  // Si la acción fue una eliminación, actualizar stats también
+  if (data?.action === "deleted" || data?.action === "created") {
+    StudioStats.load();
+  }
+});
+
+// ── Contadores actualizados ───────────────────────────────────
+StudioWS.onEvent("stats_updated", () => {
+  StudioStats.load();
+});
+
+// ── Bloques horarios actualizados ────────────────────────────
+StudioWS.onEvent("bloques_updated", (data) => {
+  // El Studio puede mostrar la pauta activa; notificar al operador
+  studioToast("Pauta actualizada desde Admin", "info", 2500);
+  // Si hay un módulo de pauta del Studio, recargarlo:
+  window.StudioPauta?.reload?.();
+});
+
+
+/* ============================================================
+   INICIALIZACIÓN
+   Carga inicial de datos y setup de controles UI.
+   ============================================================ */
+(async function init() {
+  // Carga la biblioteca y estadísticas en paralelo
+  await Promise.allSettled([
+    StudioLibrary.load(),
+    StudioStats.load(),
+  ]);
+
+  // Inicializar panel de efectos (si existe en el HTML)
+  EffectPanel.init();
+
+  console.info("[StudioApp] Módulos inicializados. Versión 3.0 — Ónix FM Digital.");
+})();
+
+
+/* ============================================================
+   API PÚBLICA
+   Expone los módulos al scope global para que el HTML inline
+   o scripts adicionales puedan interactuar con ellos.
+   ============================================================ */
+window.StudioApp = {
+  ws:      StudioWS,
+  lib:     StudioLibrary,
+  stats:   StudioStats,
+  now:     NowPlaying,
+  mode:    ModeToggle,
+  effects: EffectPanel,
+  toast:   studioToast,
+
+  // Helpers rápidos para uso desde botones HTML
+  play:  (id)          => StudioWS.send({ cmd: "play",        audio_id: id }),
+  queue: (id)          => StudioWS.send({ cmd: "queue",       audio_id: id }),
+  fire:  (id, canal=0) => StudioWS.send({ cmd: "fire_effect", audio_id: id, canal_offset: canal }),
+  mode:  (m)           => StudioWS.send({ cmd: "set_mode",    mode: m }),
+};

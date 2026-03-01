@@ -1,3 +1,8 @@
 # Siempre desde /tu-proyecto/
 python scripts/init_db.py
 python backend/api/api_server.py
+
+
+
+
+

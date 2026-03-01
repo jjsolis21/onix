@@ -6,6 +6,7 @@ media/
 *.m4a
 
 # Ignorar base de datos y librerías pesadas
+Nueva Carpeta
 radio_core.db
 bass.dll
 *.pyc
