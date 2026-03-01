@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ónix FM — Admin Pro v3.0</title>
+
+  <!--
+    ARQUITECTURA DEL SHELL
+    ════════════════════════════════════════════════════════════════
+    Este archivo es el "contenedor vacío" del panel de administración.
+    Su única responsabilidad es:
+
+      1. Definir la estructura visual del chasis (topbar, sidebar, viewport)
+      2. Saber qué secciones existen y cuándo mostrarlas
+      3. Conectar al WebSocket para actualizar el strip "Al aire"
+      4. NO contener lógica de negocio de ninguna sección específica
+
+    Cada sección vive en su propio archivo dentro de /sections/.
+    El Shell los carga dinámicamente cuando el usuario navega a ellos.
+    Esto significa que el código de "Biblioteca Musical" nunca se
+    descarga si el operador nunca visita esa sección en esa sesión.
+
+    CONVENCIONES DE IDs:
+      - #topbar-*        → elementos de la barra superior
+      - #sidebar-*       → elementos del panel lateral
+      - #viewport-*      → elementos de la zona de contenido
+      - #now-*           → elementos del strip "Al aire"
+      - section-panel-*  → paneles de sección (montados aquí)
+    ════════════════════════════════════════════════════════════════
+  -->
+
+  <!-- Variables de diseño (siempre primero — todo lo demás depende de ellas) -->
+  <link rel="stylesheet" href="css/variables.css" />
+
+  <!-- Layout estructural del shell -->
+  <link rel="stylesheet" href="css/shell.css" />
+</head>
+
+<body>
+  <!--
+    TOPBAR — Barra superior permanente
+    ══════════════════════════════════
+    Siempre visible, independiente de la sección activa.
+    Los contadores de inventario (.inv-item) se actualizan
+    vía WebSocket cuando el motor emite "stats_updated".
+  -->
+  <header class="topbar" role="banner">
+
+    <!-- Identidad del sistema -->
+    <div class="topbar__brand">
+      <span class="topbar__logo">ÓNIX FM</span>
+      <span class="topbar__badge">ADMIN PRO</span>
+    </div>
+
+    <!--
+      Barra de inventario en tiempo real.
+      Cada span.inv-item__num tiene un ID único que el JS usa
+      para actualizarlo sin necesidad de reescribir el HTML.
+    -->
+    <div class="topbar__inventory" id="topbar-inventory" role="status" aria-label="Inventario de audio">
+      <div class="inv-item" title="Canciones en biblioteca">
+        <span class="inv-item__num" id="inv-Musica">0</span>
+        <span class="inv-item__lbl">Canciones</span>
+      </div>
+
+      <span class="inv-sep" aria-hidden="true">·</span>
+
+      <div class="inv-item" title="Jingles y efectos">
+        <span class="inv-item__num" id="inv-Efecto">0</span>
+        <span class="inv-item__lbl">Jingles</span>
+      </div>
+
+      <span class="inv-sep" aria-hidden="true">·</span>
+
+      <div class="inv-item" title="Cuñas publicitarias">
+        <span class="inv-item__num" id="inv-Cuña">0</span>
+        <span class="inv-item__lbl">Publicidades</span>
+      </div>
+
+      <span class="inv-sep" aria-hidden="true">·</span>
+
+      <div class="inv-item" title="Sweepers de transición">
+        <span class="inv-item__num" id="inv-Sweeper">0</span>
+        <span class="inv-item__lbl">Sweepers</span>
+      </div>
+
+      <span class="inv-sep" aria-hidden="true">·</span>
+
+      <div class="inv-item" title="Programas grabados">
+        <span class="inv-item__num" id="inv-Programa">0</span>
+        <span class="inv-item__lbl">Programas</span>
+      </div>
+    </div>
+
+    <!-- Controles del sistema: reloj, WS, enlace al studio -->
+    <div class="topbar__controls">
+      <div class="sys-clock" id="topbar-clock" aria-label="Hora del sistema">00:00:00</div>
+
+      <!--
+        El punto WS cambia de clase según el estado de la conexión.
+        connected / connecting / error
+        El texto invisible (para lectores de pantalla) indica el estado.
+      -->
+      <div class="ws-dot connecting" id="topbar-ws-dot" title="Estado del servidor" role="status">
+        ●
+        <span class="visually-hidden" id="topbar-ws-label">Conectando</span>
+      </div>
+
+      <a href="/" class="btn-studio-link" title="Volver a la consola del operador">
+        🎙 VER STUDIO ↗
+      </a>
+    </div>
+  </header>
+
+  <!--
+    NOW PLAYING STRIP — Banda de "Al aire"
+    ═══════════════════════════════════════
+    Muestra el track actual en reproducción.
+    El punto parpadea cuando hay algo activo.
+    JS actualiza .now-strip__track y activa/desactiva .now-strip__dot
+    según los eventos "track_started" y "engine_stopped" del WebSocket.
+  -->
+  <div class="now-strip" role="status" aria-live="polite" aria-label="Pista en reproducción">
+    <!--
+      El punto empieza con opacity:0 en CSS.
+      JS le añade style="opacity:1" cuando hay un track activo.
+    -->
+    <span class="now-strip__dot" id="now-dot" aria-hidden="true"></span>
+    <span class="now-strip__label">EN AIRE:</span>
+    <span class="now-strip__track" id="now-track">Sin reproducción activa</span>
+    <div class="now-strip__meta">
+      <span id="now-genre"></span>
+      <span id="now-elapsed"></span>
+    </div>
+  </div>
+
+  <!--
+    MAIN AREA — Sidebar + Viewport
+    ═══════════════════════════════
+    El grid de 2 columnas que contiene todo el área de trabajo.
+    La primera columna es el sidebar (colapsable).
+    La segunda columna es el viewport donde se montan las secciones.
+  -->
+  <div class="main-area">
+
+    <!--
+      SIDEBAR — Panel de navegación lateral
+      ════════════════════════════════════════
+      Los 6 botones corresponden exactamente a las 6 secciones
+      del admin, organizadas por importancia operativa.
+
+      Atributos clave de cada .nav-btn:
+        data-section  → coincide con el nombre de la carpeta en /sections/
+        data-tooltip  → texto del tooltip en modo colapsado
+        data-icon     → ícono emoji (también en .nav-btn__icon)
+    -->
+    <nav class="sidebar" id="sidebar" role="navigation" aria-label="Navegación del admin">
+
+      <div class="sidebar__header">
+        <span class="sidebar__sys-icon" aria-hidden="true">⚙</span>
+        <span class="sidebar__sys-name">PANEL ADMIN</span>
+      </div>
+
+      <div class="sidebar__nav">
+
+        <!--
+          SECCIÓN 01: ESTADO GLOBAL
+          Prioridad máxima — el operador necesita ver el estado
+          del sistema en cualquier momento.
+        -->
+        <button
+          class="nav-btn active"
+          data-section="01-estado-global"
+          data-tooltip="Estado Global"
+          aria-current="page"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">📊</span>
+          <span class="nav-btn__label">Estado Global</span>
+          <span class="nav-btn__num">01</span>
+        </button>
+
+        <!--
+          SECCIÓN 02: BIBLIOTECA MUSICAL
+          Gestión de archivos de audio: subir, editar, organizar.
+        -->
+        <button
+          class="nav-btn"
+          data-section="02-biblioteca-musical"
+          data-tooltip="Biblioteca Musical"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">🎵</span>
+          <span class="nav-btn__label">Biblioteca Musical</span>
+          <span class="nav-btn__num">02</span>
+        </button>
+
+        <!--
+          SECCIÓN 03: PROGRAMACIÓN PAUTAS
+          Calendario y bloques comerciales por hora.
+        -->
+        <button
+          class="nav-btn"
+          data-section="03-programacion-pautas"
+          data-tooltip="Programación de Pautas"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">📋</span>
+          <span class="nav-btn__label">Programación Pautas</span>
+          <span class="nav-btn__num">03</span>
+        </button>
+
+        <!--
+          SECCIÓN 04: EDITOR CARTUCHERA
+          Asignación de jingles y efectos a los slots de la cartuchera.
+        -->
+        <button
+          class="nav-btn"
+          data-section="04-editor-cartuchera"
+          data-tooltip="Editor de Cartuchera"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">⚡</span>
+          <span class="nav-btn__label">Editor Cartuchera</span>
+          <span class="nav-btn__num">04</span>
+        </button>
+
+        <!--
+          SECCIÓN 05: HISTORIAL EMISIÓN
+          Log inmutable de todo lo que se ha reproducido.
+        -->
+        <button
+          class="nav-btn"
+          data-section="05-historial-emision"
+          data-tooltip="Historial de Emisión"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">📜</span>
+          <span class="nav-btn__label">Historial Emisión</span>
+          <span class="nav-btn__num">05</span>
+        </button>
+
+        <!--
+          SECCIÓN 06: MOTOR DE AUDIO (BASS)
+          Ajustes técnicos: crossfade, ducking, watchdog, BASS config.
+          Prioridad más baja — solo accede el técnico de sistemas.
+        -->
+        <button
+          class="nav-btn"
+          data-section="06-motor-audio"
+          data-tooltip="Motor de Audio (BASS)"
+        >
+          <span class="nav-btn__icon" aria-hidden="true">🔧</span>
+          <span class="nav-btn__label">Motor de Audio</span>
+          <span class="nav-btn__num">06</span>
+        </button>
+
+      </div>
+
+      <!--
+        Toggle de expansión del sidebar.
+        La flecha se espeja vía CSS cuando el sidebar está expandido.
+      -->
+      <div class="sidebar__footer">
+        <button
+          class="sidebar__toggle"
+          id="sidebar-toggle"
+          aria-expanded="false"
+          aria-controls="sidebar"
+          title="Expandir/colapsar panel lateral"
+        >
+          <i class="sidebar__toggle-icon" aria-hidden="true">›</i>
+          <span class="sidebar__toggle-label">Colapsar</span>
+        </button>
+      </div>
+    </nav>
+
+    <!--
+      VIEWPORT — Zona de montaje de secciones
+      ════════════════════════════════════════
+      Aquí es donde las secciones se "enganchan".
+      El breadcrumb siempre muestra la sección activa.
+      Los .section-panel son los "slots" vacíos que el JS llena
+      con el HTML de cada sección cuando se necesita.
+    -->
+    <main class="viewport" id="viewport" role="main">
+
+      <!--
+        Breadcrumb contextual — actualizado por JS al cambiar de sección.
+        Muestra: [ícono] Nombre de sección · subnombre opcional | [acciones]
+      -->
+      <div class="viewport__breadcrumb" id="viewport-breadcrumb" aria-label="Sección actual">
+        <span class="breadcrumb__section-icon" id="breadcrumb-icon" aria-hidden="true">📊</span>
+        <span class="breadcrumb__section-name" id="breadcrumb-name">Estado Global</span>
+        <span class="breadcrumb__sep" aria-hidden="true">·</span>
+        <span class="breadcrumb__sub" id="breadcrumb-sub">Vista general del sistema</span>
+        <!--
+          .breadcrumb__actions es un slot vacío.
+          Cada sección puede inyectar aquí sus botones de acción
+          contextuales (ej: "+ NUEVO BLOQUE" en Pautas, "ESCANEAR" en Biblioteca).
+          Así los CTAs siempre están en la misma posición visual.
+        -->
+        <div class="breadcrumb__actions" id="breadcrumb-actions"></div>
+      </div>
+
+      <!--
+        PANELES DE SECCIÓN
+        ══════════════════
+        Uno por sección. Todos están en el DOM desde el inicio,
+        pero solo el activo tiene .section-panel--active (display: flex).
+
+        Estrategia de carga:
+          - Al inicio: panel 01 ya visible, los demás vacíos.
+          - Al navegar: JS hace fetch() del HTML de la sección,
+            lo inyecta en el panel, y activa ese panel.
+          - Segunda visita: el HTML ya está inyectado, no se recarga
+            (a menos que la sección lo pida explícitamente).
+
+        data-section-id → identifica qué sección vive aquí
+        data-loaded     → JS lo pone en "true" cuando el HTML fue inyectado
+      -->
+
+      <div
+        class="section-panel section-panel--active"
+        id="section-panel-01-estado-global"
+        data-section-id="01-estado-global"
+        data-loaded="false"
+        role="region"
+        aria-label="Estado Global"
+      >
+        <!-- Placeholder de carga — reemplazado por el contenido real -->
+        <div class="loading-placeholder">
+          <div class="loading-spinner"></div>
+          <span>Cargando Estado Global…</span>
+        </div>
+      </div>
+
+      <div
+        class="section-panel"
+        id="section-panel-02-biblioteca-musical"
+        data-section-id="02-biblioteca-musical"
+        data-loaded="false"
+        role="region"
+        aria-label="Biblioteca Musical"
+      ></div>
+
+      <div
+        class="section-panel"
+        id="section-panel-03-programacion-pautas"
+        data-section-id="03-programacion-pautas"
+        data-loaded="false"
+        role="region"
+        aria-label="Programación de Pautas"
+      ></div>
+
+      <div
+        class="section-panel"
+        id="section-panel-04-editor-cartuchera"
+        data-section-id="04-editor-cartuchera"
+        data-loaded="false"
+        role="region"
+        aria-label="Editor de Cartuchera"
+      ></div>
+
+      <div
+        class="section-panel"
+        id="section-panel-05-historial-emision"
+        data-section-id="05-historial-emision"
+        data-loaded="false"
+        role="region"
+        aria-label="Historial de Emisión"
+      ></div>
+
+      <div
+        class="section-panel"
+        id="section-panel-06-motor-audio"
+        data-section-id="06-motor-audio"
+        data-loaded="false"
+        role="region"
+        aria-label="Motor de Audio"
+      ></div>
+
+    </main>
+  </div>
+
+  <!-- Contenedor de toasts — fuera del flujo principal para z-index correcto -->
+  <div class="toast-container" id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+  <!--
+    SHELL JAVASCRIPT
+    ════════════════════════════════════════════════════════════════
+    Este <script> es el "cerebro" del shell.
+    Su alcance es exclusivamente el chasis: navegación, WebSocket,
+    reloj, stats. No contiene nada de lógica de sección.
+
+    Principio: si el código habla de un concepto específico de una
+    sección (ej: "bloque horario", "slot de cartuchera"), no pertenece
+    aquí; pertenece al JS de esa sección.
+    ════════════════════════════════════════════════════════════════
+  -->
+  <script>
+  "use strict";
+
+  /* ── Constantes de configuración ──────────────────────────── */
+  const API_BASE  = "";                           // mismo host
+  const WS_URL    = `ws://${location.host}/ws`;
+
+  /*
+   * Mapa de metadata de secciones.
+   * Esto desacopla el HTML del JS: si renombramos una sección,
+   * solo cambiamos aquí, no en múltiples lugares del código.
+   *
+   * Cada entrada define:
+   *   icon    → emoji del ícono para el breadcrumb
+   *   name    → nombre legible para el breadcrumb
+   *   sub     → descripción breve para el breadcrumb
+   *   src     → ruta al archivo HTML de la sección (relativa a este index.html)
+   */
+  const SECTIONS = {
+    "01-estado-global": {
+      icon: "📊",
+      name: "Estado Global",
+      sub:  "Vista general del sistema",
+      src:  "sections/01-estado-global/estado-global.html",
+    },
+    "02-biblioteca-musical": {
+      icon: "🎵",
+      name: "Biblioteca Musical",
+      sub:  "Gestión de archivos y metadatos",
+      src:  "sections/02-biblioteca-musical/biblioteca-musical.html",
+    },
+    "03-programacion-pautas": {
+      icon: "📋",
+      name: "Programación de Pautas",
+      sub:  "Bloques horarios y pauta comercial",
+      src:  "sections/03-programacion-pautas/programacion-pautas.html",
+    },
+    "04-editor-cartuchera": {
+      icon: "⚡",
+      name: "Editor de Cartuchera",
+      sub:  "Asignación de jingles y efectos",
+      src:  "sections/04-editor-cartuchera/editor-cartuchera.html",
+    },
+    "05-historial-emision": {
+      icon: "📜",
+      name: "Historial de Emisión",
+      sub:  "Log de reproducción y disparos",
+      src:  "sections/05-historial-emision/historial-emision.html",
+    },
+    "06-motor-audio": {
+      icon: "🔧",
+      name: "Motor de Audio (BASS)",
+      sub:  "Ajustes técnicos del motor",
+      src:  "sections/06-motor-audio/motor-audio.html",
+    },
+  };
+
+  /* ── Variables de estado del shell ────────────────────────── */
+  let activeSectionId = "01-estado-global";
+
+  /* ── Referencias al DOM ────────────────────────────────────── */
+  const $id  = id => document.getElementById(id);
+  const $$   = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+  /* ── Utilidad: toast notification ─────────────────────────── */
+  function toast(msg, type = "info", ms = 3500) {
+    const container = $id("toast-container");
+    const el = document.createElement("div");
+    el.className  = `toast toast--${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: RELOJ DEL SISTEMA
+     Actualiza el reloj de la topbar cada segundo.
+     Usa toTimeString().slice(0,8) que devuelve "HH:MM:SS"
+     sin necesidad de formateo manual.
+  ════════════════════════════════════════════════════════════ */
+  (function initClock() {
+    const el = $id("topbar-clock");
+    if (!el) return;
+    const tick = () => { el.textContent = new Date().toTimeString().slice(0, 8); };
+    tick();
+    setInterval(tick, 1000);
+  })();
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: WEBSOCKET
+     Gestiona la conexión persistente al servidor.
+     El shell solo escucha los eventos que le competen:
+       - stats_updated → actualizar contadores de inventario
+       - track_started → actualizar strip "Al aire"
+       - engine_stopped → limpiar strip
+     Los demás eventos se despachan hacia las secciones activas
+     a través del sistema de eventos del DOM (CustomEvent).
+  ════════════════════════════════════════════════════════════ */
+  const ShellWS = (() => {
+    let ws           = null;
+    let retryDelay   = 1500;
+    const MAX_DELAY  = 20000;
+
+    function connect() {
+      setWsStatus("connecting");
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        retryDelay = 1500;
+        setWsStatus("connected");
+        /*
+         * Keep-alive: enviamos un ping cada 25 segundos.
+         * El servidor responde con "pong" para confirmar
+         * que la conexión sigue activa.
+         */
+        setInterval(() => {
+          if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ cmd: "ping" }));
+          }
+        }, 25000);
+      };
+
+      ws.onmessage = ({ data }) => {
+        let parsed;
+        try { parsed = JSON.parse(data); }
+        catch { return; }
+
+        const { event, data: payload } = parsed;
+
+        // Eventos del shell — procesados directamente aquí
+        if (event === "stats_updated")  loadStats();
+        if (event === "library_updated") loadStats();
+        if (event === "track_started")  updateNowPlaying(payload);
+        if (event === "engine_stopped") clearNowPlaying();
+
+        /*
+         * Re-emitir el evento en el DOM para que las secciones
+         * activas puedan suscribirse sin acoplarse al shell.
+         * Uso: document.addEventListener("ws:track_started", e => {...})
+         */
+        document.dispatchEvent(
+          new CustomEvent(`ws:${event}`, { detail: payload })
+        );
+      };
+
+      ws.onclose = () => {
+        setWsStatus("error");
+        setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, MAX_DELAY);
+      };
+
+      ws.onerror = () => setWsStatus("error");
+    }
+
+    function setWsStatus(state) {
+      const dot   = $id("topbar-ws-dot");
+      const label = $id("topbar-ws-label");
+      if (!dot) return;
+      dot.className = `ws-dot ${state}`;
+      const labels = { connected: "Conectado", connecting: "Conectando", error: "Sin conexión" };
+      if (label) label.textContent = labels[state] ?? state;
+      dot.title = labels[state] ?? state;
+    }
+
+    connect();
+    return { send: p => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(p)) };
+  })();
+
+  /* Exponer ShellWS globalmente para que las secciones puedan enviar comandos */
+  window.ShellWS = ShellWS;
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: STATS (Contadores de inventario)
+     Carga los totales desde la API y los aplica a los elementos
+     inv-item__num de la topbar.
+  ════════════════════════════════════════════════════════════ */
+  async function loadStats() {
+    try {
+      const data = await fetch(`${API_BASE}/api/v1/stats`).then(r => r.json());
+      ["Musica", "Efecto", "Cuña", "Sweeper", "Programa"].forEach(tipo => {
+        const el = $id(`inv-${tipo}`);
+        if (el) el.textContent = data[tipo] ?? 0;
+      });
+    } catch { /* silencioso — no interrumpir la UI por una stat */ }
+  }
+
+  loadStats();  // carga inicial al arrancar el shell
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: NOW PLAYING STRIP
+     Actualiza la banda "Al aire" con el track activo.
+     No importa qué sección está visible — el strip siempre muestra
+     el estado actual del motor.
+  ════════════════════════════════════════════════════════════ */
+  function updateNowPlaying(data) {
+    const trackEl = $id("now-track");
+    const dotEl   = $id("now-dot");
+    const genreEl = $id("now-genre");
+
+    if (trackEl) trackEl.textContent = `${data.artista} — ${data.titulo}`;
+    if (dotEl)   dotEl.style.opacity = "1";
+    if (genreEl) genreEl.textContent = data.genero_vocal ?? "";
+  }
+
+  function clearNowPlaying() {
+    const trackEl = $id("now-track");
+    const dotEl   = $id("now-dot");
+    const genreEl = $id("now-genre");
+
+    if (trackEl) trackEl.textContent = "Sin reproducción activa";
+    if (dotEl)   dotEl.style.opacity = "0";
+    if (genreEl) genreEl.textContent = "";
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: NAVEGACIÓN
+     Gestiona el click en los botones del sidebar y el montaje
+     dinámico de secciones en el viewport.
+  ════════════════════════════════════════════════════════════ */
+
+  /* Actualiza el breadcrumb según la sección activa */
+  function updateBreadcrumb(sectionId) {
+    const meta = SECTIONS[sectionId];
+    if (!meta) return;
+    const iconEl = $id("breadcrumb-icon");
+    const nameEl = $id("breadcrumb-name");
+    const subEl  = $id("breadcrumb-sub");
+    const actEl  = $id("breadcrumb-actions");
+    if (iconEl) iconEl.textContent = meta.icon;
+    if (nameEl) nameEl.textContent = meta.name;
+    if (subEl)  subEl.textContent  = meta.sub;
+    /* Limpiar acciones del breadcrumb — la nueva sección las inyectará si las necesita */
+    if (actEl)  actEl.innerHTML = "";
+  }
+
+  /*
+   * Carga el HTML de una sección en su panel correspondiente.
+   * La primera vez hace fetch(); las siguientes no (data-loaded="true").
+   * Retorna una promesa que se resuelve cuando el contenido está listo.
+   */
+  async function loadSection(sectionId) {
+    const panelId = `section-panel-${sectionId}`;
+    const panel   = $id(panelId);
+    if (!panel) return;
+
+    // Si ya fue cargada, no hacer fetch de nuevo
+    if (panel.dataset.loaded === "true") return;
+
+    const meta = SECTIONS[sectionId];
+    if (!meta?.src) {
+      panel.innerHTML = buildPlaceholder(sectionId);
+      panel.dataset.loaded = "true";
+      return;
+    }
+
+    try {
+      const html = await fetch(meta.src).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      });
+      panel.innerHTML = html;
+      panel.dataset.loaded = "true";
+
+      /*
+       * Después de inyectar el HTML, disparamos un evento DOM para que
+       * el script de la sección pueda inicializarse.
+       * Convención: cada sección escucha "section:init" en su panel.
+       */
+      panel.dispatchEvent(new CustomEvent("section:init", { bubbles: false }));
+    } catch (err) {
+      panel.innerHTML = buildErrorState(sectionId, err.message);
+      console.error(`[Shell] Error al cargar sección ${sectionId}:`, err);
+    }
+  }
+
+  /* Genera el HTML de un placeholder de sección no implementada */
+  function buildPlaceholder(sectionId) {
+    const meta = SECTIONS[sectionId] ?? {};
+    return `
+      <div style="
+        flex:1; display:flex; align-items:center; justify-content:center;
+        flex-direction:column; gap:1rem;
+        font-family:'DM Mono',monospace; font-size:.75rem;
+        color:var(--text-lo); letter-spacing:.1em;
+      ">
+        <span style="font-size:3rem; opacity:.2">${meta.icon ?? "⬜"}</span>
+        <span>${meta.name ?? sectionId}</span>
+        <span style="font-size:.6rem; color:var(--choc-6)">SECCIÓN PENDIENTE DE IMPLEMENTACIÓN</span>
+      </div>
+    `;
+  }
+
+  /* Genera el HTML de un estado de error al cargar */
+  function buildErrorState(sectionId, errorMsg) {
+    return `
+      <div style="
+        flex:1; display:flex; align-items:center; justify-content:center;
+        flex-direction:column; gap:.75rem;
+        font-family:'DM Mono',monospace; font-size:.7rem;
+        color:var(--rust); letter-spacing:.08em;
+      ">
+        <span style="font-size:2rem">⚠</span>
+        <span>Error al cargar ${sectionId}</span>
+        <span style="font-size:.6rem; color:var(--text-lo)">${errorMsg}</span>
+      </div>
+    `;
+  }
+
+  /*
+   * Activa una sección: oculta la actual, muestra la nueva, actualiza el sidebar.
+   * Es la función central de navegación del shell.
+   */
+  async function activateSection(sectionId) {
+    if (sectionId === activeSectionId) return;
+
+    // 1. Desactivar el panel y botón actuales
+    $id(`section-panel-${activeSectionId}`)?.classList.remove("section-panel--active");
+    $$(".nav-btn.active").forEach(btn => {
+      btn.classList.remove("active");
+      btn.removeAttribute("aria-current");
+    });
+
+    // 2. Mostrar spinner en el nuevo panel mientras carga
+    const newPanel = $id(`section-panel-${sectionId}`);
+    if (newPanel && newPanel.dataset.loaded !== "true") {
+      newPanel.innerHTML = `
+        <div class="loading-placeholder">
+          <div class="loading-spinner"></div>
+          <span>Cargando ${SECTIONS[sectionId]?.name ?? sectionId}…</span>
+        </div>`;
+    }
+
+    // 3. Activar visualmente el nuevo panel
+    newPanel?.classList.add("section-panel--active");
+
+    // 4. Actualizar el botón del sidebar
+    const activeBtn = document.querySelector(`.nav-btn[data-section="${sectionId}"]`);
+    if (activeBtn) {
+      activeBtn.classList.add("active");
+      activeBtn.setAttribute("aria-current", "page");
+    }
+
+    // 5. Actualizar el breadcrumb
+    updateBreadcrumb(sectionId);
+
+    // 6. Actualizar el estado interno
+    activeSectionId = sectionId;
+
+    // 7. Cargar el HTML de la sección (si no estaba cargado)
+    await loadSection(sectionId);
+  }
+
+  /* Registrar listeners en los botones del sidebar */
+  $$(".nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const sectionId = btn.dataset.section;
+      if (sectionId) activateSection(sectionId);
+    });
+  });
+
+  /* ════════════════════════════════════════════════════════════
+     MÓDULO: SIDEBAR TOGGLE
+     Expande/colapsa el sidebar añadiendo/quitando .sidebar-expanded
+     al <body>. El CSS hace el resto con la variable --sidebar-w.
+  ════════════════════════════════════════════════════════════ */
+  const sidebarToggle = $id("sidebar-toggle");
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener("click", () => {
+      const isExpanded = document.body.classList.toggle("sidebar-expanded");
+      sidebarToggle.setAttribute("aria-expanded", String(isExpanded));
+    });
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     INICIALIZACIÓN
+     Carga la primera sección (Estado Global) al arrancar el shell.
+  ════════════════════════════════════════════════════════════ */
+  loadSection("01-estado-global");
+
+  /* Exponer la función de navegación globalmente para que las secciones
+     puedan usarla para redirigir al usuario (ej: un CTA en Estado Global
+     que lleva a Biblioteca). */
+  window.ShellNav = { activate: activateSection };
+
+  </script>
+</body>
+</html>

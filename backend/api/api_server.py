@@ -968,21 +968,17 @@ def serve_studio():
     f = FRONTEND_DIR / "index.html"
     return FileResponse(str(f)) if f.exists() else {"error": "index.html no encontrado"}
 
-
-@app.get("/admin")
-def serve_admin():
-    f = FRONTEND_DIR / "admin.html"
-    return FileResponse(str(f)) if f.exists() else {"error": "admin.html no encontrado"}
-
-
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
-# Montar media/ como estático — permite preescucha directa con <audio src="/media/...">
-# El endpoint /api/v1/audios/{id}/stream es la opción robusta; este es el fallback.
+# Montar media/ como estático
 if MEDIA_DIR.exists():
     app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
 
+# Nueva montura para el Panel Admin modular
+ADMIN_DIR = FRONTEND_DIR / "admin"
+if ADMIN_DIR.exists():
+    app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
 
 if __name__ == "__main__":
     import uvicorn

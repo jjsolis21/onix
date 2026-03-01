@@ -1,0 +1,127 @@
+/*
+ * variables.css — Ónix FM Digital · Admin Shell v3.0
+ * ================================================================
+ * FUENTE DE VERDAD de todos los tokens de diseño del sistema.
+ * Ningún otro archivo debe redefinir estas variables.
+ * Cualquier cambio aquí se propaga automáticamente a todo el admin.
+ *
+ * NOMENCLATURA:
+ *   --choc-*   → Escala de azules profundos (Deep Sea)
+ *   --gold-*   → Escala de ámbar (acción, énfasis)
+ *   --text-*   → Jerarquía tipográfica
+ *   --s*       → Escala de espaciado (spacing scale)
+ *   --r*       → Radios de borde (border-radius)
+ *   --fx-*     → Efectos visuales (glow, shadow, transition)
+ *   --sidebar-* → Geometría específica del sidebar
+ * ================================================================
+ */
+
+:root {
+
+  /* ────────────────────────────────────────────────────────────
+     PALETA DEEP SEA
+     Escala de 7 tonos: del negro-océano al teal iluminado.
+     El criterio para elegir cada tono fue el contraste mínimo
+     WCAG AA entre capas adyacentes para que la jerarquía sea
+     perceptible sin necesidad de bordes fuertes.
+  ──────────────────────────────────────────────────────────── */
+  --choc-0: #000d14;   /* Abismo — fondo más oscuro, topbar            */
+  --choc-1: #001219;   /* Mar profundo — fondo del body                */
+  --choc-2: #001e2b;   /* Fondo de paneles principales                 */
+  --choc-3: #002a38;   /* Paneles elevados, cards                      */
+  --choc-4: #003545;   /* Hover, estados activos de fondo              */
+  --choc-5: #005f73;   /* Teal principal — bordes, separadores         */
+  --choc-6: #0a9396;   /* Teal iluminado — bordes activos, iconos      */
+
+  /* ────────────────────────────────────────────────────────────
+     PALETA ÁMBAR — La firma visual del sistema
+     Tres niveles: base (acción), brillante (hover), vivo (énfasis)
+  ──────────────────────────────────────────────────────────── */
+  --gold-0: #ee9b00;   /* Ámbar base — color de acción principal       */
+  --gold-1: #f4a820;   /* Ámbar brillante — hover                      */
+  --gold-2: #ffc233;   /* Ámbar vivo — ON AIR, énfasis máximo          */
+
+  /* ────────────────────────────────────────────────────────────
+     SEMÁNTICOS — Colores con significado de estado
+  ──────────────────────────────────────────────────────────── */
+  --amber:      #ca6702;   /* Naranja — alertas secundarias            */
+  --rust:       #ae2012;   /* Rojo profundo — errores, eliminación     */
+  --green-on:   #52b788;   /* Verde menta — conectado, éxito           */
+  --green-dim:  #2d8653;   /* Verde apagado — bordea estados ok        */
+  --red-live:   #e63946;   /* Rojo vivo — ON AIR en vivo               */
+  --blue-next:  #48cae4;   /* Cian — siguiente pista, información      */
+  --mint:       #94d2bd;   /* Menta — decorativo, texto destacado      */
+
+  /* ────────────────────────────────────────────────────────────
+     JERARQUÍA TIPOGRÁFICA
+     Tres niveles claramente diferenciados en luminosidad:
+     hi (títulos) > mid (cuerpo) > lo (labels, metadatos)
+  ──────────────────────────────────────────────────────────── */
+  --text-hi:   #e9f5f3;   /* Blanco frío — títulos, valores clave     */
+  --text-mid:  #94d2bd;   /* Menta — texto de cuerpo principal        */
+  --text-lo:   #4a8f87;   /* Teal apagado — labels, placeholders      */
+  --text-mono: #7cbfb5;   /* Menta suave — datos técnicos en mono     */
+
+  /* ────────────────────────────────────────────────────────────
+     TIPOGRAFÍA
+     Bebas Neue → display, logotipos, números grandes
+     DM Mono    → datos técnicos, IDs, timestamps
+     Rajdhani   → UI general, labels, párrafos cortos
+  ──────────────────────────────────────────────────────────── */
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-data:    'DM Mono', monospace;
+  --font-ui:      'Rajdhani', sans-serif;
+
+  /* ────────────────────────────────────────────────────────────
+     ESCALA DE ESPACIADO (8pt grid)
+     Cada nivel es el doble del anterior para armonía visual.
+     s1=4px, s2=8px, s3=12px, s4=16px, s5=24px, s6=32px
+  ──────────────────────────────────────────────────────────── */
+  --s1: 0.25rem;   /*  4px */
+  --s2: 0.5rem;    /*  8px */
+  --s3: 0.75rem;   /* 12px */
+  --s4: 1rem;      /* 16px */
+  --s5: 1.5rem;    /* 24px */
+  --s6: 2rem;      /* 32px */
+  --s7: 3rem;      /* 48px */
+
+  /* ────────────────────────────────────────────────────────────
+     RADIOS DE BORDE
+     Un sistema consistente evita la mezcla aleatoria de valores.
+  ──────────────────────────────────────────────────────────── */
+  --radius-sm: 3px;
+  --radius:    4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+
+  /* ────────────────────────────────────────────────────────────
+     GEOMETRÍA DEL SHELL
+     Dimensiones de los componentes estructurales del admin.
+     Cambiar aquí ajusta todo el layout automáticamente.
+  ──────────────────────────────────────────────────────────── */
+  --topbar-h:    56px;
+  --nowstrip-h:  36px;
+  --sidebar-w:   72px;        /* colapsado (solo iconos)              */
+  --sidebar-w-expanded: 220px; /* expandido (iconos + etiquetas)      */
+
+  /* ────────────────────────────────────────────────────────────
+     EFECTOS VISUALES
+     Los glows amplían la sensación de brillo sin sobrecargar
+     el contraste. Los usamos solo en elementos focales.
+  ──────────────────────────────────────────────────────────── */
+  --glow-gold:  0 0 14px rgba(238, 155, 0,  .40);
+  --glow-teal:  0 0 12px rgba(10,  147, 150, .35);
+  --glow-red:   0 0 10px rgba(230, 57,  70,  .45);
+  --glow-green: 0 0 10px rgba(82,  183, 136, .30);
+
+  --shadow-panel:  0 2px 16px rgba(0, 0, 0, .65);
+  --shadow-raised: 0 4px 24px rgba(0, 0, 0, .75);
+
+  /* ────────────────────────────────────────────────────────────
+     TRANSICIONES
+     Una duración base para toda la interfaz; consistencia > variedad.
+  ──────────────────────────────────────────────────────────── */
+  --transition:      150ms ease;
+  --transition-slow: 300ms ease;
+}

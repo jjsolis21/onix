@@ -1,0 +1,1550 @@
+<!--
+  estado-global.html — Sección 01: Estado Global
+  ═══════════════════════════════════════════════════════════════════
+  MÓDULO INDEPENDIENTE. Se monta dentro de #section-panel-01-estado-global
+  vía fetch() desde el Shell. No asume nada del documento padre salvo:
+    - Las variables CSS de variables.css ya están disponibles
+    - window.ShellWS existe para enviar comandos al servidor
+    - Los eventos WebSocket llegan como CustomEvent "ws:{nombre}" en document
+
+  LAYOUT DE LA SECCIÓN (CSS Grid de 2 filas):
+  ┌─────────────────────────────────────────────────────────┐
+  │   KPI BAR  — 6 tarjetas de estado en una fila           │
+  ├──────────────────────────┬──────────────────────────────┤
+  │  PANEL MOTOR             │  LOG TERMINAL                │
+  │  Estado detallado        │  Eventos WS en tiempo real   │
+  │  del audio_engine        │  (últimos 40 eventos)        │
+  ├──────────────────────────┴──────────────────────────────┤
+  │  HEALTH BAR — Estado de cada subsistema                 │
+  ├─────────────────────────────────────────────────────────┤
+  │  TIMELINE — Últimos tracks como bloques proporcionales  │
+  └─────────────────────────────────────────────────────────┘
+  ═══════════════════════════════════════════════════════════════════
+-->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     ESTILOS PRIVADOS DE LA SECCIÓN
+     Prefijo ".eg-" (estado-global) para evitar colisiones con el shell.
+     Todo lo que está aquí solo afecta a esta sección.
+════════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Layout raíz de la sección ──────────────────────────────── */
+.eg-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--choc-1);
+  /* Textura de fondo: puntos muy sutiles que evocan un panel de control */
+  background-image: radial-gradient(circle, var(--choc-3) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: 0 0;
+}
+
+/* Scroll interno — solo el contenido principal hace scroll, no el layout */
+.eg-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── KPI BAR ───────────────────────────────────────────────── */
+/*
+ * Seis tarjetas en una fila. Cada tarjeta tiene:
+ *   - Un número/valor grande (display font, ámbar)
+ *   - Una etiqueta técnica debajo (mono, apagado)
+ *   - Un indicador de estado a la izquierda (borde de color)
+ *
+ * El borde izquierdo de color es la firma visual de esta sección.
+ * Verde = ok, ámbar = warning, rojo = error, teal = neutral.
+ */
+.eg-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;             /* gap de 1px + fondo oscuro = separadores naturales */
+  background: var(--choc-3);
+  border-bottom: 1px solid var(--choc-4);
+  flex-shrink: 0;
+}
+
+.eg-kpi {
+  background: var(--choc-2);
+  padding: var(--s3) var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+  border-left: 3px solid var(--choc-5);   /* color por defecto, neutral */
+  transition: background var(--transition), border-color var(--transition);
+  overflow: hidden;
+}
+
+/* Cada estado del KPI cambia el color del borde izquierdo */
+.eg-kpi--ok      { border-left-color: var(--green-on); }
+.eg-kpi--warning { border-left-color: var(--amber); }
+.eg-kpi--error   { border-left-color: var(--rust); }
+.eg-kpi--live    { border-left-color: var(--red-live); }
+.eg-kpi--info    { border-left-color: var(--blue-next); }
+.eg-kpi--neutral { border-left-color: var(--choc-5); }
+
+/* Brillo de fondo sutil cuando hay glow */
+.eg-kpi--ok::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 0% 50%, rgba(82,183,136,.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.eg-kpi--live::before {
+  background: radial-gradient(ellipse at 0% 50%, rgba(230,57,70,.07) 0%, transparent 70%);
+}
+.eg-kpi--error::before {
+  background: radial-gradient(ellipse at 0% 50%, rgba(174,32,18,.07) 0%, transparent 70%);
+}
+
+.eg-kpi__value {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--text-hi);
+  letter-spacing: .02em;
+  /* Los números se actualizan con JS; la transición suaviza el cambio */
+  transition: color var(--transition-slow);
+}
+
+/* El valor hereda el color del estado */
+.eg-kpi--ok    .eg-kpi__value { color: var(--green-on); }
+.eg-kpi--live  .eg-kpi__value { color: var(--red-live); text-shadow: var(--glow-red); }
+.eg-kpi--error .eg-kpi__value { color: var(--rust); }
+.eg-kpi--warning .eg-kpi__value { color: var(--amber); }
+.eg-kpi--info  .eg-kpi__value { color: var(--blue-next); }
+
+.eg-kpi__label {
+  font-family: var(--font-data);
+  font-size: .55rem;
+  letter-spacing: .14em;
+  color: var(--text-lo);
+  text-transform: uppercase;
+}
+
+.eg-kpi__sub {
+  font-family: var(--font-data);
+  font-size: .6rem;
+  color: var(--text-lo);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── PANEL CENTRAL (Motor + Log) ─────────────────────────── */
+.eg-center {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;   /* permite que el grid se encoja para no desbordar */
+  border-bottom: 1px solid var(--choc-3);
+}
+
+/* Panel izquierdo: Motor de audio */
+.eg-motor {
+  border-right: 1px solid var(--choc-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Panel derecho: Log terminal */
+.eg-log {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--choc-0);
+}
+
+/* Cabecera de panel — usada tanto en Motor como en Log */
+.eg-panel-header {
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--choc-3);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+  background: var(--choc-2);
+}
+
+.eg-panel-title {
+  font-family: var(--font-display);
+  font-size: .82rem;
+  letter-spacing: .14em;
+  color: var(--text-lo);
+}
+
+/* Indicador parpadeante de "activo" (para el panel Motor cuando hay audio) */
+.eg-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--choc-5);
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+.eg-live-dot.active {
+  background: var(--red-live);
+  box-shadow: var(--glow-red);
+  animation: eg-pulse .9s step-end infinite;
+}
+@keyframes eg-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.eg-panel-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--s2);
+}
+
+/* ── Motor: tabla de variables del engine ─────────────────── */
+.eg-motor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/*
+ * Cada variable del motor se muestra como una fila horizontal:
+ *   [ NOMBRE ] ──── [ VALOR ]
+ * Las líneas discontinuas entre nombre y valor son un patrón clásico
+ * de interfaces técnicas (como las tablas de datos de aviónica).
+ */
+.eg-var-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px var(--s2);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.eg-var-row:hover { background: var(--choc-3); }
+
+.eg-var-name {
+  font-family: var(--font-data);
+  font-size: .6rem;
+  letter-spacing: .1em;
+  color: var(--text-lo);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* La línea discontinua — hecha con border-bottom punteado */
+.eg-var-line {
+  border-bottom: 1px dashed var(--choc-4);
+  height: 0;
+  margin-top: 2px;
+}
+
+.eg-var-value {
+  font-family: var(--font-data);
+  font-size: .72rem;
+  color: var(--text-mid);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Valores especiales con color semántico */
+.eg-var-value.ok      { color: var(--green-on); }
+.eg-var-value.warn    { color: var(--amber); }
+.eg-var-value.error   { color: var(--rust); }
+.eg-var-value.live    { color: var(--red-live); }
+.eg-var-value.neutral { color: var(--choc-6); }
+
+/* Separador de sección dentro del motor */
+.eg-var-section {
+  font-family: var(--font-data);
+  font-size: .52rem;
+  letter-spacing: .18em;
+  color: var(--choc-6);
+  text-transform: uppercase;
+  padding: var(--s2) var(--s2) var(--s1);
+  border-bottom: 1px solid var(--choc-3);
+  margin-top: var(--s2);
+}
+
+/* ── Log Terminal ──────────────────────────────────────────── */
+/*
+ * El log terminal imita la estética de una consola de Unix.
+ * Cada línea tiene: [timestamp] [tipo] mensaje
+ * Los colores siguen el estándar de logs: verde=ok, rojo=error, ámbar=warn
+ */
+.eg-log-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s2) var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* El scroll empieza desde abajo (como una consola real) */
+  scroll-behavior: smooth;
+}
+
+.eg-log-entry {
+  display: grid;
+  grid-template-columns: 52px 48px 1fr;
+  gap: var(--s2);
+  padding: 2px var(--s1);
+  border-radius: 2px;
+  font-family: var(--font-data);
+  font-size: .62rem;
+  line-height: 1.5;
+  transition: background var(--transition);
+  animation: eg-log-appear .15s ease;
+}
+
+@keyframes eg-log-appear {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.eg-log-entry:hover { background: var(--choc-2); }
+
+.eg-log-ts {
+  color: var(--choc-6);
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+
+/* El badge de tipo de evento */
+.eg-log-type {
+  text-align: center;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: .55rem;
+  letter-spacing: .08em;
+  line-height: 1.7;
+  text-transform: uppercase;
+}
+
+.eg-log-type--track   { color: var(--gold-0);   background: rgba(238,155,0,.1); }
+.eg-log-type--mode    { color: var(--blue-next); background: rgba(72,202,228,.1); }
+.eg-log-type--error   { color: var(--rust);      background: rgba(174,32,18,.12); }
+.eg-log-type--warn    { color: var(--amber);     background: rgba(202,103,2,.1); }
+.eg-log-type--ws      { color: var(--green-on);  background: rgba(82,183,136,.1); }
+.eg-log-type--effect  { color: var(--mint);      background: rgba(148,210,189,.1); }
+.eg-log-type--system  { color: var(--text-lo);   background: var(--choc-3); }
+
+.eg-log-msg {
+  color: var(--text-mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Indicador de "sin eventos aún" */
+.eg-log-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--s2);
+  color: var(--text-lo);
+  font-family: var(--font-data);
+  font-size: .65rem;
+  letter-spacing: .12em;
+  opacity: .6;
+}
+
+/* ── HEALTH BAR ──────────────────────────────────────────── */
+/*
+ * Una fila de "pastillas" de estado — una por subsistema.
+ * El diseño de pastilla (pill) es deliberado: en un golpe de vista
+ * el operador puede ver si hay algún fallo en el sistema sin leer texto.
+ */
+.eg-health {
+  background: var(--choc-0);
+  border-bottom: 1px solid var(--choc-3);
+  padding: var(--s2) var(--s4);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.eg-health-label {
+  font-family: var(--font-data);
+  font-size: .55rem;
+  letter-spacing: .15em;
+  color: var(--text-lo);
+  margin-right: var(--s1);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.eg-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--choc-5);
+  background: var(--choc-2);
+  font-family: var(--font-data);
+  font-size: .6rem;
+  color: var(--text-lo);
+  letter-spacing: .07em;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+/* El punto de estado dentro de cada pastilla */
+.eg-pill__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--choc-5);
+  flex-shrink: 0;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+
+.eg-pill--ok .eg-pill__dot {
+  background: var(--green-on);
+  box-shadow: 0 0 4px rgba(82,183,136,.6);
+}
+.eg-pill--ok {
+  border-color: var(--green-dim);
+  color: var(--green-on);
+}
+
+.eg-pill--warn .eg-pill__dot { background: var(--amber); }
+.eg-pill--warn { border-color: var(--amber); color: var(--amber); }
+
+.eg-pill--error .eg-pill__dot {
+  background: var(--rust);
+  animation: eg-pulse .7s step-end infinite;
+}
+.eg-pill--error { border-color: var(--rust); color: var(--rust); }
+
+/* Separador visual entre grupos de pastillas */
+.eg-health-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--choc-4);
+  margin: 0 var(--s1);
+  flex-shrink: 0;
+}
+
+/* Timestamp del último check de salud */
+.eg-health-ts {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-size: .55rem;
+  color: var(--choc-6);
+  letter-spacing: .08em;
+}
+
+/* ── TIMELINE DE EMISIÓN ─────────────────────────────────── */
+/*
+ * La parte más distintiva de esta sección.
+ * Los tracks se representan como bloques de color cuyo ANCHO es
+ * proporcional a su duración en segundos. El track actual tiene
+ * un borde parpadeante.
+ *
+ * El resultado es una "onda de emisión" visual — de izquierda
+ * a derecha, el tiempo avanzando como en un DAW.
+ */
+.eg-timeline {
+  background: var(--choc-0);
+  border-top: 1px solid var(--choc-3);
+  padding: var(--s3) var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  flex-shrink: 0;
+  min-height: 90px;
+}
+
+.eg-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.eg-timeline-title {
+  font-family: var(--font-data);
+  font-size: .55rem;
+  letter-spacing: .16em;
+  color: var(--text-lo);
+  text-transform: uppercase;
+}
+
+.eg-timeline-count {
+  font-family: var(--font-data);
+  font-size: .55rem;
+  color: var(--choc-6);
+}
+
+.eg-timeline-clear {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-size: .55rem;
+  letter-spacing: .1em;
+  color: var(--choc-5);
+  padding: 2px 8px;
+  border: 1px solid var(--choc-4);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.eg-timeline-clear:hover { border-color: var(--choc-6); color: var(--text-lo); }
+
+/* El carril donde se apilan los bloques de tracks */
+.eg-timeline-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+/* Fondo del carril cuando está vacío */
+.eg-timeline-rail:empty::before {
+  content: 'Sin emisión registrada en esta sesión';
+  font-family: var(--font-data);
+  font-size: .6rem;
+  color: var(--choc-5);
+  letter-spacing: .1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Bloque individual de un track en el timeline */
+.eg-track-block {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--choc-3);
+  border: 1px solid var(--choc-5);
+  min-width: 4px;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  transition: border-color var(--transition), transform var(--transition);
+  flex-shrink: 0;
+}
+
+.eg-track-block:hover {
+  border-color: var(--gold-0);
+  z-index: 1;
+  transform: scaleY(1.05);
+}
+
+/* El gradiente interno del bloque — varía según el tipo de audio */
+.eg-track-block[data-tipo="Musica"]   { background: linear-gradient(180deg, var(--choc-4) 0%, var(--choc-3) 100%); border-color: var(--choc-5); }
+.eg-track-block[data-tipo="Cuña"]     { background: linear-gradient(180deg, rgba(72,202,228,.15) 0%, rgba(72,202,228,.06) 100%); border-color: rgba(72,202,228,.3); }
+.eg-track-block[data-tipo="Efecto"]   { background: linear-gradient(180deg, rgba(202,103,2,.2) 0%, rgba(202,103,2,.08) 100%); border-color: rgba(202,103,2,.4); }
+.eg-track-block[data-tipo="Sweeper"]  { background: linear-gradient(180deg, rgba(82,183,136,.15) 0%, rgba(82,183,136,.06) 100%); border-color: rgba(82,183,136,.3); }
+
+/* El track activo (en reproducción ahora mismo) */
+.eg-track-block--current {
+  border-color: var(--gold-0) !important;
+  box-shadow: 0 0 8px rgba(238,155,0,.3);
+}
+
+/* Barra de progreso interna del track actual */
+.eg-track-block--current::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, rgba(238,155,0,.25), rgba(238,155,0,.08));
+  transition: width 1s linear;
+}
+
+/* Tooltip al hacer hover — aparece sobre el bloque */
+.eg-track-block::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--choc-0);
+  border: 1px solid var(--choc-5);
+  color: var(--text-mid);
+  font-family: var(--font-data);
+  font-size: .58rem;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+  z-index: 10;
+}
+.eg-track-block:hover::before { opacity: 1; }
+
+/* Leyenda de colores del timeline */
+.eg-timeline-legend {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+}
+
+.eg-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-data);
+  font-size: .55rem;
+  color: var(--text-lo);
+  letter-spacing: .06em;
+}
+
+.eg-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.eg-legend-dot--musica  { background: var(--choc-5); }
+.eg-legend-dot--cuna    { background: rgba(72,202,228,.5); }
+.eg-legend-dot--efecto  { background: rgba(202,103,2,.6); }
+.eg-legend-dot--sweeper { background: rgba(82,183,136,.5); }
+.eg-legend-dot--current { background: var(--gold-0); }
+
+/* ── Botones de acción rápida ─────────────────────────────── */
+.eg-quick-actions {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  padding: var(--s2) var(--s4);
+  background: var(--choc-2);
+  border-bottom: 1px solid var(--choc-3);
+  flex-shrink: 0;
+}
+
+.eg-action-btn {
+  font-family: var(--font-data);
+  font-size: .6rem;
+  letter-spacing: .1em;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--choc-5);
+  color: var(--text-lo);
+  transition: all var(--transition);
+  text-transform: uppercase;
+}
+.eg-action-btn:hover {
+  border-color: var(--gold-0);
+  color: var(--gold-0);
+}
+.eg-action-btn--danger:hover {
+  border-color: var(--rust);
+  color: var(--rust);
+}
+
+.eg-action-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--choc-4);
+  margin: 0 var(--s1);
+}
+
+.eg-mode-indicator {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-data);
+  font-size: .6rem;
+  color: var(--text-lo);
+  letter-spacing: .1em;
+}
+
+.eg-mode-badge {
+  padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--choc-5);
+  font-size: .58rem;
+  letter-spacing: .12em;
+  transition: all var(--transition);
+}
+.eg-mode-badge--manual    { border-color: var(--amber); color: var(--amber); }
+.eg-mode-badge--automatico { border-color: var(--green-on); color: var(--green-on); }
+
+/* ── Animaciones de entrada — staggered reveal ───────────── */
+/*
+ * Los KPIs aparecen uno a uno con un pequeño retraso entre ellos.
+ * Esto crea la sensación de que el sistema "está arrancando"
+ * y muestra datos a medida que los obtiene.
+ */
+.eg-kpi:nth-child(1) { animation: eg-kpi-in .3s ease .05s both; }
+.eg-kpi:nth-child(2) { animation: eg-kpi-in .3s ease .10s both; }
+.eg-kpi:nth-child(3) { animation: eg-kpi-in .3s ease .15s both; }
+.eg-kpi:nth-child(4) { animation: eg-kpi-in .3s ease .20s both; }
+.eg-kpi:nth-child(5) { animation: eg-kpi-in .3s ease .25s both; }
+.eg-kpi:nth-child(6) { animation: eg-kpi-in .3s ease .30s both; }
+
+@keyframes eg-kpi-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.eg-center  { animation: eg-fade-in .35s ease .2s both; }
+.eg-health  { animation: eg-fade-in .3s ease .3s both; }
+.eg-timeline { animation: eg-fade-in .3s ease .35s both; }
+
+@keyframes eg-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+</style>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HTML DE LA SECCIÓN
+════════════════════════════════════════════════════════════════ -->
+<div class="eg-root">
+  <div class="eg-scroll">
+
+    <!-- ── KPI BAR ──────────────────────────────────────────── -->
+    <div class="eg-kpi-bar" role="region" aria-label="Métricas del sistema">
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-backend">
+        <span class="eg-kpi__value" id="eg-kpi-backend-val">—</span>
+        <span class="eg-kpi__label">Backend Audio</span>
+        <span class="eg-kpi__sub" id="eg-kpi-backend-sub">Verificando…</span>
+      </div>
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-mode">
+        <span class="eg-kpi__value" id="eg-kpi-mode-val">—</span>
+        <span class="eg-kpi__label">Modo de Operación</span>
+        <span class="eg-kpi__sub" id="eg-kpi-mode-sub">—</span>
+      </div>
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-playing">
+        <span class="eg-kpi__value" id="eg-kpi-playing-val">OFF</span>
+        <span class="eg-kpi__label">Estado Motor</span>
+        <span class="eg-kpi__sub" id="eg-kpi-playing-sub">Sin reproducción</span>
+      </div>
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-queue">
+        <span class="eg-kpi__value" id="eg-kpi-queue-val">0</span>
+        <span class="eg-kpi__label">Tracks en Cola</span>
+        <span class="eg-kpi__sub" id="eg-kpi-queue-sub">Cola vacía</span>
+      </div>
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-ws">
+        <span class="eg-kpi__value" id="eg-kpi-ws-val">—</span>
+        <span class="eg-kpi__label">Clientes WS</span>
+        <span class="eg-kpi__sub" id="eg-kpi-ws-sub">WebSocket activo</span>
+      </div>
+
+      <div class="eg-kpi eg-kpi--neutral" id="eg-kpi-uptime">
+        <span class="eg-kpi__value" id="eg-kpi-uptime-val">0:00</span>
+        <span class="eg-kpi__label">Tiempo en Sesión</span>
+        <span class="eg-kpi__sub" id="eg-kpi-uptime-sub">Desde inicio</span>
+      </div>
+
+    </div>
+
+    <!-- ── BARRA DE ACCIONES RÁPIDAS ──────────────────────── -->
+    <div class="eg-quick-actions">
+      <button class="eg-action-btn" id="eg-btn-refresh" title="Actualizar estado del servidor">
+        ↺ Actualizar
+      </button>
+      <span class="eg-action-separator"></span>
+      <button class="eg-action-btn" id="eg-btn-go-biblioteca" title="Ir a Biblioteca Musical">
+        🎵 Biblioteca
+      </button>
+      <button class="eg-action-btn" id="eg-btn-go-motor" title="Ir a configuración del Motor">
+        🔧 Motor
+      </button>
+      <span class="eg-action-separator"></span>
+      <button class="eg-action-btn eg-action-btn--danger" id="eg-btn-clear-log" title="Limpiar log de esta sesión">
+        ✕ Limpiar Log
+      </button>
+
+      <div class="eg-mode-indicator">
+        <span>MODO:</span>
+        <span class="eg-mode-badge eg-mode-badge--manual" id="eg-mode-badge">MANUAL</span>
+      </div>
+    </div>
+
+    <!-- ── PANEL CENTRAL: MOTOR + LOG ─────────────────────── -->
+    <div class="eg-center">
+
+      <!-- Panel izquierdo: Variables del Motor de Audio -->
+      <div class="eg-motor">
+        <div class="eg-panel-header">
+          <span class="eg-live-dot" id="eg-live-dot"></span>
+          <span class="eg-panel-title">MOTOR DE AUDIO</span>
+          <div class="eg-panel-actions">
+            <span style="font-family:var(--font-data);font-size:.55rem;color:var(--choc-6);letter-spacing:.1em" id="eg-motor-update-ts">—</span>
+          </div>
+        </div>
+        <div class="eg-motor-body" id="eg-motor-body">
+
+          <div class="eg-var-section">REPRODUCCIÓN</div>
+
+          <div class="eg-var-row">
+            <span class="eg-var-name">Backend</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value neutral" id="egv-backend">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Estado</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-estado">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Track Activo</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-track" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Modo</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-modo">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Crossfade</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-xfade">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Cola (tracks)</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-cola">0</span>
+          </div>
+
+          <div class="eg-var-section">SISTEMA</div>
+
+          <div class="eg-var-row">
+            <span class="eg-var-name">Conexión WS</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-ws">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Último error</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value error" id="egv-last-error">Ninguno</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Watchdog</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value ok" id="egv-watchdog">Activo</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Recuperaciones</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value" id="egv-recoveries">0</span>
+          </div>
+
+          <div class="eg-var-section">INVENTARIO</div>
+
+          <div class="eg-var-row">
+            <span class="eg-var-name">Música</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value neutral" id="egv-inv-musica">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Jingles</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value neutral" id="egv-inv-efecto">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Publicidades</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value neutral" id="egv-inv-cuna">—</span>
+          </div>
+          <div class="eg-var-row">
+            <span class="eg-var-name">Sweepers</span>
+            <span class="eg-var-line"></span>
+            <span class="eg-var-value neutral" id="egv-inv-sweeper">—</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Panel derecho: Log terminal de eventos -->
+      <div class="eg-log">
+        <div class="eg-panel-header">
+          <span class="eg-panel-title">LOG DE EVENTOS</span>
+          <div class="eg-panel-actions">
+            <span style="font-family:var(--font-data);font-size:.55rem;color:var(--choc-6);letter-spacing:.08em" id="eg-log-count">0 eventos</span>
+          </div>
+        </div>
+        <div class="eg-log-body" id="eg-log-body">
+          <div class="eg-log-empty" id="eg-log-empty">
+            <span style="font-size:1.5rem;opacity:.3">▮▮▮</span>
+            <span>Esperando eventos del servidor…</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── HEALTH BAR ────────────────────────────────────── -->
+    <div class="eg-health" role="status" aria-label="Estado de subsistemas" id="eg-health-bar">
+
+      <span class="eg-health-label">SUBSISTEMAS</span>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-server" title="Conexión con el servidor API">
+        <span class="eg-pill__dot"></span>
+        API SERVER
+      </div>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-ws" title="WebSocket en tiempo real">
+        <span class="eg-pill__dot"></span>
+        WEBSOCKET
+      </div>
+
+      <span class="eg-health-sep"></span>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-engine" title="Motor de audio (BASS/pygame/mock)">
+        <span class="eg-pill__dot"></span>
+        MOTOR AUDIO
+      </div>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-db" title="Base de datos SQLite">
+        <span class="eg-pill__dot"></span>
+        BASE DE DATOS
+      </div>
+
+      <span class="eg-health-sep"></span>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-media" title="Carpeta media/ accesible">
+        <span class="eg-pill__dot"></span>
+        MEDIA DIR
+      </div>
+
+      <div class="eg-pill eg-pill--warn" id="eg-pill-watchdog" title="Watchdog de audio activo">
+        <span class="eg-pill__dot"></span>
+        WATCHDOG
+      </div>
+
+      <span class="eg-health-ts" id="eg-health-ts">Verificando…</span>
+    </div>
+
+    <!-- ── TIMELINE DE EMISIÓN ──────────────────────────── -->
+    <div class="eg-timeline">
+      <div class="eg-timeline-header">
+        <span class="eg-timeline-title">LÍNEA DE EMISIÓN — SESIÓN ACTUAL</span>
+        <span class="eg-timeline-count" id="eg-timeline-count">0 tracks</span>
+        <button class="eg-timeline-clear" id="eg-timeline-clear">✕ borrar</button>
+      </div>
+
+      <!-- El carril de bloques — JS lo llena con .eg-track-block -->
+      <div class="eg-timeline-rail" id="eg-timeline-rail"></div>
+
+      <div class="eg-timeline-legend">
+        <div class="eg-legend-item"><span class="eg-legend-dot eg-legend-dot--musica"></span>Música</div>
+        <div class="eg-legend-item"><span class="eg-legend-dot eg-legend-dot--cuna"></span>Cuña</div>
+        <div class="eg-legend-item"><span class="eg-legend-dot eg-legend-dot--efecto"></span>Jingle</div>
+        <div class="eg-legend-item"><span class="eg-legend-dot eg-legend-dot--sweeper"></span>Sweeper</div>
+        <div class="eg-legend-item"><span class="eg-legend-dot eg-legend-dot--current"></span>Actual</div>
+      </div>
+    </div>
+
+  </div><!-- /.eg-scroll -->
+</div><!-- /.eg-root -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT DE LA SECCIÓN
+     Alcance estrictamente local: solo gestiona lo que está en este HTML.
+     Comunica hacia afuera solo a través de:
+       - window.ShellWS.send()  para comandos al servidor
+       - window.ShellNav.activate() para navegar a otra sección
+     Recibe datos del servidor a través de CustomEvents "ws:*" en document.
+════════════════════════════════════════════════════════════════ -->
+<script>
+(function EstadoGlobal() {
+  "use strict";
+
+  /* ── Referencias al DOM ────────────────────────────────── */
+  const $  = id => document.getElementById(id);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+
+  /* ── Estado interno de la sección ─────────────────────── */
+  const state = {
+    sessionStart:   Date.now(),
+    logEntries:     [],
+    MAX_LOG:        60,         // máximo de entradas en el log visible
+    timelineBlocks: [],
+    currentTrackId: null,
+    currentTrackStart: null,
+    currentTrackDur:   0,
+    recoveryCount:  0,
+    lastError:      null,
+    wsConnected:    false,
+    progressTimer:  null,
+    uptimeTimer:    null,
+  };
+
+  /* ── Utilidades ────────────────────────────────────────── */
+  function ts() {
+    return new Date().toTimeString().slice(0, 8);
+  }
+
+  function fmtSec(sec) {
+    if (!sec || isNaN(sec)) return "0:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  /*
+   * Cambia las clases de estado de un KPI de forma declarativa.
+   * Esto evita el patrón de "removeClass todos y addClass uno"
+   * esparcido por todo el código.
+   */
+  function setKpiState(kpiEl, stateClass) {
+    if (!kpiEl) return;
+    ["ok","warning","error","live","info","neutral"].forEach(c =>
+      kpiEl.classList.remove(`eg-kpi--${c}`)
+    );
+    kpiEl.classList.add(`eg-kpi--${stateClass}`);
+  }
+
+  /* Igual que setKpiState pero para las pastillas de la health bar */
+  function setPillState(pillEl, stateClass) {
+    if (!pillEl) return;
+    ["ok","warn","error"].forEach(c => pillEl.classList.remove(`eg-pill--${c}`));
+    pillEl.classList.add(`eg-pill--${stateClass}`);
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: UPTIME COUNTER
+     Muestra cuánto tiempo lleva abierta esta sesión de admin.
+     No es el uptime del servidor (eso lo daría una API específica),
+     sino el tiempo desde que el operador abrió esta página.
+  ════════════════════════════════════════════════════════ */
+  function startUptimeCounter() {
+    state.uptimeTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - state.sessionStart) / 1000);
+      const h = Math.floor(elapsed / 3600);
+      const m = Math.floor((elapsed % 3600) / 60);
+      const s = (elapsed % 60).toString().padStart(2, "0");
+      const display = h > 0
+        ? `${h}:${m.toString().padStart(2,"0")}:${s}`
+        : `${m}:${s}`;
+      const el = $("eg-kpi-uptime-val");
+      if (el) el.textContent = display;
+    }, 1000);
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: PROGRESS BAR DEL TRACK ACTUAL
+     Actualiza el progreso del bloque activo en el timeline
+     y el texto "en reproducción" del KPI de estado.
+  ════════════════════════════════════════════════════════ */
+  function startProgressUpdate() {
+    stopProgressUpdate();
+    if (!state.currentTrackStart || !state.currentTrackDur) return;
+
+    state.progressTimer = setInterval(() => {
+      const elapsed = (Date.now() - state.currentTrackStart) / 1000;
+      const pct = Math.min((elapsed / state.currentTrackDur) * 100, 100);
+
+      // Actualizar el bloque actual en el timeline
+      const currentBlock = document.querySelector(".eg-track-block--current");
+      if (currentBlock) {
+        currentBlock.style.setProperty("--progress", `${pct.toFixed(1)}%`);
+      }
+
+      // Actualizar el sub-texto del KPI de estado
+      const sub = $("eg-kpi-playing-sub");
+      const remaining = Math.max(0, state.currentTrackDur - elapsed);
+      if (sub) sub.textContent = `Resta ${fmtSec(remaining)}`;
+
+      if (pct >= 100) stopProgressUpdate();
+    }, 1000);
+  }
+
+  function stopProgressUpdate() {
+    if (state.progressTimer) {
+      clearInterval(state.progressTimer);
+      state.progressTimer = null;
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: LOG TERMINAL
+     Añade una entrada al log con timestamp, tipo y mensaje.
+     Limita el log a MAX_LOG entradas (elimina las más antiguas).
+     El scroll se mantiene al final automáticamente.
+  ════════════════════════════════════════════════════════ */
+  function appendLog(type, msg) {
+    const body  = $("eg-log-body");
+    const empty = $("eg-log-empty");
+    if (!body) return;
+
+    // Ocultar el placeholder vacío en la primera entrada real
+    if (empty) empty.style.display = "none";
+
+    const entry = document.createElement("div");
+    entry.className = "eg-log-entry";
+
+    const typeLabels = {
+      track:  "TRACK",
+      mode:   "MODO",
+      error:  "ERROR",
+      warn:   "WARN",
+      ws:     "WS",
+      effect: "EFX",
+      system: "SYS",
+    };
+
+    entry.innerHTML = `
+      <span class="eg-log-ts">${ts()}</span>
+      <span class="eg-log-type eg-log-type--${type}">${typeLabels[type] ?? type.toUpperCase()}</span>
+      <span class="eg-log-msg" title="${msg.replace(/"/g, "&quot;")}">${msg}</span>
+    `;
+    body.appendChild(entry);
+
+    // Mantener el máximo de entradas
+    state.logEntries.push(entry);
+    if (state.logEntries.length > state.MAX_LOG) {
+      const oldest = state.logEntries.shift();
+      oldest.remove();
+    }
+
+    // Actualizar contador
+    const countEl = $("eg-log-count");
+    if (countEl) countEl.textContent = `${state.logEntries.length} eventos`;
+
+    // Scroll automático al final
+    body.scrollTop = body.scrollHeight;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: TIMELINE
+     Añade un bloque al carril de emisión.
+     El ancho de cada bloque es proporcional a la duración
+     del track dentro del total de la sesión.
+     Después de añadir, recalcula todos los anchos para que
+     la suma siempre ocupe el 100% del carril.
+  ════════════════════════════════════════════════════════ */
+  function addTimelineBlock(trackData) {
+    state.timelineBlocks.push({
+      id:      trackData.audio_id,
+      titulo:  trackData.titulo ?? "—",
+      artista: trackData.artista ?? "—",
+      tipo:    trackData.tipo_audio ?? "Musica",
+      dur:     trackData.duracion_seg ?? 120,
+    });
+
+    renderTimeline();
+    updateTimelineCount();
+  }
+
+  function renderTimeline() {
+    const rail = $("eg-timeline-rail");
+    if (!rail) return;
+
+    // Calcular la duración total para normalizar anchos
+    const totalDur = state.timelineBlocks.reduce((sum, b) => sum + b.dur, 0) || 1;
+
+    // Mantener el bloque actual (último) marcado visualmente
+    const currentIdx = state.timelineBlocks.length - 1;
+
+    rail.innerHTML = state.timelineBlocks.map((block, i) => {
+      const widthPct = ((block.dur / totalDur) * 100).toFixed(2);
+      const isCurrent = i === currentIdx && state.currentTrackId === block.id;
+      const tooltip = `${block.artista} — ${block.titulo} (${fmtSec(block.dur)})`;
+      return `
+        <div
+          class="eg-track-block${isCurrent ? " eg-track-block--current" : ""}"
+          data-tipo="${block.tipo}"
+          data-tooltip="${tooltip.replace(/"/g, "&quot;")}"
+          style="width:${widthPct}%"
+        ></div>
+      `;
+    }).join("");
+  }
+
+  function updateTimelineCount() {
+    const el = $("eg-timeline-count");
+    if (el) el.textContent = `${state.timelineBlocks.length} track${state.timelineBlocks.length !== 1 ? "s" : ""}`;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: LOAD STATUS
+     Consulta /api/v1/status y /api/v1/stats en paralelo
+     y actualiza todos los KPIs y la health bar de una vez.
+  ════════════════════════════════════════════════════════ */
+  async function loadStatus() {
+    try {
+      const [status, stats] = await Promise.all([
+        fetch("/api/v1/status").then(r => r.json()),
+        fetch("/api/v1/stats").then(r => r.json()),
+      ]);
+
+      applyStatus(status);
+      applyStats(stats);
+      updateHealthBar(true, status);
+      updateMotorTs();
+    } catch (err) {
+      appendLog("error", `Error al consultar API: ${err.message}`);
+      updateHealthBar(false, null);
+    }
+  }
+
+  function applyStatus(s) {
+    // KPI: Backend
+    const backendVal = $("eg-kpi-backend-val");
+    const backendSub = $("eg-kpi-backend-sub");
+    const backendKpi = $("eg-kpi-backend");
+    if (backendVal) backendVal.textContent = (s.backend ?? "—").toUpperCase();
+    if (backendSub) backendSub.textContent = s.backend === "bass" ? "Motor profesional" : s.backend === "pygame" ? "Fallback pygame" : s.backend === "mock" ? "Modo demo" : "—";
+    if (backendKpi) setKpiState(backendKpi, s.backend === "bass" ? "ok" : s.backend === "pygame" ? "warning" : "neutral");
+
+    // Variable del motor: backend
+    const egvBackend = $("egv-backend");
+    if (egvBackend) {
+      egvBackend.textContent = s.backend ?? "—";
+      egvBackend.className = `eg-var-value ${s.backend === "bass" ? "ok" : s.backend === "pygame" ? "warn" : "neutral"}`;
+    }
+
+    // KPI: Modo
+    const modeVal = $("eg-kpi-mode-val");
+    const modeSub = $("eg-kpi-mode-sub");
+    const modeKpi = $("eg-kpi-mode");
+    if (modeVal) modeVal.textContent = (s.modo ?? "—").toUpperCase();
+    if (modeSub) modeSub.textContent = s.modo === "automatico" ? "Rotación automática" : "Control manual";
+    if (modeKpi) setKpiState(modeKpi, s.modo === "automatico" ? "ok" : "info");
+    updateModeBadge(s.modo);
+
+    // Variables del motor: modo, crossfade, cola
+    const egvModo = $("egv-modo");
+    if (egvModo) { egvModo.textContent = s.modo ?? "—"; egvModo.className = `eg-var-value ${s.modo === "automatico" ? "ok" : "warn"}`; }
+    const egvXfade = $("egv-xfade");
+    if (egvXfade) egvXfade.textContent = s.crossfade_active ? "Activo ↔" : "En espera";
+    const egvCola = $("egv-cola");
+    if (egvCola) egvCola.textContent = s.queue_length ?? 0;
+
+    // KPI: Estado Motor (is_playing)
+    const playingVal = $("eg-kpi-playing-val");
+    const playingKpi = $("eg-kpi-playing");
+    const liveDot    = $("eg-live-dot");
+    const egvEstado  = $("egv-estado");
+
+    if (s.is_playing) {
+      if (playingVal) playingVal.textContent = "ON AIR";
+      if (playingKpi) setKpiState(playingKpi, "live");
+      if (liveDot)    liveDot.classList.add("active");
+      if (egvEstado)  { egvEstado.textContent = "Reproduciendo"; egvEstado.className = "eg-var-value live"; }
+    } else {
+      if (playingVal) playingVal.textContent = "OFF";
+      if (playingKpi) setKpiState(playingKpi, "neutral");
+      if (liveDot)    liveDot.classList.remove("active");
+      if (egvEstado)  { egvEstado.textContent = "Detenido"; egvEstado.className = "eg-var-value neutral"; }
+    }
+
+    // KPI: Cola
+    const queueVal = $("eg-kpi-queue-val");
+    const queueKpi = $("eg-kpi-queue");
+    const queueSub = $("eg-kpi-queue-sub");
+    if (queueVal) queueVal.textContent = s.queue_length ?? 0;
+    if (queueKpi) setKpiState(queueKpi, (s.queue_length ?? 0) > 0 ? "info" : "neutral");
+    if (queueSub) queueSub.textContent = (s.queue_length ?? 0) > 0 ? `${s.queue_length} en espera` : "Cola vacía";
+
+    // Track activo
+    const egvTrack = $("egv-track");
+    if (egvTrack) {
+      if (s.current_track) {
+        egvTrack.textContent = `${s.current_track.artista} — ${s.current_track.titulo}`;
+        egvTrack.className = "eg-var-value ok";
+      } else {
+        egvTrack.textContent = "—";
+        egvTrack.className = "eg-var-value neutral";
+      }
+    }
+  }
+
+  function applyStats(stats) {
+    // Actualizar variables del motor (sección Inventario)
+    const mapping = {
+      "egv-inv-musica":   stats.Musica,
+      "egv-inv-efecto":   stats.Efecto,
+      "egv-inv-cuna":     stats["Cuña"],
+      "egv-inv-sweeper":  stats.Sweeper,
+    };
+    Object.entries(mapping).forEach(([id, val]) => {
+      const el = $(id);
+      if (el) {
+        el.textContent = val ?? 0;
+        el.className = `eg-var-value ${(val ?? 0) > 0 ? "ok" : "warn"}`;
+      }
+    });
+  }
+
+  function updateHealthBar(apiOk, status) {
+    const now = new Date().toTimeString().slice(0, 8);
+    const tsEl = $("eg-health-ts");
+    if (tsEl) tsEl.textContent = `Último check: ${now}`;
+
+    setPillState($("eg-pill-server"), apiOk ? "ok" : "error");
+    setPillState($("eg-pill-ws"),     state.wsConnected ? "ok" : "warn");
+    setPillState($("eg-pill-engine"), status?.is_playing !== undefined ? "ok" : apiOk ? "warn" : "error");
+    setPillState($("eg-pill-db"),     apiOk ? "ok" : "error");
+    setPillState($("eg-pill-media"),  apiOk ? "ok" : "warn");
+    setPillState($("eg-pill-watchdog"), "ok");   // el watchdog corre si el motor arrancó
+  }
+
+  function updateMotorTs() {
+    const el = $("eg-motor-update-ts");
+    if (el) el.textContent = `Actualizado ${ts()}`;
+  }
+
+  function updateModeBadge(modo) {
+    const badge = $("eg-mode-badge");
+    if (!badge) return;
+    badge.textContent = (modo ?? "manual").toUpperCase();
+    badge.className = `eg-mode-badge eg-mode-badge--${modo ?? "manual"}`;
+  }
+
+  /* ════════════════════════════════════════════════════════
+     MÓDULO: WS CLIENT COUNT (KPI 5)
+     Usamos el evento de conexión del shell para inferir si hay
+     clientes conectados. No tenemos un endpoint para el conteo
+     exacto, así que mostramos el estado de nuestra propia conexión.
+  ════════════════════════════════════════════════════════ */
+  function updateWsKpi(connected) {
+    state.wsConnected = connected;
+    const val = $("eg-kpi-ws-val");
+    const kpi = $("eg-kpi-ws");
+    const sub = $("eg-kpi-ws-sub");
+    const egvWs = $("egv-ws");
+
+    if (connected) {
+      if (val) val.textContent = "OK";
+      if (kpi) setKpiState(kpi, "ok");
+      if (sub) sub.textContent = "Admin conectado";
+      if (egvWs) { egvWs.textContent = "Conectado"; egvWs.className = "eg-var-value ok"; }
+    } else {
+      if (val) val.textContent = "OFF";
+      if (kpi) setKpiState(kpi, "error");
+      if (sub) sub.textContent = "Sin conexión";
+      if (egvWs) { egvWs.textContent = "Desconectado"; egvWs.className = "eg-var-value error"; }
+    }
+    updateHealthBar(connected, null);
+  }
+
+  /* ════════════════════════════════════════════════════════
+     SUSCRIPCIÓN A EVENTOS WEBSOCKET
+     Los CustomEvents "ws:*" los emite el Shell en document
+     cuando recibe un mensaje del servidor.
+     Esta sección se suscribe solo a los que le interesan.
+  ════════════════════════════════════════════════════════ */
+
+  // Track iniciado: actualizar timeline, KPIs y arrancar progreso
+  document.addEventListener("ws:track_started", ({ detail: d }) => {
+    appendLog("track", `▶ ${d.artista} — ${d.titulo}`);
+
+    // Quitar marca de "current" del bloque anterior en el timeline
+    const prev = document.querySelector(".eg-track-block--current");
+    if (prev) prev.classList.remove("eg-track-block--current");
+
+    // Registrar el nuevo track en el estado
+    state.currentTrackId    = d.audio_id;
+    state.currentTrackStart = Date.now();
+    state.currentTrackDur   = d.duracion_seg ?? 0;
+
+    addTimelineBlock(d);
+    startProgressUpdate();
+
+    // Actualizar el KPI de estado
+    const val = $("eg-kpi-playing-val");
+    const kpi = $("eg-kpi-playing");
+    if (val) val.textContent = "ON AIR";
+    if (kpi) setKpiState(kpi, "live");
+    $("eg-live-dot")?.classList.add("active");
+
+    // Actualizar variable del motor
+    const egvTrack = $("egv-track");
+    if (egvTrack) { egvTrack.textContent = `${d.artista} — ${d.titulo}`; egvTrack.className = "eg-var-value ok"; }
+    const egvEstado = $("egv-estado");
+    if (egvEstado) { egvEstado.textContent = "Reproduciendo"; egvEstado.className = "eg-var-value live"; }
+  });
+
+  // Motor detenido: limpiar estado visual
+  document.addEventListener("ws:engine_stopped", () => {
+    appendLog("system", "Motor detenido");
+    stopProgressUpdate();
+    state.currentTrackId = null;
+
+    const val = $("eg-kpi-playing-val");
+    const kpi = $("eg-kpi-playing");
+    const sub = $("eg-kpi-playing-sub");
+    if (val) val.textContent = "OFF";
+    if (kpi) setKpiState(kpi, "neutral");
+    if (sub) sub.textContent = "Sin reproducción";
+    $("eg-live-dot")?.classList.remove("active");
+
+    const egvEstado = $("egv-estado");
+    if (egvEstado) { egvEstado.textContent = "Detenido"; egvEstado.className = "eg-var-value neutral"; }
+  });
+
+  // Modo cambiado
+  document.addEventListener("ws:mode_changed", ({ detail: d }) => {
+    appendLog("mode", `Modo → ${d?.mode?.toUpperCase() ?? "?"}`);
+    updateModeBadge(d?.mode);
+
+    const modeVal = $("eg-kpi-mode-val");
+    const modeKpi = $("eg-kpi-mode");
+    const modeSub = $("eg-kpi-mode-sub");
+    if (modeVal) modeVal.textContent = (d?.mode ?? "—").toUpperCase();
+    if (modeKpi) setKpiState(modeKpi, d?.mode === "automatico" ? "ok" : "info");
+    if (modeSub) modeSub.textContent = d?.mode === "automatico" ? "Rotación automática" : "Control manual";
+
+    const egvModo = $("egv-modo");
+    if (egvModo) { egvModo.textContent = d?.mode ?? "—"; egvModo.className = `eg-var-value ${d?.mode === "automatico" ? "ok" : "warn"}`; }
+  });
+
+  // Efecto disparado
+  document.addEventListener("ws:effect_fired", ({ detail: d }) => {
+    appendLog("effect", `Efecto disparado: ID ${d?.audio_id ?? "?"}`);
+  });
+
+  // Error de reproducción
+  document.addEventListener("ws:playback_error", ({ detail: d }) => {
+    const msg = d?.reason ?? d?.msg ?? "Error desconocido";
+    appendLog("error", `Error reproducción: ${msg}`);
+    state.lastError = msg;
+
+    const egvErr = $("egv-last-error");
+    if (egvErr) { egvErr.textContent = msg; egvErr.className = "eg-var-value error"; }
+
+    const kpi = $("eg-kpi-playing");
+    if (kpi) setKpiState(kpi, "error");
+  });
+
+  // Watchdog recovery
+  document.addEventListener("ws:watchdog_recovery", ({ detail: d }) => {
+    appendLog("warn", `Watchdog: recuperando motor (${d?.tipo ?? "?"})…`);
+    state.recoveryCount++;
+    const egvRec = $("egv-recoveries");
+    if (egvRec) { egvRec.textContent = state.recoveryCount; egvRec.className = `eg-var-value ${state.recoveryCount > 0 ? "warn" : ""}`; }
+  });
+
+  document.addEventListener("ws:watchdog_recovered", ({ detail: d }) => {
+    appendLog("system", `Motor recuperado vía: ${d?.method ?? "?"}`);
+  });
+
+  document.addEventListener("ws:watchdog_stall", () => {
+    appendLog("error", "STALL detectado — reiniciando stream");
+    const egvWatchdog = $("egv-watchdog");
+    if (egvWatchdog) { egvWatchdog.textContent = "STALL"; egvWatchdog.className = "eg-var-value error"; }
+  });
+
+  // Biblioteca actualizada: refrescar stats
+  document.addEventListener("ws:library_updated", ({ detail: d }) => {
+    appendLog("system", `Biblioteca actualizada (${d?.action ?? "?"}, ID ${d?.audio_id ?? "?"})`);
+    loadStatus();   // refresca los contadores de inventario también
+  });
+
+  // Stats actualizados
+  document.addEventListener("ws:stats_updated", () => {
+    loadStatus();
+  });
+
+  // WS conectado (el Shell lo emite como CustomEvent desde el body)
+  // Inferimos la conexión monitorizando si el status API responde
+  document.addEventListener("ws:status", () => {
+    updateWsKpi(true);
+    setPillState($("eg-pill-ws"), "ok");
+    appendLog("ws", "WebSocket conectado al servidor");
+  });
+
+  document.addEventListener("ws:pong", () => {
+    // No hacemos nada visual; solo sabemos que la conexión sigue viva
+    state.wsConnected = true;
+  });
+
+  /* ════════════════════════════════════════════════════════
+     BOTONES DE ACCIÓN
+  ════════════════════════════════════════════════════════ */
+
+  // Botón actualizar
+  $("eg-btn-refresh")?.addEventListener("click", async () => {
+    const btn = $("eg-btn-refresh");
+    if (btn) btn.textContent = "↺ …";
+    await loadStatus();
+    if (btn) btn.textContent = "↺ Actualizar";
+    appendLog("system", "Estado actualizado manualmente");
+  });
+
+  // Botón ir a Biblioteca
+  $("eg-btn-go-biblioteca")?.addEventListener("click", () => {
+    window.ShellNav?.activate("02-biblioteca-musical");
+  });
+
+  // Botón ir a Motor
+  $("eg-btn-go-motor")?.addEventListener("click", () => {
+    window.ShellNav?.activate("06-motor-audio");
+  });
+
+  // Botón limpiar log
+  $("eg-btn-clear-log")?.addEventListener("click", () => {
+    const body = $("eg-log-body");
+    if (!body) return;
+    body.innerHTML = "";
+    state.logEntries = [];
+    const empty = document.createElement("div");
+    empty.className = "eg-log-empty";
+    empty.id = "eg-log-empty";
+    empty.innerHTML = `<span style="font-size:1.5rem;opacity:.3">▮▮▮</span><span>Log limpiado — esperando nuevos eventos…</span>`;
+    body.appendChild(empty);
+    const countEl = $("eg-log-count");
+    if (countEl) countEl.textContent = "0 eventos";
+    appendLog("system", "Log limpiado por el operador");
+  });
+
+  // Botón limpiar timeline
+  $("eg-timeline-clear")?.addEventListener("click", () => {
+    state.timelineBlocks = [];
+    const rail = $("eg-timeline-rail");
+    if (rail) rail.innerHTML = "";
+    updateTimelineCount();
+  });
+
+  /* ════════════════════════════════════════════════════════
+     INICIALIZACIÓN DE LA SECCIÓN
+  ════════════════════════════════════════════════════════ */
+  async function init() {
+    appendLog("system", "Sección Estado Global iniciada");
+    startUptimeCounter();
+    await loadStatus();
+    updateWsKpi(true);   // asumimos conectado si llegamos hasta aquí
+
+    // Refresco automático del status cada 30 segundos
+    // para detectar cambios que no lleguen por WebSocket
+    setInterval(loadStatus, 30_000);
+  }
+
+  /*
+   * Iniciamos vía evento "section:init" si ya estamos dentro del Shell,
+   * o directamente si este HTML se carga de forma autónoma (para pruebas).
+   */
+  const myPanel = document.getElementById("section-panel-01-estado-global");
+  if (myPanel) {
+    myPanel.addEventListener("section:init", init, { once: true });
+    // Si el panel ya está activo cuando este script corre, init directamente
+    if (myPanel.classList.contains("section-panel--active")) init();
+  } else {
+    // Carga autónoma (pruebas sin el shell)
+    init();
+  }
+
+})();
+</script>
