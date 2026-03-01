@@ -1013,14 +1013,18 @@ async def websocket_endpoint(ws: WebSocket):
         logger.error(f"[WS] Error inesperado: {exc}")
         _manager.disconnect(ws)
 
+# --- AL FINAL DEL ARCHIVO, JUSTO ANTES DE if __name__ == "__main__": ---
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Aseguramos la ruta absoluta para evitar fallos de carpeta
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+admin_path = os.path.join(BASE_DIR, "frontend", "admin")
+
+# ESTA ES LA LÍNEA QUE FALTA O ESTÁ MAL:
+app.mount("/admin", StaticFiles(directory=admin_path, html=True), name="admin")
+
 if __name__ == "__main__":
     import uvicorn
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
     uvicorn.run("api_server:app", host="0.0.0.0", port=8000, reload=True)
