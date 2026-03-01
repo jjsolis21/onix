@@ -4,6 +4,7 @@ FastAPI REST API Server — Versión 2.0
 Sistema dinámico de categorías para Biblioteca.
 """
 
+import json
 import logging
 import os
 import shutil
@@ -14,7 +15,7 @@ from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -893,6 +894,124 @@ def get_stats(conn: sqlite3.Connection = Depends(get_db)):
         "por_cat3_subgenero":{r["valor"]: r["cantidad"] for r in rows_cat3},
         "por_voz":           {r["valor"]: r["cantidad"] for r in rows_voz},
     }
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — Canal de comandos en tiempo real para el Shell de Ónix FM
+#
+# POR QUÉ EL 403 OCURRE SIN ESTE ENDPOINT:
+#   Cuando el navegador envía una petición de upgrade WebSocket
+#   ("GET /ws" con "Upgrade: websocket"), Starlette busca un handler
+#   registrado para esa ruta. Si no encuentra ninguno, devuelve 403
+#   Forbidden — no un 404 como haría para HTTP normal. Es un
+#   comportamiento específico del handshake WS en Starlette.
+#
+# POR QUÉ CORS NO ES EL PROBLEMA:
+#   CORSMiddleware de Starlette SOLO procesa peticiones HTTP; no
+#   interviene en el handshake WebSocket. El navegador sí envía el
+#   header "Origin" durante el upgrade, pero ni FastAPI ni Starlette
+#   lo validan por defecto. Por eso no añadimos ninguna comprobación
+#   de origen aquí — aceptamos conexiones de cualquier origen.
+# ---------------------------------------------------------------------------
+
+class _ConnectionManager:
+    """
+    Gestiona el conjunto de conexiones WebSocket activas y permite
+    hacer broadcast de mensajes a todos los clientes a la vez.
+
+    El patrón es simple a propósito: una lista en memoria es suficiente
+    para el caso de uso de Ónix FM (un único proceso uvicorn, pocos
+    clientes simultáneos). Si en el futuro se necesita escalar a varios
+    workers, habría que sustituir esto por un broker como Redis Pub/Sub.
+    """
+
+    def __init__(self) -> None:
+        self._active: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket) -> None:
+        """Acepta el handshake y registra la conexión."""
+        await ws.accept()   # ← responde al upgrade con HTTP 101 Switching Protocols
+        self._active.append(ws)
+        logger.info(f"[WS] Cliente conectado. Total activos: {len(self._active)}")
+
+    def disconnect(self, ws: WebSocket) -> None:
+        """Elimina la conexión del registro (la llamada no es async porque no hay I/O)."""
+        if ws in self._active:
+            self._active.remove(ws)
+        logger.info(f"[WS] Cliente desconectado. Total activos: {len(self._active)}")
+
+    async def broadcast(self, message: str) -> None:
+        """
+        Retransmite el mensaje a todos los clientes registrados.
+
+        Si al enviar un mensaje se descubre que una conexión está rota
+        (excepción al hacer send_text), esa conexión se acumula en la
+        lista 'muertos' y se elimina al final del ciclo. Esto evita
+        modificar la lista mientras se itera sobre ella.
+        """
+        muertos: list[WebSocket] = []
+        for ws in self._active:
+            try:
+                await ws.send_text(message)
+            except Exception:
+                muertos.append(ws)
+        for ws in muertos:
+            self.disconnect(ws)
+
+
+# Instancia global — un único gestor para todo el proceso
+_manager = _ConnectionManager()
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    """
+    Canal WebSocket principal del Shell de Ónix FM.
+
+    Protocolo de mensajes (JSON, texto):
+        { "module": str, "cmd": str, "ts": int, "data": object }
+
+    Comandos conocidos enviados por el frontend (biblioteca-musical.html):
+        UPLOAD        — nuevo audio añadido a la biblioteca
+        UPDATE        — metadatos de audio modificados
+        DELETE        — audio eliminado (soft-delete)
+        FILE_SELECTED — archivo seleccionado en el dropzone del modal
+
+    Flujo de cada mensaje:
+        1. El frontend llama a wsCmd(cmd, data) → JSON.stringify → ws.send()
+        2. Este endpoint recibe el texto, lo deserializa para loguear,
+           y hace broadcast a todos los clientes conectados (incluido
+           el emisor), de forma que el Shell y otros módulos puedan
+           reaccionar al evento.
+    """
+    await _manager.connect(ws)
+    try:
+        while True:
+            raw = await ws.receive_text()
+
+            # Parsear solo para logging; si el JSON está malformado
+            # lo registramos como advertencia pero no cortamos la conexión
+            try:
+                msg    = json.loads(raw)
+                cmd    = msg.get("cmd",    "?")
+                module = msg.get("module", "?")
+                logger.info(
+                    f"[WS] ← {module}/{cmd} | "
+                    f"data={str(msg.get('data', {}))[:120]}"
+                )
+            except json.JSONDecodeError:
+                logger.warning(f"[WS] Mensaje no-JSON recibido: {raw[:120]}")
+
+            # Reemitir el mensaje a todos los clientes (broadcast)
+            await _manager.broadcast(raw)
+
+    except WebSocketDisconnect:
+        # Desconexión limpia iniciada por el cliente (cierre normal)
+        _manager.disconnect(ws)
+    except Exception as exc:
+        # Error inesperado — logueamos y limpiamos la conexión
+        logger.error(f"[WS] Error inesperado: {exc}")
+        _manager.disconnect(ws)
 
 
 # ---------------------------------------------------------------------------
