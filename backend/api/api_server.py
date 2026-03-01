@@ -15,7 +15,9 @@ from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -87,6 +89,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Debug Validation: Imprime exactamente qué campo falló para evitar 422 silenciosos.
+    """
+    logger.error(f"422 Validation Error en {request.url}: {exc.errors()}")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
 # ---------------------------------------------------------------------------
@@ -503,40 +514,60 @@ def _validate_all_categorias(
 @app.post(
     "/api/v1/audios",
     status_code=status.HTTP_201_CREATED,
-    summary="Crear nuevo audio en Biblioteca",
+    summary="Crear nuevo audio en Biblioteca con archivo subido directamente",
     tags=["Audios"],
 )
 def create_audio(
-    body: AudioCreateRequest,
+    titulo: str = Form(..., min_length=1, max_length=200),
+    artista: str = Form(..., min_length=1, max_length=200),
+    album: Optional[str] = Form(None, max_length=200),
+    duracion: Optional[int] = Form(0, ge=0),
+    bpm: Optional[int] = Form(None, ge=40, le=300),
+    fecha_lanzamiento: Optional[str] = Form(None),
+    cat1: Optional[str] = Form(None),
+    cat2: Optional[str] = Form(None),
+    cat3: Optional[str] = Form(None),
+    voz: Optional[str] = Form(None),
+    file: UploadFile = File(...),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """
-    Registra un nuevo audio en la biblioteca.
-
-    Flujo:
-    1. Valida que cat1/cat2/cat3/voz existan en config dinámica.
-    2. Mueve el archivo de staging → library (Copy-and-Delete).
-    3. Inserta registro en DB mapeando campos Jazler → columnas DB.
-
-    Mapeo de campos:
-        cat1 → subgenero  (Género musical)
-        cat2 → categoria  (Rotación/estado)
-        cat3 → cat3       (Subgénero extra)
-        voz  → genero_vocal
+    Registra un nuevo audio recibiendo directamente el UploadFile y FormData.
     """
     logger.info(
-        f"POST /api/v1/audios → titulo='{body.titulo}', "
-        f"artista='{body.artista}', cat1={body.cat1}, cat2={body.cat2}, "
-        f"cat3={body.cat3}, voz={body.voz}"
+        f"POST /api/v1/audios (UploadFile) → titulo='{titulo}', "
+        f"artista='{artista}', archivo='{file.filename}'"
     )
 
     # PASO 1: Validación dinámica de categorías
-    _validate_all_categorias(conn, body.cat1, body.cat2, body.cat3, body.voz)
+    _validate_all_categorias(conn, cat1, cat2, cat3, voz)
     logger.info("  → Validación de categorías: PASS")
 
-    # PASO 2: Mover archivo (Copy-and-Delete)
-    ruta_final = _move_to_library(body.archivo_path, body.titulo, body.artista)
-    logger.info(f"  → Archivo en library: {ruta_final}")
+    # PASO 2: Guardar el archivo subido en LIBRARY_DIR directamente
+    artista_slug = "".join(c if c.isalnum() or c in " _-" else "_" for c in artista).strip()
+    dest_dir = LIBRARY_DIR / artista_slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Manejar posibles colisiones de nombre
+    dest = dest_dir / file.filename
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        counter = 1
+        while dest.exists():
+            dest = dest_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    # Guardar en disco
+    try:
+        with open(dest, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"  → Archivo guardado guardado en: {dest}")
+    except Exception as e:
+        logger.error(f"  → Error guardando archivo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fallo al guardar el archivo: {e}"
+        )
 
     # PASO 3: Insertar en DB
     try:
@@ -547,27 +578,27 @@ def create_audio(
                 bpm, fecha_lanzamiento
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            body.titulo,
-            body.artista,
-            body.album,
-            body.duracion or 0,
-            ruta_final,
-            body.cat1,        # subgenero
-            body.cat2,        # categoria
-            body.cat3,        # cat3
-            body.voz,         # genero_vocal
-            body.bpm,
-            body.fecha_lanzamiento,
+            titulo,
+            artista,
+            album,
+            duracion or 0,
+            str(dest),
+            cat1,             # subgenero
+            cat2,             # categoria
+            cat3,             # cat3
+            voz,              # genero_vocal
+            bpm,
+            fecha_lanzamiento,
         ))
         nuevo_id = cursor.lastrowid
 
     except sqlite3.IntegrityError as e:
-        # Revertir el movimiento de archivo si la DB falla
         logger.error(f"  → DB IntegrityError: {e}. Revirtiendo archivo...")
-        _revert_file(ruta_final, body.archivo_path)
+        if dest.exists():
+            dest.unlink()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un audio con esa ruta de archivo: {ruta_final}"
+            detail=f"Ya existe un registro con ese archivo_path: {dest}"
         )
 
     logger.info(f"  → Audio creado con id={nuevo_id}")
@@ -575,13 +606,13 @@ def create_audio(
         "mensaje": "Audio creado exitosamente",
         "data": {
             "id": nuevo_id,
-            "titulo": body.titulo,
-            "artista": body.artista,
-            "archivo_path": ruta_final,
-            "cat1": body.cat1,
-            "cat2": body.cat2,
-            "cat3": body.cat3,
-            "voz": body.voz,
+            "titulo": titulo,
+            "artista": artista,
+            "archivo_path": str(dest),
+            "cat1": cat1,
+            "cat2": cat2,
+            "cat3": cat3,
+            "voz": voz,
         }
     }
 

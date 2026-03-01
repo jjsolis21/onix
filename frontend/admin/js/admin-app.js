@@ -435,6 +435,7 @@ function closeModal() {
   overlay.style.zIndex = '';
 
   editingId = null;
+  selectedFile = null;
 };
 
 async function saveModal() {
@@ -451,29 +452,32 @@ async function saveModal() {
   const bpmVal = +($('modal-bpm')?.value) || null;
   const yearVal = $('modal-year')?.value.trim() || null;
 
-  const apiPayload = {
-    titulo: titleVal,
-    artista: artistVal,
-    album: $('modal-album')?.value.trim() || null,
-    bpm: (bpmVal && bpmVal >= 40 && bpmVal <= 300) ? bpmVal : null,
-    fecha_lanzamiento: yearVal,
-    cat1: $('modal-cat1')?.value || null,
-    cat2: $('modal-cat2')?.value || null,
-    cat3: $('modal-cat3')?.value || null,
-    voz: $('modal-voz')?.value || null,
-  };
-
-  // Para crear un audio el backend requiere archivo_path (ruta en staging).
-  // El campo modal-archivo-path es un input de texto donde el operador
-  // escribe la ruta o lo rellenamos a partir del drag-drop.
   if (!editingId) {
-    const archivoPath = $('modal-archivo-path')?.value.trim();
-    if (!archivoPath) {
-      showToast('Se requiere la ruta del archivo en staging', 'error');
+    if (!selectedFile) {
+      showToast('Debes seleccionar un archivo de audio', 'error');
       return;
     }
-    apiPayload.archivo_path = archivoPath;
-    apiPayload.duracion = +($('modal-duracion')?.value) || 0;
+  }
+
+  const formData = new FormData();
+  formData.append('titulo', titleVal);
+  formData.append('artista', artistVal);
+
+  const albumVal = $('modal-album')?.value.trim();
+  if (albumVal) formData.append('album', albumVal);
+
+  // El backend espera form data, valores opcionales no se envían si vacíos
+  if (bpmVal && bpmVal >= 40 && bpmVal <= 300) formData.append('bpm', bpmVal);
+  if (yearVal) formData.append('fecha_lanzamiento', yearVal);
+  if ($('modal-cat1')?.value) formData.append('cat1', $('modal-cat1').value);
+  if ($('modal-cat2')?.value) formData.append('cat2', $('modal-cat2').value);
+  if ($('modal-cat3')?.value) formData.append('cat3', $('modal-cat3').value);
+  if ($('modal-voz')?.value) formData.append('voz', $('modal-voz').value);
+
+  // Adjuntar archivo solo si es creación
+  if (!editingId && selectedFile) {
+    formData.append('file', selectedFile);
+    formData.append('duracion', +($('modal-duracion')?.value) || 0);
   }
 
   // Deshabilitar botón guardar mientras la petición está en vuelo
@@ -483,17 +487,18 @@ async function saveModal() {
   try {
     let res, data;
     if (editingId) {
-      // PUT actualiza solo los campos enviados
+      // PUT para metadata sí usa JSON 
+      const jsonPayload = {};
+      formData.forEach((value, key) => jsonPayload[key] = value);
       res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiPayload),
+        body: JSON.stringify(jsonPayload),
       });
     } else {
       res = await fetch(`${API_BASE}/api/v1/audios`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiPayload),
+        body: formData,
       });
     }
 
@@ -829,11 +834,14 @@ document.addEventListener('keydown', e => {
 /* ══════════════════════════════════════════════════════════════
    §14 · MANEJO DE ARCHIVO
 ══════════════════════════════════════════════════════════════ */
+let selectedFile = null;
+
 const handleFile = file => {
   if (!file || !file.type.startsWith('audio/')) {
     showToast('El archivo seleccionado no es audio', 'error');
     return;
   }
+  selectedFile = file;
   const info = $('modal-file-info');
   if (info) {
     info.textContent = `✓ ${file.name}  ·  ${(file.size / 1048576).toFixed(1)} MB`;
