@@ -268,7 +268,7 @@ function wfInit() {
     progressColor:     WF_COLORS.progress,
     cursorColor:       WF_COLORS.cursor,
     cursorWidth:       1,
-    height:            100,            // altura en px del canvas de onda
+    height:            128,            // altura en px del canvas de onda (estándar Ónix FM)
     barWidth:          2,              // ancho de cada barra vertical
     barGap:            1,              // espacio entre barras
     barRadius:         2,              // bordes redondeados en las barras
@@ -344,34 +344,42 @@ function wfInit() {
   });
 
   // ── Listeners de los controles del panel ───────────────────────────────────
+  //
+  // RAZÓN DE USAR DELEGACIÓN EN document EN LUGAR DE addEventListener DIRECTO:
+  // El Shell inyecta el HTML del panel dinámicamente vía fetch()+innerHTML.
+  // Cuando wfInit() corre, DOM.btnPlay() devuelve null porque el panel aún
+  // no existe en el DOM. Un addEventListener sobre null se ignora silenciosamente
+  // y el botón nunca responde. Con delegación en document, el listener existe
+  // desde el inicio y captura todos los clicks que burbujean hasta document,
+  // sin importar cuándo se crearon los nodos origen.
+  //
+  // Se registra un segundo listener de 'click' para no interferir con el
+  // listener existente que puede haber en el código que consuma este módulo.
+  document.addEventListener('click', function _wfClickHandler(e) {
 
-  // Botón play/pausa
-  const btnPlay = DOM.btnPlay();
-  if (btnPlay) {
-    btnPlay.addEventListener('click', () => {
+    // Botón ▶/⏸ Play/Pausa del editor de onda
+    if (e.target.closest('#wf-btn-play')) {
       if (_wavesurfer) _wavesurfer.playPause();
-    });
-  }
+      return;
+    }
 
-  // Botón reset: regenera las regiones en sus posiciones calculadas automáticamente
-  const btnReset = DOM.btnReset();
-  if (btnReset) {
-    btnReset.addEventListener('click', () => {
+    // Botón de reset de regiones: las regenera en sus posiciones automáticas
+    if (e.target.closest('#wf-btn-reset')) {
       if (_duration > 0) _createDefaultRegions();
-    });
-  }
+      return;
+    }
 
-  // Botones "Marcar posición actual": snapshot del cursor → mueve la región
-  DOM.setButtons().forEach((btn) => {
-    btn.addEventListener('click', () => {
+    // Botones "Marcar posición actual" — data-region="intro|outro|hook"
+    const setBtn = e.target.closest('.wf-set-btn');
+    if (setBtn) {
       if (!_wavesurfer) return;
-      const regionId   = btn.dataset.region;       // 'intro' | 'outro' | 'hook'
+      const regionId   = setBtn.dataset.region;       // 'intro' | 'outro' | 'hook'
       const currentPos = _wavesurfer.getCurrentTime();
 
       // Mover la región al tiempo actual del cursor
       _moveRegionTo(regionId, currentPos);
 
-      // Y también actualizar el input numérico directamente
+      // Y actualizar el input numérico directamente
       const inputMap = {
         intro: DOM.inputIntro,
         outro: DOM.inputOutro,
@@ -381,25 +389,27 @@ function wfInit() {
       if (inputFn && inputFn()) {
         inputFn().value = _round1(currentPos);
       }
-    });
-  });
+      return;
+    }
+
+  }); // fin _wfClickHandler
 
   // Sincronización inversa: si el DJ escribe un número en el input,
   // mover la región de la onda para reflejarlo visualmente.
-  [
-    { fn: DOM.inputIntro, id: 'intro' },
-    { fn: DOM.inputOutro, id: 'outro' },
-    { fn: DOM.inputHook,  id: 'hook'  },
-  ].forEach(({ fn, id }) => {
-    const input = fn();
-    if (!input) return;
-    input.addEventListener('change', () => {
-      const val = parseFloat(input.value);
-      if (!isNaN(val) && val >= 0) {
-        _moveRegionTo(id, val);
-      }
-    });
-  });
+  // También usa delegación en document para el mismo motivo que arriba.
+  document.addEventListener('change', function _wfChangeHandler(e) {
+    const inputIdMap = {
+      'input-intro': 'intro',
+      'input-outro': 'outro',
+      'input-hook':  'hook',
+    };
+    const regionId = inputIdMap[e.target.id];
+    if (!regionId) return;
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val) && val >= 0) {
+      _moveRegionTo(regionId, val);
+    }
+  }); // fin _wfChangeHandler
 
   console.info('[Ónix WF] Módulo WaveSurfer inicializado correctamente.');
 }
@@ -429,7 +439,6 @@ function wfLoadFile(file) {
   if (panel) panel.style.display = 'block';
 
   // Mostrar el nombre del archivo en el header
-  const filenameEl = DOM.wf - DOM.filename;  // referencia directa
   const fnEl = document.getElementById('wf-filename');
   if (fnEl) fnEl.textContent = file.name;
 

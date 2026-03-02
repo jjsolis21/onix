@@ -1034,8 +1034,15 @@
   }
 
   @keyframes wf-reveal {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0);    }
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* Cabecera del panel */
@@ -1134,9 +1141,17 @@
     cursor: crosshair;
   }
 
-  /* El div #waveform es donde WaveSurfer monta el canvas */
+  /* Forzar que el icono de Play sea visible */
+  .wf-btn-play svg {
+    fill: #ff6600 !important;
+    display: block !important;
+  }
+
+  /* Asegurar que el panel de la onda tenga altura */
   #waveform {
-    min-height: 80px;
+    min-height: 120px !important;
+    background: rgba(0, 0, 0, 0.2) !important;
+    margin: 10px 0;
   }
 
   /* Overlay de carga — visible mientras WaveSurfer decodifica */
@@ -1173,7 +1188,9 @@
   }
 
   @keyframes wf-spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* Leyenda de regiones */
@@ -1211,9 +1228,17 @@
     flex-shrink: 0;
   }
 
-  .wf-legend__dot--intro  { background: rgba(0, 230, 118, 0.7);  }
-  .wf-legend__dot--outro  { background: rgba(255, 61, 61, 0.7);   }
-  .wf-legend__dot--hook   { background: rgba(199, 146, 234, 0.7); }
+  .wf-legend__dot--intro {
+    background: rgba(0, 230, 118, 0.7);
+  }
+
+  .wf-legend__dot--outro {
+    background: rgba(255, 61, 61, 0.7);
+  }
+
+  .wf-legend__dot--hook {
+    background: rgba(199, 146, 234, 0.7);
+  }
 
   .wf-legend__hint {
     margin-left: auto;
@@ -1249,9 +1274,17 @@
   }
 
   /* Colores de acento por marcador */
-  .wf-marker-card--intro { border-left: 3px solid #00e676; }
-  .wf-marker-card--outro { border-left: 3px solid #ff3d3d; }
-  .wf-marker-card--hook  { border-left: 3px solid #c792ea; }
+  .wf-marker-card--intro {
+    border-left: 3px solid #00e676;
+  }
+
+  .wf-marker-card--outro {
+    border-left: 3px solid #ff3d3d;
+  }
+
+  .wf-marker-card--hook {
+    border-left: 3px solid #c792ea;
+  }
 
   .wf-marker-card__header {
     display: flex;
@@ -1267,9 +1300,17 @@
     font-weight: 700;
   }
 
-  .wf-marker-card--intro .wf-marker-card__title { color: #00e676; }
-  .wf-marker-card--outro .wf-marker-card__title { color: #ff3d3d; }
-  .wf-marker-card--hook  .wf-marker-card__title { color: #c792ea; }
+  .wf-marker-card--intro .wf-marker-card__title {
+    color: #00e676;
+  }
+
+  .wf-marker-card--outro .wf-marker-card__title {
+    color: #ff3d3d;
+  }
+
+  .wf-marker-card--hook .wf-marker-card__title {
+    color: #c792ea;
+  }
 
   .wf-marker-card__input-wrap {
     display: flex;
@@ -1297,9 +1338,17 @@
     border-color: var(--accent-cyan);
   }
 
-  .wf-marker-card--intro .wf-marker-input:focus { border-color: #00e676; }
-  .wf-marker-card--outro .wf-marker-input:focus { border-color: #ff3d3d; }
-  .wf-marker-card--hook  .wf-marker-input:focus { border-color: #c792ea; }
+  .wf-marker-card--intro .wf-marker-input:focus {
+    border-color: #00e676;
+  }
+
+  .wf-marker-card--outro .wf-marker-input:focus {
+    border-color: #ff3d3d;
+  }
+
+  .wf-marker-card--hook .wf-marker-input:focus {
+    border-color: #c792ea;
+  }
 
   .wf-marker-card__unit {
     font-family: var(--font-mono);
@@ -1325,13 +1374,26 @@
     text-align: center;
   }
 
-  .wf-marker-card--intro .wf-mark-btn:hover { border-color: #00e676; color: #00e676; }
-  .wf-marker-card--outro .wf-mark-btn:hover { border-color: #ff3d3d; color: #ff3d3d; }
-  .wf-marker-card--hook  .wf-mark-btn:hover { border-color: #c792ea; color: #c792ea; }
+  .wf-marker-card--intro .wf-mark-btn:hover {
+    border-color: #00e676;
+    color: #00e676;
+  }
+
+  .wf-marker-card--outro .wf-mark-btn:hover {
+    border-color: #ff3d3d;
+    color: #ff3d3d;
+  }
+
+  .wf-marker-card--hook .wf-mark-btn:hover {
+    border-color: #c792ea;
+    color: #c792ea;
+  }
 
   /* Responsive: en pantallas pequeñas apilar en columna única */
   @media (max-width: 600px) {
-    .wf-markers { grid-template-columns: 1fr; }
+    .wf-markers {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 
@@ -1531,7 +1593,7 @@
           <div class="wf-transport">
             <button class="wf-btn-play" id="wf-btn-play" title="Play / Pause" type="button">
               <svg id="wf-play-icon" width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21"/>
+                <polygon points="5,3 19,12 5,21" />
               </svg>
             </button>
             <span class="wf-time-display">
@@ -1580,16 +1642,8 @@
               <span class="wf-marker-card__title">Intro</span>
             </div>
             <div class="wf-marker-card__input-wrap">
-              <input
-                class="wf-marker-input"
-                id="input-intro"
-                name="intro"
-                type="number"
-                value="0"
-                min="0"
-                step="0.1"
-                title="Tiempo de inicio de voz (segundos)"
-              />
+              <input class="wf-marker-input" id="input-intro" name="intro" type="number" value="0" min="0" step="0.1"
+                title="Tiempo de inicio de voz (segundos)" />
               <span class="wf-marker-card__unit">seg</span>
             </div>
             <button class="wf-mark-btn" data-wf-mark="intro" type="button">
@@ -1603,16 +1657,8 @@
               <span class="wf-marker-card__title">Outro</span>
             </div>
             <div class="wf-marker-card__input-wrap">
-              <input
-                class="wf-marker-input"
-                id="input-outro"
-                name="outro"
-                type="number"
-                value="0"
-                min="0"
-                step="0.1"
-                title="Punto de mezcla de salida (segundos)"
-              />
+              <input class="wf-marker-input" id="input-outro" name="outro" type="number" value="0" min="0" step="0.1"
+                title="Punto de mezcla de salida (segundos)" />
               <span class="wf-marker-card__unit">seg</span>
             </div>
             <button class="wf-mark-btn" data-wf-mark="outro" type="button">
@@ -1626,16 +1672,8 @@
               <span class="wf-marker-card__title">Hook</span>
             </div>
             <div class="wf-marker-card__input-wrap">
-              <input
-                class="wf-marker-input"
-                id="input-hook"
-                name="hook"
-                type="number"
-                value="0"
-                min="0"
-                step="0.1"
-                title="Punto gancho / estribillo (segundos)"
-              />
+              <input class="wf-marker-input" id="input-hook" name="hook" type="number" value="0" min="0" step="0.1"
+                title="Punto gancho / estribillo (segundos)" />
               <span class="wf-marker-card__unit">seg</span>
             </div>
             <button class="wf-mark-btn" data-wf-mark="hook" type="button">
