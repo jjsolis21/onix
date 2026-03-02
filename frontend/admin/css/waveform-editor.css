@@ -1,0 +1,375 @@
+/* ============================================================
+   ÓNIX FM — Waveform Editor Styles  (waveform-editor.css)
+   Añadir en tu CSS principal o con <link> en biblioteca-musical.html
+   Identidad visual: naranja Ónix #ff6600 · dark industrial
+   ============================================================ */
+
+/* ── Variables (añadir a tu :root existente si ya tienes uno) ────────────── */
+:root {
+  --wf-bg:           #0d0d0d;
+  --wf-panel-bg:     #141414;
+  --wf-border:       #2a2a2a;
+  --wf-border-glow:  #ff660044;
+  --wf-orange:       #ff6600;
+  --wf-orange-glow:  #ff660020;
+  --wf-green:        #00e676;
+  --wf-green-dim:    rgba(0, 230, 118, 0.15);
+  --wf-red:          #ff3d3d;
+  --wf-red-dim:      rgba(255, 61, 61, 0.15);
+  --wf-hook:         #c792ea;
+  --wf-hook-dim:     rgba(199, 146, 234, 0.15);
+  --wf-text:         #e0e0e0;
+  --wf-text-muted:   #555;
+  --wf-input-bg:     #1e1e1e;
+  --wf-radius:       6px;
+  --wf-font-mono:    'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
+/* ── Animación de entrada del panel ─────────────────────────────────────── */
+@keyframes wfPanelReveal {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Panel principal ─────────────────────────────────────────────────────── */
+.waveform-panel {
+  background:    var(--wf-panel-bg);
+  border:        1px solid var(--wf-border);
+  border-radius: 10px;
+  overflow:      hidden;
+  margin:        16px 0;
+  animation:     wfPanelReveal 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition:    border-color 0.3s, box-shadow 0.3s;
+}
+
+.waveform-panel:focus-within {
+  border-color: var(--wf-border-glow);
+  box-shadow:   0 0 28px var(--wf-orange-glow);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.wf-header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         9px 14px;
+  background:      #0f0f0f;
+  border-bottom:   1px solid var(--wf-border);
+  gap:             12px;
+  flex-wrap:       wrap;
+}
+
+.wf-header-left,
+.wf-header-right {
+  display:     flex;
+  align-items: center;
+  gap:         10px;
+}
+
+.wf-title {
+  font-size:      10px;
+  font-weight:    700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color:          var(--wf-orange);
+  font-family:    var(--wf-font-mono);
+}
+
+/* Nombre del archivo seleccionado */
+.wf-filename {
+  font-size:     10px;
+  color:         var(--wf-text-muted);
+  font-family:   var(--wf-font-mono);
+  max-width:     240px;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+  padding:       2px 8px;
+  background:    #1a1a1a;
+  border-radius: 4px;
+  border:        1px solid var(--wf-border);
+}
+
+/* Contador de tiempo actual / duración total */
+.wf-time-display {
+  font-family: var(--wf-font-mono);
+  font-size:   12px;
+  color:       var(--wf-orange);
+  min-width:   88px;
+  text-align:  right;
+  letter-spacing: 0.04em;
+}
+
+/* ── Botones del header ───────────────────────────────────────────────────── */
+.wf-btn {
+  display:        flex;
+  align-items:    center;
+  justify-content: center;
+  gap:            6px;
+  padding:        5px 11px;
+  border-radius:  var(--wf-radius);
+  border:         none;
+  font-size:      11px;
+  font-family:    var(--wf-font-mono);
+  cursor:         pointer;
+  transition:     all 0.15s;
+  font-weight:    600;
+  outline:        none;
+  line-height:    1;
+}
+
+.wf-btn-play {
+  background:  var(--wf-orange);
+  color:       #000;
+  min-width:   34px;
+  min-height:  28px;
+}
+.wf-btn-play:hover { background: #ff8533; transform: scale(1.06); }
+.wf-btn-play:active { transform: scale(0.97); }
+
+.wf-btn-ghost {
+  background:  transparent;
+  color:       var(--wf-text-muted);
+  border:      1px solid var(--wf-border);
+  padding:     5px 10px;
+}
+.wf-btn-ghost:hover {
+  color:       var(--wf-text);
+  border-color: #444;
+  background:  #1c1c1c;
+}
+
+/* ── Zona de la onda ─────────────────────────────────────────────────────── */
+.wf-canvas-wrapper {
+  position:   relative;
+  background: var(--wf-bg);
+  /* El cursor de mira comunica al DJ que puede hacer clic en cualquier punto */
+  cursor:     crosshair;
+  min-height: 104px;
+}
+
+/* WaveSurfer inyecta su <div shadow-dom> o <canvas> directamente aquí */
+#waveform {
+  width:  100%;
+  /* La altura real la controla wavesurfer.options.height */
+}
+
+/* ── Overlay de carga (visible mientras wavesurfer decodifica) ───────────── */
+.wf-loading {
+  position:        absolute;
+  inset:           0;
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             10px;
+  background:      rgba(13, 13, 13, 0.88);
+  font-size:       11px;
+  font-family:     var(--wf-font-mono);
+  color:           var(--wf-text-muted);
+  letter-spacing:  0.06em;
+  transition:      opacity 0.3s, visibility 0.3s;
+  z-index:         10;
+  pointer-events:  none;
+}
+
+/* Para ocultar el overlay sin display:none, usamos opacity+visibility
+   así la transición de fade-out es suave */
+.wf-loading.hidden {
+  opacity:    0;
+  visibility: hidden;
+}
+
+.wf-spinner {
+  width:         22px;
+  height:        22px;
+  border:        2px solid var(--wf-border);
+  border-top:    2px solid var(--wf-orange);
+  border-radius: 50%;
+  animation:     spin 0.65s linear infinite;
+}
+
+/* ── Leyenda de regiones ─────────────────────────────────────────────────── */
+.wf-regions-legend {
+  display:     flex;
+  align-items: center;
+  gap:         14px;
+  padding:     7px 14px;
+  background:  #0f0f0f;
+  border-top:  1px solid var(--wf-border);
+  flex-wrap:   wrap;
+}
+
+.wf-legend-item {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font-size:   9px;
+  font-family: var(--wf-font-mono);
+  color:       var(--wf-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.wf-legend-dot {
+  width:         9px;
+  height:        9px;
+  border-radius: 2px;
+  flex-shrink:   0;
+}
+
+.wf-legend-intro .wf-legend-dot { background: var(--wf-green); }
+.wf-legend-outro .wf-legend-dot { background: var(--wf-red); }
+.wf-legend-hook  .wf-legend-dot { background: var(--wf-hook); }
+
+.wf-legend-hint {
+  margin-left:  auto;
+  font-size:    9px;
+  font-family:  var(--wf-font-mono);
+  color:        #333;
+  font-style:   italic;
+}
+
+/* ── Fila de tarjetas de marcadores ──────────────────────────────────────── */
+.wf-markers-row {
+  display:               grid;
+  grid-template-columns: repeat(3, 1fr);
+  /* Separadores visuales entre columnas */
+  gap:                   1px;
+  background:            var(--wf-border);
+}
+
+@media (max-width: 600px) {
+  .wf-markers-row { grid-template-columns: 1fr; }
+}
+
+/* ── Tarjeta individual de marcador ──────────────────────────────────────── */
+.wf-marker-card {
+  background:     var(--wf-panel-bg);
+  padding:        12px 14px;
+  display:        flex;
+  flex-direction: column;
+  gap:            9px;
+}
+
+.wf-marker-label {
+  display:     flex;
+  align-items: center;
+  gap:         7px;
+  font-size:   9px;
+  font-weight: 700;
+  font-family: var(--wf-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.wf-marker-intro .wf-marker-label { color: var(--wf-green); }
+.wf-marker-outro .wf-marker-label { color: var(--wf-red); }
+.wf-marker-hook  .wf-marker-label { color: var(--wf-hook); }
+
+.wf-marker-dot {
+  width:         7px;
+  height:        7px;
+  border-radius: 50%;
+  flex-shrink:   0;
+}
+.wf-dot-intro { background: var(--wf-green); box-shadow: 0 0 5px var(--wf-green); }
+.wf-dot-outro { background: var(--wf-red);   box-shadow: 0 0 5px var(--wf-red); }
+.wf-dot-hook  { background: var(--wf-hook);  box-shadow: 0 0 5px var(--wf-hook); }
+
+/* ── Campo de tiempo numérico ─────────────────────────────────────────────── */
+.wf-time-field {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+}
+
+.wf-time-field label {
+  font-size:   9px;
+  color:       var(--wf-text-muted);
+  font-family: var(--wf-font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wf-input {
+  flex:          1;
+  background:    var(--wf-input-bg);
+  border:        1px solid var(--wf-border);
+  border-radius: var(--wf-radius);
+  color:         var(--wf-text);
+  font-family:   var(--wf-font-mono);
+  font-size:     13px;
+  padding:       5px 8px;
+  outline:       none;
+  min-width:     0;
+  transition:    border-color 0.2s, box-shadow 0.2s;
+  /* Quitar flechitas de spinner del navegador */
+  -moz-appearance:    textfield;
+  -webkit-appearance: none;
+}
+.wf-input::-webkit-inner-spin-button,
+.wf-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+/* Borde de foco con el color del marcador correspondiente */
+.wf-marker-intro .wf-input:focus {
+  border-color: var(--wf-green);
+  box-shadow:   0 0 0 2px var(--wf-green-dim);
+}
+.wf-marker-outro .wf-input:focus {
+  border-color: var(--wf-red);
+  box-shadow:   0 0 0 2px var(--wf-red-dim);
+}
+.wf-marker-hook .wf-input:focus {
+  border-color: var(--wf-hook);
+  box-shadow:   0 0 0 2px var(--wf-hook-dim);
+}
+
+.wf-unit {
+  font-size:   9px;
+  color:       var(--wf-text-muted);
+  font-family: var(--wf-font-mono);
+  flex-shrink: 0;
+}
+
+/* ── Botón "Marcar posición actual" ─────────────────────────────────────── */
+.wf-set-btn {
+  background:    transparent;
+  border:        1px dashed var(--wf-border);
+  border-radius: var(--wf-radius);
+  color:         var(--wf-text-muted);
+  font-family:   var(--wf-font-mono);
+  font-size:     10px;
+  padding:       5px 8px;
+  cursor:        pointer;
+  transition:    all 0.15s;
+  text-align:    left;
+  white-space:   nowrap;
+}
+
+.wf-marker-intro .wf-set-btn:hover {
+  border-color: var(--wf-green);
+  color:        var(--wf-green);
+  background:   var(--wf-green-dim);
+}
+.wf-marker-outro .wf-set-btn:hover {
+  border-color: var(--wf-red);
+  color:        var(--wf-red);
+  background:   var(--wf-red-dim);
+}
+.wf-marker-hook .wf-set-btn:hover {
+  border-color: var(--wf-hook);
+  color:        var(--wf-hook);
+  background:   var(--wf-hook-dim);
+}
+
+/* ── Estado "activo" del botón play (cuando está reproduciendo) ──────────── */
+.wf-btn-play.is-playing svg polygon {
+  /* Reemplazamos visualmente el triángulo por dos barras de pausa.
+     Hacemos esto con clip-path en JS; aquí sólo preparamos la transición */
+  transition: d 0.15s;
+}

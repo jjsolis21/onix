@@ -1010,6 +1010,329 @@
   #bm-root ::-webkit-scrollbar-thumb:hover {
     background: var(--border-hi);
   }
+
+  /* ══════════════════════════════════════════════════════════
+     §WF · EDITOR DE ONDAS — WaveSurfer Panel
+     Prefijo .wf- para evitar colisiones con el shell.
+     Identidad visual: naranja #ff6600 (Ónix FM) sobre fondo
+     oscuro. Estética: consola de radio profesional / DAW.
+  ══════════════════════════════════════════════════════════ */
+
+  /* Panel contenedor — oculto hasta que se cargue un archivo */
+  .wf-panel {
+    display: none;
+    border: 1px solid rgba(255, 102, 0, 0.30);
+    border-radius: var(--radius-md);
+    background: #0a0d12;
+    overflow: hidden;
+    margin-top: 10px;
+    animation: wf-reveal 0.25s ease;
+  }
+
+  .wf-panel.active {
+    display: block;
+  }
+
+  @keyframes wf-reveal {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0);    }
+  }
+
+  /* Cabecera del panel */
+  .wf-header {
+    background: rgba(255, 102, 0, 0.07);
+    border-bottom: 1px solid rgba(255, 102, 0, 0.20);
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .wf-header__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #ff6600;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .wf-header__filename {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Controles de transporte: play/pause + tiempo */
+  .wf-transport {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .wf-btn-play {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 102, 0, 0.50);
+    border-radius: 50%;
+    background: rgba(255, 102, 0, 0.10);
+    color: #ff6600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .wf-btn-play:hover {
+    background: rgba(255, 102, 0, 0.20);
+    border-color: #ff6600;
+    box-shadow: 0 0 8px rgba(255, 102, 0, 0.35);
+  }
+
+  .wf-time-display {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .wf-time-display span {
+    color: #ff6600;
+  }
+
+  /* Botón reset */
+  .wf-btn-reset {
+    background: none;
+    border: 1px solid rgba(62, 82, 114, 0.5);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.06em;
+  }
+
+  .wf-btn-reset:hover {
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+  }
+
+  /* Contenedor del canvas de WaveSurfer */
+  .wf-canvas-wrap {
+    position: relative;
+    padding: 0 12px;
+    background: #07090d;
+    cursor: crosshair;
+  }
+
+  /* El div #waveform es donde WaveSurfer monta el canvas */
+  #waveform {
+    min-height: 80px;
+  }
+
+  /* Overlay de carga — visible mientras WaveSurfer decodifica */
+  .wf-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(7, 9, 13, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #ff6600;
+    letter-spacing: 0.1em;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .wf-loading-overlay.visible {
+    opacity: 1;
+  }
+
+  .wf-loading-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 102, 0, 0.25);
+    border-top-color: #ff6600;
+    border-radius: 50%;
+    animation: wf-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes wf-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Leyenda de regiones */
+  .wf-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    border-top: 1px solid rgba(255, 102, 0, 0.10);
+    background: #0a0d12;
+  }
+
+  .wf-legend__label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .wf-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+  }
+
+  .wf-legend__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .wf-legend__dot--intro  { background: rgba(0, 230, 118, 0.7);  }
+  .wf-legend__dot--outro  { background: rgba(255, 61, 61, 0.7);   }
+  .wf-legend__dot--hook   { background: rgba(199, 146, 234, 0.7); }
+
+  .wf-legend__hint {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-disabled);
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Tarjetas de marcadores ─────────────────────────────── */
+  .wf-markers {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .wf-marker-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    transition: border-color 0.15s ease;
+  }
+
+  .wf-marker-card:hover {
+    border-color: var(--border-mid);
+  }
+
+  /* Colores de acento por marcador */
+  .wf-marker-card--intro { border-left: 3px solid #00e676; }
+  .wf-marker-card--outro { border-left: 3px solid #ff3d3d; }
+  .wf-marker-card--hook  { border-left: 3px solid #c792ea; }
+
+  .wf-marker-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .wf-marker-card__title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .wf-marker-card--intro .wf-marker-card__title { color: #00e676; }
+  .wf-marker-card--outro .wf-marker-card__title { color: #ff3d3d; }
+  .wf-marker-card--hook  .wf-marker-card__title { color: #c792ea; }
+
+  .wf-marker-card__input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .wf-marker-input {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 7px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.15s ease;
+    width: 100%;
+  }
+
+  .wf-marker-input:focus {
+    border-color: var(--accent-cyan);
+  }
+
+  .wf-marker-card--intro .wf-marker-input:focus { border-color: #00e676; }
+  .wf-marker-card--outro .wf-marker-input:focus { border-color: #ff3d3d; }
+  .wf-marker-card--hook  .wf-marker-input:focus { border-color: #c792ea; }
+
+  .wf-marker-card__unit {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  /* Botón "Marcar posición actual" */
+  .wf-mark-btn {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    width: 100%;
+    text-align: center;
+  }
+
+  .wf-marker-card--intro .wf-mark-btn:hover { border-color: #00e676; color: #00e676; }
+  .wf-marker-card--outro .wf-mark-btn:hover { border-color: #ff3d3d; color: #ff3d3d; }
+  .wf-marker-card--hook  .wf-mark-btn:hover { border-color: #c792ea; color: #c792ea; }
+
+  /* Responsive: en pantallas pequeñas apilar en columna única */
+  @media (max-width: 600px) {
+    .wf-markers { grid-template-columns: 1fr; }
+  }
 </style>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -1196,6 +1519,133 @@
           <input class="bm-input" id="modal-duracion" type="number" placeholder="0" min="0" />
         </div>
       </div>
+
+      <!-- §WF · EDITOR DE ONDAS — se activa al soltar un archivo -->
+      <div class="wf-panel" id="wf-panel">
+
+        <!-- Cabecera: label + nombre de archivo + transporte + reset -->
+        <div class="wf-header">
+          <span class="wf-header__label">◈ Onda</span>
+          <span class="wf-header__filename" id="wf-filename">—</span>
+
+          <div class="wf-transport">
+            <button class="wf-btn-play" id="wf-btn-play" title="Play / Pause" type="button">
+              <svg id="wf-play-icon" width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5,3 19,12 5,21"/>
+              </svg>
+            </button>
+            <span class="wf-time-display">
+              <span id="wf-time-cur">0:00</span>
+              <span style="color:rgba(255,102,0,0.35)"> / </span>
+              <span id="wf-time-total">0:00</span>
+            </span>
+          </div>
+
+          <button class="wf-btn-reset" id="wf-btn-reset" type="button" title="Cerrar editor de onda">
+            ✕ Cerrar
+          </button>
+        </div>
+
+        <!-- Canvas WaveSurfer -->
+        <div class="wf-canvas-wrap">
+          <div id="waveform"></div>
+          <!-- Overlay mientras decodifica el audio -->
+          <div class="wf-loading-overlay" id="wf-loading">
+            <div class="wf-loading-spinner"></div>
+            Analizando audio…
+          </div>
+        </div>
+
+        <!-- Leyenda de colores de regiones -->
+        <div class="wf-legend">
+          <span class="wf-legend__label">Regiones:</span>
+          <span class="wf-legend__item">
+            <span class="wf-legend__dot wf-legend__dot--intro"></span>Intro
+          </span>
+          <span class="wf-legend__item">
+            <span class="wf-legend__dot wf-legend__dot--outro"></span>Outro
+          </span>
+          <span class="wf-legend__item">
+            <span class="wf-legend__dot wf-legend__dot--hook"></span>Hook
+          </span>
+          <span class="wf-legend__hint">Arrastra las regiones · Click en la onda para saltar</span>
+        </div>
+
+        <!-- Tarjetas de marcadores con inputs de tiempo -->
+        <div class="wf-markers">
+
+          <!-- INTRO -->
+          <div class="wf-marker-card wf-marker-card--intro">
+            <div class="wf-marker-card__header">
+              <span class="wf-marker-card__title">Intro</span>
+            </div>
+            <div class="wf-marker-card__input-wrap">
+              <input
+                class="wf-marker-input"
+                id="input-intro"
+                name="intro"
+                type="number"
+                value="0"
+                min="0"
+                step="0.1"
+                title="Tiempo de inicio de voz (segundos)"
+              />
+              <span class="wf-marker-card__unit">seg</span>
+            </div>
+            <button class="wf-mark-btn" data-wf-mark="intro" type="button">
+              📍 Marcar posición
+            </button>
+          </div>
+
+          <!-- OUTRO -->
+          <div class="wf-marker-card wf-marker-card--outro">
+            <div class="wf-marker-card__header">
+              <span class="wf-marker-card__title">Outro</span>
+            </div>
+            <div class="wf-marker-card__input-wrap">
+              <input
+                class="wf-marker-input"
+                id="input-outro"
+                name="outro"
+                type="number"
+                value="0"
+                min="0"
+                step="0.1"
+                title="Punto de mezcla de salida (segundos)"
+              />
+              <span class="wf-marker-card__unit">seg</span>
+            </div>
+            <button class="wf-mark-btn" data-wf-mark="outro" type="button">
+              📍 Marcar posición
+            </button>
+          </div>
+
+          <!-- HOOK -->
+          <div class="wf-marker-card wf-marker-card--hook">
+            <div class="wf-marker-card__header">
+              <span class="wf-marker-card__title">Hook</span>
+            </div>
+            <div class="wf-marker-card__input-wrap">
+              <input
+                class="wf-marker-input"
+                id="input-hook"
+                name="hook"
+                type="number"
+                value="0"
+                min="0"
+                step="0.1"
+                title="Punto gancho / estribillo (segundos)"
+              />
+              <span class="wf-marker-card__unit">seg</span>
+            </div>
+            <button class="wf-mark-btn" data-wf-mark="hook" type="button">
+              📍 Marcar posición
+            </button>
+          </div>
+
+        </div><!-- /.wf-markers -->
+
+      </div><!-- /#wf-panel -->
 
       <!-- METADATA -->
       <div class="bm-form-section">
