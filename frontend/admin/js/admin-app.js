@@ -271,6 +271,11 @@ async function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
 
+  /* 0. Actualizar selects de categorías dinámicas antes de abrir el modal */
+  if (typeof window.onixCategories?.syncSelects === 'function') {
+    window.onixCategories.syncSelects();
+  }
+
   /* 1. Limpiezas previas de instancia */
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
 
@@ -382,15 +387,17 @@ async function saveModal() {
 
     if (editingId) {
       /* ── PUT: actualizar audio existente ─────────────────────────────── */
+      // Helper para uppercase seguro
+      const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
       const payload = {
         titulo: titleVal,
         artista: artistVal,
         album: $('modal-album')?.value.trim() || null,
         fecha_lanzamiento: $('modal-year')?.value.trim() || null,
         bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null,
-        cat1: $('modal-sc1')?.value || $('modal-sc2')?.value || null,
-        cat2: $('modal-popularity')?.value || null,
-        voz: $('modal-voz')?.value || null,
+        cat1: toUpper($('modal-sc1')?.value || $('modal-sc2')?.value) || null,
+        cat2: toUpper($('modal-popularity')?.value) || null,
+        voz: toUpper($('modal-voz')?.value) || null,
         /* Cue points exactos del waveform */
         cue_inicio: markers.inicio ?? 0,
         cue_intro: markers.intro ?? 0,
@@ -656,10 +663,27 @@ document.addEventListener('keydown', e => {
   if (e.key === 'n' && e.ctrlKey && !isOpen) { e.preventDefault(); openModal(); return; }
 });
 
-/* ── §16 · Exportar a window ─────────────────────────────────────────────── */
+/* ── §16 · Poblar selects del modal de carga con categorías dinámicas ─────── */
+/**
+ * populateUploadSelects()
+ * Lee el estado actual de CategoriesModule y rellena los <select> del modal
+ * de carga/edición de audio (modal-sc1, modal-sc2, modal-sc3, modal-popularity,
+ * modal-era, modal-voz) con las opciones actuales.
+ * Se invoca cada vez que se abre el modal para garantizar datos frescos.
+ */
+function populateUploadSelects() {
+  if (typeof window.onixCategories === 'undefined') return;
+  /* Force a sync so all selects get rebuilt from current state */
+  if (typeof window.onixCategories.syncSelects === 'function') {
+    window.onixCategories.syncSelects();
+  }
+}
+
+/* ── §17 · Exportar a window ─────────────────────────────────────────────── */
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveModal = saveModal;
+window.populateUploadSelects = populateUploadSelects;
 
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 
@@ -803,6 +827,7 @@ const CategoriesModule = (function () {
 
   const publicApi = {
     init() { load(); sync(); },
+    syncSelects() { sync(); },
     open() {
       const overlay = document.getElementById('cat-overlay');
       if (!overlay) return;
@@ -824,6 +849,38 @@ const CategoriesModule = (function () {
       save(); sync(); renderItems();
       document.getElementById('cat-add-form')?.classList.remove('visible');
     },
+    openEdit() {
+      if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; }
+      const item = categories[activeKey].items[selectedIdx];
+      if (!item) return;
+      /* Close add form if open */
+      document.getElementById('cat-add-form')?.classList.remove('visible');
+      /* Pre-fill edit form with current values */
+      const nameEl = document.getElementById('cat-edit-name');
+      const colorEl = document.getElementById('cat-edit-color');
+      const commentEl = document.getElementById('cat-edit-comment');
+      if (nameEl) nameEl.value = item.label;
+      if (colorEl) colorEl.value = item.color || '#8e44ad';
+      if (commentEl) commentEl.value = item.comment || '';
+      document.getElementById('cat-edit-form')?.classList.add('visible');
+      if (nameEl) nameEl.focus();
+    },
+    confirmEdit() {
+      if (selectedIdx < 0) return;
+      const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase();
+      if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; }
+      const item = categories[activeKey].items[selectedIdx];
+      if (!item) return;
+      /* Check for duplicate label ignoring the item being edited */
+      const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel);
+      if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; }
+      item.label = newLabel;
+      item.color = document.getElementById('cat-edit-color')?.value || item.color;
+      item.comment = document.getElementById('cat-edit-comment')?.value.trim() ?? item.comment;
+      save(); sync(); renderItems();
+      document.getElementById('cat-edit-form')?.classList.remove('visible');
+      showToast(`✓ Ítem actualizado: ${newLabel}`, 'success');
+    },
     delete() {
       if (selectedIdx < 0) return;
       categories[activeKey].items.splice(selectedIdx, 1);
@@ -840,11 +897,22 @@ const CategoriesModule = (function () {
   /* Event delegation for modal internal buttons */
   document.addEventListener('click', e => {
     const t = e.target;
-    if (t.closest('.cat-sidebar__item')) publicApi.select(t.closest('.cat-sidebar__item').dataset.key);
+    if (t.closest('.cat-sidebar__item')) {
+      /* Close any open forms when switching categories */
+      document.getElementById('cat-add-form')?.classList.remove('visible');
+      document.getElementById('cat-edit-form')?.classList.remove('visible');
+      publicApi.select(t.closest('.cat-sidebar__item').dataset.key);
+    }
     if (t.closest('.cat-item-row')) { selectedIdx = parseInt(t.closest('.cat-item-row').dataset.idx); renderItems(); }
-    if (t.closest('#cat-btn-agregar')) document.getElementById('cat-add-form')?.classList.add('visible');
+    if (t.closest('#cat-btn-agregar')) {
+      document.getElementById('cat-edit-form')?.classList.remove('visible');
+      document.getElementById('cat-add-form')?.classList.add('visible');
+    }
     if (t.closest('#cat-confirm-add')) publicApi.add();
     if (t.closest('#cat-cancel-add')) document.getElementById('cat-add-form')?.classList.remove('visible');
+    if (t.closest('#cat-btn-editar')) publicApi.openEdit();
+    if (t.closest('#cat-confirm-edit')) publicApi.confirmEdit();
+    if (t.closest('#cat-cancel-edit')) document.getElementById('cat-edit-form')?.classList.remove('visible');
     if (t.closest('#cat-btn-eliminar')) publicApi.delete();
     if (t.closest('#cat-move-up')) publicApi.move(-1);
     if (t.closest('#cat-move-down')) publicApi.move(1);

@@ -1,0 +1,213 @@
+<!-- ============================================================
+     SECCIÓN 03 — PROGRAMACIÓN DE PAUTAS
+     Esqueleto de UI puro. Toda la lógica vive en pautas-controller.js
+     ============================================================ -->
+<link rel="stylesheet" href="sections/03-pautas/pautas.css">
+
+<div class="pautas-root" id="pautasRoot">
+
+  <!-- ── CABECERA ─────────────────────────────────────────── -->
+  <header class="pautas-header">
+    <div class="pautas-header__title">
+      <span class="pautas-header__icon">📡</span>
+      <div>
+        <h2>Programación de Pautas</h2>
+        <p>Gestión de spots publicitarios y horarios de emisión</p>
+      </div>
+    </div>
+    <button class="btn-primary" id="btnNuevaPauta">
+      <span>＋</span> Nueva Pauta
+    </button>
+  </header>
+
+  <!-- ── STATS BAR ─────────────────────────────────────────── -->
+  <div class="pautas-stats" id="pautasStats">
+    <div class="stat-card" id="statActivas">
+      <span class="stat-card__num">0</span>
+      <span class="stat-card__lbl">Activas</span>
+    </div>
+    <div class="stat-card" id="statVencidas">
+      <span class="stat-card__num">0</span>
+      <span class="stat-card__lbl">Vencidas</span>
+    </div>
+    <div class="stat-card" id="statSpots">
+      <span class="stat-card__num">0</span>
+      <span class="stat-card__lbl">Spots / Semana</span>
+    </div>
+    <div class="stat-card" id="statClientes">
+      <span class="stat-card__num">0</span>
+      <span class="stat-card__lbl">Clientes</span>
+    </div>
+  </div>
+
+  <!-- ── CONTENIDO PRINCIPAL (lista + modal) ───────────────── -->
+  <div class="pautas-body">
+
+    <!-- Barra de búsqueda / filtros -->
+    <div class="pautas-toolbar">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="pautaSearch" placeholder="Buscar por cliente o audio…">
+      </div>
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="todas">Todas</button>
+        <button class="filter-btn" data-filter="activa">Activas</button>
+        <button class="filter-btn" data-filter="vencida">Vencidas</button>
+      </div>
+    </div>
+
+    <!-- Tabla de pautas -->
+    <div class="table-wrap">
+      <table class="pautas-table" id="pautasTable">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Audio</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Spots/Sem</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="pautasTableBody">
+          <!-- Filas inyectadas por pautas-controller.js -->
+        </tbody>
+      </table>
+      <div class="table-empty hidden" id="pautasEmpty">
+        <span>📭</span>
+        <p>No hay pautas registradas. ¡Crea la primera!</p>
+      </div>
+    </div>
+  </div><!-- /pautas-body -->
+
+</div><!-- /pautasRoot -->
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — FORMULARIO PRO + MATRIZ DE HORARIOS
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="pautaModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-box">
+
+    <!-- Header del modal -->
+    <div class="modal-header">
+      <h3 id="modalTitle">Nueva Pauta</h3>
+      <button class="modal-close" id="btnModalClose" aria-label="Cerrar">✕</button>
+    </div>
+
+    <!-- Cuerpo: formulario + matriz -->
+    <div class="modal-body">
+
+      <!-- ── COLUMNA IZQ: Formulario ── -->
+      <section class="form-section">
+        <h4 class="section-label">Datos de la Pauta</h4>
+
+        <div class="form-group">
+          <label for="fCliente">Cliente <span class="required">*</span></label>
+          <input type="text" id="fCliente" placeholder="Ej: Coca-Cola Argentina" autocomplete="off">
+          <span class="field-hint">Nombre del anunciante</span>
+        </div>
+
+        <div class="form-group">
+          <label for="fAudio">Audio / Spot <span class="required">*</span></label>
+          <div class="audio-selector" id="audioSelector">
+            <input type="text" id="fAudio" placeholder="Seleccionar archivo de audio…" readonly>
+            <button class="btn-icon" id="btnSelectAudio" title="Explorar biblioteca">🎵</button>
+          </div>
+          <span class="field-hint" id="audioHint">Ningún archivo seleccionado</span>
+        </div>
+
+        <!-- Selector de audio (dropdown) -->
+        <div class="audio-dropdown hidden" id="audioDropdown">
+          <div class="audio-search">
+            <input type="text" id="audioSearchInput" placeholder="Buscar audio…">
+          </div>
+          <ul class="audio-list" id="audioList">
+            <!-- Items generados por controller -->
+          </ul>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fFechaInicio">Fecha Inicio <span class="required">*</span></label>
+            <input type="date" id="fFechaInicio">
+          </div>
+          <div class="form-group">
+            <label for="fFechaFin">Fecha Fin <span class="required">*</span></label>
+            <input type="date" id="fFechaFin">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="fNotas">Notas</label>
+          <textarea id="fNotas" rows="3" placeholder="Instrucciones especiales, restricciones…"></textarea>
+        </div>
+
+        <!-- Resumen de selección de matriz -->
+        <div class="matrix-summary" id="matrixSummary">
+          <span class="matrix-summary__icon">📊</span>
+          <span id="matrixSummaryText">Sin franjas horarias asignadas</span>
+        </div>
+      </section>
+
+      <!-- ── COLUMNA DER: Matriz 24×7 ── -->
+      <section class="matrix-section">
+        <div class="matrix-header">
+          <h4 class="section-label">Matriz de Horarios</h4>
+          <div class="matrix-actions">
+            <button class="btn-matrix-action" id="btnMatrixClear" title="Limpiar todo">🗑 Limpiar</button>
+            <button class="btn-matrix-action" id="btnMatrixPrimetime" title="Seleccionar prime time">⭐ Prime</button>
+          </div>
+        </div>
+        <p class="matrix-hint">Haz clic para activar/desactivar · Arrastra para selección múltiple</p>
+
+        <!-- Leyenda de la matriz -->
+        <div class="matrix-legend">
+          <span class="legend-item"><span class="legend-dot legend-dot--off"></span>Libre</span>
+          <span class="legend-item"><span class="legend-dot legend-dot--on"></span>Programado</span>
+          <span class="legend-item"><span class="legend-dot legend-dot--prime"></span>Prime Time</span>
+        </div>
+
+        <!-- Grid contenedor — generado 100% por JS -->
+        <div class="matrix-scroll-wrap">
+          <div class="matrix-grid" id="matrixGrid" role="grid" aria-label="Matriz de horarios 24×7">
+            <!-- Generado por PautasController.buildMatrix() -->
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /modal-body -->
+
+    <!-- Footer del modal -->
+    <div class="modal-footer">
+      <span class="modal-error hidden" id="modalError"></span>
+      <button class="btn-secondary" id="btnModalCancel">Cancelar</button>
+      <button class="btn-primary" id="btnModalSave">
+        <span id="btnSaveIcon">💾</span>
+        <span id="btnSaveText">Guardar Pauta</span>
+      </button>
+    </div>
+
+  </div><!-- /modal-box -->
+</div><!-- /modal-overlay -->
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL DE CONFIRMACIÓN — DELETE
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal-box modal-box--sm">
+    <div class="modal-header">
+      <h3>Eliminar Pauta</h3>
+      <button class="modal-close" id="btnDeleteClose">✕</button>
+    </div>
+    <div class="modal-body modal-body--center">
+      <span class="delete-icon">⚠️</span>
+      <p>¿Seguro que deseas eliminar la pauta de <strong id="deleteClienteName"></strong>?</p>
+      <p class="delete-warning">Esta acción no se puede deshacer.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="btnDeleteCancel">Cancelar</button>
+      <button class="btn-danger" id="btnDeleteConfirm">Eliminar</button>
+    </div>
+  </div>
+</div>

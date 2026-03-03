@@ -216,30 +216,54 @@ def _validate_categoria_valor(
     campo_api: str,
 ) -> None:
     """
-    Valida que 'valor' exista en la categoría 'nombre_interno'.
-    Lanza HTTPException 422 si no es válido.
+    Acepta cualquier string no vacío para una categoría.
+    Si el valor no existe en config_categorias_valores lo auto-registra
+    (upsert) para mantener el catálogo actualizado.
     Permite None/vacío (campo opcional en audio).
     """
     if not valor:
         return
-    validos = _get_all_valid_values(conn, nombre_interno)
-    if not validos:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"La categoría '{nombre_interno}' no existe o no tiene valores activos. "
-                   f"Verifica la configuración en /api/v1/config/biblioteca/schema"
+
+    # Buscar la definición de la categoría
+    cat_def = conn.execute(
+        "SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
+        (nombre_interno,)
+    ).fetchone()
+
+    if not cat_def:
+        # La categoría no existe en la configuración — aceptar igualmente
+        logger.warning(
+            f"Categoría '{nombre_interno}' no definida en config_categorias_def; "
+            f"se acepta el valor '{valor}' sin registrar."
         )
-    if valor not in validos:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "campo": campo_api,
-                "valor_enviado": valor,
-                "valores_permitidos": sorted(validos),
-                "mensaje": f"El valor '{valor}' no es válido para el campo '{campo_api}'. "
-                           f"Usa POST /api/v1/config/biblioteca/valores para añadirlo."
-            }
+        return
+
+    cat_id = cat_def["id"]
+
+    # Verificar si el valor ya existe (activo o inactivo)
+    existing = conn.execute(
+        "SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND valor = ?",
+        (cat_id, valor)
+    ).fetchone()
+
+    if existing is None:
+        # Auto-registrar el valor nuevo
+        max_orden = conn.execute(
+            "SELECT COALESCE(MAX(orden), 0) FROM config_categorias_valores WHERE cat_id = ?",
+            (cat_id,)
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO config_categorias_valores (cat_id, valor, orden, activo) VALUES (?, ?, ?, 1)",
+            (cat_id, valor, max_orden + 1)
         )
+        logger.info(f"Auto-registrado valor '{valor}' en categoría '{nombre_interno}'.")
+    elif not existing["activo"]:
+        # Reactivar si estaba inactivo
+        conn.execute(
+            "UPDATE config_categorias_valores SET activo = 1 WHERE id = ?",
+            (existing["id"],)
+        )
+        logger.info(f"Reactivado valor '{valor}' en categoría '{nombre_interno}'.")
 
 
 # ---- Endpoints de Configuración ----
@@ -691,7 +715,7 @@ def _validate_all_categorias(
     cat3: Optional[str],
     voz: Optional[str],
 ) -> None:
-    """Valida los 4 campos de categoría contra las tablas dinámicas."""
+    """Acepta y auto-registra los 4 campos de categoría en las tablas dinámicas."""
     _validate_categoria_valor(conn, "cat1", cat1, "cat1 (Género)")
     _validate_categoria_valor(conn, "cat2", cat2, "cat2 (Rotación)")
     _validate_categoria_valor(conn, "cat3", cat3, "cat3 (Subgénero)")
