@@ -102,20 +102,61 @@
       if (!_cues[k]) _cues[k] = d[k];
     }
     _syncInputs();
-    _drawRegions();
+    _drawMarkers();
   }
 
-  function _drawRegions() {
+  function _drawMarkers() {
     if (!_rp || !_dur) return;
     try { _rp.clearRegions(); } catch (e) { }
-    _regions = {};
-    var s0 = _cues.inicio || 0, s1 = _cues.intro || 0;
-    if (s1 > s0) _regions.zona_intro = _rp.addRegion({ id: 'zona_intro', start: s0, end: s1, color: 'rgba(180,30,30,0.28)', drag: false, resize: false });
-    var s2 = _cues.final_coro || 0;
-    if (s2 > s1) _regions.zona_cuerpo = _rp.addRegion({ id: 'zona_cuerpo', start: s1, end: s2, color: 'rgba(0,140,80,0.18)', drag: false, resize: false });
-    var s4 = _cues.outro || 0, s5 = _cues.mezcla || _dur;
-    if (s5 > s4) _regions.zona_outro = _rp.addRegion({ id: 'zona_outro', start: s4, end: s5, color: 'rgba(200,100,0,0.22)', drag: false, resize: false });
-    if (_cues.mezcla > 0) _regions.linea_m = _rp.addRegion({ id: 'linea_mezcla', start: _cues.mezcla, end: Math.min(_dur, _cues.mezcla + 0.1), color: 'rgba(60,130,255,0.90)', drag: false, resize: false });
+
+    /* Marcador INTRO (Verde) */
+    if (_cues.intro > 0) {
+      _rp.addRegion({
+        id: 'marker_intro',
+        start: _cues.intro,
+        end: _cues.intro,
+        color: '#00ff88',
+        drag: true,
+        content: document.createTextNode('INTRO'),
+      });
+    }
+
+    /* Marcador OUTRO (Rojo) */
+    if (_cues.outro > 0) {
+      _rp.addRegion({
+        id: 'marker_outro',
+        start: _cues.outro,
+        end: _cues.outro,
+        color: '#ff4444',
+        drag: true,
+        content: document.createTextNode('OUTRO'),
+      });
+    }
+
+    /* Marcador MEZCLA (Oro) */
+    if (_cues.mezcla > 0) {
+      _rp.addRegion({
+        id: 'marker_mezcla',
+        start: _cues.mezcla,
+        end: _cues.mezcla,
+        color: '#ee9b00',
+        drag: true,
+        content: document.createTextNode('MEZCLA'),
+      });
+    }
+
+    /* Otros marcadores opcionales (Coro, etc.) si se requieren */
+    if (_cues.inicio_coro > 0) {
+      _rp.addRegion({
+        id: 'marker_coro_in',
+        start: _cues.inicio_coro,
+        end: _cues.inicio_coro,
+        color: '#44aaff',
+        drag: true,
+        content: document.createTextNode('CORO'),
+      });
+    }
+
     _updateInfoBar();
   }
 
@@ -139,76 +180,89 @@
     if (sp) sp.style.display = show ? 'flex' : 'none';
   }
 
-  /* ══════════════════════════════════════════════════════════════
-     wfInit — Crea la instancia de WaveSurfer
-  ══════════════════════════════════════════════════════════════ */
+  /**
+   * wfInit — Crea la instancia de WaveSurfer (Versión Sincronizada)
+   * @returns {Promise} — Se resuelve cuando el motor está listo para cargar audio
+   */
   function wfInit() {
-    /* Si ya está iniciado y la instancia existe, no hacer nada */
-    if (_inited && _ws) return;
+    return new Promise(function (resolve, reject) {
+      if (_inited && _ws) return resolve(_ws);
 
-    var container = _id('waveform');
-    if (!container) {
-      console.warn('[ÓnixWF] Contenedor #waveform no encontrado.');
-      return;
-    }
-    container.innerHTML = ''; /* Limpiar restos de la onda anterior SOLAMENTE */
+      var container = _id('waveform');
+      if (!container) {
+        console.warn('[ÓnixWF] Contenedor #waveform no encontrado.');
+        return reject('No container');
+      }
 
-    if (typeof WaveSurfer === 'undefined') {
-      if (_tries++ < 50) { setTimeout(wfInit, 100); return; }
-      console.error('[ÓnixWF] WaveSurfer CDN no disponible.');
-      return;
-    }
-    /* ... resto de wfInit ... */
+      /* LIMPIEZA FINA: Solo borrar canvas previo, no el nodo padre */
+      if (container.replaceChildren) {
+        container.replaceChildren();
+      } else {
+        container.innerHTML = '';
+      }
 
-    var RP = (typeof RegionsPlugin !== 'undefined' && RegionsPlugin) ||
-      (typeof WaveSurferRegions !== 'undefined' && WaveSurferRegions) ||
-      (WaveSurfer.Regions ? WaveSurfer.Regions : null);
+      if (typeof WaveSurfer === 'undefined') {
+        if (_tries++ < 50) {
+          setTimeout(function () { wfInit().then(resolve).catch(reject); }, 100);
+          return;
+        }
+        return reject('WaveSurfer not found');
+      }
 
-    if (!RP) {
-      if (_tries++ < 50) { setTimeout(wfInit, 100); return; }
-      console.error('[ÓnixWF] Regions CDN no disponible.');
-      return;
-    }
+      var RP = (typeof RegionsPlugin !== 'undefined' && RegionsPlugin) ||
+        (typeof WaveSurferRegions !== 'undefined' && WaveSurferRegions) ||
+        (WaveSurfer.Regions ? WaveSurfer.Regions : null);
 
-    _inited = true;
-    _tries = 0;
+      if (!RP) {
+        if (_tries++ < 50) {
+          setTimeout(function () { wfInit().then(resolve).catch(reject); }, 100);
+          return;
+        }
+        return reject('Regions not found');
+      }
 
-    try {
-      _rp = RP.create();
-      _ws = WaveSurfer.create({
-        container: '#waveform',
-        waveColor: '#333',
-        progressColor: '#ff6600',
-        cursorColor: '#ffffff',
-        cursorWidth: 2,
-        height: 120,
-        barWidth: 2,
-        barGap: 1,
-        barRadius: 1,
-        normalize: true,
-        plugins: [_rp],
-      });
+      _inited = true;
+      _tries = 0;
 
-      _ws.on('ready', function () {
-        _dur = _ws.getDuration();
-        _spinner(false);
-        var ec = _id('wf-time-cur'); if (ec) ec.textContent = _fmtLED(0);
-        var et = _id('wf-time-total'); if (et) et.textContent = _fmtLED(_dur);
-        _autoCue();
-        _ws.zoom(60);
-        console.info('[ÓnixWF] Audio cargado.');
-      });
+      try {
+        _rp = RP.create();
+        _ws = WaveSurfer.create({
+          container: '#waveform',
+          waveColor: '#333',
+          progressColor: '#ff6600',
+          cursorColor: '#ffffff',
+          cursorWidth: 2,
+          height: 120,
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 1,
+          normalize: true,
+          plugins: [_rp],
+        });
 
-      _ws.on('play', function () { _playing = true; _icon(true); _raf = requestAnimationFrame(_tick); });
-      _ws.on('pause', function () { _playing = false; _icon(false); if (_raf) cancelAnimationFrame(_raf); });
-      _ws.on('finish', function () { _playing = false; _icon(false); });
+        _ws.on('ready', function () {
+          _dur = _ws.getDuration();
+          _spinner(false);
+          var ec = _id('wf-time-cur'); if (ec) ec.textContent = _fmtLED(0);
+          var et = _id('wf-time-total'); if (et) et.textContent = _fmtLED(_dur);
+          _autoCue();
+          _ws.zoom(60);
+          console.info('[ÓnixWF] Audio cargado.');
+        });
 
-      _attachListeners();
-      console.info('[ÓnixWF] Inicializado.');
-    } catch (err) {
-      console.error('[ÓnixWF] Error init:', err);
-      _inited = false;
-    }
+        _ws.on('play', function () { _playing = true; _icon(true); _raf = requestAnimationFrame(_tick); });
+        _ws.on('pause', function () { _playing = false; _icon(false); if (_raf) cancelAnimationFrame(_raf); });
+        _ws.on('finish', function () { _playing = false; _icon(false); });
+
+        _attachListeners();
+        console.info('[ÓnixWF] Inicializado.');
+        resolve(_ws);
+      } catch (err) {
+        console.error('[ÓnixWF] Error init:', err);
+        _inited = false;
+        reject(err);
+      }
+    });
   }
 
   function _attachListeners() {
@@ -225,7 +279,7 @@
       if (nudgeBtn) {
         var parts = nudgeBtn.dataset.wfNudge.split(':'), key = parts[0], delta = parseFloat(parts[1]);
         _cues[key] = Math.max(0, Math.min(_dur, _r2((_cues[key] || 0) + delta)));
-        _syncInputs(); _drawRegions(); return;
+        _syncInputs(); _drawMarkers(); return;
       }
 
       var escBtn = e.target.closest('[data-wf-escuchar]');
@@ -237,7 +291,7 @@
       var reinBtn = e.target.closest('[data-wf-reiniciar]');
       if (reinBtn) {
         var rk = reinBtn.dataset.wfReiniciar, defs = _calcDefaults();
-        if (defs[rk] !== undefined) { _cues[rk] = defs[rk]; _syncInputs(); _drawRegions(); }
+        if (defs[rk] !== undefined) { _cues[rk] = defs[rk]; _syncInputs(); _drawMarkers(); }
         return;
       }
     });
@@ -246,7 +300,7 @@
       CUE_DEFS.forEach(function (def) {
         if (e.target.id === def.inputId) {
           var v = parseFloat(e.target.value);
-          if (!isNaN(v) && v >= 0 && v <= _dur) { _cues[def.key] = _r2(v); _drawRegions(); _updateInfoBar(); }
+          if (!isNaN(v) && v >= 0 && v <= _dur) { _cues[def.key] = _r2(v); _drawMarkers(); _updateInfoBar(); }
         }
       });
       if (e.target.id === 'wf-volume') {
@@ -295,15 +349,14 @@
   function wfDestroy() {
     if (_raf) cancelAnimationFrame(_raf);
     if (_ws) {
-      try { _ws.destroy(); } catch (e) { }
+      try { _ws.unAll(); _ws.destroy(); } catch (e) { }
       _ws = null;
     }
     _rp = null;
-    _inited = false; /* PERMITIR RE-INICIALIZACIÓN */
+    _inited = false;
     _panelVisible = false;
     _hidePanel();
-
-    /* NO BORRAR innerHTML aquí, se encarga wfInit */
+    _spinner(false);
     console.info('[ÓnixWF] Destruido.');
   }
 

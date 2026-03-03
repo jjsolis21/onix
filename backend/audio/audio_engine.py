@@ -1194,9 +1194,11 @@ class AudioEngine:
         duracion = track.get("duracion_seg") or track.get("duracion") or 0
 
         self.bus.emit("track_started", {
+            "id":          track["id"],
             "audio_id":    track["id"],
             "titulo":      track.get("titulo", ""),
             "artista":     track.get("artista", ""),
+            "duracion":    duracion,
             "duracion_seg":duracion,
             "genero_vocal":track.get("genero_vocal", "Instrumental"),
             "energia":     track.get("energia", 3),

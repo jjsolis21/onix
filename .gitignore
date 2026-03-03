@@ -1,18 +1,37 @@
 # Ignorar archivos de audio (Gestión local según Opción A)
-media/
-*.mp3
-*.wav
-*.flac
-*.m4a
+# --- Multimedia ---
+# Ignoramos el contenido de media pero NO la carpeta en sí
+media/*.mp3
+media/*.wav
+media/*.flac
+media/*.m4a
 
-# Ignorar base de datos y librerías pesadas
-Nueva Carpeta
+# --- Base de Datos y Binarios ---
+# Ignoramos la DB local para que no se sobreescriba en GitHub
 radio_core.db
-bass.dll
-*.pyc
-__pycache__/
+*.db-journal
+*.db-wal
+*.db-shm
 
-# Entorno y archivos de sistema
+# Librerías binarias (Respaldar por fuera)
+bass.dll
+libbass.so
+libbass.dylib
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+
+# --- IDEs y Sistema ---
 .vscode/
 .idea/
-.env
+.DS_Store
+Thumbs.db
+
+# --- Carpetas Temporales ---
+Nueva\ Carpeta/
+temp/

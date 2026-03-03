@@ -3,874 +3,1787 @@
      sections/02-biblioteca-musical/biblioteca-musical.html
      ========================================================= -->
 <style>
-/* ══════════════════════════════════════════════════════════════
+  /* ══════════════════════════════════════════════════════════════
    PALETA JAZLER SOHO — Charcoal Industrial
    Basado exactamente en las capturas: grises oscuros, texto
    blanco/gris, acentos de color por función semántica.
 ══════════════════════════════════════════════════════════════ */
-:root {
-  /* Fondos */
-  --jz-void:    #111111;
-  --jz-bg:      #1c1c1c;
-  --jz-panel:   #242424;
-  --jz-raised:  #2e2e2e;
-  --jz-surface: #363636;
-  --jz-hover:   #3e3e3e;
+  :root {
+    /* Fondos */
+    --jz-void: #111111;
+    --jz-bg: #1c1c1c;
+    --jz-panel: #242424;
+    --jz-raised: #2e2e2e;
+    --jz-surface: #363636;
+    --jz-hover: #3e3e3e;
 
-  /* Bordes */
-  --jz-border:  #404040;
-  --jz-border2: #525252;
-  --jz-sep:     #303030;
+    /* Bordes */
+    --jz-border: #404040;
+    --jz-border2: #525252;
+    --jz-sep: #303030;
 
-  /* Texto */
-  --jz-text:    #dddddd;
-  --jz-text2:   #a0a0a0;
-  --jz-text3:   #686868;
-  --jz-white:   #f0f0f0;
+    /* Texto */
+    --jz-text: #dddddd;
+    --jz-text2: #a0a0a0;
+    --jz-text3: #686868;
+    --jz-white: #f0f0f0;
 
-  /* Acentos semánticos */
-  --jz-gold:    #ee9b00;   /* Gold accent — acción principal  */
-  --jz-gold2:   #ffc233;   /* Gold hover                      */
-  --jz-teal:    #0a9396;   /* Teal — conectado                */
+    /* Acentos semánticos */
+    --jz-gold: #ee9b00;
+    /* Gold accent — acción principal  */
+    --jz-gold2: #ffc233;
+    /* Gold hover                      */
+    --jz-teal: #0a9396;
+    /* Teal — conectado                */
 
-  /* Colores de cue points (idénticos a Jazler) */
-  --cue-inicio:      #cccccc;
-  --cue-intro:       #ff7070;
-  --cue-inicio-coro: #00ddaa;
-  --cue-final-coro:  #44aaff;
-  --cue-outro:       #ff9900;
-  --cue-mezcla:      #5599ff;
+    /* Colores de cue points (idénticos a Jazler) */
+    --cue-inicio: #cccccc;
+    --cue-intro: #ff7070;
+    --cue-inicio-coro: #00ddaa;
+    --cue-final-coro: #44aaff;
+    --cue-outro: #ff9900;
+    --cue-mezcla: #5599ff;
 
-  --font-ui:   'Rajdhani', 'Segoe UI', sans-serif;
-  --font-mono: 'DM Mono', 'Courier New', monospace;
-  --tr: all 0.12s ease;
-}
+    --font-ui: 'Rajdhani', 'Segoe UI', sans-serif;
+    --font-mono: 'DM Mono', 'Courier New', monospace;
+    --tr: all 0.12s ease;
+  }
 
-/* ── Reset ─────────────────────────────────────────────────── */
-#jz-root *, #jz-root *::before, #jz-root *::after {
-  box-sizing: border-box; margin: 0; padding: 0;
-}
-#jz-root {
-  font-family: var(--font-ui);
-  background: var(--jz-bg);
-  color: var(--jz-text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-  line-height: 1.4;
-}
+  /* ── Waveform Markers (Líneas precissas) ─────────────────── */
+  #waveform .wavesurfer-region {
+    width: 2px !important;
+    z-index: 10 !important;
+    border-left: 2px solid currentColor;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+    background: none !important;
+    /* Eliminar bloque de color */
+  }
 
-/* ── TopBar ─────────────────────────────────────────────────── */
-.jz-topbar {
-  background: var(--jz-void);
-  border-bottom: 1px solid var(--jz-border);
-  padding: 8px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  position: sticky; top: 0; z-index: 100;
-}
-.jz-topbar__brand {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--jz-gold);
-  letter-spacing: .15em;
-  text-transform: uppercase;
-  display: flex; align-items: center; gap: 6px;
-  padding-right: 14px;
-  border-right: 1px solid var(--jz-border2);
-  white-space: nowrap;
-}
-.jz-search-wrap {
-  position: relative; flex: 1; min-width: 180px; max-width: 300px;
-}
-.jz-search-wrap svg {
-  position: absolute; left: 8px; top: 50%;
-  transform: translateY(-50%);
-  color: var(--jz-text3); pointer-events: none;
-}
-.jz-input {
-  width: 100%;
-  background: var(--jz-panel);
-  border: 1px solid var(--jz-border);
-  border-radius: 3px;
-  color: var(--jz-text);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  padding: 5px 9px 5px 28px;
-  outline: none; transition: var(--tr);
-}
-.jz-input:focus { border-color: var(--jz-gold); }
-.jz-input::placeholder { color: var(--jz-text3); }
-.jz-select {
-  background: var(--jz-panel);
-  border: 1px solid var(--jz-border);
-  border-radius: 3px;
-  color: var(--jz-text2);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  padding: 5px 22px 5px 7px;
-  outline: none; cursor: pointer; transition: var(--tr);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23686868'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 7px center;
-}
-.jz-select:focus { border-color: var(--jz-gold); }
-.jz-topbar__filters {
-  display: flex; align-items: center; gap: 6px; flex: 1; flex-wrap: wrap;
-}
-.jz-filter-label {
-  font-size: 10px; color: var(--jz-text3);
-  font-family: var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
-}
-.jz-topbar__right {
-  display: flex; align-items: center; gap: 8px; margin-left: auto;
-}
-.jz-stat {
-  font-family: var(--font-mono); font-size: 10px;
-  color: var(--jz-text3);
-  background: var(--jz-panel);
-  border: 1px solid var(--jz-border);
-  border-radius: 3px; padding: 4px 10px; letter-spacing: .05em;
-}
-.jz-stat span { color: var(--jz-gold); font-weight: 700; }
+  #waveform .wavesurfer-region:after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -1px;
+    width: 4px;
+    height: 100%;
+    cursor: ew-resize;
+  }
 
-/* ── Botones sistema ────────────────────────────────────────── */
-.jz-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 12px;
-  border: 1px solid var(--jz-border2);
-  border-radius: 3px;
-  font-family: var(--font-ui);
-  font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: var(--tr); white-space: nowrap;
-  background: var(--jz-raised); color: var(--jz-text);
-}
-.jz-btn:hover { background: var(--jz-hover); border-color: var(--jz-text3); }
-.jz-btn--gold {
-  background: var(--jz-gold); color: #1a0f00;
-  border-color: var(--jz-gold2);
-}
-.jz-btn--gold:hover { background: var(--jz-gold2); }
-.jz-btn--sm { padding: 3px 8px; font-size: 11px; }
-.jz-btn--danger { color: #ff6666; border-color: rgba(255,100,100,.35); background: transparent; }
-.jz-btn--danger:hover { background: rgba(255,80,80,.10); }
+  #waveform .wavesurfer-region div {
+    background: rgba(0, 0, 0, 0.85) !important;
+    color: #fff !important;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+    position: absolute;
+    top: 5px;
+    left: 6px;
+    pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
 
-/* ── Status bar ─────────────────────────────────────────────── */
-.jz-statusbar {
-  background: var(--jz-void);
-  border-bottom: 1px solid var(--jz-sep);
-  padding: 4px 14px;
-  display: flex; align-items: center; gap: 14px;
-  font-family: var(--font-mono); font-size: 10px; color: var(--jz-text3);
-}
-.jz-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #2ecc71; display: inline-block;
-  animation: jz-pulse 2s infinite;
-}
-@keyframes jz-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-.jz-statusbar__msg { color: var(--jz-text2); }
+  /* Forzar onda al fondo */
+  #waveform canvas {
+    z-index: 1 !important;
+  }
 
-/* ── Data Grid ──────────────────────────────────────────────── */
-.jz-body-wrap {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
+  /* ── Reset ─────────────────────────────────────────────────── */
+  #jz-root *,
+  #jz-root *::before,
+  #jz-root *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-.jz-grid-wrap { flex: 1; overflow: auto; }
-.jz-table {
-  width: 100%; border-collapse: collapse; table-layout: fixed;
-}
-.jz-table thead th {
-  background: var(--jz-void);
-  border-bottom: 2px solid var(--jz-border2);
-  border-right: 1px solid var(--jz-sep);
-  padding: 7px 9px;
-  text-align: left;
-  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-  color: var(--jz-text3);
-  text-transform: uppercase; letter-spacing: .1em;
-  position: sticky; top: 0; z-index: 10;
-  cursor: pointer; user-select: none;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.jz-table thead th:hover { color: var(--jz-gold); }
-.jz-table thead th:last-child { border-right: none; }
-.jz-table thead th.sort-asc::after  { content: ' ▲'; color: var(--jz-gold); }
-.jz-table thead th.sort-desc::after { content: ' ▼'; color: var(--jz-gold); }
+  #jz-root {
+    font-family: var(--font-ui);
+    background: var(--jz-bg);
+    color: var(--jz-text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    line-height: 1.4;
+  }
 
-/* Anchos de columna */
-.col-id    { width: 48px; }
-.col-play  { width: 36px; }
-.col-cod   { width: 72px; }
-.col-title { width: auto; }
-.col-art   { width: 16%; }
-.col-sc    { width: 90px; }
-.col-pop   { width: 80px; }
-.col-voz   { width: 70px; }
-.col-bpm   { width: 52px; }
-.col-dur   { width: 60px; }
-.col-ops   { width: 80px; }
+  /* ── TopBar ─────────────────────────────────────────────────── */
+  .jz-topbar {
+    background: var(--jz-void);
+    border-bottom: 1px solid var(--jz-border);
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
 
-.jz-table tbody tr {
-  border-bottom: 1px solid var(--jz-sep); transition: var(--tr);
-}
-.jz-table tbody tr:hover { background: var(--jz-raised); }
-.jz-table tbody tr.jz-row--playing {
-  background: rgba(238,155,0,.07);
-  border-left: 2px solid var(--jz-gold);
-}
-.jz-table td {
-  padding: 6px 9px;
-  border-right: 1px solid var(--jz-sep);
-  vertical-align: middle;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.jz-table td:last-child { border-right: none; }
-.jz-cell-id   { font-family: var(--font-mono); font-size: 10px; color: var(--jz-text3); }
-.jz-cell-play { text-align: center; }
-.jz-cell-cod  { font-family: var(--font-mono); font-size: 10px; color: var(--jz-gold); }
-.jz-cell-title { font-weight: 600; color: var(--jz-white); }
-.jz-cell-art   { color: var(--jz-text2); font-size: 12px; }
-.jz-cell-sc    { font-family: var(--font-mono); font-size: 11px; color: var(--jz-teal); }
-.jz-cell-pop   { font-family: var(--font-mono); font-size: 11px; color: var(--jz-text2); }
-.jz-cell-dur   { font-family: var(--font-mono); font-size: 11px; color: var(--jz-text3); text-align: right; }
+  .jz-topbar__brand {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--jz-gold);
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 14px;
+    border-right: 1px solid var(--jz-border2);
+    white-space: nowrap;
+  }
 
-.jz-play-btn {
-  background: none; border: 1px solid var(--jz-border);
-  border-radius: 50%; width: 22px; height: 22px;
-  display: inline-flex; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--jz-gold); transition: var(--tr);
-}
-.jz-play-btn:hover { background: rgba(238,155,0,.15); border-color: var(--jz-gold); }
-.jz-play-btn.playing { background: rgba(238,155,0,.18); border-color: var(--jz-gold); animation: jz-pulse 1.2s infinite; }
+  .jz-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 180px;
+    max-width: 300px;
+  }
 
-.jz-badge {
-  display: inline-block; padding: 2px 6px; border-radius: 2px;
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.badge-mujer  { background: rgba(180,100,220,.20); color: #d4a0f0; border: 1px solid rgba(180,100,220,.35); }
-.badge-hombre { background: rgba(50,130,220,.18);  color: #88bbee; border: 1px solid rgba(50,130,220,.30); }
-.badge-duo    { background: rgba(0,180,150,.15);   color: #66ddcc; border: 1px solid rgba(0,180,150,.28); }
-.badge-grupo  { background: rgba(220,150,0,.15);   color: #ddaa55; border: 1px solid rgba(220,150,0,.28); }
+  .jz-search-wrap svg {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--jz-text3);
+    pointer-events: none;
+  }
 
-.jz-actions { display: flex; gap: 4px; align-items: center; }
+  .jz-input {
+    width: 100%;
+    background: var(--jz-panel);
+    border: 1px solid var(--jz-border);
+    border-radius: 3px;
+    color: var(--jz-text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 5px 9px 5px 28px;
+    outline: none;
+    transition: var(--tr);
+  }
 
-/* ── Mini Player bar ────────────────────────────────────────── */
-.jz-player {
-  background: var(--jz-void);
-  border-top: 1px solid var(--jz-border);
-  padding: 7px 14px;
-  display: flex; align-items: center; gap: 12px;
-  font-family: var(--font-mono); font-size: 11px;
-}
-.jz-player__info { flex: 1; min-width: 0; }
-.jz-player__title  { color: var(--jz-white); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.jz-player__artist { color: var(--jz-text3); font-size: 10px; }
-.jz-timeline-wrap  { flex: 2; display: flex; align-items: center; gap: 8px; }
-.jz-timeline-track {
-  flex: 1; height: 3px; background: var(--jz-border);
-  border-radius: 2px; cursor: pointer; position: relative; overflow: hidden;
-}
-.jz-timeline-fill {
-  height: 100%; background: var(--jz-gold); border-radius: 2px;
-  width: 0%; transition: width .3s linear;
-}
-.jz-ptime { color: var(--jz-text3); font-size: 10px; min-width: 32px; text-align: center; }
+  .jz-input:focus {
+    border-color: var(--jz-gold);
+  }
 
-/* ── Empty state ────────────────────────────────────────────── */
-.jz-empty {
-  text-align: center; padding: 48px 24px;
-  color: var(--jz-text3); font-family: var(--font-mono); font-size: 12px;
-}
-.jz-empty svg { opacity: .25; margin-bottom: 12px; }
-.jz-empty p   { margin-top: 6px; font-size: 11px; }
+  .jz-input::placeholder {
+    color: var(--jz-text3);
+  }
 
-/* ── Toasts ─────────────────────────────────────────────────── */
-.jz-toasts {
-  position: fixed; bottom: 22px; right: 22px;
-  z-index: 10000; display: flex; flex-direction: column; gap: 7px;
-}
-.jz-toast {
-  background: var(--jz-panel); border: 1px solid var(--jz-border2);
-  border-radius: 4px; padding: 9px 14px;
-  font-family: var(--font-mono); font-size: 11px; color: var(--jz-text);
-  box-shadow: 0 4px 20px rgba(0,0,0,.6);
-  animation: jz-toast-in .18s ease;
-  display: flex; align-items: center; gap: 8px; min-width: 210px;
-}
-.jz-toast--success { border-left: 3px solid #2ecc71; }
-.jz-toast--error   { border-left: 3px solid #ff5555; }
-.jz-toast--info    { border-left: 3px solid var(--jz-gold); }
-@keyframes jz-toast-in { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:translateX(0)} }
+  .jz-select {
+    background: var(--jz-panel);
+    border: 1px solid var(--jz-border);
+    border-radius: 3px;
+    color: var(--jz-text2);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    padding: 5px 22px 5px 7px;
+    outline: none;
+    cursor: pointer;
+    transition: var(--tr);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23686868'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+  }
 
-/* Scrollbar */
-#jz-root ::-webkit-scrollbar { width: 5px; height: 5px; }
-#jz-root ::-webkit-scrollbar-track { background: var(--jz-bg); }
-#jz-root ::-webkit-scrollbar-thumb { background: var(--jz-border2); border-radius: 3px; }
+  .jz-select:focus {
+    border-color: var(--jz-gold);
+  }
 
-/* ══════════════════════════════════════════════════════════════
+  .jz-topbar__filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+
+  .jz-filter-label {
+    font-size: 10px;
+    color: var(--jz-text3);
+    font-family: var(--font-mono);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .jz-topbar__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .jz-stat {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-text3);
+    background: var(--jz-panel);
+    border: 1px solid var(--jz-border);
+    border-radius: 3px;
+    padding: 4px 10px;
+    letter-spacing: .05em;
+  }
+
+  .jz-stat span {
+    color: var(--jz-gold);
+    font-weight: 700;
+  }
+
+  /* ── Botones sistema ────────────────────────────────────────── */
+  .jz-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border: 1px solid var(--jz-border2);
+    border-radius: 3px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--tr);
+    white-space: nowrap;
+    background: var(--jz-raised);
+    color: var(--jz-text);
+  }
+
+  .jz-btn:hover {
+    background: var(--jz-hover);
+    border-color: var(--jz-text3);
+  }
+
+  .jz-btn--gold {
+    background: var(--jz-gold);
+    color: #1a0f00;
+    border-color: var(--jz-gold2);
+  }
+
+  .jz-btn--gold:hover {
+    background: var(--jz-gold2);
+  }
+
+  .jz-btn--sm {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .jz-btn--danger {
+    color: #ff6666;
+    border-color: rgba(255, 100, 100, .35);
+    background: transparent;
+  }
+
+  .jz-btn--danger:hover {
+    background: rgba(255, 80, 80, .10);
+  }
+
+  /* ── Status bar ─────────────────────────────────────────────── */
+  .jz-statusbar {
+    background: var(--jz-void);
+    border-bottom: 1px solid var(--jz-sep);
+    padding: 4px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-text3);
+  }
+
+  .jz-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2ecc71;
+    display: inline-block;
+    animation: jz-pulse 2s infinite;
+  }
+
+  @keyframes jz-pulse {
+
+    0%,
+    100% {
+      opacity: 1
+    }
+
+    50% {
+      opacity: .3
+    }
+  }
+
+  .jz-statusbar__msg {
+    color: var(--jz-text2);
+  }
+
+  /* ── Data Grid ──────────────────────────────────────────────── */
+  .jz-body-wrap {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .jz-grid-wrap {
+    flex: 1;
+    overflow: auto;
+  }
+
+  .jz-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .jz-table thead th {
+    background: var(--jz-void);
+    border-bottom: 2px solid var(--jz-border2);
+    border-right: 1px solid var(--jz-sep);
+    padding: 7px 9px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--jz-text3);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .jz-table thead th:hover {
+    color: var(--jz-gold);
+  }
+
+  .jz-table thead th:last-child {
+    border-right: none;
+  }
+
+  .jz-table thead th.sort-asc::after {
+    content: ' ▲';
+    color: var(--jz-gold);
+  }
+
+  .jz-table thead th.sort-desc::after {
+    content: ' ▼';
+    color: var(--jz-gold);
+  }
+
+  /* Anchos de columna */
+  .col-id {
+    width: 48px;
+  }
+
+  .col-play {
+    width: 36px;
+  }
+
+  .col-cod {
+    width: 72px;
+  }
+
+  .col-title {
+    width: auto;
+  }
+
+  .col-art {
+    width: 16%;
+  }
+
+  .col-sc {
+    width: 90px;
+  }
+
+  .col-pop {
+    width: 80px;
+  }
+
+  .col-voz {
+    width: 70px;
+  }
+
+  .col-bpm {
+    width: 52px;
+  }
+
+  .col-dur {
+    width: 60px;
+  }
+
+  .col-ops {
+    width: 80px;
+  }
+
+  .jz-table tbody tr {
+    border-bottom: 1px solid var(--jz-sep);
+    transition: var(--tr);
+  }
+
+  .jz-table tbody tr:hover {
+    background: var(--jz-raised);
+  }
+
+  .jz-table tbody tr.jz-row--playing {
+    background: rgba(238, 155, 0, .07);
+    border-left: 2px solid var(--jz-gold);
+  }
+
+  .jz-table td {
+    padding: 6px 9px;
+    border-right: 1px solid var(--jz-sep);
+    vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .jz-table td:last-child {
+    border-right: none;
+  }
+
+  .jz-cell-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-text3);
+  }
+
+  .jz-cell-play {
+    text-align: center;
+  }
+
+  .jz-cell-cod {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-gold);
+  }
+
+  .jz-cell-title {
+    font-weight: 600;
+    color: var(--jz-white);
+  }
+
+  .jz-cell-art {
+    color: var(--jz-text2);
+    font-size: 12px;
+  }
+
+  .jz-cell-sc {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--jz-teal);
+  }
+
+  .jz-cell-pop {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--jz-text2);
+  }
+
+  .jz-cell-dur {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--jz-text3);
+    text-align: right;
+  }
+
+  .jz-play-btn {
+    background: none;
+    border: 1px solid var(--jz-border);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--jz-gold);
+    transition: var(--tr);
+  }
+
+  .jz-play-btn:hover {
+    background: rgba(238, 155, 0, .15);
+    border-color: var(--jz-gold);
+  }
+
+  .jz-play-btn.playing {
+    background: rgba(238, 155, 0, .18);
+    border-color: var(--jz-gold);
+    animation: jz-pulse 1.2s infinite;
+  }
+
+  .jz-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .badge-mujer {
+    background: rgba(180, 100, 220, .20);
+    color: #d4a0f0;
+    border: 1px solid rgba(180, 100, 220, .35);
+  }
+
+  .badge-hombre {
+    background: rgba(50, 130, 220, .18);
+    color: #88bbee;
+    border: 1px solid rgba(50, 130, 220, .30);
+  }
+
+  .badge-duo {
+    background: rgba(0, 180, 150, .15);
+    color: #66ddcc;
+    border: 1px solid rgba(0, 180, 150, .28);
+  }
+
+  .badge-grupo {
+    background: rgba(220, 150, 0, .15);
+    color: #ddaa55;
+    border: 1px solid rgba(220, 150, 0, .28);
+  }
+
+  .jz-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  /* ── Mini Player bar ────────────────────────────────────────── */
+  .jz-player {
+    background: var(--jz-void);
+    border-top: 1px solid var(--jz-border);
+    padding: 7px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .jz-player__info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .jz-player__title {
+    color: var(--jz-white);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .jz-player__artist {
+    color: var(--jz-text3);
+    font-size: 10px;
+  }
+
+  .jz-timeline-wrap {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .jz-timeline-track {
+    flex: 1;
+    height: 3px;
+    background: var(--jz-border);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .jz-timeline-fill {
+    height: 100%;
+    background: var(--jz-gold);
+    border-radius: 2px;
+    width: 0%;
+    transition: width .3s linear;
+  }
+
+  .jz-ptime {
+    color: var(--jz-text3);
+    font-size: 10px;
+    min-width: 32px;
+    text-align: center;
+  }
+
+  /* ── Empty state ────────────────────────────────────────────── */
+  .jz-empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--jz-text3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .jz-empty svg {
+    opacity: .25;
+    margin-bottom: 12px;
+  }
+
+  .jz-empty p {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+
+  /* ── Toasts ─────────────────────────────────────────────────── */
+  .jz-toasts {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .jz-toast {
+    background: var(--jz-panel);
+    border: 1px solid var(--jz-border2);
+    border-radius: 4px;
+    padding: 9px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--jz-text);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .6);
+    animation: jz-toast-in .18s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 210px;
+  }
+
+  .jz-toast--success {
+    border-left: 3px solid #2ecc71;
+  }
+
+  .jz-toast--error {
+    border-left: 3px solid #ff5555;
+  }
+
+  .jz-toast--info {
+    border-left: 3px solid var(--jz-gold);
+  }
+
+  @keyframes jz-toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(18px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Scrollbar */
+  #jz-root ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  #jz-root ::-webkit-scrollbar-track {
+    background: var(--jz-bg);
+  }
+
+  #jz-root ::-webkit-scrollbar-thumb {
+    background: var(--jz-border2);
+    border-radius: 3px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
    MODAL "NUEVA CANCIÓN" — Jazler Soho exact replica
 ══════════════════════════════════════════════════════════════ */
-.jz-overlay {
-  display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.80);
-  z-index: 9000; backdrop-filter: blur(2px);
-  align-items: flex-start; justify-content: center;
-  overflow-y: auto; padding: 20px;
-}
-.jz-overlay.active { display: flex !important; z-index: 9000 !important; }
+  .jz-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .80);
+    z-index: 9000;
+    backdrop-filter: blur(2px);
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 20px;
+  }
 
-.jz-modal {
-  background: var(--jz-panel);
-  border: 1px solid var(--jz-border2);
-  border-radius: 4px;
-  box-shadow: 0 8px 40px rgba(0,0,0,.75);
-  width: 900px; max-width: 98vw;
-  display: flex; flex-direction: column;
-  animation: jz-modal-in .15s ease;
-  margin: auto;
-}
-@keyframes jz-modal-in { from{opacity:0;transform:scale(.97)} to{opacity:1;transform:scale(1)} }
+  .jz-overlay.active {
+    display: flex !important;
+    z-index: 9000 !important;
+  }
 
-/* Titlebar */
-.jz-modal__title {
-  background: #1a1a1a;
-  border-bottom: 1px solid var(--jz-border);
-  padding: 0 14px;
-  display: flex; align-items: center; gap: 10px; height: 36px;
-}
-.jz-modal__logo {
-  font-family: var(--font-mono); font-size: 14px; font-weight: 800;
-  color: var(--jz-gold); letter-spacing: .12em;
-}
-.jz-modal__name {
-  font-family: var(--font-ui); font-size: 14px; font-weight: 600;
-  color: var(--jz-white); text-transform: uppercase; letter-spacing: .05em; flex: 1;
-}
-.jz-modal__close {
-  background: none; border: none; color: var(--jz-text3);
-  cursor: pointer; width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 3px; transition: var(--tr);
-}
-.jz-modal__close:hover { background: rgba(255,80,80,.18); color: #ff6666; }
+  .jz-modal {
+    background: var(--jz-panel);
+    border: 1px solid var(--jz-border2);
+    border-radius: 4px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, .75);
+    width: 900px;
+    max-width: 98vw;
+    display: flex;
+    flex-direction: column;
+    animation: jz-modal-in .15s ease;
+    margin: auto;
+  }
 
-/* Body layout: left main + right sidebar */
-.jz-modal__body {
-  display: grid; grid-template-columns: 1fr 260px;
-  gap: 0; overflow-y: auto; max-height: 86vh;
-}
-.jz-modal__main { padding: 14px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--jz-sep); }
-.jz-modal__side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  @keyframes jz-modal-in {
+    from {
+      opacity: 0;
+      transform: scale(.97)
+    }
 
-/* Section boxes */
-.jz-section {
-  border: 1px solid var(--jz-border); border-radius: 3px; overflow: hidden;
-}
-.jz-section__head {
-  background: var(--jz-raised); border-bottom: 1px solid var(--jz-border);
-  padding: 4px 10px;
-  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .12em; color: var(--jz-text2);
-}
-.jz-section__body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    to {
+      opacity: 1;
+      transform: scale(1)
+    }
+  }
 
-/* Field groups */
-.jz-field { display: flex; flex-direction: column; gap: 3px; }
-.jz-field label {
-  font-family: var(--font-mono); font-size: 10px; color: var(--jz-text3);
-  text-transform: uppercase; letter-spacing: .07em;
-}
-.jz-field .jz-input, .jz-field .jz-select { padding-left: 9px; }
-.jz-field .jz-input:not(.search) { padding-left: 9px; }
+  /* Titlebar */
+  .jz-modal__title {
+    background: #1a1a1a;
+    border-bottom: 1px solid var(--jz-border);
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+  }
 
-/* Grids de campos */
-.jz-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.jz-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.jz-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
-.jz-grid-5 { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 8px; }
+  .jz-modal__logo {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--jz-gold);
+    letter-spacing: .12em;
+  }
 
-/* Artista row con botones */
-.jz-artista-row {
-  display: flex; align-items: flex-end; gap: 6px;
-}
-.jz-artista-row .jz-field { flex: 1; }
+  .jz-modal__name {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--jz-white);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    flex: 1;
+  }
 
-/* Textarea */
-textarea.jz-input {
-  resize: vertical; min-height: 52px; font-size: 12px; padding: 7px 9px;
-}
+  .jz-modal__close {
+    background: none;
+    border: none;
+    color: var(--jz-text3);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: var(--tr);
+  }
 
-/* Checkboxes estilo Jazler */
-.jz-check-group { display: flex; flex-direction: column; gap: 5px; }
-.jz-check-label {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 13px; color: var(--jz-text); cursor: pointer;
-}
-.jz-check-label input[type=checkbox] {
-  width: 14px; height: 14px; accent-color: var(--jz-gold); cursor: pointer;
-}
+  .jz-modal__close:hover {
+    background: rgba(255, 80, 80, .18);
+    color: #ff6666;
+  }
 
-/* Dropzone */
-.jz-dropzone {
-  border: 2px dashed var(--jz-border);
-  border-radius: 3px; padding: 16px;
-  text-align: center; cursor: pointer; transition: var(--tr);
-  background: var(--jz-bg);
-}
-.jz-dropzone:hover, .jz-dropzone.drag-over {
-  border-color: var(--jz-gold); background: rgba(238,155,0,.04);
-}
-.jz-dropzone svg { color: var(--jz-text3); margin-bottom: 6px; }
-.jz-dropzone p { font-size: 11px; color: var(--jz-text3); font-family: var(--font-mono); }
-.jz-dropzone p strong { color: var(--jz-gold); }
+  /* Body layout: left main + right sidebar */
+  .jz-modal__body {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 0;
+    overflow-y: auto;
+    max-height: 86vh;
+  }
 
-/* Ruta de archivo row */
-.jz-path-row {
-  display: flex; gap: 6px; align-items: center;
-}
-.jz-path-row .jz-input { flex: 1; font-family: var(--font-mono); font-size: 11px; }
-.jz-path-row .jz-btn   { white-space: nowrap; flex-shrink: 0; }
+  .jz-modal__main {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-right: 1px solid var(--jz-sep);
+  }
 
-/* Sidebar boxes */
-.jz-box {
-  background: var(--jz-raised); border: 1px solid var(--jz-border);
-  border-radius: 3px;
-}
-.jz-box__head {
-  background: var(--jz-surface); border-bottom: 1px solid var(--jz-border);
-  padding: 5px 10px; font-size: 12px; font-weight: 700; color: var(--jz-text);
-  text-align: center;
-}
-.jz-box__body { padding: 8px; }
+  .jz-modal__side {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
 
-/* Fecha de ingreso */
-.jz-fecha {
-  font-family: var(--font-mono); font-size: 12px;
-  color: var(--jz-text); padding: 4px 6px; font-weight: 600;
-}
+  /* Section boxes */
+  .jz-section {
+    border: 1px solid var(--jz-border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
 
-/* Canciones relacionadas / Propiedades — listas vacías */
-.jz-list-empty {
-  min-height: 64px; display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 10px; color: var(--jz-text3);
-}
-.jz-list-btns {
-  display: flex; justify-content: flex-end; gap: 4px; margin-top: 6px;
-}
-.jz-list-btn {
-  width: 22px; height: 22px; background: var(--jz-surface);
-  border: 1px solid var(--jz-border2); border-radius: 2px;
-  color: var(--jz-text2); cursor: pointer; font-size: 14px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; transition: var(--tr);
-}
-.jz-list-btn:hover { background: var(--jz-hover); color: var(--jz-gold); }
+  .jz-section__head {
+    background: var(--jz-raised);
+    border-bottom: 1px solid var(--jz-border);
+    padding: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--jz-text2);
+  }
 
-/* Footer modal */
-.jz-modal__footer {
-  border-top: 1px solid var(--jz-border);
-  padding: 10px 14px;
-  display: flex; justify-content: flex-end; gap: 8px;
-  background: var(--jz-raised);
-}
+  .jz-section__body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
 
-/* ══════════════════════════════════════════════════════════════
+  /* Field groups */
+  .jz-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .jz-field label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-text3);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+
+  .jz-field .jz-input,
+  .jz-field .jz-select {
+    padding-left: 9px;
+  }
+
+  .jz-field .jz-input:not(.search) {
+    padding-left: 9px;
+  }
+
+  /* Grids de campos */
+  .jz-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .jz-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .jz-grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .jz-grid-5 {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* Artista row con botones */
+  .jz-artista-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .jz-artista-row .jz-field {
+    flex: 1;
+  }
+
+  /* Textarea */
+  textarea.jz-input {
+    resize: vertical;
+    min-height: 52px;
+    font-size: 12px;
+    padding: 7px 9px;
+  }
+
+  /* Checkboxes estilo Jazler */
+  .jz-check-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .jz-check-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--jz-text);
+    cursor: pointer;
+  }
+
+  .jz-check-label input[type=checkbox] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--jz-gold);
+    cursor: pointer;
+  }
+
+  /* Dropzone */
+  .jz-dropzone {
+    border: 2px dashed var(--jz-border);
+    border-radius: 3px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--tr);
+    background: var(--jz-bg);
+  }
+
+  .jz-dropzone:hover,
+  .jz-dropzone.drag-over {
+    border-color: var(--jz-gold);
+    background: rgba(238, 155, 0, .04);
+  }
+
+  .jz-dropzone svg {
+    color: var(--jz-text3);
+    margin-bottom: 6px;
+  }
+
+  .jz-dropzone p {
+    font-size: 11px;
+    color: var(--jz-text3);
+    font-family: var(--font-mono);
+  }
+
+  .jz-dropzone p strong {
+    color: var(--jz-gold);
+  }
+
+  /* Ruta de archivo row */
+  .jz-path-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .jz-path-row .jz-input {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .jz-path-row .jz-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Sidebar boxes */
+  .jz-box {
+    background: var(--jz-raised);
+    border: 1px solid var(--jz-border);
+    border-radius: 3px;
+  }
+
+  .jz-box__head {
+    background: var(--jz-surface);
+    border-bottom: 1px solid var(--jz-border);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--jz-text);
+    text-align: center;
+  }
+
+  .jz-box__body {
+    padding: 8px;
+  }
+
+  /* Fecha de ingreso */
+  .jz-fecha {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--jz-text);
+    padding: 4px 6px;
+    font-weight: 600;
+  }
+
+  /* Canciones relacionadas / Propiedades — listas vacías */
+  .jz-list-empty {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-text3);
+  }
+
+  .jz-list-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .jz-list-btn {
+    width: 22px;
+    height: 22px;
+    background: var(--jz-surface);
+    border: 1px solid var(--jz-border2);
+    border-radius: 2px;
+    color: var(--jz-text2);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--tr);
+  }
+
+  .jz-list-btn:hover {
+    background: var(--jz-hover);
+    color: var(--jz-gold);
+  }
+
+  /* Footer modal */
+  .jz-modal__footer {
+    border-top: 1px solid var(--jz-border);
+    padding: 10px 14px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    background: var(--jz-raised);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
    §SIDEBAR — Panel derecho: Acciones + Tareas
    Referencia Jazler Soho: botones de ancho completo apilados
    verticalmente, jerarquía clara por agrupación y separadores.
 ══════════════════════════════════════════════════════════════ */
-.jz-sidebar {
-  width: 180px;
-  min-width: 180px;
-  background: #141414;
-  border-left: 1px solid #2a2a2a;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
+  .jz-sidebar {
+    width: 180px;
+    min-width: 180px;
+    background: #141414;
+    border-left: 1px solid #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
 
-/* ── Bloque de acciones principales ─────────────────────────── */
-.jz-sb-actions {
-  padding: 10px 8px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
+  /* ── Bloque de acciones principales ─────────────────────────── */
+  .jz-sb-actions {
+    padding: 10px 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
 
-.jz-sb-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 3px;
-  background: #222;
-  color: #c0c0c0;
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  transition: background .12s, color .12s;
-  white-space: nowrap;
-  letter-spacing: .02em;
-}
-.jz-sb-btn svg {
-  flex-shrink: 0;
-  opacity: .7;
-}
-.jz-sb-btn:hover {
-  background: #2e2e2e;
-  color: #e0e0e0;
-}
-.jz-sb-btn:hover svg { opacity: 1; }
+  .jz-sb-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 3px;
+    background: #222;
+    color: #c0c0c0;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+    letter-spacing: .02em;
+  }
 
-.jz-sb-btn--primary {
-  background: #2a2a18;
-  color: var(--jz-gold);
-  border: 1px solid rgba(238,155,0,.25);
-}
-.jz-sb-btn--primary:hover {
-  background: #333320;
-  border-color: var(--jz-gold);
-}
-.jz-sb-btn--primary svg { opacity: 1; }
+  .jz-sb-btn svg {
+    flex-shrink: 0;
+    opacity: .7;
+  }
 
-.jz-sb-btn--danger {
-  color: #cc4444;
-}
-.jz-sb-btn--danger:hover {
-  background: rgba(200,40,40,.12);
-  color: #ff6666;
-}
-.jz-sb-btn--lote {
-  color: #8ab8d0;
-}
-.jz-sb-btn--lote:hover {
-  background: rgba(100,180,220,.08);
-  color: #aad4ec;
-}
+  .jz-sb-btn:hover {
+    background: #2e2e2e;
+    color: #e0e0e0;
+  }
 
-/* ── Separador ───────────────────────────────────────────────── */
-.jz-sb-sep {
-  margin: 10px 8px;
-  border: none;
-  border-top: 1px solid #252525;
-}
+  .jz-sb-btn:hover svg {
+    opacity: 1;
+  }
 
-/* ── Sección Tareas ──────────────────────────────────────────── */
-.jz-sb-section {
-  padding: 0 8px;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
+  .jz-sb-btn--primary {
+    background: #2a2a18;
+    color: var(--jz-gold);
+    border: 1px solid rgba(238, 155, 0, .25);
+  }
 
-.jz-sb-section__title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .14em;
-  color: #505050;
-  padding: 4px 2px 8px;
-  border-bottom: 1px solid #222;
-  margin-bottom: 4px;
-}
+  .jz-sb-btn--primary:hover {
+    background: #333320;
+    border-color: var(--jz-gold);
+  }
 
-.jz-sb-task {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: #909090;
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background .12s, color .12s;
-  white-space: nowrap;
-  letter-spacing: .01em;
-}
-.jz-sb-task svg { flex-shrink: 0; opacity: .6; }
-.jz-sb-task:hover {
-  background: #1e1e1e;
-  color: #d0d0d0;
-}
-.jz-sb-task:hover svg { opacity: 1; }
+  .jz-sb-btn--primary svg {
+    opacity: 1;
+  }
 
-/* Análisis de difusión (checkbox style) */
-.jz-sb-task--check {
-  color: #707070;
-  font-size: 11px;
-  padding: 5px 8px;
-  gap: 7px;
-}
-.jz-sb-task--check .jz-sb-checkmark {
-  width: 13px; height: 13px;
-  border: 1px solid #404040;
-  border-radius: 2px;
-  background: #1c3a1c;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.jz-sb-task--check .jz-sb-checkmark svg {
-  opacity: 1;
-  width: 8px; height: 8px;
-}
+  .jz-sb-btn--danger {
+    color: #cc4444;
+  }
 
-/* Count badge */
-.jz-sb-count {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: #444;
-  background: #1a1a1a;
-  border-radius: 9px;
-  padding: 1px 6px;
-  min-width: 22px;
-  text-align: center;
-}
+  .jz-sb-btn--danger:hover {
+    background: rgba(200, 40, 40, .12);
+    color: #ff6666;
+  }
 
-   Paleta: fondo negro puro, onda verde, franjas de color
-   idénticas a Jazler Soho.
-══════════════════════════════════════════════════════════════ */
-.wf-panel {
-  display: none;
-  background: #000;
-  border-top: 1px solid #303030;
-  border-radius: 0;
-  overflow: hidden;
-}
+  .jz-sb-btn--lote {
+    color: #8ab8d0;
+  }
 
-/* Info bar superior: Duración · Intro · Coro */
-.wf-info-bar {
-  background: #0a0a0a; border-bottom: 1px solid #222;
-  padding: 4px 14px;
-  display: flex; align-items: center; gap: 0;
-  font-family: var(--font-mono); font-size: 11px;
-  min-height: 22px;
-}
-.wf-info__item { display: flex; gap: 4px; align-items: center; }
-.wf-info__item strong { color: #e0e0e0; }
-.wf-info__sep { color: #333; margin: 0 10px; }
+  .jz-sb-btn--lote:hover {
+    background: rgba(100, 180, 220, .08);
+    color: #aad4ec;
+  }
 
-/* Waveform canvas */
-.wf-canvas-wrap {
-  position: relative; background: #000;
-  cursor: crosshair;
-}
-#waveform {
-  height: 120px !important; min-height: 120px !important;
-  display: block !important; width: 100%;
-  background: #000 !important;
-}
-.wf-spinner-wrap {
-  display: none; position: absolute; inset: 0;
-  background: rgba(0,0,0,.85);
-  align-items: center; justify-content: center;
-  gap: 10px; z-index: 20; pointer-events: none;
-  font-family: var(--font-mono); font-size: 11px; color: #555;
-  letter-spacing: .12em;
-}
-.wf-spinner {
-  width: 18px; height: 18px;
-  border: 2px solid #222; border-top-color: #ee9b00;
-  border-radius: 50%; animation: wf-spin .65s linear infinite;
-}
-@keyframes wf-spin { to { transform: rotate(360deg); } }
+  /* ── Separador ───────────────────────────────────────────────── */
+  .jz-sb-sep {
+    margin: 10px 8px;
+    border: none;
+    border-top: 1px solid #252525;
+  }
 
-/* Controles de transporte */
-.wf-transport {
-  display: flex; align-items: center; gap: 6px;
-  background: #0e0e0e; border-top: 1px solid #1e1e1e;
-  border-bottom: 1px solid #1e1e1e; padding: 6px 10px;
-}
-.wf-xbtn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 32px; padding: 0 12px;
-  border-radius: 3px; cursor: pointer;
-  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
-  letter-spacing: .08em; text-transform: uppercase;
-  transition: all .12s; border: 1px solid transparent;
-}
-.wf-xbtn:active { transform: scale(.95); }
-#wf-btn-play {
-  background: #1a3a1a; color: #44ee44;
-  border-color: #336633; min-width: 70px;
-  box-shadow: 0 0 8px rgba(0,180,0,.18);
-}
-#wf-btn-play:hover { background: #225522; filter: brightness(1.2); }
-#wf-btn-play svg { fill: #44ee44; width: 14px; height: 14px; display: block; }
-#wf-btn-stop {
-  background: #2a0a0a; color: #ee4444;
-  border-color: #552222; min-width: 60px;
-}
-#wf-btn-stop:hover { background: #3a1010; filter: brightness(1.2); }
-#wf-btn-stop svg { fill: #ee4444; width: 13px; height: 13px; display: block; }
-#wf-btn-autocue {
-  background: #1a1a2e; color: #5599ff;
-  border-color: #334; font-size: 10px; letter-spacing: .06em;
-}
-#wf-btn-autocue:hover { background: #222240; color: #88bbff; border-color: #5599ff; }
+  /* ── Sección Tareas ──────────────────────────────────────────── */
+  .jz-sb-section {
+    padding: 0 8px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
 
-/* LED display */
-.wf-led {
-  display: flex; align-items: center; gap: 3px;
-  background: #040404; border: 1px solid #181818;
-  border-radius: 3px; padding: 5px 12px; margin-left: auto;
-}
-.wf-led__cur {
-  font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700;
-  color: #ee9b00; text-shadow: 0 0 8px rgba(238,155,0,.55);
-  min-width: 6.5ch; text-align: right; letter-spacing: .04em; line-height: 1;
-}
-.wf-led__sep {
-  font-family: 'Courier New', monospace; font-size: 18px;
-  color: rgba(238,155,0,.22); padding: 0 2px; line-height: 1;
-}
-.wf-led__tot {
-  font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700;
-  color: rgba(238,155,0,.35); min-width: 6.5ch; line-height: 1;
-  letter-spacing: .04em;
-}
+  .jz-sb-section__title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: #505050;
+    padding: 4px 2px 8px;
+    border-bottom: 1px solid #222;
+    margin-bottom: 4px;
+  }
 
-/* Volume + Fade */
-.wf-aux-row {
-  display: flex; align-items: center; gap: 14px;
-  background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 5px 12px;
-}
-.wf-aux-group {
-  display: flex; align-items: center; gap: 6px;
-  font-family: var(--font-mono); font-size: 10px; color: #555;
-}
-.wf-aux-group label { white-space: nowrap; text-transform: uppercase; letter-spacing: .07em; }
-.wf-slider {
-  -webkit-appearance: none; width: 80px; height: 4px;
-  background: #2a2a2a; border-radius: 2px; outline: none; cursor: pointer;
-}
-.wf-slider::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 12px; height: 12px;
-  border-radius: 50%; background: var(--jz-gold); cursor: pointer;
-}
-.wf-aux-val {
-  font-family: var(--font-mono); font-size: 10px;
-  color: var(--jz-gold); min-width: 34px; text-align: right;
-}
-.wf-fade-input {
-  background: #1a1a1a; border: 1px solid #333; border-radius: 2px;
-  color: #aaa; font-family: var(--font-mono); font-size: 11px;
-  padding: 2px 5px; width: 54px; outline: none; text-align: center;
-}
-.wf-fade-input:focus { border-color: var(--jz-gold); color: var(--jz-gold); }
+  .jz-sb-task {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: #909090;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+    letter-spacing: .01em;
+  }
 
-/* ── Grid de 6 cue points ────────────────────────────────────── */
-.wf-cue-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  background: #0a0a0a;
-  border-top: 1px solid #1a1a1a;
-}
-@media (max-width: 700px) { .wf-cue-grid { grid-template-columns: repeat(3, 1fr); } }
+  .jz-sb-task svg {
+    flex-shrink: 0;
+    opacity: .6;
+  }
 
-.wf-cue-card {
-  padding: 8px 8px 10px;
-  border-right: 1px solid #1a1a1a;
-  display: flex; flex-direction: column; gap: 5px;
-}
-.wf-cue-card:last-child { border-right: none; }
+  .jz-sb-task:hover {
+    background: #1e1e1e;
+    color: #d0d0d0;
+  }
 
-/* Label de color por cue */
-.wf-cue__label {
-  font-family: var(--font-mono); font-size: 9px; font-weight: 800;
-  letter-spacing: .16em; text-transform: uppercase;
-  display: flex; align-items: center; gap: 5px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #1e1e1e;
-}
-.wf-cue__dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  box-shadow: 0 0 5px currentColor;
-}
+  .jz-sb-task:hover svg {
+    opacity: 1;
+  }
 
-/* Input de tiempo */
-.wf-cue__val {
-  background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 2px;
-  color: #d0d0d0; font-family: 'Courier New', monospace;
-  font-size: 16px; font-weight: 700; text-align: center;
-  padding: 4px 4px; width: 100%; outline: none;
-  -moz-appearance: textfield; -webkit-appearance: none;
-  transition: border-color .12s;
-}
-.wf-cue__val::-webkit-inner-spin-button,
-.wf-cue__val::-webkit-outer-spin-button { -webkit-appearance: none; }
-.wf-cue__val:focus { border-color: currentColor; }
+  /* Análisis de difusión (checkbox style) */
+  .jz-sb-task--check {
+    color: #707070;
+    font-size: 11px;
+    padding: 5px 8px;
+    gap: 7px;
+  }
 
-/* Botones << >> */
-.wf-cue__nudge-row {
-  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 2px;
-}
-.wf-nudge {
-  background: #161616; border: 1px solid #282828; border-radius: 2px;
-  color: #555; font-family: var(--font-mono); font-size: 9px;
-  padding: 3px 2px; cursor: pointer; text-align: center;
-  transition: all .1s; white-space: nowrap;
-}
-.wf-nudge:hover { background: #222; color: #999; border-color: #444; }
-.wf-nudge:active { background: #2a2a2a; transform: scale(.95); }
+  .jz-sb-task--check .jz-sb-checkmark {
+    width: 13px;
+    height: 13px;
+    border: 1px solid #404040;
+    border-radius: 2px;
+    background: #1c3a1c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
 
-/* Botones Escuchar / Reiniciar */
-.wf-cue__action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 2px; }
-.wf-cue-btn {
-  background: #111; border: 1px dashed #2a2a2a; border-radius: 2px;
-  font-family: var(--font-mono); font-size: 9px;
-  color: #444; padding: 4px 3px; cursor: pointer; text-align: center;
-  transition: all .12s; letter-spacing: .04em;
-}
-.wf-cue-btn:hover { background: #1c1c1c; color: #888; border-style: solid; }
+  .jz-sb-task--check .jz-sb-checkmark svg {
+    opacity: 1;
+    width: 8px;
+    height: 8px;
+  }
 
-/* Color tinting por cue */
-.wf-cue--inicio      .wf-cue__label { color: var(--cue-inicio); }
-.wf-cue--intro       .wf-cue__label { color: var(--cue-intro); }
-.wf-cue--inicio-coro .wf-cue__label { color: var(--cue-inicio-coro); }
-.wf-cue--final-coro  .wf-cue__label { color: var(--cue-final-coro); }
-.wf-cue--outro       .wf-cue__label { color: var(--cue-outro); }
-.wf-cue--mezcla      .wf-cue__label { color: var(--cue-mezcla); }
+  /* Count badge */
+  .jz-sb-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #444;
+    background: #1a1a1a;
+    border-radius: 9px;
+    padding: 1px 6px;
+    min-width: 22px;
+    text-align: center;
+  }
 
-.wf-cue--inicio      .wf-cue__dot { background: var(--cue-inicio); }
-.wf-cue--intro       .wf-cue__dot { background: var(--cue-intro); }
-.wf-cue--inicio-coro .wf-cue__dot { background: var(--cue-inicio-coro); }
-.wf-cue--final-coro  .wf-cue__dot { background: var(--cue-final-coro); }
-.wf-cue--outro       .wf-cue__dot { background: var(--cue-outro); }
-.wf-cue--mezcla      .wf-cue__dot { background: var(--cue-mezcla); }
+  /* ══════════════════════════════════════════════════════════════════════════
+     Paleta: fondo negro puro, onda verde, franjas Jazler Soho.
+     ══════════════════════════════════════════════════════════════════════════ */
+  .wf-panel {
+    display: none;
+    background: #000;
+    border-top: 1px solid #303030;
+    border-radius: 0;
+    overflow: hidden;
+  }
 
-.wf-cue--inicio      .wf-cue__val:focus { border-color: var(--cue-inicio); }
-.wf-cue--intro       .wf-cue__val:focus { border-color: var(--cue-intro); }
-.wf-cue--inicio-coro .wf-cue__val:focus { border-color: var(--cue-inicio-coro); }
-.wf-cue--final-coro  .wf-cue__val:focus { border-color: var(--cue-final-coro); }
-.wf-cue--outro       .wf-cue__val:focus { border-color: var(--cue-outro); }
-.wf-cue--mezcla      .wf-cue__val:focus { border-color: var(--cue-mezcla); }
+  /* Info bar superior: Duración · Intro · Coro */
+  .wf-info-bar {
+    background: #0a0a0a;
+    border-bottom: 1px solid #222;
+    padding: 4px 14px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    min-height: 22px;
+  }
 
-.wf-cue--inicio      .wf-cue-btn:hover { color: var(--cue-inicio); border-color: var(--cue-inicio); }
-.wf-cue--intro       .wf-cue-btn:hover { color: var(--cue-intro);   border-color: var(--cue-intro); }
-.wf-cue--inicio-coro .wf-cue-btn:hover { color: var(--cue-inicio-coro); border-color: var(--cue-inicio-coro); }
-.wf-cue--final-coro  .wf-cue-btn:hover { color: var(--cue-final-coro);  border-color: var(--cue-final-coro); }
-.wf-cue--outro       .wf-cue-btn:hover { color: var(--cue-outro);   border-color: var(--cue-outro); }
-.wf-cue--mezcla      .wf-cue-btn:hover { color: var(--cue-mezcla);  border-color: var(--cue-mezcla); }
+  .wf-info__item {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .wf-info__item strong {
+    color: #e0e0e0;
+  }
+
+  .wf-info__sep {
+    color: #333;
+    margin: 0 10px;
+  }
+
+  /* Waveform canvas */
+  .wf-canvas-wrap {
+    position: relative;
+    background: #000;
+    cursor: crosshair;
+  }
+
+  #waveform {
+    height: 120px !important;
+    min-height: 120px !important;
+    display: block !important;
+    width: 100%;
+    background: #000 !important;
+  }
+
+  .wf-spinner-wrap {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .85);
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    z-index: 20;
+    pointer-events: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #555;
+    letter-spacing: .12em;
+  }
+
+  .wf-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #222;
+    border-top-color: #ee9b00;
+    border-radius: 50%;
+    animation: wf-spin .65s linear infinite;
+  }
+
+  @keyframes wf-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Controles de transporte */
+  .wf-transport {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #0e0e0e;
+    border-top: 1px solid #1e1e1e;
+    border-bottom: 1px solid #1e1e1e;
+    padding: 6px 10px;
+  }
+
+  .wf-xbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    transition: all .12s;
+    border: 1px solid transparent;
+  }
+
+  .wf-xbtn:active {
+    transform: scale(.95);
+  }
+
+  #wf-btn-play {
+    background: #1a3a1a;
+    color: #44ee44;
+    border-color: #336633;
+    min-width: 70px;
+    box-shadow: 0 0 8px rgba(0, 180, 0, .18);
+  }
+
+  #wf-btn-play:hover {
+    background: #225522;
+    filter: brightness(1.2);
+  }
+
+  #wf-btn-play svg {
+    fill: #44ee44;
+    width: 14px;
+    height: 14px;
+    display: block;
+  }
+
+  #wf-btn-stop {
+    background: #2a0a0a;
+    color: #ee4444;
+    border-color: #552222;
+    min-width: 60px;
+  }
+
+  #wf-btn-stop:hover {
+    background: #3a1010;
+    filter: brightness(1.2);
+  }
+
+  #wf-btn-stop svg {
+    fill: #ee4444;
+    width: 13px;
+    height: 13px;
+    display: block;
+  }
+
+  #wf-btn-autocue {
+    background: #1a1a2e;
+    color: #5599ff;
+    border-color: #334;
+    font-size: 10px;
+    letter-spacing: .06em;
+  }
+
+  #wf-btn-autocue:hover {
+    background: #222240;
+    color: #88bbff;
+    border-color: #5599ff;
+  }
+
+  /* LED display */
+  .wf-led {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: #040404;
+    border: 1px solid #181818;
+    border-radius: 3px;
+    padding: 5px 12px;
+    margin-left: auto;
+  }
+
+  .wf-led__cur {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: #ee9b00;
+    text-shadow: 0 0 8px rgba(238, 155, 0, .55);
+    min-width: 6.5ch;
+    text-align: right;
+    letter-spacing: .04em;
+    line-height: 1;
+  }
+
+  .wf-led__sep {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    color: rgba(238, 155, 0, .22);
+    padding: 0 2px;
+    line-height: 1;
+  }
+
+  .wf-led__tot {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: rgba(238, 155, 0, .35);
+    min-width: 6.5ch;
+    line-height: 1;
+    letter-spacing: .04em;
+  }
+
+  /* Volume + Fade */
+  .wf-aux-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #0a0a0a;
+    border-top: 1px solid #1a1a1a;
+    padding: 5px 12px;
+  }
+
+  .wf-aux-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: #555;
+  }
+
+  .wf-aux-group label {
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+
+  .wf-slider {
+    -webkit-appearance: none;
+    width: 80px;
+    height: 4px;
+    background: #2a2a2a;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .wf-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--jz-gold);
+    cursor: pointer;
+  }
+
+  .wf-aux-val {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--jz-gold);
+    min-width: 34px;
+    text-align: right;
+  }
+
+  .wf-fade-input {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 2px;
+    color: #aaa;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 5px;
+    width: 54px;
+    outline: none;
+    text-align: center;
+  }
+
+  .wf-fade-input:focus {
+    border-color: var(--jz-gold);
+    color: var(--jz-gold);
+  }
+
+  /* ── Grid de 6 cue points ────────────────────────────────────── */
+  .wf-cue-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    background: #0a0a0a;
+    border-top: 1px solid #1a1a1a;
+  }
+
+  @media (max-width: 700px) {
+    .wf-cue-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .wf-cue-card {
+    padding: 8px 8px 10px;
+    border-right: 1px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .wf-cue-card:last-child {
+    border-right: none;
+  }
+
+  /* Label de color por cue */
+  .wf-cue__label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #1e1e1e;
+  }
+
+  .wf-cue__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 5px currentColor;
+  }
+
+  /* Input de tiempo */
+  .wf-cue__val {
+    background: #0e0e0e;
+    border: 1px solid #2a2a2a;
+    border-radius: 2px;
+    color: #d0d0d0;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    padding: 4px 4px;
+    width: 100%;
+    outline: none;
+    -moz-appearance: textfield;
+    -webkit-appearance: none;
+    transition: border-color .12s;
+  }
+
+  .wf-cue__val::-webkit-inner-spin-button,
+  .wf-cue__val::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+  }
+
+  .wf-cue__val:focus {
+    border-color: currentColor;
+  }
+
+  /* Botones << >> */
+  .wf-cue__nudge-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 2px;
+  }
+
+  .wf-nudge {
+    background: #161616;
+    border: 1px solid #282828;
+    border-radius: 2px;
+    color: #555;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 3px 2px;
+    cursor: pointer;
+    text-align: center;
+    transition: all .1s;
+    white-space: nowrap;
+  }
+
+  .wf-nudge:hover {
+    background: #222;
+    color: #999;
+    border-color: #444;
+  }
+
+  .wf-nudge:active {
+    background: #2a2a2a;
+    transform: scale(.95);
+  }
+
+  /* Botones Escuchar / Reiniciar */
+  .wf-cue__action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    margin-top: 2px;
+  }
+
+  .wf-cue-btn {
+    background: #111;
+    border: 1px dashed #2a2a2a;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: #444;
+    padding: 4px 3px;
+    cursor: pointer;
+    text-align: center;
+    transition: all .12s;
+    letter-spacing: .04em;
+  }
+
+  .wf-cue-btn:hover {
+    background: #1c1c1c;
+    color: #888;
+    border-style: solid;
+  }
+
+  /* Color tinting por cue */
+  .wf-cue--inicio .wf-cue__label {
+    color: var(--cue-inicio);
+  }
+
+  .wf-cue--intro .wf-cue__label {
+    color: var(--cue-intro);
+  }
+
+  .wf-cue--inicio-coro .wf-cue__label {
+    color: var(--cue-inicio-coro);
+  }
+
+  .wf-cue--final-coro .wf-cue__label {
+    color: var(--cue-final-coro);
+  }
+
+  .wf-cue--outro .wf-cue__label {
+    color: var(--cue-outro);
+  }
+
+  .wf-cue--mezcla .wf-cue__label {
+    color: var(--cue-mezcla);
+  }
+
+  .wf-cue--inicio .wf-cue__dot {
+    background: var(--cue-inicio);
+  }
+
+  .wf-cue--intro .wf-cue__dot {
+    background: var(--cue-intro);
+  }
+
+  .wf-cue--inicio-coro .wf-cue__dot {
+    background: var(--cue-inicio-coro);
+  }
+
+  .wf-cue--final-coro .wf-cue__dot {
+    background: var(--cue-final-coro);
+  }
+
+  .wf-cue--outro .wf-cue__dot {
+    background: var(--cue-outro);
+  }
+
+  .wf-cue--mezcla .wf-cue__dot {
+    background: var(--cue-mezcla);
+  }
+
+  .wf-cue--inicio .wf-cue__val:focus {
+    border-color: var(--cue-inicio);
+  }
+
+  .wf-cue--intro .wf-cue__val:focus {
+    border-color: var(--cue-intro);
+  }
+
+  .wf-cue--inicio-coro .wf-cue__val:focus {
+    border-color: var(--cue-inicio-coro);
+  }
+
+  .wf-cue--final-coro .wf-cue__val:focus {
+    border-color: var(--cue-final-coro);
+  }
+
+  .wf-cue--outro .wf-cue__val:focus {
+    border-color: var(--cue-outro);
+  }
+
+  .wf-cue--mezcla .wf-cue__val:focus {
+    border-color: var(--cue-mezcla);
+  }
+
+  .wf-cue--inicio .wf-cue-btn:hover {
+    color: var(--cue-inicio);
+    border-color: var(--cue-inicio);
+  }
+
+  .wf-cue--intro .wf-cue-btn:hover {
+    color: var(--cue-intro);
+    border-color: var(--cue-intro);
+  }
+
+  .wf-cue--inicio-coro .wf-cue-btn:hover {
+    color: var(--cue-inicio-coro);
+    border-color: var(--cue-inicio-coro);
+  }
+
+  .wf-cue--final-coro .wf-cue-btn:hover {
+    color: var(--cue-final-coro);
+    border-color: var(--cue-final-coro);
+  }
+
+  .wf-cue--outro .wf-cue-btn:hover {
+    color: var(--cue-outro);
+    border-color: var(--cue-outro);
+  }
+
+  .wf-cue--mezcla .wf-cue-btn:hover {
+    color: var(--cue-mezcla);
+    border-color: var(--cue-mezcla);
+  }
 </style>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -882,23 +1795,33 @@ textarea.jz-input {
   <div class="jz-topbar">
     <div class="jz-topbar__brand">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
       </svg>
       Biblioteca Musical
     </div>
     <div class="jz-search-wrap">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
-      <input id="jz-search" class="jz-input" type="text" placeholder="Buscar artista, título, código…"/>
+      <input id="jz-search" class="jz-input" type="text" placeholder="Buscar artista, título, código…" />
     </div>
     <div class="jz-topbar__filters">
       <span class="jz-filter-label">Filtro:</span>
-      <select id="jz-filter-sc"  class="jz-select"><option value="">Sound Code</option></select>
-      <select id="jz-filter-pop" class="jz-select"><option value="">Popularity</option></select>
+      <select id="jz-filter-sc" class="jz-select">
+        <option value="">Sound Code</option>
+      </select>
+      <select id="jz-filter-pop" class="jz-select">
+        <option value="">Popularity</option>
+      </select>
       <select id="jz-filter-voz" class="jz-select">
         <option value="">Voz</option>
-        <option>Male</option><option>Female</option><option>Duo</option><option>Group</option>
+        <option>Male</option>
+        <option>Female</option>
+        <option>Duo</option>
+        <option>Group</option>
       </select>
     </div>
     <div class="jz-topbar__right">
@@ -916,122 +1839,137 @@ textarea.jz-input {
   <!-- BODY WRAP (grid + sidebar) ──────────────────────────────── -->
   <div class="jz-body-wrap">
 
-  <!-- DATA GRID ───────────────────────────────────────────────── -->
-  <div class="jz-grid-wrap">
-    <table class="jz-table">
-      <thead><tr>
-        <th class="col-id"    data-sort="id">#</th>
-        <th class="col-play"></th>
-        <th class="col-cod"   data-sort="codigo">CÓDIGO</th>
-        <th class="col-title" data-sort="title">TÍTULO</th>
-        <th class="col-art"   data-sort="artist">ARTISTA</th>
-        <th class="col-sc"    data-sort="soundCode">SOUND CODE</th>
-        <th class="col-pop"   data-sort="popularity">POPULARITY</th>
-        <th class="col-voz"   data-sort="voz">VOZ</th>
-        <th class="col-bpm"   data-sort="bpm">BPM</th>
-        <th class="col-dur"   data-sort="duration">DUR.</th>
-        <th class="col-ops">OPS</th>
-      </tr></thead>
-      <tbody id="jz-tbody"></tbody>
-    </table>
-    <div id="jz-empty" class="jz-empty" style="display:none">
-      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-      </svg>
-      <strong>Sin resultados</strong>
-      <p>Ajusta los filtros o carga una nueva canción.</p>
-    </div>
-  </div>
-
-  <!-- SIDEBAR DERECHO ─────────────────────────────────────────── -->
-  <aside class="jz-sidebar">
-
-    <!-- § Acciones principales -->
-    <div class="jz-sb-actions">
-
-      <button class="jz-sb-btn jz-sb-btn--primary" id="jz-sb-nueva" onclick="window.openModal()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    <!-- DATA GRID ───────────────────────────────────────────────── -->
+    <div class="jz-grid-wrap">
+      <table class="jz-table">
+        <thead>
+          <tr>
+            <th class="col-id" data-sort="id">#</th>
+            <th class="col-play"></th>
+            <th class="col-cod" data-sort="codigo">CÓDIGO</th>
+            <th class="col-title" data-sort="title">TÍTULO</th>
+            <th class="col-art" data-sort="artist">ARTISTA</th>
+            <th class="col-sc" data-sort="soundCode">SOUND CODE</th>
+            <th class="col-pop" data-sort="popularity">POPULARITY</th>
+            <th class="col-voz" data-sort="voz">VOZ</th>
+            <th class="col-bpm" data-sort="bpm">BPM</th>
+            <th class="col-dur" data-sort="duration">DUR.</th>
+            <th class="col-ops">OPS</th>
+          </tr>
+        </thead>
+        <tbody id="jz-tbody"></tbody>
+      </table>
+      <div id="jz-empty" class="jz-empty" style="display:none">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
         </svg>
-        Nueva Canción
-      </button>
-
-      <button class="jz-sb-btn jz-sb-btn--lote" id="jz-sb-lote">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        Cargar por Lote
-      </button>
-
-      <button class="jz-sb-btn jz-sb-btn--danger" id="jz-sb-eliminar">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-          <path d="M9 6V4h6v2"/>
-        </svg>
-        Eliminar
-      </button>
-
+        <strong>Sin resultados</strong>
+        <p>Ajusta los filtros o carga una nueva canción.</p>
+      </div>
     </div>
 
-    <hr class="jz-sb-sep"/>
+    <!-- SIDEBAR DERECHO ─────────────────────────────────────────── -->
+    <aside class="jz-sidebar">
 
-    <!-- § Tareas -->
-    <div class="jz-sb-section">
-      <div class="jz-sb-section__title">Tareas</div>
+      <!-- § Acciones principales -->
+      <div class="jz-sb-actions">
 
-      <!-- Análisis de difusión (checkbox activado) -->
-      <button class="jz-sb-task jz-sb-task--check" id="jz-task-difusion">
-        <span class="jz-sb-checkmark">
-          <svg viewBox="0 0 10 10" fill="none">
-            <polyline points="2,5 4.5,7.5 8,3" stroke="#44cc44" stroke-width="1.8" stroke-linecap="round"/>
+        <button class="jz-sb-btn jz-sb-btn--primary" id="jz-sb-nueva" onclick="window.openModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </span>
-        Análisis de difusión
-      </button>
+          Nueva Canción
+        </button>
 
-      <button class="jz-sb-task" id="jz-task-artistas">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-        </svg>
-        Editar Artistas
-      </button>
+        <button class="jz-sb-btn jz-sb-btn--lote" id="jz-sb-lote">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          Cargar por Lote
+        </button>
 
-      <button class="jz-sb-task" id="jz-task-categorias">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/>
-          <rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/>
-        </svg>
-        Editar Categorías
-      </button>
+        <button class="jz-sb-btn jz-sb-btn--danger" id="jz-sb-eliminar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+          Eliminar
+        </button>
 
-      <button class="jz-sb-task" id="jz-task-estadisticas">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-          <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
-        </svg>
-        Estadísticas
-        <span class="jz-sb-count" id="jz-sb-count-lib">0</span>
-      </button>
+      </div>
 
-      <button class="jz-sb-task" id="jz-task-exportar">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <ellipse cx="12" cy="5" rx="9" ry="3"/>
-          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-        </svg>
-        Exportar BD
-      </button>
+      <hr class="jz-sb-sep" />
 
-      <button class="jz-sb-task" id="jz-task-integridad">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        Chequeo de Integridad
-      </button>
+      <!-- § Tareas -->
+      <div class="jz-sb-section">
+        <div class="jz-sb-section__title">Tareas</div>
 
-    </div>
+        <!-- Análisis de difusión (checkbox activado) -->
+        <button class="jz-sb-task jz-sb-task--check" id="jz-task-difusion">
+          <span class="jz-sb-checkmark">
+            <svg viewBox="0 0 10 10" fill="none">
+              <polyline points="2,5 4.5,7.5 8,3" stroke="#44cc44" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </span>
+          Análisis de difusión
+        </button>
 
-  </aside><!-- /.jz-sidebar -->
+        <button class="jz-sb-task" id="jz-task-artistas">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+          </svg>
+          Editar Artistas
+        </button>
+
+        <button class="jz-sb-task" id="jz-task-categorias">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="3" width="7" height="7" rx="1" />
+            <rect x="15" y="3" width="7" height="7" rx="1" />
+            <rect x="2" y="14" width="7" height="7" rx="1" />
+            <rect x="15" y="14" width="7" height="7" rx="1" />
+          </svg>
+          Editar Categorías
+        </button>
+
+        <button class="jz-sb-task" id="jz-task-estadisticas">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+            <line x1="2" y1="20" x2="22" y2="20" />
+          </svg>
+          Estadísticas
+          <span class="jz-sb-count" id="jz-sb-count-lib">0</span>
+        </button>
+
+        <button class="jz-sb-task" id="jz-task-exportar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+          </svg>
+          Exportar BD
+        </button>
+
+        <button class="jz-sb-task" id="jz-task-integridad">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          Chequeo de Integridad
+        </button>
+
+      </div>
+
+    </aside><!-- /.jz-sidebar -->
 
   </div><!-- /.jz-body-wrap -->
 
@@ -1039,11 +1977,11 @@ textarea.jz-input {
   <div class="jz-player" id="jz-player">
     <button class="jz-play-btn" id="jz-player-toggle" title="Play/Pause">
       <svg id="jz-player-icon" width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5,3 19,12 5,21"/>
+        <polygon points="5,3 19,12 5,21" />
       </svg>
     </button>
     <div class="jz-player__info">
-      <div class="jz-player__title"  id="jz-player-title">—</div>
+      <div class="jz-player__title" id="jz-player-title">—</div>
       <div class="jz-player__artist" id="jz-player-artist">Sin pista cargada</div>
     </div>
     <div class="jz-timeline-wrap">
@@ -1062,447 +2000,474 @@ textarea.jz-input {
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)
      ═══════════════════════════════════════════════════════════════ -->
 <div class="jz-overlay" id="jz-overlay" role="dialog" aria-modal="true">
-<div class="jz-modal">
+  <div class="jz-modal">
 
-  <!-- Titlebar -->
-  <div class="jz-modal__title">
-    <span class="jz-modal__logo">JZ</span>
-    <span class="jz-modal__name" id="modal-title-bar">NUEVA CANCIÓN</span>
-    <button class="jz-modal__close" id="jz-modal-close" title="Cerrar">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-      </svg>
-    </button>
-  </div>
+    <!-- Titlebar -->
+    <div class="jz-modal__title">
+      <span class="jz-modal__logo">JZ</span>
+      <span class="jz-modal__name" id="modal-title-bar">NUEVA CANCIÓN</span>
+      <button class="jz-modal__close" id="jz-modal-close" title="Cerrar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
 
-  <div class="jz-modal__body">
+    <div class="jz-modal__body">
 
-    <!-- ── COLUMNA PRINCIPAL ──────────────────────────────────── -->
-    <div class="jz-modal__main">
+      <!-- ── COLUMNA PRINCIPAL ──────────────────────────────────── -->
+      <div class="jz-modal__main">
 
-      <!-- Artista -->
-      <div class="jz-artista-row">
-        <div class="jz-field">
-          <label>Artista</label>
-          <input class="jz-input" id="modal-artist" type="text" placeholder="Nombre del artista"/>
-        </div>
-        <button class="jz-btn jz-btn--sm">Buscar artista</button>
-        <button class="jz-btn jz-btn--sm">Nuevo artista</button>
-      </div>
-
-      <!-- Título -->
-      <div class="jz-field">
-        <label>Título de la canción</label>
-        <input class="jz-input" id="modal-title-input" type="text" placeholder="Título de la canción"/>
-      </div>
-
-      <!-- Álbum / Código Playlister / Código automático -->
-      <div class="jz-grid-3">
-        <div class="jz-field">
-          <label>Álbum</label>
-          <input class="jz-input" id="modal-album" type="text" placeholder="—"/>
-        </div>
-        <div class="jz-field">
-          <label>Código Playlister</label>
-          <input class="jz-input" id="modal-cod-play" type="text" placeholder="SN-000000"/>
-        </div>
-        <div class="jz-field">
-          <label>Código automático</label>
-          <input class="jz-input" id="modal-cod-auto" type="text" placeholder="000000" readonly
-            style="background:#1a1a1a;color:var(--jz-gold)"/>
-        </div>
-      </div>
-
-      <!-- Etiqueta / CD Key / Barras -->
-      <div class="jz-grid-3">
-        <div class="jz-field">
-          <label>Etiqueta</label>
-          <input class="jz-input" id="modal-etiqueta" type="text" placeholder="—"/>
-        </div>
-        <div class="jz-field">
-          <label>CD Key</label>
-          <input class="jz-input" id="modal-cdkey" type="text" placeholder="—"/>
-        </div>
-        <div class="jz-field">
-          <label>Barras</label>
-          <input class="jz-input" id="modal-barras" type="text" placeholder="—"/>
-        </div>
-      </div>
-
-      <!-- Escritor / Comentarios / Compositor -->
-      <div class="jz-grid-2">
-        <div class="jz-field">
-          <label>Escritor</label>
-          <input class="jz-input" id="modal-escritor" type="text" placeholder="—"/>
-        </div>
-        <div class="jz-field">
-          <label>Comentarios</label>
-          <textarea class="jz-input" id="modal-comentarios" rows="2" placeholder="—"></textarea>
-        </div>
-      </div>
-      <div class="jz-field">
-        <label>Compositor</label>
-        <input class="jz-input" id="modal-compositor" type="text" placeholder="—"/>
-      </div>
-
-      <!-- SOUND CODE + POPULARITY -->
-      <div class="jz-section">
-        <div style="display:grid;grid-template-columns:1fr 1fr;">
-          <div style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);border-right:1px solid var(--jz-border);">
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">SOUND CODE</span>
+        <!-- Artista -->
+        <div class="jz-artista-row">
+          <div class="jz-field">
+            <label>Artista</label>
+            <input class="jz-input" id="modal-artist" type="text" placeholder="Nombre del artista" />
           </div>
-          <div style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);">
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">POPULARITY</span>
+          <button class="jz-btn jz-btn--sm">Buscar artista</button>
+          <button class="jz-btn jz-btn--sm">Nuevo artista</button>
+        </div>
+
+        <!-- Título -->
+        <div class="jz-field">
+          <label>Título de la canción</label>
+          <input class="jz-input" id="modal-title-input" type="text" placeholder="Título de la canción" />
+        </div>
+
+        <!-- Álbum / Código Playlister / Código automático -->
+        <div class="jz-grid-3">
+          <div class="jz-field">
+            <label>Álbum</label>
+            <input class="jz-input" id="modal-album" type="text" placeholder="—" />
+          </div>
+          <div class="jz-field">
+            <label>Código Playlister</label>
+            <input class="jz-input" id="modal-cod-play" type="text" placeholder="SN-000000" />
+          </div>
+          <div class="jz-field">
+            <label>Código automático</label>
+            <input class="jz-input" id="modal-cod-auto" type="text" placeholder="000000" readonly
+              style="background:#1a1a1a;color:var(--jz-gold)" />
           </div>
         </div>
-        <div class="jz-section__body" style="padding:10px;">
-          <div class="jz-grid-4">
-            <div class="jz-field">
-              <select class="jz-select" id="modal-sc1"><option value="">— SC1 —</option></select>
+
+        <!-- Etiqueta / CD Key / Barras -->
+        <div class="jz-grid-3">
+          <div class="jz-field">
+            <label>Etiqueta</label>
+            <input class="jz-input" id="modal-etiqueta" type="text" placeholder="—" />
+          </div>
+          <div class="jz-field">
+            <label>CD Key</label>
+            <input class="jz-input" id="modal-cdkey" type="text" placeholder="—" />
+          </div>
+          <div class="jz-field">
+            <label>Barras</label>
+            <input class="jz-input" id="modal-barras" type="text" placeholder="—" />
+          </div>
+        </div>
+
+        <!-- Escritor / Comentarios / Compositor -->
+        <div class="jz-grid-2">
+          <div class="jz-field">
+            <label>Escritor</label>
+            <input class="jz-input" id="modal-escritor" type="text" placeholder="—" />
+          </div>
+          <div class="jz-field">
+            <label>Comentarios</label>
+            <textarea class="jz-input" id="modal-comentarios" rows="2" placeholder="—"></textarea>
+          </div>
+        </div>
+        <div class="jz-field">
+          <label>Compositor</label>
+          <input class="jz-input" id="modal-compositor" type="text" placeholder="—" />
+        </div>
+
+        <!-- SOUND CODE + POPULARITY -->
+        <div class="jz-section">
+          <div style="display:grid;grid-template-columns:1fr 1fr;">
+            <div
+              style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);border-right:1px solid var(--jz-border);">
+              <span
+                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">SOUND
+                CODE</span>
             </div>
-            <div class="jz-field">
-              <select class="jz-select" id="modal-sc2"><option value="">— SC2 —</option></select>
+            <div style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);">
+              <span
+                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">POPULARITY</span>
             </div>
-            <div class="jz-field">
-              <select class="jz-select" id="modal-sc3"><option value="">— SC3 —</option></select>
+          </div>
+          <div class="jz-section__body" style="padding:10px;">
+            <div class="jz-grid-4">
+              <div class="jz-field">
+                <select class="jz-select" id="modal-sc1">
+                  <option value="">— SC1 —</option>
+                </select>
+              </div>
+              <div class="jz-field">
+                <select class="jz-select" id="modal-sc2">
+                  <option value="">— SC2 —</option>
+                </select>
+              </div>
+              <div class="jz-field">
+                <select class="jz-select" id="modal-sc3">
+                  <option value="">— SC3 —</option>
+                </select>
+              </div>
+              <div class="jz-field">
+                <select class="jz-select" id="modal-popularity">
+                  <option value="">— —</option>
+                  <option>CURRENT</option>
+                  <option>CLASSIC</option>
+                  <option>RECURRENT</option>
+                  <option>POWER</option>
+                </select>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <!-- ERA / Voz / Prioridad / Año / BPM -->
+        <div class="jz-section">
+          <div class="jz-grid-5" style="padding:8px 10px;">
             <div class="jz-field">
-              <select class="jz-select" id="modal-popularity">
-                <option value="">— —</option>
-                <option>CURRENT</option><option>CLASSIC</option>
-                <option>RECURRENT</option><option>POWER</option>
+              <label>ERA</label>
+              <select class="jz-select" id="modal-era" style="width:100%">
+                <option value="">—</option>
+                <option>60s</option>
+                <option>70s</option>
+                <option>80s</option>
+                <option>90s</option>
+                <option>2000s</option>
+                <option>2010s</option>
+                <option>2020s</option>
               </select>
             </div>
+            <div class="jz-field">
+              <label>Voz</label>
+              <select class="jz-select" id="modal-voz" style="width:100%">
+                <option value="">—</option>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Duo</option>
+                <option>Group</option>
+                <option>Inst.</option>
+              </select>
+            </div>
+            <div class="jz-field">
+              <label>Prioridad</label>
+              <select class="jz-select" id="modal-prioridad" style="width:100%">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+            <div class="jz-field">
+              <label>Año</label>
+              <input class="jz-input" id="modal-year" type="number" placeholder="2024" min="1900" max="2099"
+                style="padding-left:8px;" />
+            </div>
+            <div class="jz-field">
+              <label>BPM</label>
+              <input class="jz-input" id="modal-bpm" type="number" placeholder="120" min="40" max="300"
+                style="padding-left:8px;" />
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- ERA / Voz / Prioridad / Año / BPM -->
-      <div class="jz-section">
-        <div class="jz-grid-5" style="padding:8px 10px;">
-          <div class="jz-field">
-            <label>ERA</label>
-            <select class="jz-select" id="modal-era" style="width:100%">
-              <option value="">—</option>
-              <option>60s</option><option>70s</option><option>80s</option>
-              <option>90s</option><option>2000s</option><option>2010s</option><option>2020s</option>
-            </select>
-          </div>
-          <div class="jz-field">
-            <label>Voz</label>
-            <select class="jz-select" id="modal-voz" style="width:100%">
-              <option value="">—</option>
-              <option>Female</option><option>Male</option>
-              <option>Duo</option><option>Group</option><option>Inst.</option>
-            </select>
-          </div>
-          <div class="jz-field">
-            <label>Prioridad</label>
-            <select class="jz-select" id="modal-prioridad" style="width:100%">
-              <option value="1">1</option><option value="2">2</option>
-              <option value="3">3</option><option value="4">4</option><option value="5">5</option>
-            </select>
-          </div>
-          <div class="jz-field">
-            <label>Año</label>
-            <input class="jz-input" id="modal-year" type="number" placeholder="2024" min="1900" max="2099"
-              style="padding-left:8px;"/>
-          </div>
-          <div class="jz-field">
-            <label>BPM</label>
-            <input class="jz-input" id="modal-bpm" type="number" placeholder="120" min="40" max="300"
-              style="padding-left:8px;"/>
-          </div>
-        </div>
-      </div>
+        <!-- ARCHIVO + WAVEFORM EDITOR -->
+        <div class="jz-section">
+          <div class="jz-section__head">Archivo</div>
+          <div class="jz-section__body">
 
-      <!-- ARCHIVO + WAVEFORM EDITOR -->
-      <div class="jz-section">
-        <div class="jz-section__head">Archivo</div>
-        <div class="jz-section__body">
-
-          <!-- Dropzone (solo para nueva canción) -->
-          <div id="modal-dropzone-wrap">
-            <div class="jz-dropzone" id="jz-dropzone">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              <p><strong>Arrastra tu archivo</strong> o haz clic para seleccionar</p>
-              <p style="margin-top:3px">MP3 · WAV · FLAC · máx 200 MB</p>
-              <input type="file" id="modal-file" accept="audio/*" style="display:none"/>
-            </div>
-            <div id="modal-file-info"
-              style="display:none;font-family:var(--font-mono);font-size:11px;color:#2ecc71;padding:4px 0;"></div>
-          </div>
-
-          <!-- Ruta de archivo -->
-          <div class="jz-path-row">
-            <label style="font-family:var(--font-mono);font-size:10px;color:var(--jz-text3);white-space:nowrap;">Ruta de archivo</label>
-            <input class="jz-input" id="modal-archivo-path" type="text"
-              placeholder="D:\Audio\cancion.mp3" style="font-family:var(--font-mono);font-size:11px;"/>
-            <button class="jz-btn jz-btn--sm">…</button>
-            <button class="jz-btn jz-btn--sm">Editar</button>
-          </div>
-
-          <!-- Editor de onda Jazler 6 cue points -->
-          <!-- El JS activa este panel con style.cssText al cargar un archivo -->
-          <div class="wf-panel" id="wf-panel">
-
-            <!-- Info bar: Duración · Intro · Coro -->
-            <div class="wf-info-bar" id="wf-info-bar">
-              <span class="wf-info__item" style="color:#444">— arrastra un archivo —</span>
-            </div>
-
-            <!-- Canvas de la onda -->
-            <div class="wf-canvas-wrap">
-              <div id="waveform"></div>
-              <div class="wf-spinner-wrap" id="wf-loading">
-                <div class="wf-spinner"></div>
-                ANALIZANDO AUDIO…
-              </div>
-            </div>
-
-            <!-- Transporte: PLAY · STOP · AutoCue · LED tiempo -->
-            <div class="wf-transport">
-              <button class="wf-xbtn" id="wf-btn-play" type="button">
-                <svg id="wf-play-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <polygon points="5,2 21,12 5,22" fill="currentColor"/>
+            <!-- Dropzone (solo para nueva canción) -->
+            <div id="modal-dropzone-wrap">
+              <div class="jz-dropzone" id="jz-dropzone">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
-                PLAY
-              </button>
-              <button class="wf-xbtn" id="wf-btn-stop" type="button">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                  <rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/>
-                </svg>
-                STOP
-              </button>
-              <button class="wf-xbtn" id="wf-btn-autocue" type="button">⚙ AUTOCUE</button>
-              <span id="wf-filename" style="font-family:var(--font-mono);font-size:10px;color:#444;
-                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;padding:0 8px;">
-                —
-              </span>
-              <div class="wf-led">
-                <span class="wf-led__cur"  id="wf-time-cur">0:00.0</span>
-                <span class="wf-led__sep">/</span>
-                <span class="wf-led__tot"  id="wf-time-total">0:00.0</span>
+                <p><strong>Arrastra tu archivo</strong> o haz clic para seleccionar</p>
+                <p style="margin-top:3px">MP3 · WAV · FLAC · máx 200 MB</p>
+                <input type="file" id="modal-file" accept="audio/*" style="display:none" />
               </div>
+              <div id="modal-file-info"
+                style="display:none;font-family:var(--font-mono);font-size:11px;color:#2ecc71;padding:4px 0;"></div>
             </div>
 
-            <!-- Volumen + Fade In + Fade Out -->
-            <div class="wf-aux-row">
-              <div class="wf-aux-group">
-                <label>Volumen:</label>
-                <input class="wf-slider" id="wf-volume" type="range" min="0" max="100" value="100"/>
-                <span class="wf-aux-val" id="wf-volume-label">100%</span>
+            <!-- Ruta de archivo -->
+            <div class="jz-path-row">
+              <label style="font-family:var(--font-mono);font-size:10px;color:var(--jz-text3);white-space:nowrap;">Ruta
+                de archivo</label>
+              <input class="jz-input" id="modal-archivo-path" type="text" placeholder="D:\Audio\cancion.mp3"
+                style="font-family:var(--font-mono);font-size:11px;" />
+              <button class="jz-btn jz-btn--sm">…</button>
+              <button class="jz-btn jz-btn--sm">Editar</button>
+            </div>
+
+            <!-- Editor de onda Jazler 6 cue points -->
+            <!-- El JS activa este panel con style.cssText al cargar un archivo -->
+            <div class="wf-panel" id="wf-panel">
+
+              <!-- Info bar: Duración · Intro · Coro -->
+              <div class="wf-info-bar" id="wf-info-bar">
+                <span class="wf-info__item" style="color:#444">— arrastra un archivo —</span>
               </div>
-              <div class="wf-aux-group">
-                <label>Fade In:</label>
-                <input class="wf-fade-input" id="wf-fade-in" type="number" value="0" min="0" max="9999" step="50"/>
-                <span style="font-size:10px;color:#444">ms</span>
+
+              <!-- Canvas de la onda -->
+              <div class="wf-canvas-wrap">
+                <div id="waveform"></div>
+                <div class="wf-spinner-wrap" id="wf-loading">
+                  <div class="wf-spinner"></div>
+                  ANALIZANDO AUDIO…
+                </div>
               </div>
-              <div class="wf-aux-group">
-                <label>Fade Out:</label>
-                <input class="wf-fade-input" id="wf-fade-out" type="number" value="0" min="0" max="9999" step="50"/>
-                <span style="font-size:10px;color:#444">ms</span>
-              </div>
-              <div style="margin-left:auto">
-                <button class="wf-xbtn" id="wf-btn-reiniciar" type="button"
-                  style="background:#111;color:#555;border-color:#222;font-size:9px;min-height:26px;padding:0 10px;">
-                  ↺ REINICIAR TODO
+
+              <!-- Transporte: PLAY · STOP · AutoCue · LED tiempo -->
+              <div class="wf-transport">
+                <button class="wf-xbtn" id="wf-btn-play" type="button">
+                  <svg id="wf-play-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <polygon points="5,2 21,12 5,22" fill="currentColor" />
+                  </svg>
+                  PLAY
                 </button>
+                <button class="wf-xbtn" id="wf-btn-stop" type="button">
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" />
+                  </svg>
+                  STOP
+                </button>
+                <button class="wf-xbtn" id="wf-btn-autocue" type="button">⚙ AUTOCUE</button>
+                <span id="wf-filename" style="font-family:var(--font-mono);font-size:10px;color:#444;
+                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;padding:0 8px;">
+                  —
+                </span>
+                <div class="wf-led">
+                  <span class="wf-led__cur" id="wf-time-cur">0:00.0</span>
+                  <span class="wf-led__sep">/</span>
+                  <span class="wf-led__tot" id="wf-time-total">0:00.0</span>
+                </div>
               </div>
+
+              <!-- Volumen + Fade In + Fade Out -->
+              <div class="wf-aux-row">
+                <div class="wf-aux-group">
+                  <label>Volumen:</label>
+                  <input class="wf-slider" id="wf-volume" type="range" min="0" max="100" value="100" />
+                  <span class="wf-aux-val" id="wf-volume-label">100%</span>
+                </div>
+                <div class="wf-aux-group">
+                  <label>Fade In:</label>
+                  <input class="wf-fade-input" id="wf-fade-in" type="number" value="0" min="0" max="9999" step="50" />
+                  <span style="font-size:10px;color:#444">ms</span>
+                </div>
+                <div class="wf-aux-group">
+                  <label>Fade Out:</label>
+                  <input class="wf-fade-input" id="wf-fade-out" type="number" value="0" min="0" max="9999" step="50" />
+                  <span style="font-size:10px;color:#444">ms</span>
+                </div>
+                <div style="margin-left:auto">
+                  <button class="wf-xbtn" id="wf-btn-reiniciar" type="button"
+                    style="background:#111;color:#555;border-color:#222;font-size:9px;min-height:26px;padding:0 10px;">
+                    ↺ REINICIAR TODO
+                  </button>
+                </div>
+              </div>
+
+              <!-- 6 Cue Points — idéntico a Jazler Soho -->
+              <div class="wf-cue-grid">
+
+                <!-- INICIO -->
+                <div class="wf-cue-card wf-cue--inicio">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>INICIO
+                  </div>
+                  <input class="wf-cue__val" id="cue-inicio" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="inicio:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="inicio">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="inicio">Reiniciar</button>
+                  </div>
+                </div>
+
+                <!-- INTRO -->
+                <div class="wf-cue-card wf-cue--intro">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>INTRO
+                  </div>
+                  <input class="wf-cue__val" id="cue-intro" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="intro:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="intro:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="intro:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="intro:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="intro">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="intro">Reiniciar</button>
+                  </div>
+                </div>
+
+                <!-- INICIO CORO -->
+                <div class="wf-cue-card wf-cue--inicio-coro">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>INICIO CORO
+                  </div>
+                  <input class="wf-cue__val" id="cue-inicio-coro" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="inicio_coro:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio_coro:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio_coro:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="inicio_coro:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="inicio_coro">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="inicio_coro">Reiniciar</button>
+                  </div>
+                </div>
+
+                <!-- FINAL CORO -->
+                <div class="wf-cue-card wf-cue--final-coro">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>FINAL CORO
+                  </div>
+                  <input class="wf-cue__val" id="cue-final-coro" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="final_coro:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="final_coro:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="final_coro:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="final_coro:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="final_coro">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="final_coro">Reiniciar</button>
+                  </div>
+                </div>
+
+                <!-- OUTRO -->
+                <div class="wf-cue-card wf-cue--outro">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>OUTRO
+                  </div>
+                  <input class="wf-cue__val" id="cue-outro" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="outro:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="outro:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="outro:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="outro:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="outro">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="outro">Reiniciar</button>
+                  </div>
+                </div>
+
+                <!-- MEZCLA -->
+                <div class="wf-cue-card wf-cue--mezcla">
+                  <div class="wf-cue__label">
+                    <span class="wf-cue__dot"></span>MEZCLA
+                  </div>
+                  <input class="wf-cue__val" id="cue-mezcla" type="number" value="0" min="0" step="0.1" />
+                  <div class="wf-cue__nudge-row">
+                    <button class="wf-nudge" data-wf-nudge="mezcla:-1">&lt;&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="mezcla:-0.1">&lt;</button>
+                    <button class="wf-nudge" data-wf-nudge="mezcla:0.1">&gt;</button>
+                    <button class="wf-nudge" data-wf-nudge="mezcla:1">&gt;&gt;</button>
+                  </div>
+                  <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn" data-wf-escuchar="mezcla">Escuchar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="mezcla">Reiniciar</button>
+                  </div>
+                </div>
+
+              </div><!-- /.wf-cue-grid -->
+
+            </div><!-- /#wf-panel -->
+
+          </div><!-- /.jz-section__body (archivo) -->
+        </div><!-- /.jz-section (archivo) -->
+
+      </div><!-- /.jz-modal__main -->
+
+      <!-- ── COLUMNA LATERAL ────────────────────────────────────── -->
+      <div class="jz-modal__side">
+
+        <!-- Fecha de ingreso -->
+        <div class="jz-box">
+          <div class="jz-box__head">Fecha de ingreso:</div>
+          <div class="jz-box__body">
+            <div class="jz-fecha" id="modal-fecha">Ahora</div>
+          </div>
+        </div>
+
+        <!-- Estatus -->
+        <div class="jz-box">
+          <div class="jz-box__head">Estatus</div>
+          <div class="jz-box__body">
+            <div class="jz-check-group">
+              <label class="jz-check-label">
+                <input type="checkbox" id="modal-activado" checked />
+                Activado
+              </label>
+              <label class="jz-check-label">
+                <input type="checkbox" id="modal-congelado" />
+                Congelado (no disponible en automático)
+              </label>
             </div>
-
-            <!-- 6 Cue Points — idéntico a Jazler Soho -->
-            <div class="wf-cue-grid">
-
-              <!-- INICIO -->
-              <div class="wf-cue-card wf-cue--inicio">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>INICIO
-                </div>
-                <input class="wf-cue__val" id="cue-inicio" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="inicio:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="inicio">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="inicio">Reiniciar</button>
-                </div>
-              </div>
-
-              <!-- INTRO -->
-              <div class="wf-cue-card wf-cue--intro">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>INTRO
-                </div>
-                <input class="wf-cue__val" id="cue-intro" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="intro:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="intro:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="intro:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="intro:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="intro">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="intro">Reiniciar</button>
-                </div>
-              </div>
-
-              <!-- INICIO CORO -->
-              <div class="wf-cue-card wf-cue--inicio-coro">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>INICIO CORO
-                </div>
-                <input class="wf-cue__val" id="cue-inicio-coro" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="inicio_coro:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio_coro:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio_coro:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="inicio_coro:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="inicio_coro">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="inicio_coro">Reiniciar</button>
-                </div>
-              </div>
-
-              <!-- FINAL CORO -->
-              <div class="wf-cue-card wf-cue--final-coro">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>FINAL CORO
-                </div>
-                <input class="wf-cue__val" id="cue-final-coro" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="final_coro:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="final_coro:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="final_coro:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="final_coro:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="final_coro">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="final_coro">Reiniciar</button>
-                </div>
-              </div>
-
-              <!-- OUTRO -->
-              <div class="wf-cue-card wf-cue--outro">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>OUTRO
-                </div>
-                <input class="wf-cue__val" id="cue-outro" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="outro:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="outro:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="outro:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="outro:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="outro">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="outro">Reiniciar</button>
-                </div>
-              </div>
-
-              <!-- MEZCLA -->
-              <div class="wf-cue-card wf-cue--mezcla">
-                <div class="wf-cue__label">
-                  <span class="wf-cue__dot"></span>MEZCLA
-                </div>
-                <input class="wf-cue__val" id="cue-mezcla" type="number" value="0" min="0" step="0.1"/>
-                <div class="wf-cue__nudge-row">
-                  <button class="wf-nudge" data-wf-nudge="mezcla:-1">&lt;&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="mezcla:-0.1">&lt;</button>
-                  <button class="wf-nudge" data-wf-nudge="mezcla:0.1">&gt;</button>
-                  <button class="wf-nudge" data-wf-nudge="mezcla:1">&gt;&gt;</button>
-                </div>
-                <div class="wf-cue__action-row">
-                  <button class="wf-cue-btn" data-wf-escuchar="mezcla">Escuchar</button>
-                  <button class="wf-cue-btn" data-wf-reiniciar="mezcla">Reiniciar</button>
-                </div>
-              </div>
-
-            </div><!-- /.wf-cue-grid -->
-
-          </div><!-- /#wf-panel -->
-
-        </div><!-- /.jz-section__body (archivo) -->
-      </div><!-- /.jz-section (archivo) -->
-
-    </div><!-- /.jz-modal__main -->
-
-    <!-- ── COLUMNA LATERAL ────────────────────────────────────── -->
-    <div class="jz-modal__side">
-
-      <!-- Fecha de ingreso -->
-      <div class="jz-box">
-        <div class="jz-box__head">Fecha de ingreso:</div>
-        <div class="jz-box__body">
-          <div class="jz-fecha" id="modal-fecha">Ahora</div>
-        </div>
-      </div>
-
-      <!-- Estatus -->
-      <div class="jz-box">
-        <div class="jz-box__head">Estatus</div>
-        <div class="jz-box__body">
-          <div class="jz-check-group">
-            <label class="jz-check-label">
-              <input type="checkbox" id="modal-activado" checked/>
-              Activado
-            </label>
-            <label class="jz-check-label">
-              <input type="checkbox" id="modal-congelado"/>
-              Congelado (no disponible en automático)
-            </label>
           </div>
         </div>
-      </div>
 
-      <!-- Canciones Relacionadas -->
-      <div class="jz-box" style="flex:1">
-        <div class="jz-box__head">Canciones Relacionadas</div>
-        <div class="jz-box__body">
-          <div class="jz-list-empty">—</div>
-          <div class="jz-list-btns">
-            <button class="jz-list-btn" title="Quitar">−</button>
-            <button class="jz-list-btn" title="Agregar">+</button>
+        <!-- Canciones Relacionadas -->
+        <div class="jz-box" style="flex:1">
+          <div class="jz-box__head">Canciones Relacionadas</div>
+          <div class="jz-box__body">
+            <div class="jz-list-empty">—</div>
+            <div class="jz-list-btns">
+              <button class="jz-list-btn" title="Quitar">−</button>
+              <button class="jz-list-btn" title="Agregar">+</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Propiedades -->
-      <div class="jz-box" style="flex:1">
-        <div class="jz-box__head">Propiedades</div>
-        <div class="jz-box__body">
-          <div class="jz-list-empty">—</div>
-          <div class="jz-list-btns">
-            <button class="jz-list-btn" title="Quitar">−</button>
-            <button class="jz-list-btn" title="Agregar">+</button>
+        <!-- Propiedades -->
+        <div class="jz-box" style="flex:1">
+          <div class="jz-box__head">Propiedades</div>
+          <div class="jz-box__body">
+            <div class="jz-list-empty">—</div>
+            <div class="jz-list-btns">
+              <button class="jz-list-btn" title="Quitar">−</button>
+              <button class="jz-list-btn" title="Agregar">+</button>
+            </div>
           </div>
         </div>
-      </div>
 
-    </div><!-- /.jz-modal__side -->
+      </div><!-- /.jz-modal__side -->
 
-  </div><!-- /.jz-modal__body -->
+    </div><!-- /.jz-modal__body -->
 
-  <!-- Footer -->
-  <div class="jz-modal__footer">
-    <button class="jz-btn" id="jz-modal-cancel">Cancelar</button>
-    <button class="jz-btn jz-btn--gold" id="jz-modal-save">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-      </svg>
-      OK
-    </button>
-  </div>
+    <!-- Footer -->
+    <div class="jz-modal__footer">
+      <button class="jz-btn" id="jz-modal-cancel">Cancelar</button>
+      <button class="jz-btn jz-btn--gold" id="jz-modal-save">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+        OK
+      </button>
+    </div>
 
-</div><!-- /.jz-modal -->
+  </div><!-- /.jz-modal -->
 </div><!-- /.jz-overlay -->
 
 <!-- Toast container -->

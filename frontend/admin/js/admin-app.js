@@ -267,22 +267,29 @@ const loadAudios = async () => {
 };
 
 /* ── §9 · MODAL: ABRIR ────────────────────────────────────────────────────── */
-function openModal(id = null) {
+async function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
 
-  /* 1. Limpiezas previas */
+  /* 1. Limpiezas previas de instancia */
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
 
-  /* 2. Mostrar el modal primero (importante para dimensiones de WaveSurfer) */
+  /* 2. Mostrar el modal (Crítico para dimensiones) */
   overlay.classList.add('active');
   overlay.style.display = 'flex';
   overlay.style.zIndex = '9000';
 
-  /* 3. Inicializar motor de ondas con el contenedor ya visible */
-  if (typeof window.wfInit === 'function') window.wfInit();
+  /* 3. Inicializar motor de forma asíncrona */
+  if (typeof window.wfInit === 'function') {
+    try {
+      await window.wfInit();
+      console.log('[Ónix] Waveform Motor listo.');
+    } catch (e) {
+      console.error('[Ónix] Error inicializando waveform:', e);
+    }
+  }
 
-  /* Asegurar que el panel de la onda esté visible */
+  /* Asegurar que el panel sea visible */
   const p = $('wf-panel');
   if (p) p.style.display = 'block';
 
