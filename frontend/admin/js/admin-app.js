@@ -558,7 +558,11 @@ document.addEventListener('click', e => {
 
   /* Sidebar: Tareas */
   if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
-  if (e.target.closest('#jz-task-categorias')) { showToast('Editar Categorías: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-categorias')) {
+    if (window.onixCategories?.open) { window.onixCategories.open(); }
+    else { showToast('Editar Categorías: módulo no cargado', 'error'); }
+    return;
+  }
   if (e.target.closest('#jz-task-estadisticas')) { showToast(`Estadísticas · ${library.length} pistas`, 'info'); return; }
   if (e.target.closest('#jz-task-exportar')) { showToast('Exportar BD: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-integridad')) { showToast('Chequeo de integridad: próximamente', 'info'); return; }
@@ -659,5 +663,200 @@ window.saveModal = saveModal;
 
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SISTEMA DE CATEGORÍAS ONIX FM
+════════════════════════════════════════════════════════════════════════════ */
+const CategoriesModule = (function () {
+  const LS_KEY = 'onix_categories';
+  const CATEGORY_KEYS = ['soundCode', 'popularity', 'era', 'voz', 'propiedades'];
+  const DEFAULTS = {
+    soundCode: {
+      name: 'Sound Code', canRename: true, items: [
+        { label: 'POP', color: '#8e44ad', comment: '' },
+        { label: 'ROCK', color: '#6b7a1e', comment: '' },
+        { label: 'DANCE', color: '#cc0000', comment: '' },
+        { label: 'ALTERNATIVE', color: '#808080', comment: '' }
+      ]
+    },
+    popularity: {
+      name: 'Popularity', canRename: true, items: [
+        { label: 'HOT CURRENT', color: '#e67e22', comment: 'Default Category' },
+        { label: 'CURRENT', color: '#d35400', comment: '' },
+        { label: 'OLDIES 1', color: '#2980b9', comment: '' },
+        { label: 'OLDIES 2', color: '#1a5276', comment: '' }
+      ]
+    },
+    era: {
+      name: 'Era', canRename: true, items: [
+        { label: '60s', color: '#4a4a6a', comment: 'Default Category' },
+        { label: '70s', color: '#4a5a3a', comment: 'Default Category' },
+        { label: '80s', color: '#5a3a5a', comment: 'Default Category' },
+        { label: '90s', color: '#3a5a6a', comment: 'Default Category' },
+        { label: '2000s', color: '#5a4a2a', comment: '' },
+        { label: '2010s', color: '#2a4a5a', comment: '' },
+        { label: '2020s', color: '#3a3a5a', comment: '' }
+      ]
+    },
+    voz: {
+      name: 'Voz', canRename: false, items: [
+        { label: 'Female', color: '#8e44ad', comment: 'Default Category' },
+        { label: 'Male', color: '#555555', comment: 'Default Category' },
+        { label: 'Duo', color: '#555555', comment: 'Default Category' },
+        { label: 'Group', color: '#555555', comment: 'Default Category' },
+        { label: 'Collaboration', color: '#555555', comment: 'Default Category' }
+      ]
+    },
+    propiedades: { name: 'Propiedades', canRename: false, items: [] }
+  };
+
+  let categories = {};
+  let activeKey = 'soundCode';
+  let selectedIdx = -1;
+
+  function load() {
+    try {
+      const stored = localStorage.getItem(LS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        CATEGORY_KEYS.forEach(k => {
+          categories[k] = Object.assign({}, DEFAULTS[k], parsed[k] || {});
+          if (!Array.isArray(categories[k].items)) categories[k].items = [];
+        });
+      } else { reset(); }
+    } catch (e) { reset(); }
+  }
+
+  function save() { localStorage.setItem(LS_KEY, JSON.stringify(categories)); }
+  function reset() { CATEGORY_KEYS.forEach(k => { categories[k] = JSON.parse(JSON.stringify(DEFAULTS[k])); }); }
+
+  const SELECT_MAP = {
+    soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'],
+    popularity: ['modal-popularity', 'jz-filter-pop'],
+    era: ['modal-era'],
+    voz: ['modal-voz', 'jz-filter-voz'],
+    propiedades: []
+  };
+
+  const SELECT_LABELS = {
+    'modal-sc1': '— SC1 —', 'modal-sc2': '— SC2 —', 'modal-sc3': '— SC3 —', 'jz-filter-sc': 'Sound Code',
+    'modal-popularity': '— —', 'jz-filter-pop': 'Popularity', 'modal-era': '—', 'modal-voz': '—', 'jz-filter-voz': 'Voz'
+  };
+
+  function sync() {
+    CATEGORY_KEYS.forEach(key => {
+      const ids = SELECT_MAP[key] || [];
+      const items = categories[key]?.items || [];
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const cur = el.value;
+        el.innerHTML = `<option value="">${SELECT_LABELS[id] || '—'}</option>`;
+        items.forEach(it => {
+          const o = document.createElement('option');
+          o.value = it.label; o.textContent = it.label;
+          el.appendChild(o);
+        });
+        if (cur && [...el.options].some(o => o.value === cur)) el.value = cur;
+      });
+    });
+  }
+
+  function renderSidebar() {
+    const sb = document.getElementById('cat-sidebar');
+    if (!sb) return;
+    sb.innerHTML = CATEGORY_KEYS.map(key => `
+      <div class="cat-sidebar__item ${key === activeKey ? 'active' : ''}" data-key="${key}">
+        <span class="cat-sidebar__icon">♪</span>${categories[key].name}
+      </div>
+    `).join('');
+    if (!categories[activeKey]?.canRename) {
+      const n = document.createElement('div');
+      n.className = 'cat-sidebar__note';
+      n.textContent = 'Esta categoría no puede ser renombrada.';
+      sb.appendChild(n);
+    }
+  }
+
+  function renderItems() {
+    const list = document.getElementById('cat-items-list');
+    if (!list) return;
+    const items = categories[activeKey]?.items || [];
+    if (!items.length) {
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:#444;font-size:11px;">— Sin ítems —</div>';
+      return;
+    }
+    list.innerHTML = items.map((it, i) => `
+      <div class="cat-item-row ${i === selectedIdx ? 'selected' : ''}" data-idx="${i}">
+        <div class="cat-item__name"><span class="cat-item__swatch" style="background:${it.color}"></span>${it.label}</div>
+        <div class="cat-item__comment">${it.comment || ''}</div>
+      </div>
+    `).join('');
+  }
+
+  function updateHeader() {
+    const cat = categories[activeKey];
+    const p = document.getElementById('cat-panel-prefix'), n = document.getElementById('cat-panel-name');
+    if (p) p.textContent = cat.canRename ? 'Cambiar Categoría por' : 'Cambiar';
+    if (n) n.textContent = cat.name;
+  }
+
+  const publicApi = {
+    init() { load(); sync(); },
+    open() {
+      const overlay = document.getElementById('cat-overlay');
+      if (!overlay) return;
+      activeKey = 'soundCode'; selectedIdx = -1;
+      overlay.classList.add('active');
+      renderSidebar(); renderItems(); updateHeader();
+    },
+    close() { document.getElementById('cat-overlay')?.classList.remove('active'); },
+    select(key) { activeKey = key; selectedIdx = -1; renderSidebar(); renderItems(); updateHeader(); },
+    add() {
+      const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase();
+      if (!label) return;
+      if (categories[activeKey].items.some(i => i.label === label)) return;
+      categories[activeKey].items.push({
+        label,
+        color: document.getElementById('cat-new-color')?.value || '#8e44ad',
+        comment: document.getElementById('cat-new-comment')?.value.trim() || ''
+      });
+      save(); sync(); renderItems();
+      document.getElementById('cat-add-form')?.classList.remove('visible');
+    },
+    delete() {
+      if (selectedIdx < 0) return;
+      categories[activeKey].items.splice(selectedIdx, 1);
+      selectedIdx = -1; save(); sync(); renderItems();
+    },
+    move(dir) {
+      const items = categories[activeKey].items;
+      if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;
+      [items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]];
+      selectedIdx += dir; save(); sync(); renderItems();
+    }
+  };
+
+  /* Event delegation for modal internal buttons */
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if (t.closest('.cat-sidebar__item')) publicApi.select(t.closest('.cat-sidebar__item').dataset.key);
+    if (t.closest('.cat-item-row')) { selectedIdx = parseInt(t.closest('.cat-item-row').dataset.idx); renderItems(); }
+    if (t.closest('#cat-btn-agregar')) document.getElementById('cat-add-form')?.classList.add('visible');
+    if (t.closest('#cat-confirm-add')) publicApi.add();
+    if (t.closest('#cat-cancel-add')) document.getElementById('cat-add-form')?.classList.remove('visible');
+    if (t.closest('#cat-btn-eliminar')) publicApi.delete();
+    if (t.closest('#cat-move-up')) publicApi.move(-1);
+    if (t.closest('#cat-move-down')) publicApi.move(1);
+    if (t.closest('#cat-close-btn') || t.closest('#cat-btn-ok')) publicApi.close();
+    if (t.id === 'cat-overlay') publicApi.close();
+  });
+
+  return publicApi;
+})();
+
 /* ── §17 · Arranque ──────────────────────────────────────────────────────── */
+CategoriesModule.init();
+window.onixCategories = CategoriesModule;
+
 initApp();
