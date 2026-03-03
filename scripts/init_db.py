@@ -163,6 +163,33 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE audios ADD COLUMN hook REAL DEFAULT NULL")
     logger.info("  → Columnas intro, outro, hook verificadas/añadidas: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 7 — Cue points extendidos (6 marcadores Jazler)
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando columnas de cue points extendidos en audios...")
+    # Re-leer columnas después de posibles ALTER previos
+    cursor.execute("PRAGMA table_info(audios)")
+    columnas_audios_v2 = {row["name"] for row in cursor.fetchall()}
+
+    nuevas_columnas_cue = [
+        ("cue_inicio",      "REAL"),   # Punto de inicio de reproducción
+        ("cue_intro",       "REAL"),   # Fin del intro / entrada de voz
+        ("cue_inicio_coro", "REAL"),   # Inicio del coro
+        ("cue_final_coro",  "REAL"),   # Final del coro
+        ("cue_mezcla",      "REAL"),   # Punto de mezcla / mix out
+        ("fade_in",         "REAL"),   # Duración del fade in
+        ("fade_out",        "REAL"),   # Duración del fade out
+    ]
+    for col_name, col_type in nuevas_columnas_cue:
+        if col_name not in columnas_audios_v2:
+            cursor.execute(
+                f"ALTER TABLE audios ADD COLUMN {col_name} {col_type} DEFAULT NULL"
+            )
+            logger.info(f"  → Columna {col_name} añadida a audios: OK")
+        else:
+            logger.info(f"  → Columna {col_name} ya existe: SKIP")
+    logger.info("  → Cue points extendidos verificados/añadidos: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

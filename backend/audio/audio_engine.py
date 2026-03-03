@@ -57,6 +57,27 @@ _THIS_FILE = Path(__file__).resolve()
 DB_PATH    = _THIS_FILE.parent.parent.parent / "radio_core.db"
 
 
+def _db_conn(db_path: Path = None) -> sqlite3.Connection:
+    """
+    Helper centralizado para abrir conexiones SQLite con:
+      - WAL journal mode  → lecturas concurrentes sin bloquear escrituras
+      - row_factory       → acceso por nombre de columna
+      - foreign keys      → integridad referencial
+      - check_same_thread → False para uso con threading del motor
+
+    WAL (Write-Ahead Logging) elimina los errores 'database is locked'
+    cuando el motor esta sonando y el administrador guarda cambios en
+    paralelo desde la API. Ambas conexiones operan sobre el mismo
+    archivo .db sin bloquearse mutuamente.
+    """
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BASS.dll -- Constantes
 # ══════════════════════════════════════════════════════════════════════════════
@@ -510,9 +531,8 @@ class RotationAlgorithm:
         self.db_path = db_path
 
     def _conn(self):
-        c = sqlite3.connect(str(self.db_path))
-        c.row_factory = sqlite3.Row
-        return c
+        """Usa el helper centralizado con WAL para evitar locks concurrentes."""
+        return _db_conn(self.db_path)
 
     def _cfg(self, conn, clave: str, default: str) -> str:
         row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
@@ -819,7 +839,7 @@ class AudioEngine:
 
     def _load_config(self):
         try:
-            conn = sqlite3.connect(str(self._db))
+            conn = _db_conn(self._db)
             for clave, attr, cast in (
                 ("crossfade_seg", "_crossfade_secs", float),
                 ("modo",          "_mode",           str),
@@ -849,18 +869,23 @@ class AudioEngine:
         """
         Con BASS: el gapless lo maneja SYNC_END. El tick solo maneja casos
         de recuperacion que BASS no cubra.
-        Con pygame: polling de posicion para detectar el punto de crossfade.
+        Con pygame/mock: polling de posicion para detectar el punto de crossfade.
+        Usa cue_mezcla (o outro como fallback) en lugar del obsoleto JSON puntos_audio.
         """
         if not self._current_track or self._crossfade_active:
             return
 
         if BACKEND in ("pygame", "mock"):
-            track     = self._current_track
-            duracion  = track.get("duracion_seg", 0)
-            mix_data  = json.loads(track.get("puntos_audio",
-                                             '{"intro_sec":0,"mix_point_sec":0}'))
-            mix_point = mix_data.get("mix_point_sec", 0) or (duracion - self._crossfade_secs)
-            pos_s     = self._audio.get_position_sec(self._active_canal)
+            track    = self._current_track
+            duracion = track.get("duracion_seg") or track.get("duracion") or 0
+
+            # Prioridad: cue_mezcla > outro > (duracion - crossfade_secs)
+            mix_point = (
+                track.get("cue_mezcla")
+                or track.get("outro")
+                or (duracion - self._crossfade_secs if duracion > 0 else 0)
+            )
+            pos_s = self._audio.get_position_sec(self._active_canal)
 
             if duracion > 0 and pos_s > 0 and pos_s >= mix_point:
                 self._prepare_and_crossfade()
@@ -881,9 +906,11 @@ class AudioEngine:
     def _play_direct(self, track: dict, canal: int) -> bool:
         """
         Verifica existencia fisica del archivo antes de intentar cargarlo.
-        Usa track.get("ruta_archivo") -- jamas "archivo_path".
+        Acepta tanto 'ruta_archivo' (columna legada) como 'archivo_path'
+        (columna nueva de la Biblioteca Musical) para compatibilidad total.
         """
-        path = track.get("ruta_archivo", "")
+        # Compatibilidad: tabla nueva usa archivo_path, tabla legada usa ruta_archivo
+        path = track.get("ruta_archivo") or track.get("archivo_path") or ""
 
         if not path or not Path(path).exists():
             log.error("[Engine] Archivo no encontrado: '%s' (id=%s)", path, track.get("id"))
@@ -1163,24 +1190,55 @@ class AudioEngine:
             "genero_vocal":track.get("genero_vocal", "Instrumental"),
             "ts":          datetime.now().isoformat(),
         })
+        # Duracion: puede venir como duracion_seg (legado) o duracion (nueva BD)
+        duracion = track.get("duracion_seg") or track.get("duracion") or 0
+
         self.bus.emit("track_started", {
             "audio_id":    track["id"],
-            "titulo":      track["titulo"],
-            "artista":     track["artista"],
-            "duracion_seg":track.get("duracion_seg", 0),
+            "titulo":      track.get("titulo", ""),
+            "artista":     track.get("artista", ""),
+            "duracion_seg":duracion,
             "genero_vocal":track.get("genero_vocal", "Instrumental"),
             "energia":     track.get("energia", 3),
             "origen":      track.get("origen", "Nacional"),
             "tipo_audio":  track.get("tipo_audio", "Musica"),
+            # ─ Cue points (6 marcadores Jazler) ───────────────────────────
+            "cue_inicio":      track.get("cue_inicio")      or track.get("intro")  or 0,
+            "cue_intro":       track.get("cue_intro")       or track.get("intro")  or 0,
+            "cue_inicio_coro": track.get("cue_inicio_coro") or 0,
+            "cue_final_coro":  track.get("cue_final_coro")  or 0,
+            "cue_mezcla":      track.get("cue_mezcla")      or track.get("outro") or 0,
+            "fade_in":         track.get("fade_in")         or 0,
+            "fade_out":        track.get("fade_out")        or 0,
         })
-        log.info("[Engine] ▶ %s -- %s", track["artista"], track["titulo"])
+        log.info(
+            "[Engine] ▶ %s — %s  [intro=%.1fs  mezcla=%.1fs]",
+            track.get("artista", "?"), track.get("titulo", "?"),
+            track.get("cue_intro") or track.get("intro") or 0,
+            track.get("cue_mezcla") or track.get("outro") or 0,
+        )
 
     def _fetch_track(self, audio_id: int) -> Optional[dict]:
-        """Usa columna ruta_archivo. Jamas archivo_path."""
+        """
+        Obtiene el track completo de la DB incluyendo todos los cue points.
+        Usa columnas de ambas tablas (ruta_archivo legada + archivo_path nueva)
+        para que el motor funcione con cualquier registro.
+        """
         try:
-            conn = sqlite3.connect(str(self._db))
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM audios WHERE id=?", (audio_id,)).fetchone()
+            conn = _db_conn(self._db)
+            row = conn.execute(
+                """
+                SELECT id, titulo, artista, album, duracion, archivo_path,
+                       COALESCE(ruta_archivo, archivo_path) AS ruta_archivo,
+                       subgenero AS cat1, categoria AS cat2, cat3,
+                       genero_vocal, bpm, activo,
+                       intro, outro, hook,
+                       cue_inicio, cue_intro, cue_inicio_coro,
+                       cue_final_coro, cue_mezcla, fade_in, fade_out
+                FROM audios WHERE id = ? AND activo = 1
+                """,
+                (audio_id,)
+            ).fetchone()
             conn.close()
             return dict(row) if row else None
         except Exception as exc:
@@ -1191,11 +1249,11 @@ class AudioEngine:
         if not audio_id:
             return
         try:
-            conn = sqlite3.connect(str(self._db))
+            conn = _db_conn(self._db)
             conn.execute(
                 "UPDATE audios SET "
                 "ultima_reproduccion=datetime('now','localtime'), "
-                "veces_reproducido=veces_reproducido+1 WHERE id=?",
+                "veces_reproducido=COALESCE(veces_reproducido,0)+1 WHERE id=?",
                 (audio_id,)
             )
             conn.commit()
@@ -1205,7 +1263,7 @@ class AudioEngine:
 
     def _get_cfg_bool(self, clave: str) -> bool:
         try:
-            conn = sqlite3.connect(str(self._db))
+            conn = _db_conn(self._db)
             row  = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
             conn.close()
             return bool(row and row[0].lower() in ("true", "1", "yes", "si"))
@@ -1214,7 +1272,7 @@ class AudioEngine:
 
     def _update_cfg_db(self, clave: str, valor: str):
         try:
-            conn = sqlite3.connect(str(self._db))
+            conn = _db_conn(self._db)
             conn.execute("UPDATE config SET valor=? WHERE clave=?", (valor, clave))
             conn.commit()
             conn.close()

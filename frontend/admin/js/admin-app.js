@@ -21,12 +21,12 @@ const Shell = {
         document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const routes = {
-          dashboard:   '01-estado-global',
-          biblioteca:  '02-biblioteca-musical',
-          pautas:      '03-programacion-pautas',
-          cartuchera:  '04-editor-cartuchera',
-          logs:        '05-historial-emision',
-          engine:      '06-motor-audio',
+          dashboard: '01-estado-global',
+          biblioteca: '02-biblioteca-musical',
+          pautas: '03-programacion-pautas',
+          cartuchera: '04-editor-cartuchera',
+          logs: '05-historial-emision',
+          engine: '06-motor-audio',
         };
         this.loadSection(routes[module]);
       });
@@ -59,23 +59,23 @@ let schema = { categorias: [] };
 const getCatValues = n => { const c = schema.categorias.find(x => x.nombre_interno === n); return c ? c.valores.map(v => v.valor) : []; };
 
 /* ── §2 · Estado ──────────────────────────────────────────────────────────── */
-let library      = [];
-let filtered     = [];
-let sortKey      = null;
-let sortDir      = 1;
-let editingId    = null;
-let playingId    = null;
-let audioEl      = null;
-let playerTimer  = null;
+let library = [];
+let filtered = [];
+let sortKey = null;
+let sortDir = 1;
+let editingId = null;
+let playingId = null;
+let audioEl = null;
+let playerTimer = null;
 let selectedFile = null;
 
 /* ── §3 · Helpers DOM (sin colisión con onix-waveform.js) ───────────────── */
-const $            = id => document.getElementById(id);
-const getOverlay   = () => $('jz-overlay');
-const getTbody     = () => $('jz-tbody');
-const getCountEl   = () => $('jz-count');
+const $ = id => document.getElementById(id);
+const getOverlay = () => $('jz-overlay');
+const getTbody = () => $('jz-tbody');
+const getCountEl = () => $('jz-count');
 const getStatusMsg = () => $('jz-status-msg');
-const getEmptyEl   = () => $('jz-empty');
+const getEmptyEl = () => $('jz-empty');
 
 /* ── §4 · Populación de selects ──────────────────────────────────────────── */
 const populateSelect = (selId, items, allLabel) => {
@@ -103,7 +103,7 @@ const voxBadge = voz => {
 };
 
 const render = () => {
-  const tbody   = getTbody();
+  const tbody = getTbody();
   const countEl = getCountEl();
   const emptyEl = getEmptyEl();
   if (!tbody) return;
@@ -121,14 +121,14 @@ const render = () => {
         <button class="jz-play-btn ${playingId === t.id ? 'playing' : ''}"
           data-id="${t.id}" title="Preescucha">
           ${playingId === t.id
-            ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
-            : `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
+      ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+      : `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
         </button>
       </td>
       <td class="jz-cell-cod">${t.codigoAuto || '—'}</td>
-      <td class="jz-cell-title">${t.title}</td>
-      <td class="jz-cell-art">${t.artist}</td>
-      <td class="jz-cell-sc">${t.soundCode || '—'}</td>
+      <td class="jz-cell-title">${(t.title || '').toUpperCase()}</td>
+      <td class="jz-cell-art">${(t.artist || '').toUpperCase()}</td>
+      <td class="jz-cell-sc">${(t.soundCode || '').toUpperCase() || '—'}</td>
       <td class="jz-cell-pop">${t.popularity || '—'}</td>
       <td>${voxBadge(t.voz)}</td>
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--jz-text3);text-align:right">${t.bpm || '—'}</td>
@@ -145,15 +145,15 @@ const render = () => {
 
 /* ── §6 · Filtrado y ordenamiento ────────────────────────────────────────── */
 const applyFilters = () => {
-  const q   = ($('jz-search')?.value || '').toLowerCase();
-  const sc  = $('jz-filter-sc')?.value  || '';
+  const q = ($('jz-search')?.value || '').toLowerCase();
+  const sc = $('jz-filter-sc')?.value || '';
   const pop = $('jz-filter-pop')?.value || '';
   const voz = $('jz-filter-voz')?.value || '';
   filtered = library.filter(t =>
-    (!q   || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
-    (!sc  || t.soundCode  === sc)  &&
+    (!q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
+    (!sc || t.soundCode === sc) &&
     (!pop || t.popularity === pop) &&
-    (!voz || t.voz        === voz)
+    (!voz || t.voz === voz)
   );
   if (sortKey) {
     filtered.sort((a, b) => {
@@ -168,12 +168,12 @@ const applyFilters = () => {
 
 /* ── §7 · Mini Player ────────────────────────────────────────────────────── */
 const setPlayerInfo = track => {
-  if ($('jz-player-title'))  $('jz-player-title').textContent  = track ? track.title  : '—';
+  if ($('jz-player-title')) $('jz-player-title').textContent = track ? track.title : '—';
   if ($('jz-player-artist')) $('jz-player-artist').textContent = track ? track.artist : 'Sin pista cargada';
-  if ($('jz-player-sc'))     $('jz-player-sc').textContent     = track ? (track.soundCode || '') : '';
-  if ($('jz-time-total'))    $('jz-time-total').textContent    = track ? fmtDur(track.duration || 0) : '0:00';
+  if ($('jz-player-sc')) $('jz-player-sc').textContent = track ? (track.soundCode || '') : '';
+  if ($('jz-time-total')) $('jz-time-total').textContent = track ? fmtDur(track.duration || 0) : '0:00';
   if ($('jz-timeline-fill')) $('jz-timeline-fill').style.width = '0%';
-  if ($('jz-time-cur'))      $('jz-time-cur').textContent      = '0:00';
+  if ($('jz-time-cur')) $('jz-time-cur').textContent = '0:00';
 };
 const stopPlayer = () => {
   if (audioEl) { audioEl.pause(); audioEl.src = ''; audioEl = null; }
@@ -181,12 +181,12 @@ const stopPlayer = () => {
   const prev = playingId; playingId = null;
   if (prev) getTbody()?.querySelector(`tr[data-id="${prev}"]`)?.classList.remove('jz-row--playing');
   if ($('jz-timeline-fill')) $('jz-timeline-fill').style.width = '0%';
-  if ($('jz-time-cur'))      $('jz-time-cur').textContent = '0:00';
-  if ($('jz-player-icon'))   $('jz-player-icon').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+  if ($('jz-time-cur')) $('jz-time-cur').textContent = '0:00';
+  if ($('jz-player-icon')) $('jz-player-icon').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
 };
 const updateTimeline = (cur, total) => {
   if ($('jz-timeline-fill')) $('jz-timeline-fill').style.width = `${(cur / total) * 100}%`;
-  if ($('jz-time-cur'))      $('jz-time-cur').textContent = fmtDur(Math.floor(cur));
+  if ($('jz-time-cur')) $('jz-time-cur').textContent = fmtDur(Math.floor(cur));
 };
 const playTrack = track => {
   if (playingId === track.id) { stopPlayer(); setPlayerInfo(null); return; }
@@ -210,7 +210,7 @@ const playTrack = track => {
     if (audioEl && !isNaN(audioEl.duration)) updateTimeline(audioEl.currentTime, track.duration);
   });
   audioEl.addEventListener('ended', () => { stopPlayer(); setPlayerInfo(null); render(); });
-  audioEl.addEventListener('error',  () => {
+  audioEl.addEventListener('error', () => {
     let t = 0;
     playerTimer = setInterval(() => {
       t += 0.5;
@@ -229,25 +229,30 @@ const loadAudios = async () => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     library = (data.data || []).map(a => ({
-      id:           a.id,
-      title:        a.titulo         || '—',
-      artist:       a.artista        || '—',
-      album:        a.album          || '',
-      duration:     a.duracion       || 0,
-      bpm:          a.bpm            || null,
-      year:         a.fecha_lanzamiento || null,
-      soundCode:    a.cat1           || '',
-      popularity:   a.cat2           || '',
-      voz:          a.voz            || '',
-      codigoAuto:   a.id ? String(a.id).padStart(6, '0') : '—',
-      archivo_path: a.archivo_path   || '',
-      /* Cue points */
-      cue_inicio:      a.cue_inicio      || 0,
-      cue_intro:       a.cue_intro       || a.intro || 0,
-      cue_inicio_coro: a.cue_inicio_coro || 0,
-      cue_final_coro:  a.cue_final_coro  || 0,
-      cue_outro:       a.cue_outro       || a.outro || 0,
-      cue_mezcla:      a.cue_mezcla      || a.mix   || 0,
+      id: a.id,
+      title: a.titulo || '—',
+      artist: a.artista || '—',
+      album: a.album || '',
+      duration: a.duracion || 0,
+      bpm: a.bpm || null,
+      year: a.fecha_lanzamiento || null,
+      soundCode: a.cat1 || '',
+      popularity: a.cat2 || '',
+      voz: a.voz || '',
+      codigoAuto: a.id ? String(a.id).padStart(6, '0') : '—',
+      archivo_path: a.archivo_path || '',
+      /* Cue points — nombres canonicos del backend */
+      cue_inicio: a.cue_inicio ?? a.intro ?? 0,
+      cue_intro: a.cue_intro ?? a.intro ?? 0,
+      cue_inicio_coro: a.cue_inicio_coro ?? 0,
+      cue_final_coro: a.cue_final_coro ?? 0,
+      cue_outro: a.cue_outro ?? a.outro ?? 0,
+      cue_mezcla: a.cue_mezcla ?? 0,
+      fade_in: a.fade_in ?? 0,
+      fade_out: a.fade_out ?? 0,
+      /* Retrocompatibilidad con campos simples */
+      intro: a.intro ?? a.cue_intro ?? 0,
+      outro: a.outro ?? a.cue_outro ?? 0,
     }));
     filtered = [...library];
     applyFilters();
@@ -265,42 +270,77 @@ const loadAudios = async () => {
 function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
-  editingId = id;
 
-  /* Fecha de ingreso */
+  /* 1. Limpiezas previas */
+  if (typeof window.wfDestroy === 'function') window.wfDestroy();
+
+  /* 2. Mostrar el modal primero (importante para dimensiones de WaveSurfer) */
+  overlay.classList.add('active');
+  overlay.style.display = 'flex';
+  overlay.style.zIndex = '9000';
+
+  /* 3. Inicializar motor de ondas con el contenedor ya visible */
+  if (typeof window.wfInit === 'function') window.wfInit();
+
+  /* Asegurar que el panel de la onda esté visible */
+  const p = $('wf-panel');
+  if (p) p.style.display = 'block';
+
+  editingId = id;
   const fechaEl = $('modal-fecha');
-  if (fechaEl) fechaEl.textContent = id ? '—' : new Date().toLocaleDateString('es-ES', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  if (fechaEl) fechaEl.textContent = id ? '—' : new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   if (id) {
     const t = library.find(x => x.id === id);
     if (!t) return;
-    if ($('modal-title-bar'))      $('modal-title-bar').textContent      = `${t.artist.toUpperCase()} - ${t.title.toUpperCase()}`;
-    if ($('modal-artist'))         $('modal-artist').value               = t.artist;
-    if ($('modal-title-input'))    $('modal-title-input').value          = t.title;
-    if ($('modal-album'))          $('modal-album').value                = t.album  || '';
-    if ($('modal-cod-auto'))       $('modal-cod-auto').value             = t.codigoAuto || '';
-    if ($('modal-year'))           $('modal-year').value                 = t.year   || '';
-    if ($('modal-bpm'))            $('modal-bpm').value                  = t.bpm    || '';
-    if ($('modal-popularity'))     $('modal-popularity').value           = t.popularity || '';
-    if ($('modal-voz'))            $('modal-voz').value                  = t.voz    || '';
-    if ($('modal-dropzone-wrap'))  $('modal-dropzone-wrap').style.display = 'none';
-    if ($('modal-archivo-path'))   $('modal-archivo-path').value          = t.archivo_path || '';
+    if ($('modal-title-bar')) $('modal-title-bar').textContent = `${(t.artist || '').toUpperCase()} - ${(t.title || '').toUpperCase()}`;
+    if ($('modal-artist')) $('modal-artist').value = (t.artist || '').toUpperCase();
+    if ($('modal-title-input')) $('modal-title-input').value = (t.title || '').toUpperCase();
+    if ($('modal-album')) $('modal-album').value = (t.album || '').toUpperCase();
+    if ($('modal-cod-auto')) $('modal-cod-auto').value = t.codigoAuto || '';
+    if ($('modal-year')) $('modal-year').value = t.year || '';
+    if ($('modal-bpm')) $('modal-bpm').value = t.bpm || '';
+    if ($('modal-popularity')) $('modal-popularity').value = t.popularity || '';
+    if ($('modal-voz')) $('modal-voz').value = t.voz || '';
+    if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'none';
+    if ($('modal-archivo-path')) $('modal-archivo-path').value = t.archivo_path || '';
+
+    /* CARGAR WAVEFORM CON DATOS EXISTENTES */
+    if (typeof window.wfLoadUrl === 'function' && t.archivo_path) {
+      let streamUrl = '';
+      const parts = t.archivo_path.replace(/\\/g, '/').split('/');
+      const fileName = parts.pop();
+      const folderName = parts.pop() || 'musica';
+      streamUrl = `${API_BASE || 'http://localhost:8000'}/stream/${folderName}/${fileName}`;
+
+      const cues = {
+        inicio: t.cue_inicio || 0,
+        intro: t.cue_intro || 0,
+        inicio_coro: t.cue_inicio_coro || 0,
+        final_coro: t.cue_final_coro || 0,
+        outro: t.cue_outro || 0,
+        mezcla: t.cue_mezcla || 0
+      };
+
+      console.log('[BM] Editando:', t.id, 'Cargando onda:', streamUrl);
+      window.wfLoadUrl(streamUrl, cues);
+    }
   } else {
-    if ($('modal-title-bar'))     $('modal-title-bar').textContent     = 'NUEVA CANCIÓN';
-    ['modal-artist','modal-title-input','modal-album','modal-year','modal-bpm',
-     'modal-comentarios','modal-escritor','modal-compositor','modal-etiqueta',
-     'modal-cdkey','modal-barras','modal-archivo-path'].forEach(fid => {
-       const el = $(fid); if (el) el.value = '';
-     });
+    if ($('modal-title-bar')) $('modal-title-bar').textContent = 'NUEVA CANCIÓN';
+    ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm',
+      'modal-comentarios', 'modal-escritor', 'modal-compositor', 'modal-etiqueta',
+      'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => {
+        const el = $(fid); if (el) el.value = '';
+      });
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
-    if ($('modal-file-info'))     $('modal-file-info').style.display    = 'none';
-    if ($('modal-activado'))      $('modal-activado').checked           = true;
-    if ($('modal-congelado'))     $('modal-congelado').checked          = false;
+    if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
+    if ($('modal-activado')) $('modal-activado').checked = true;
+    if ($('modal-congelado')) $('modal-congelado').checked = false;
   }
 
   overlay.classList.add('active');
-  overlay.style.display  = 'flex';
-  overlay.style.zIndex   = '9000';
+  overlay.style.display = 'flex';
+  overlay.style.zIndex = '9000';
   setTimeout(() => { const inp = $('modal-artist'); if (inp) inp.focus(); }, 100);
 }
 
@@ -316,46 +356,15 @@ function closeModal() {
 
 /* ── §11 · MODAL: GUARDAR ────────────────────────────────────────────────── */
 async function saveModal() {
-  const titleVal  = $('modal-title-input')?.value.trim();
+  const titleVal = $('modal-title-input')?.value.trim();
   const artistVal = $('modal-artist')?.value.trim();
   if (!titleVal || !artistVal) { showToast('Título y artista son obligatorios', 'error'); return; }
   if (!editingId && !selectedFile) { showToast('Selecciona un archivo de audio', 'error'); return; }
 
-  const formData = new FormData();
-  formData.append('titulo',  titleVal);
-  formData.append('artista', artistVal);
-
-  const optionals = {
-    album:             $('modal-album')?.value.trim(),
-    bpm:               $('modal-bpm')?.value,
-    fecha_lanzamiento: $('modal-year')?.value.trim(),
-    cat1:              $('modal-sc1')?.value || $('modal-sc2')?.value,
-    cat2:              $('modal-popularity')?.value,
-    voz:               $('modal-voz')?.value,
-    notas:             $('modal-comentarios')?.value.trim(),
-    activado:          $('modal-activado')?.checked ? '1' : '0',
-  };
-  Object.entries(optionals).forEach(([k, v]) => { if (v) formData.append(k, v); });
-
-  /* Cue points de los 6 marcadores */
+  /* ── Obtener cue points del editor de forma ────────────────────────────── */
+  let markers = { inicio: 0, intro: 0, inicio_coro: 0, final_coro: 0, outro: 0, mezcla: 0, fade_in: 0, fade_out: 0 };
   if (typeof window.wfGetMarkers === 'function') {
-    const mk = window.wfGetMarkers();
-    formData.append('cue_inicio',      mk.inicio      || 0);
-    formData.append('cue_intro',       mk.intro       || 0);
-    formData.append('cue_inicio_coro', mk.inicio_coro || 0);
-    formData.append('cue_final_coro',  mk.final_coro  || 0);
-    formData.append('cue_outro',       mk.outro       || 0);
-    formData.append('cue_mezcla',      mk.mezcla      || 0);
-    formData.append('fade_in',         mk.fade_in     || 0);
-    formData.append('fade_out',        mk.fade_out    || 0);
-    /* Retrocompatibilidad con campos intro/outro simples */
-    formData.append('intro', mk.intro || 0);
-    formData.append('outro', mk.outro || 0);
-    formData.append('mix',   mk.mezcla || 0);
-  }
-
-  if (!editingId && selectedFile) {
-    formData.append('file', selectedFile);
+    markers = window.wfGetMarkers();
   }
 
   const btnSave = $('jz-modal-save');
@@ -363,25 +372,86 @@ async function saveModal() {
 
   try {
     let res;
+
     if (editingId) {
-      const json = {};
-      formData.forEach((v, k) => json[k] = v);
+      /* ── PUT: actualizar audio existente ─────────────────────────────── */
+      const payload = {
+        titulo: titleVal,
+        artista: artistVal,
+        album: $('modal-album')?.value.trim() || null,
+        fecha_lanzamiento: $('modal-year')?.value.trim() || null,
+        bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null,
+        cat1: $('modal-sc1')?.value || $('modal-sc2')?.value || null,
+        cat2: $('modal-popularity')?.value || null,
+        voz: $('modal-voz')?.value || null,
+        /* Cue points exactos del waveform */
+        cue_inicio: markers.inicio ?? 0,
+        cue_intro: markers.intro ?? 0,
+        cue_inicio_coro: markers.inicio_coro ?? 0,
+        cue_final_coro: markers.final_coro ?? 0,
+        cue_mezcla: markers.mezcla ?? 0,
+        fade_in: markers.fade_in ?? 0,
+        fade_out: markers.fade_out ?? 0,
+        /* Retrocompatibilidad */
+        intro: markers.intro ?? 0,
+        outro: markers.mezcla ?? 0,
+      };
+      // Limpiar nulls — el backend ignora campos ausentes en PUT parcial
+      Object.keys(payload).forEach(k => { if (payload[k] === null || payload[k] === '') delete payload[k]; });
+
       res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(json),
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
+
     } else {
+      /* ── POST: crear nuevo audio con archivo ─────────────────────────── */
+      const formData = new FormData();
+      formData.append('titulo', titleVal);
+      formData.append('artista', artistVal);
+
+      const optionals = {
+        album: $('modal-album')?.value.trim(),
+        bpm: $('modal-bpm')?.value,
+        fecha_lanzamiento: $('modal-year')?.value.trim(),
+        cat1: $('modal-sc1')?.value || $('modal-sc2')?.value,
+        cat2: $('modal-popularity')?.value,
+        voz: $('modal-voz')?.value,
+      };
+      Object.entries(optionals).forEach(([k, v]) => { if (v) formData.append(k, v); });
+
+      /* Cue points del waveform */
+      formData.append('cue_inicio', markers.inicio ?? 0);
+      formData.append('cue_intro', markers.intro ?? 0);
+      formData.append('cue_inicio_coro', markers.inicio_coro ?? 0);
+      formData.append('cue_final_coro', markers.final_coro ?? 0);
+      formData.append('cue_mezcla', markers.mezcla ?? 0);
+      formData.append('fade_in', markers.fade_in ?? 0);
+      formData.append('fade_out', markers.fade_out ?? 0);
+      /* Retrocompatibilidad */
+      formData.append('intro', markers.intro ?? 0);
+      formData.append('outro', markers.mezcla ?? 0);
+
+      formData.append('file', selectedFile);
+
       res = await fetch(`${API_BASE}/api/v1/audios`, { method: 'POST', body: formData });
     }
+
     const data = await res.json();
     if (!res.ok) {
       const detail = data.detail;
       showToast(typeof detail === 'object' ? (detail.mensaje || JSON.stringify(detail)) : (detail || `Error ${res.status}`), 'error');
       return;
     }
-    wsCmd(editingId ? 'UPDATE' : 'UPLOAD', { id: data.data?.id, titulo: titleVal });
+
+    /* Notificar a otros módulos via WS (complementa el broadcast del servidor) */
+    wsCmd('library_updated', { id: data.data?.id, titulo: titleVal, action: editingId ? 'update' : 'create' });
+
     closeModal();
     await loadAudios();
-    showToast(editingId ? `Actualizado: ${titleVal}` : `Cargado: ${titleVal}`, 'success');
+    showToast(editingId ? `✓ Actualizado: ${titleVal}` : `✓ Cargado: ${titleVal}`, 'success');
+
   } catch (err) {
     showToast('Error de conexión con la API', 'error');
     console.error('[BM·save]', err);
@@ -462,10 +532,10 @@ const showToast = (msg, type = 'info') => {
 /* ── §15 · Delegación global de eventos ──────────────────────────────────── */
 document.addEventListener('click', e => {
 
-  if (e.target.closest('#jz-btn-add') || e.target.closest('#jz-sb-nueva'))     { openModal();  return; }
-  if (e.target.closest('#jz-modal-close'))                       { closeModal(); return; }
-  if (e.target.closest('#jz-modal-cancel'))                      { closeModal(); return; }
-  if (e.target.closest('#jz-modal-save'))                        { saveModal();  return; }
+  if (e.target.closest('#jz-btn-add') || e.target.closest('#jz-sb-nueva')) { openModal(); return; }
+  if (e.target.closest('#jz-modal-close')) { closeModal(); return; }
+  if (e.target.closest('#jz-modal-cancel')) { closeModal(); return; }
+  if (e.target.closest('#jz-modal-save')) { saveModal(); return; }
 
   /* Sidebar: Cargar por lote — placeholder */
   if (e.target.closest('#jz-sb-lote')) {
@@ -480,15 +550,15 @@ document.addEventListener('click', e => {
   }
 
   /* Sidebar: Tareas */
-  if (e.target.closest('#jz-task-artistas'))     { showToast('Editar Artistas: próximamente', 'info');           return; }
-  if (e.target.closest('#jz-task-categorias'))   { showToast('Editar Categorías: próximamente', 'info');         return; }
+  if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-categorias')) { showToast('Editar Categorías: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-estadisticas')) { showToast(`Estadísticas · ${library.length} pistas`, 'info'); return; }
-  if (e.target.closest('#jz-task-exportar'))     { showToast('Exportar BD: próximamente', 'info');               return; }
-  if (e.target.closest('#jz-task-integridad'))   { showToast('Chequeo de integridad: próximamente', 'info');     return; }
-  if (e.target.closest('#jz-task-difusion'))     { showToast('Análisis de difusión: próximamente', 'info');      return; }
+  if (e.target.closest('#jz-task-exportar')) { showToast('Exportar BD: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-integridad')) { showToast('Chequeo de integridad: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-difusion')) { showToast('Análisis de difusión: próximamente', 'info'); return; }
 
   const overlay = getOverlay();
-  if (overlay && e.target === overlay)                           { closeModal(); return; }
+  if (overlay && e.target === overlay) { closeModal(); return; }
 
   /* Play en tabla */
   const pb = e.target.closest('.jz-play-btn');
@@ -505,7 +575,7 @@ document.addEventListener('click', e => {
   /* Eliminar */
   const db = e.target.closest('.jz-action-del');
   if (db) {
-    const id    = +db.dataset.id;
+    const id = +db.dataset.id;
     const track = library.find(t => t.id === id);
     if (!track || !confirm(`¿Eliminar "${track.title}"?`)) return;
     if (playingId === id) stopPlayer();
@@ -538,7 +608,7 @@ document.addEventListener('click', e => {
   const tl = e.target.closest('#jz-timeline');
   if (tl && playingId) {
     const rect = tl.getBoundingClientRect();
-    const pct  = (e.clientX - rect.left) / rect.width;
+    const pct = (e.clientX - rect.left) / rect.width;
     if (audioEl?.duration) audioEl.currentTime = pct * audioEl.duration;
     return;
   }
@@ -553,15 +623,15 @@ document.addEventListener('click', e => {
 });
 
 /* Filtros */
-const FIDS = new Set(['jz-search','jz-filter-sc','jz-filter-pop','jz-filter-voz']);
-document.addEventListener('input',  e => { if (FIDS.has(e.target.id)) applyFilters(); });
+const FIDS = new Set(['jz-search', 'jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz']);
+document.addEventListener('input', e => { if (FIDS.has(e.target.id)) applyFilters(); });
 document.addEventListener('change', e => {
   if (FIDS.has(e.target.id)) applyFilters();
   if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]);
 });
 
 /* Drag & Drop */
-document.addEventListener('dragover',  e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.add('drag-over'); } });
+document.addEventListener('dragover', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.add('drag-over'); } });
 document.addEventListener('dragleave', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) dz.classList.remove('drag-over'); });
 document.addEventListener('drop', e => {
   const dz = e.target.closest('#jz-dropzone');
@@ -571,14 +641,14 @@ document.addEventListener('drop', e => {
 /* Teclado */
 document.addEventListener('keydown', e => {
   const isOpen = getOverlay()?.classList.contains('active');
-  if (e.key === 'Escape'    && isOpen)   { closeModal(); return; }
+  if (e.key === 'Escape' && isOpen) { closeModal(); return; }
   if (e.key === 'n' && e.ctrlKey && !isOpen) { e.preventDefault(); openModal(); return; }
 });
 
 /* ── §16 · Exportar a window ─────────────────────────────────────────────── */
-window.openModal  = openModal;
+window.openModal = openModal;
 window.closeModal = closeModal;
-window.saveModal  = saveModal;
+window.saveModal = saveModal;
 
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 

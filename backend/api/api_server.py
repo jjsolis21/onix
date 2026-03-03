@@ -4,11 +4,15 @@ FastAPI REST API Server — Versión 2.0
 Sistema dinámico de categorías para Biblioteca.
 """
 
+import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import sqlite3
+import time
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
@@ -17,9 +21,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 import sys
@@ -34,6 +38,14 @@ try:
 except ImportError:
     # Si falla, intentamos importación relativa
     from scripts.init_db import initialize_database
+
+# Importar el motor de audio (singleton)
+try:
+    from backend.audio.audio_engine import engine
+except ImportError:
+    # Ajuste de path si es necesario
+    sys.path.append(str(root_path))
+    from backend.audio.audio_engine import engine
 
 # ---------------------------------------------------------------------------
 # Conexión a DB con check_same_thread=False
@@ -57,6 +69,7 @@ DB_PATH      = os.getenv("RADIO_DB_PATH", "radio_core.db")
 MEDIA_ROOT   = Path(os.getenv("RADIO_MEDIA_ROOT", "/media/onix"))
 STAGING_DIR  = MEDIA_ROOT / "staging"
 LIBRARY_DIR  = MEDIA_ROOT / "library"
+MUSICA_DIR   = LIBRARY_DIR / "musica"   # destino para archivos subidos via /upload
 
 # ---------------------------------------------------------------------------
 # Lifespan — sustituto moderno de @app.on_event("startup") / "shutdown"
@@ -71,6 +84,27 @@ async def lifespan(app: FastAPI):
     initialize_database(DB_PATH)
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    MUSICA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Suscribir la API a los eventos del motor de audio (EventBus -> WebSocket)
+    def _on_engine_event(event: str, data: dict):
+        """Puente síncrono (EventBus) -> asíncrono (WebSocket Broadcast)"""
+        # track_started ya viene con los cue points desde audio_engine.py
+        payload = json.dumps({
+            "module": "engine",
+            "cmd":    event,
+            "ts":     int(time.time() * 1000),
+            "data":   data
+        })
+        # Como el EventBus corre en hilos del motor, usamos call_soon_threadsafe
+        # para programar el broadcast en el event loop de FastAPI/Uvicorn.
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_manager.broadcast(payload))
+
+    engine.bus.subscribe("track_started", _on_engine_event)
+    engine.bus.subscribe("playback_error", _on_engine_event)
+
     logger.info("API lista.")
     yield
     # ── SHUTDOWN (cleanup si fuera necesario) ────────────────────────────
@@ -429,6 +463,35 @@ def delete_categoria_valor(
 
 # ---- Schemas Pydantic ----
 
+class AudioTrack(BaseModel):
+    """Modelo completo de audio para el Editor de Biblioteca Musical (modal).
+    Incluye todos los cue points del editor de forma Jazler."""
+    titulo:            str           = Field(..., min_length=1, max_length=200)
+    artista:           str           = Field(..., min_length=1, max_length=200)
+    album:             Optional[str] = Field(default=None, max_length=200)
+    archivo_path:      Optional[str] = Field(default=None, description="Ruta existente en library")
+    duracion:          Optional[int] = Field(default=0, ge=0)
+    bpm:               Optional[int] = Field(default=None, ge=40, le=300)
+    fecha_lanzamiento: Optional[str] = Field(default=None)
+    # Categorías dinámicas
+    cat1:  Optional[str] = Field(default=None, description="Género")
+    cat2:  Optional[str] = Field(default=None, description="Rotación")
+    cat3:  Optional[str] = Field(default=None, description="Subgénero")
+    voz:   Optional[str] = Field(default=None, description="Voz/Tipo")
+    # Cue points retrocompatibles
+    intro: Optional[float] = Field(default=None)
+    outro: Optional[float] = Field(default=None)
+    hook:  Optional[float] = Field(default=None)
+    # Cue points extendidos (6 marcadores Jazler)
+    cue_inicio:      Optional[float] = Field(default=None)
+    cue_intro:       Optional[float] = Field(default=None)
+    cue_inicio_coro: Optional[float] = Field(default=None)
+    cue_final_coro:  Optional[float] = Field(default=None)
+    cue_mezcla:      Optional[float] = Field(default=None)
+    fade_in:         Optional[float] = Field(default=None)
+    fade_out:        Optional[float] = Field(default=None)
+
+
 class AudioCreateRequest(BaseModel):
     titulo:             str           = Field(..., min_length=1, max_length=200)
     artista:            str           = Field(..., min_length=1, max_length=200)
@@ -455,9 +518,127 @@ class AudioUpdateRequest(BaseModel):
     cat2:  Optional[str] = Field(default=None)
     cat3:  Optional[str] = Field(default=None)
     voz:   Optional[str] = Field(default=None)
+    # Cue points retrocompatibles
     intro: Optional[float] = Field(default=None)
     outro: Optional[float] = Field(default=None)
     hook:  Optional[float] = Field(default=None)
+    # Cue points extendidos (6 marcadores Jazler)
+    cue_inicio:      Optional[float] = Field(default=None)
+    cue_intro:       Optional[float] = Field(default=None)
+    cue_inicio_coro: Optional[float] = Field(default=None)
+    cue_final_coro:  Optional[float] = Field(default=None)
+    cue_mezcla:      Optional[float] = Field(default=None)
+    fade_in:         Optional[float] = Field(default=None)
+    fade_out:        Optional[float] = Field(default=None)
+
+
+# ===========================================================================
+# SECCIÓN: UPLOAD — Subida de archivos de audio con nombre normalizado
+# ===========================================================================
+
+def _normalize_filename(name: str) -> str:
+    """
+    Normaliza el nombre de un archivo de audio para que sea seguro en disco
+    y no genere errores en el motor de audio BASS:
+
+      1. NFKD descompone caracteres compuestos (á → a + ́, ñ → n + ~)
+      2. encode('ascii', 'ignore') elimina los acentos descompuestos
+      3. Regex reemplaza cualquier caracter no alfanumérico (excepto ._-) por '_'
+      4. Se colapsan underscores consecutivos y se eliminan al inicio/final
+
+    Ejemplos:
+      "Amor Etérneo  (Live).mp3"  →  "Amor_Eterno_Live.mp3"
+      "Año Nuevo - ¡Fiesta!.mp3"  →  "Ano_Nuevo_Fiesta.mp3"
+      "track 01   .mp3"           →  "track_01.mp3"
+    """
+    # Separar nombre y extensión
+    p = Path(name)
+    stem      = p.stem
+    extension = p.suffix  # incluye el punto, ej: ".mp3"
+
+    # NFKD + eliminar caracteres no-ASCII (tildes, diacríticos)
+    stem_nfkd = unicodedata.normalize("NFKD", stem)
+    stem_ascii = stem_nfkd.encode("ascii", "ignore").decode("ascii")
+
+    # Reemplazar caracteres no seguros por '_'
+    stem_safe = re.sub(r"[^\w\-.]", "_", stem_ascii)
+
+    # Colapsar múltiples '_' consecutivos
+    stem_clean = re.sub(r"_+", "_", stem_safe).strip("_")
+
+    # Si quedó vacío, usar fallback
+    if not stem_clean:
+        stem_clean = "audio"
+
+    return stem_clean + extension.lower()
+
+
+@app.post(
+    "/api/v1/upload",
+    status_code=status.HTTP_201_CREATED,
+    summary="Subir archivo de audio a la Biblioteca",
+    tags=["Audios"],
+)
+async def upload_audio_file(
+    file: UploadFile = File(...),
+):
+    """
+    Recibe un archivo de audio, normaliza su nombre (sin tildes ni espacios)
+    y lo guarda en MUSICA_DIR (library/musica/).
+
+    Retorna la ruta del archivo lista para guardar en el campo `archivo_path`
+    de la tabla `audios` al crear/actualizar un registro vía POST /api/v1/audios.
+
+    Regla de Oro: el nombre normalizado evita errores del motor BASS con rutas
+    que contengan espacios, tildes o caracteres especiales.
+    """
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El archivo no tiene nombre."
+        )
+
+    # Validación básica de tipo MIME
+    content_type = file.content_type or ""
+    if not (content_type.startswith("audio/") or file.filename.lower().endswith(
+            (".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma"))):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Tipo de archivo no soportado: '{file.content_type}'. "
+                   f"Se aceptan archivos de audio (mp3, wav, ogg, flac, aac, m4a, wma)."
+        )
+
+    # Normalizar nombre
+    filename_normalizado = _normalize_filename(file.filename)
+    dest = MUSICA_DIR / filename_normalizado
+
+    # Evitar colisiones: si existe, añadir sufijo numérico
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        counter = 1
+        while dest.exists():
+            dest = MUSICA_DIR / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    # Guardar en disco
+    try:
+        with open(dest, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as exc:
+        logger.error(f"[Upload] Error guardando archivo: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo guardar el archivo: {exc}"
+        )
+
+    logger.info(f"[Upload] Archivo guardado: {dest} (original: {file.filename!r})")
+
+    return {
+        "mensaje":    "Archivo subido correctamente",
+        "filename":   filename_normalizado,
+        "archivo_path": str(dest),
+        "size_bytes": dest.stat().st_size,
+    }
 
 
 # ---- Helpers de archivos (Copy-and-Delete) ----
@@ -525,7 +706,7 @@ def _validate_all_categorias(
     summary="Crear nuevo audio en Biblioteca con archivo subido directamente",
     tags=["Audios"],
 )
-def create_audio(
+async def create_audio(
     titulo: str = Form(..., min_length=1, max_length=200),
     artista: str = Form(..., min_length=1, max_length=200),
     album: Optional[str] = Form(None, max_length=200),
@@ -539,6 +720,14 @@ def create_audio(
     intro: Optional[float] = Form(None),
     outro: Optional[float] = Form(None),
     hook: Optional[float] = Form(None),
+    # Cue points extendidos (6 marcadores Jazler)
+    cue_inicio:      Optional[float] = Form(None),
+    cue_intro:       Optional[float] = Form(None),
+    cue_inicio_coro: Optional[float] = Form(None),
+    cue_final_coro:  Optional[float] = Form(None),
+    cue_mezcla:      Optional[float] = Form(None),
+    fade_in:         Optional[float] = Form(None),
+    fade_out:        Optional[float] = Form(None),
     file: UploadFile = File(...),
     conn: sqlite3.Connection = Depends(get_db),
 ):
@@ -549,6 +738,15 @@ def create_audio(
         f"POST /api/v1/audios (UploadFile) → titulo='{titulo}', "
         f"artista='{artista}', archivo='{file.filename}'"
     )
+
+    # REGLA CRÍTICA: Estandarización a MAYÚSCULAS
+    titulo  = titulo.upper()
+    artista = artista.upper()
+    if album: album = album.upper()
+    if cat1:  cat1  = cat1.upper()
+    if cat2:  cat2  = cat2.upper()
+    if cat3:  cat3  = cat3.upper()
+    if voz:   voz   = voz.upper()
 
     # PASO 1: Validación dinámica de categorías
     _validate_all_categorias(conn, cat1, cat2, cat3, voz)
@@ -586,8 +784,10 @@ def create_audio(
             INSERT INTO audios (
                 titulo, artista, album, duracion, archivo_path,
                 subgenero, categoria, cat3, genero_vocal,
-                bpm, intro, outro, hook, fecha_lanzamiento
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                bpm, intro, outro, hook, fecha_lanzamiento,
+                cue_inicio, cue_intro, cue_inicio_coro, cue_final_coro,
+                cue_mezcla, fade_in, fade_out
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
@@ -603,6 +803,13 @@ def create_audio(
             outro,
             hook,
             fecha_lanzamiento,
+            cue_inicio,
+            cue_intro,
+            cue_inicio_coro,
+            cue_final_coro,
+            cue_mezcla,
+            fade_in,
+            fade_out,
         ))
         nuevo_id = cursor.lastrowid
 
@@ -616,6 +823,14 @@ def create_audio(
         )
 
     logger.info(f"  → Audio creado con id={nuevo_id}")
+
+    # Broadcast WebSocket — notificar a todos los módulos
+    await _manager.broadcast(json.dumps({
+        "module": "api", "cmd": "library_updated",
+        "ts": int(time.time() * 1000),
+        "data": {"action": "create", "id": nuevo_id, "titulo": titulo, "artista": artista}
+    }))
+
     return {
         "mensaje": "Audio creado exitosamente",
         "data": {
@@ -630,6 +845,13 @@ def create_audio(
             "intro": intro,
             "outro": outro,
             "hook": hook,
+            "cue_inicio":      cue_inicio,
+            "cue_intro":       cue_intro,
+            "cue_inicio_coro": cue_inicio_coro,
+            "cue_final_coro":  cue_final_coro,
+            "cue_mezcla":      cue_mezcla,
+            "fade_in":         fade_in,
+            "fade_out":        fade_out,
         }
     }
 
@@ -641,7 +863,7 @@ def create_audio(
     summary="Actualizar audio existente",
     tags=["Audios"],
 )
-def update_audio(
+async def update_audio(
     audio_id: int,
     body: AudioUpdateRequest,
     conn: sqlite3.Connection = Depends(get_db),
@@ -676,22 +898,31 @@ def update_audio(
 
     # Construir SET dinámico con los campos enviados
     campos_update = {}
-    if body.titulo   is not None: campos_update["titulo"]          = body.titulo
-    if body.artista  is not None: campos_update["artista"]         = body.artista
-    if body.album    is not None: campos_update["album"]           = body.album
+    # Mapeo Jazler → DB (categorías)
+    # REGLA CRÍTICA: Estandarización a MAYÚSCULAS
+    if body.titulo   is not None: campos_update["titulo"]          = body.titulo.upper()
+    if body.artista  is not None: campos_update["artista"]         = body.artista.upper()
+    if body.album    is not None: campos_update["album"]           = body.album.upper()
     if body.duracion is not None: campos_update["duracion"]        = body.duracion
     if body.bpm      is not None: campos_update["bpm"]             = body.bpm
     if body.intro    is not None: campos_update["intro"]           = body.intro
     if body.outro    is not None: campos_update["outro"]           = body.outro
     if body.hook     is not None: campos_update["hook"]            = body.hook
     if body.fecha_lanzamiento is not None:
-        campos_update["fecha_lanzamiento"] = body.fecha_lanzamiento
-
-    # Mapeo Jazler → DB
-    if body.cat1 is not None: campos_update["subgenero"]    = body.cat1
-    if body.cat2 is not None: campos_update["categoria"]    = body.cat2
-    if body.cat3 is not None: campos_update["cat3"]         = body.cat3
-    if body.voz  is not None: campos_update["genero_vocal"] = body.voz
+        campos_update["fecha_lanzamiento"] = body.fecha_lanzamiento.upper() if body.fecha_lanzamiento else None
+    
+    if body.cat1 is not None: campos_update["subgenero"]    = body.cat1.upper()
+    if body.cat2 is not None: campos_update["categoria"]    = body.cat2.upper()
+    if body.cat3 is not None: campos_update["cat3"]         = body.cat3.upper()
+    if body.voz  is not None: campos_update["genero_vocal"] = body.voz.upper()
+    # Cue points extendidos (6 marcadores Jazler)
+    if body.cue_inicio      is not None: campos_update["cue_inicio"]      = body.cue_inicio
+    if body.cue_intro       is not None: campos_update["cue_intro"]       = body.cue_intro
+    if body.cue_inicio_coro is not None: campos_update["cue_inicio_coro"] = body.cue_inicio_coro
+    if body.cue_final_coro  is not None: campos_update["cue_final_coro"]  = body.cue_final_coro
+    if body.cue_mezcla      is not None: campos_update["cue_mezcla"]      = body.cue_mezcla
+    if body.fade_in         is not None: campos_update["fade_in"]         = body.fade_in
+    if body.fade_out        is not None: campos_update["fade_out"]        = body.fade_out
 
     if not campos_update:
         return {"mensaje": "Sin cambios que aplicar", "data": {"id": audio_id}}
@@ -715,6 +946,13 @@ def update_audio(
     logger.info(
         f"  → Audio id={audio_id} actualizado. Campos: {list(campos_update.keys())}"
     )
+
+    # Broadcast WebSocket — notificar a todos los módulos
+    await _manager.broadcast(json.dumps({
+        "module": "api", "cmd": "library_updated",
+        "ts": int(__import__('time').time() * 1000),
+        "data": {"action": "update", "id": audio_id, "campos": list(campos_update.keys())}
+    }))
 
     return {
         "mensaje": "Audio actualizado exitosamente",
@@ -753,7 +991,10 @@ def list_audios(
     query = """
         SELECT id, titulo, artista, album, duracion, archivo_path,
                subgenero as cat1, categoria as cat2, cat3, genero_vocal as voz,
-               bpm, fecha_lanzamiento, activo, created_at, updated_at
+               bpm, fecha_lanzamiento, activo, created_at, updated_at,
+               intro, outro, hook,
+               cue_inicio, cue_intro, cue_inicio_coro,
+               cue_final_coro, cue_mezcla, fade_in, fade_out
         FROM audios
         WHERE activo = 1
     """
@@ -1064,18 +1305,32 @@ async def websocket_endpoint(ws: WebSocket):
         logger.error(f"[WS] Error inesperado: {exc}")
         _manager.disconnect(ws)
 
-# --- AL FINAL DEL ARCHIVO, JUSTO ANTES DE if __name__ == "__main__": ---
+# ===========================================================================
+# SECCIÓN: FRONTEND — Servir la aplicación SPA
+# ===========================================================================
 
-from fastapi.staticfiles import StaticFiles
-import os
+# Rutas absolutas para evitar fallos de carpeta
+BASE_DIR   = Path(__file__).resolve().parent.parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+ADMIN_DIR    = FRONTEND_DIR / "admin"
 
-# Aseguramos la ruta absoluta para evitar fallos de carpeta
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-admin_path = os.path.join(BASE_DIR, "frontend", "admin")
+@app.get("/")
+async def read_index():
+    """Sirve la consola de emisión (Studio) en la raíz."""
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="index.html no encontrado en frontend/")
+    return FileResponse(index_path)
 
-# ESTA ES LA LÍNEA QUE FALTA O ESTÁ MAL:
-app.mount("/admin", StaticFiles(directory=admin_path, html=True), name="admin")
+# Montar carpetas estáticas
+# /static -> frontend/ (para main.css, app.js, etc.)
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+# /admin -> frontend/admin/ (para la administración)
+if ADMIN_DIR.exists():
+    app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
 
 if __name__ == "__main__":
     import uvicorn
+    # Puerto 8000 por defecto para Ónix FM Core
     uvicorn.run("api_server:app", host="0.0.0.0", port=8000, reload=True)
