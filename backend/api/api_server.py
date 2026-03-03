@@ -781,8 +781,11 @@ async def create_audio(
     dest_dir = LIBRARY_DIR / artista_slug
     dest_dir.mkdir(parents=True, exist_ok=True)
     
+    # REGLA DE ORO: Normalizar nombre para evitar errores de motor BASS y flatear sub-carpetas
+    nombre_seguro = _normalize_filename(file.filename)
+    dest = dest_dir / nombre_seguro
+
     # Manejar posibles colisiones de nombre
-    dest = dest_dir / file.filename
     if dest.exists():
         stem, suffix = dest.stem, dest.suffix
         counter = 1

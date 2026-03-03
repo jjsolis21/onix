@@ -3736,6 +3736,406 @@
   </div><!-- /.cat-modal -->
 </div><!-- /#cat-overlay -->
 
+<!-- ═══════════════════════════════════════════════════════════════
+     CSS — MODAL CARGAR LOTE (Wizard 4 Pasos)
+     ═══════════════════════════════════════════════════════════════ -->
+<style>
+  #lote-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .92);
+    z-index: 9200;
+    backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+  }
+
+  #lote-overlay.active {
+    display: flex;
+  }
+
+  .lote-modal {
+    background: #181818;
+    border: 1px solid #333;
+    border-radius: 2px;
+    width: 900px;
+    max-width: 95vw;
+    height: 650px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 80px rgba(0, 0, 0, .9);
+    overflow: hidden;
+    position: relative;
+    border-top: 3px solid #FF6600;
+  }
+
+  .lote-header {
+    background: #111;
+    padding: 15px 25px;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .lote-header h2 {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 18px;
+    text-transform: uppercase;
+    color: #fff;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lote-header h2 i {
+    color: #FF6600;
+  }
+
+  .lote-body {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #161616;
+  }
+
+  .lote-step {
+    position: absolute;
+    inset: 0;
+    padding: 30px;
+    display: none;
+    flex-direction: column;
+    animation: fadeIn .3s ease-out;
+  }
+
+  .lote-step.active {
+    display: flex;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Paso 1: Selección */
+  .step-1-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .lote-icon-main {
+    font-size: 80px;
+    color: #FF6600;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 15px rgba(255, 102, 0, 0.4));
+  }
+
+  .lote-btn-select {
+    background: #222;
+    border: 2px dashed #444;
+    color: #aaa;
+    padding: 40px 60px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: var(--font-ui);
+    font-size: 16px;
+  }
+
+  .lote-btn-select:hover {
+    border-color: #FF6600;
+    background: #1a1a1a;
+    color: #fff;
+  }
+
+  /* Paso 2: Listado */
+  .lote-table-wrap {
+    flex: 1;
+    overflow-y: auto;
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 4px;
+    margin: 15px 0;
+  }
+
+  .lote-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .lote-table th {
+    background: #1a1a1a;
+    padding: 10px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    border-bottom: 1px solid #333;
+    color: #666;
+  }
+
+  .lote-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #222;
+    color: #ccc;
+  }
+
+  .lote-table tr:hover {
+    background: #1d1d1d;
+  }
+
+  .lote-mini-player {
+    background: #000;
+    border: 1px solid #333;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-radius: 4px;
+  }
+
+  .lote-player-btn {
+    background: none;
+    border: none;
+    color: #FF6600;
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  .lote-player-progress {
+    flex: 1;
+    height: 4px;
+    background: #222;
+    position: relative;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .lote-player-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: #FF6600;
+    width: 0%;
+    border-radius: 2px;
+  }
+
+  /* Paso 3: Metadatos */
+  .lote-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+  }
+
+  /* Paso 4: Éxito */
+  .step-4-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lote-icon-check {
+    font-size: 100px;
+    color: #00ff88;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.3));
+  }
+
+  /* Footer Acciones */
+  .lote-footer {
+    background: #111;
+    padding: 15px 25px;
+    border-top: 1px solid #2a2a2a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .lote-btn {
+    padding: 10px 25px;
+    border-radius: 2px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    transition: all .2s;
+  }
+
+  .lote-btn--prev {
+    background: #222;
+    border: 1px solid #444;
+    color: #888;
+  }
+
+  .lote-btn--next {
+    background: #FF6600;
+    border: none;
+    color: #fff;
+    box-shadow: 0 0 15px rgba(255, 102, 0, 0.3);
+  }
+
+  .lote-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+</style>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HTML — MODAL CARGAR LOTE
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="lote-overlay" role="dialog" aria-modal="true">
+  <div class="lote-modal">
+    <div class="lote-header">
+      <h2><i>📁</i> CARGAR LOTE DE MÚSICA</h2>
+      <div id="lote-step-indicator" style="color: #666; font-size: 12px; font-family: var(--font-mono);">PASO 1 DE 4
+      </div>
+    </div>
+
+    <div class="lote-body">
+      <!-- PASO 1: SELECCIÓN -->
+      <div class="lote-step active" id="lote-step-1">
+        <div class="step-1-content">
+          <div class="lote-icon-main">📂</div>
+          <h3>Selecciona una carpeta de música</h3>
+          <p style="color: #666; margin-bottom: 30px;">Ónix escaneará todos los archivos MP3 y WAV dentro de la carpeta.
+          </p>
+          <label class="lote-btn-select" for="lote-folder-input">
+            Haga clic aquí para elegir carpeta
+            <input type="file" id="lote-folder-input" webkitdirectory multiple hidden>
+          </label>
+          <div id="lote-path-info"
+            style="margin-top: 20px; color: #FF6600; font-family: var(--font-mono); font-size: 12px;"></div>
+        </div>
+      </div>
+
+      <!-- PASO 2: LISTADO -->
+      <div class="lote-step" id="lote-step-2">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h4 style="margin:0">Archivos encontrados (<span id="lote-file-count">0</span>)</h4>
+          <div style="display: flex; gap: 10px;">
+            <button class="jz-btn jz-btn--sm" id="lote-sel-all">Todos</button>
+            <button class="jz-btn jz-btn--sm" id="lote-sel-none">Ninguno</button>
+          </div>
+        </div>
+
+        <div class="lote-table-wrap">
+          <table class="lote-table">
+            <thead>
+              <tr>
+                <th width="30"></th>
+                <th>Nombre del Archivo</th>
+                <th width="100">Tamaño</th>
+                <th width="40">Play</th>
+              </tr>
+            </thead>
+            <tbody id="lote-file-list"></tbody>
+          </table>
+        </div>
+
+        <div class="lote-mini-player">
+          <button class="lote-player-btn" id="lote-p-toggle">▶</button>
+          <div style="font-size: 11px; color: #aaa; width: 150px; overflow: hidden; white-space: nowrap;"
+            id="lote-p-title">Sin audio...</div>
+          <div class="lote-player-progress" id="lote-p-progress">
+            <div class="lote-player-bar" id="lote-p-bar"></div>
+          </div>
+          <label style="font-size: 11px; color: #666; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+            <input type="checkbox" id="lote-p-autoplay" checked> Autoplay
+          </label>
+        </div>
+      </div>
+
+      <!-- PASO 3: METADATOS MASIVOS -->
+      <div class="lote-step" id="lote-step-3">
+        <h3>Configuración Global</h3>
+        <p style="color: #666;">Los siguientes valores se aplicarán a todos los audios seleccionados.</p>
+
+        <div class="lote-meta-grid">
+          <div class="jz-field">
+            <label>Sound Code (Cat 1)</label>
+            <select id="lote-sc1" class="jz-input"></select>
+          </div>
+          <div class="jz-field">
+            <label>Popularity (Cat 2)</label>
+            <select id="lote-pop" class="jz-input"></select>
+          </div>
+          <div class="jz-field">
+            <label>Voz</label>
+            <select id="lote-voz" class="jz-input"></select>
+          </div>
+          <div class="jz-field">
+            <label>Año</label>
+            <input type="number" id="lote-year" class="jz-input" placeholder="2024">
+          </div>
+          <div class="jz-field">
+            <label>Prioridad / BPM</label>
+            <input type="number" id="lote-bpm" class="jz-input" placeholder="120">
+          </div>
+          <div class="jz-field">
+            <label>Activado</label>
+            <div
+              style="padding: 10px; background: #111; border: 1px solid #333; height: 32px; display: flex; align-items: center;">
+              <input type="checkbox" id="lote-active" checked> <span
+                style="margin-left: 10px; font-size: 12px; color: #aaa;">Sí</span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style="margin-top: 30px; padding: 20px; background: rgba(142, 68, 173, 0.1); border-left: 4px solid #8e44ad;">
+          <h4 style="color: #8e44ad; margin-top: 0;">Resumen Legislativo</h4>
+          <p style="font-size: 13px; color: #aaa;">Se procesarán <strong id="lote-final-count"
+              style="color: #fff;">0</strong> archivos. Ónix extraerá el título y artista automáticamente si el nombre
+            del archivo sigue el patrón <code style="color: #FF6600;">Artista - Título.mp3</code>.</p>
+        </div>
+      </div>
+
+      <!-- PASO 4: RESULTADO -->
+      <div class="lote-step" id="lote-step-4">
+        <div class="step-4-content">
+          <div class="lote-icon-check">✔</div>
+          <h3>¡Procesamiento Completado!</h3>
+          <p id="lote-success-msg" style="color: #aaa; margin-bottom: 30px;">Se han cargado correctamente 15 archivos.
+          </p>
+          <div style="display: flex; gap: 15px;">
+            <button class="lote-btn lote-btn--prev" id="lote-btn-again">Nueva Carga</button>
+            <button class="lote-btn lote-btn--next" id="lote-btn-finish">Terminar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lote-footer">
+      <div id="lote-processing-info"
+        style="color: #FF6600; font-family: var(--font-mono); font-size: 11px; display: none;">PROCESANDO: 0 / 0...
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 10px;" id="lote-nav-btns">
+        <button class="lote-btn lote-btn--prev" id="lote-next-prev">Atrás</button>
+        <button class="lote-btn lote-btn--next" id="lote-next-step">Siguiente</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /#lote-overlay -->
+
 <!-- ── Chip active-state visual sync ──────────────────────────────
      Añade/quita la clase .chip--active en el label cuando el select
      tiene un valor seleccionado, activando el estilo visual premium.

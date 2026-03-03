@@ -392,7 +392,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#jz-modal-close')) { closeModal(); return; }
   if (e.target.closest('#jz-modal-cancel')) { closeModal(); return; }
   if (e.target.closest('#jz-modal-save')) { saveModal(); return; }
-  if (e.target.closest('#jz-sb-lote')) { showToast('Carga por lote: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-sb-lote')) { openLoteModal(); return; }
   if (e.target.closest('#jz-sb-eliminar')) { showToast('Selecciona una canción de la lista para eliminarla', 'info'); return; }
   if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-categorias')) { if (window.onixCategories?.open) window.onixCategories.open(); else showToast('Editar Categorías: módulo no cargado', 'error'); return; }
@@ -420,18 +420,289 @@ document.addEventListener('click', e => {
   if (e.target.closest('#jz-player-toggle')) { if (playingId) stopPlayer(); return; }
   const tl = e.target.closest('#jz-timeline'); if (tl && playingId) { const rect = tl.getBoundingClientRect(); const pct = (e.clientX - rect.left) / rect.width; if (audioEl?.duration) audioEl.currentTime = pct * audioEl.duration; return; }
   if (e.target.closest('#jz-dropzone')) { if (e.target.id === 'modal-file') return; const fi = $('modal-file'); if (fi) fi.click(); return; }
+
+  /* ── LOTE WIZARD EVENTS ────────────────────────────────── */
+  if (e.target.closest('#lote-next-step')) { loteNextStep(); return; }
+  if (e.target.closest('#lote-next-prev')) { lotePrevStep(); return; }
+  if (e.target.closest('#lote-btn-finish')) { closeLoteModal(); loadAudios(); return; }
+  if (e.target.closest('#lote-btn-again')) { loteReset(); return; }
+  if (e.target.closest('#lote-sel-all')) { loteSelectAll(true); return; }
+  if (e.target.closest('#lote-sel-none')) { loteSelectAll(false); return; }
+  if (e.target.closest('#lote-p-toggle')) { lotePlayerToggle(); return; }
+
+  // Seek in progress bar
+  const lp = e.target.closest('#lote-p-progress');
+  if (lp && lotePlayer && lotePlayer.duration) {
+    const rect = lp.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    lotePlayer.currentTime = pct * lotePlayer.duration;
+    return;
+  }
+
+  const lpb = e.target.closest('.lote-play-row'); if (lpb) { lotePlayerPlay(+lpb.dataset.idx); return; }
+
+  // Autoplay on row click only if the checkbox is checked
+  const ltr = e.target.closest('.lote-row');
+  if (ltr && !e.target.closest('.lote-file-check')) {
+    const isAutoplay = $('lote-p-autoplay')?.checked;
+    if (isAutoplay) {
+      lotePlayerPlay(+ltr.dataset.idx);
+    }
+    return;
+  }
 });
+
+/* ── LOTE WIZARD LOGIC ─────────────────────────────────────────────── */
+let loteStep = 1;
+let loteFiles = [];
+let lotePlayer = null;
+let lotePlayerIdx = -1;
+
+function openLoteModal() {
+  loteStep = 1; loteFiles = []; loteResetPlayer();
+  $('lote-overlay').classList.add('active');
+  loteUpdateUI();
+  syncLoteSelects();
+}
+
+function closeLoteModal() {
+  $('lote-overlay').classList.remove('active');
+  loteResetPlayer();
+}
+
+function loteUpdateUI() {
+  document.querySelectorAll('.lote-step').forEach(s => s.classList.remove('active'));
+  $(`lote-step-${loteStep}`).classList.add('active');
+  $('lote-step-indicator').textContent = `PASO ${loteStep} DE 4`;
+
+  $('lote-next-prev').style.display = loteStep === 1 || loteStep === 4 ? 'none' : 'block';
+  $('lote-next-step').textContent = loteStep === 3 ? 'PROCESAR LOTE' : 'SIGUIENTE';
+  $('lote-next-step').style.display = loteStep === 4 ? 'none' : 'block';
+  $('lote-processing-info').style.display = 'none';
+
+  if (loteStep === 2) {
+    $('lote-next-step').disabled = !loteFiles.some(f => f.selected);
+  }
+}
+
+function loteNextStep() {
+  if (loteStep === 1) {
+    if (loteFiles.length === 0) { showToast('Selecciona una carpeta válida primero', 'error'); return; }
+    loteStep = 2; renderLoteFiles();
+  } else if (loteStep === 2) {
+    loteStep = 3;
+    $('lote-final-count').textContent = loteFiles.filter(f => f.selected).length;
+  } else if (loteStep === 3) {
+    processLote();
+  }
+  loteUpdateUI();
+}
+
+function lotePrevStep() {
+  if (loteStep > 1) { loteStep--; loteUpdateUI(); }
+}
+
+function loteReset() {
+  loteStep = 1; loteFiles = []; loteResetPlayer(); loteUpdateUI();
+  $('lote-path-info').textContent = '';
+}
+
+/* Evento manejado por delegación global para evitar problemas con carga dinámica */
+
+function renderLoteFiles() {
+  const list = $('lote-file-list');
+  list.innerHTML = loteFiles.map((f, i) => `
+    <tr class="lote-row ${lotePlayerIdx === i ? 'playing' : ''}" data-idx="${i}" style="cursor: pointer;">
+      <td><input type="checkbox" class="lote-file-check" data-idx="${i}" ${f.selected ? 'checked' : ''}></td>
+      <td>${f.name}</td>
+      <td style="font-family: var(--font-mono); font-size: 11px; color:#666;">${f.size}</td>
+      <td><button class="lote-player-btn lote-play-row" data-idx="${i}">${lotePlayerIdx === i ? '■' : '▶'}</button></td>
+    </tr>
+  `).join('');
+
+  $('lote-file-count').textContent = loteFiles.length;
+
+  list.querySelectorAll('.lote-file-check').forEach(ck => {
+    ck.onchange = (e) => {
+      e.stopPropagation();
+      loteFiles[ck.dataset.idx].selected = ck.checked;
+      $('lote-next-step').disabled = !loteFiles.some(f => f.selected);
+    };
+  });
+}
+
+function loteSelectAll(val) {
+  loteFiles.forEach(f => f.selected = val);
+  renderLoteFiles();
+  $('lote-next-step').disabled = !val;
+}
+
+/* ── MINI PLAYER ── */
+function loteResetPlayer() {
+  if (lotePlayer) { lotePlayer.pause(); lotePlayer = null; }
+  lotePlayerIdx = -1;
+  if ($('lote-p-toggle')) $('lote-p-toggle').textContent = '▶';
+  if ($('lote-p-title')) $('lote-p-title').textContent = 'Sin audio...';
+  if ($('lote-p-bar')) $('lote-p-bar').style.width = '0%';
+}
+
+function lotePlayerToggle() {
+  if (!lotePlayer) return;
+  if (lotePlayer.paused) { lotePlayer.play(); $('lote-p-toggle').textContent = '■'; }
+  else { lotePlayer.pause(); $('lote-p-toggle').textContent = '▶'; }
+}
+
+function lotePlayerPlay(idx) {
+  if (lotePlayerIdx === idx) { loteResetPlayer(); return; }
+  loteResetPlayer();
+  lotePlayerIdx = idx;
+  const file = loteFiles[idx].file;
+  lotePlayer = new Audio(URL.createObjectURL(file));
+  $('lote-p-title').textContent = file.name;
+  $('lote-p-toggle').textContent = '■';
+  lotePlayer.play();
+
+  lotePlayer.ontimeupdate = () => {
+    $('lote-p-bar').style.width = (lotePlayer.currentTime / lotePlayer.duration * 100) + '%';
+  };
+  lotePlayer.onended = () => {
+    loteResetPlayer();
+    if ($('lote-p-autoplay').checked && idx + 1 < loteFiles.length) {
+      lotePlayerPlay(idx + 1);
+    }
+  };
+  renderLoteFiles();
+}
+
+function syncLoteSelects() {
+  if (typeof window.onixCategories?.syncSelects === 'function') {
+    const s1 = $('lote-sc1'), pop = $('lote-pop'), voz = $('lote-voz');
+    const getItems = (key) => window.onixCategories.getCategories()[key]?.items || [];
+
+    const fill = (el, items) => {
+      el.innerHTML = '<option value="">— Mismo del archivo —</option>';
+      items.forEach(it => el.innerHTML += `<option value="${it.label}">${it.label}</option>`);
+    };
+
+    // NOTA: Reuso la lógica de CategoriesModule expuesta
+    // Como CategoriesModule es una IIFE, necesito asegurarme de que exponga 'categories'
+    // Hack: Usaremos los IDs directos si CategoriesModule los maneja, pero lote tiene IDs propios.
+    // Llenaremos manualmente.
+    const cats = ['soundCode', 'popularity', 'voz'];
+    const targets = [s1, pop, voz];
+    cats.forEach((k, i) => {
+      const items = JSON.parse(localStorage.getItem('onix_categories'))?.[k]?.items || [];
+      fill(targets[i], items);
+    });
+  }
+}
+
+async function processLote() {
+  const selected = loteFiles.filter(f => f.selected);
+  if (selected.length === 0) return;
+
+  loteStep = 3; // Stay here during processing
+  loteUpdateUI();
+  $('lote-next-step').disabled = true;
+  $('lote-next-prev').disabled = true;
+  $('lote-processing-info').style.display = 'block';
+
+  let success = 0, error = 0;
+  const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
+  const globalMeta = {
+    cat1: toUpper($('lote-sc1').value), cat2: toUpper($('lote-pop').value),
+    voz: toUpper($('lote-voz').value), year: $('lote-year').value,
+    bpm: $('lote-bpm').value, active: $('lote-active').checked
+  };
+
+  for (let i = 0; i < selected.length; i++) {
+    const item = selected[i];
+    $('lote-processing-info').textContent = `PROCESANDO: ${i + 1} / ${selected.length}... (${item.name})`;
+
+    try {
+      const formData = new FormData();
+      let artist = 'Unknown Artist', title = item.name.replace(/\.[^.]+$/, '');
+      if (item.name.includes(' - ')) {
+        const parts = item.name.split(' - ');
+        artist = parts[0].trim();
+        title = parts[1].split('.')[0].trim();
+      }
+
+      formData.append('titulo', title);
+      formData.append('artista', artist);
+      if (globalMeta.cat1) formData.append('cat1', globalMeta.cat1);
+      if (globalMeta.cat2) formData.append('cat2', globalMeta.cat2);
+      if (globalMeta.voz) formData.append('voz', globalMeta.voz);
+      if (globalMeta.year) formData.append('fecha_lanzamiento', globalMeta.year);
+      if (globalMeta.bpm) formData.append('bpm', globalMeta.bpm);
+
+      // Default cue points to satisfy potential API requirements
+      formData.append('cue_inicio', 0);
+      formData.append('cue_intro', 0);
+      formData.append('cue_mezcla', 0);
+      formData.append('intro', 0);
+      formData.append('outro', 0);
+
+      formData.append('file', item.file);
+
+      const res = await fetch(`${API_BASE}/api/v1/audios`, { method: 'POST', body: formData });
+      if (res.ok) {
+        success++;
+        const d = await res.json().catch(() => ({}));
+        wsCmd('library_updated', { id: d.data?.id, titulo: title, action: 'create' });
+      } else {
+        error++;
+        const errData = await res.json().catch(() => ({}));
+        console.error(`[LOTE] Error en ${item.name}:`, errData);
+      }
+    } catch (e) {
+      console.error(`[LOTE] Excepción en ${item.name}:`, e);
+      error++;
+    }
+  }
+
+  loteStep = 4;
+  loteUpdateUI();
+  $('lote-success-msg').innerHTML = `Se han procesado <strong>${selected.length}</strong> archivos.<br>
+    <span style="color:#00ff88">✓ ${success} Éxitos</span> | <span style="color:#ff6666">✕ ${error} Errores</span>`;
+  $('lote-next-step').disabled = false;
+  $('lote-next-prev').disabled = false;
+}
 
 const FIDS = new Set(['jz-search', 'jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz']);
 document.addEventListener('input', e => { if (FIDS.has(e.target.id)) applyFilters(); });
-document.addEventListener('change', e => { if (FIDS.has(e.target.id)) applyFilters(); if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]); });
+document.addEventListener('change', e => {
+  if (FIDS.has(e.target.id)) applyFilters();
+  if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]);
+
+  /* ── LOTE FOLDER INPUT DELEGATION ── */
+  if (e.target.id === 'lote-folder-input' && e.target.files?.length > 0) {
+    const raw = Array.from(e.target.files);
+    loteFiles = raw.filter(f => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|flac)$/i))
+      .map((file, i) => ({
+        file,
+        id: i,
+        name: file.name,
+        size: (file.size / 1024 / 1024).toFixed(1) + ' MB',
+        selected: true
+      }));
+
+    if (loteFiles.length > 0) {
+      const pathInfo = $('lote-path-info');
+      if (pathInfo) pathInfo.textContent = `✓ Carpeta cargada: ${loteFiles.length} archivos de audio encontrados.`;
+      loteNextStep();
+    } else {
+      showToast('No se encontraron archivos de audio válidos.', 'error');
+    }
+  }
+});
 document.addEventListener('dragover', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.add('drag-over'); } });
 document.addEventListener('dragleave', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) dz.classList.remove('drag-over'); });
 document.addEventListener('drop', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); } });
 document.addEventListener('keydown', e => {
-  const isOpen = getOverlay()?.classList.contains('active');
+  const isOpen = getOverlay()?.classList.contains('active') || $('lote-overlay')?.classList.contains('active');
   /* Bloqueo del cierre por tecla Escape (Desactivado por seguridad) */
-  /* if (e.key === 'Escape' && isOpen) { closeModal(); return; } */
+  /* if (e.key === 'Escape' && isOpen) { closeModal(); closeLoteModal(); return; } */
   if (e.key === 'n' && e.ctrlKey && !isOpen) { e.preventDefault(); openModal(); return; }
 });
 
