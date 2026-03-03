@@ -1,57 +1,73 @@
 /**
- * onix-waveform.js — Editor Visual de Frecuencia · Ónix FM
- * =========================================================
+ * onix-waveform.js — Editor de Cue Points · Ónix FM
+ * =====================================================
+ * Anti-flickering fixes:
+ *   1. _listenersAttached flag — event listeners registrados UNA vez.
+ *   2. _showPanel() muta props individuales, no cssText completo.
+ *   3. _panelVisible guard — evita re-show innecesario.
+ *
+ * 6 cue points Jazler: INICIO · INTRO · INICIO CORO ·
+ *                      FINAL CORO · OUTRO · MEZCLA
+ *
+ * Exports: wfInit, wfLoadFile, wfDestroy, wfGetMarkers, wfAutoCue
  */
-; (function () {
+;(function () {
   'use strict';
 
-  function ONIX_WF_ID(id) { return document.getElementById(id); }
+  function _id(id) { return document.getElementById(id); }
 
-  var _C = {
-    wave: '#FF6600',
-    progress: '#FF8C33',
-    cursor: '#FFFFFF',
-    intro: 'rgba(0,255,100,0.22)',
-    outro: 'rgba(255,40,40,0.22)',
-    hook: 'rgba(180,100,255,0.22)',
-  };
+  var CUE_DEFS = [
+    { key: 'inicio',      label: 'INICIO',      inputId: 'cue-inicio'      },
+    { key: 'intro',       label: 'INTRO',       inputId: 'cue-intro'       },
+    { key: 'inicio_coro', label: 'INICIO CORO', inputId: 'cue-inicio-coro' },
+    { key: 'final_coro',  label: 'FINAL CORO',  inputId: 'cue-final-coro'  },
+    { key: 'outro',       label: 'OUTRO',       inputId: 'cue-outro'       },
+    { key: 'mezcla',      label: 'MEZCLA',      inputId: 'cue-mezcla'      },
+  ];
 
-  var _ws = null;
-  var _rp = null;
-  var _reg = {};
-  var _dur = 0;
-  var _raf = null;
-  var _playing = false;
-  var _inited = false;
-  var _tries = 0;
+  var _ws                = null;
+  var _rp                = null;
+  var _regions           = {};
+  var _cues              = {};
+  var _dur               = 0;
+  var _raf               = null;
+  var _playing           = false;
+  var _inited            = false;
+  var _listenersAttached = false; /* KEY: anti-listener-duplication */
+  var _panelVisible      = false; /* KEY: anti-repaint guard */
+  var _tries             = 0;
+  var _vol               = 1.0;
+  var _fadeIn            = 0;
+  var _fadeOut           = 0;
 
-  function _fmt(s) {
+  function _r1(n) { return Math.round(n * 10) / 10; }
+  function _r2(n) { return Math.round(n * 100) / 100; }
+
+  function _fmtLED(s) {
     if (!s || isNaN(s) || s < 0) return '0:00.0';
-    var m = Math.floor(s / 60);
-    var q = Math.floor(s % 60);
-    var d = Math.floor((s % 1) * 10);
+    var m = Math.floor(s / 60), q = Math.floor(s % 60), d = Math.floor((s % 1) * 10);
     return m + ':' + (q < 10 ? '0' : '') + q + '.' + d;
   }
 
-  function _r1(n) { return Math.round(n * 10) / 10; }
+  function _fmtShort(s) {
+    return (!s || isNaN(s) || s < 0) ? '0.0s' : (_r1(s) + 's');
+  }
 
   function _tick() {
     if (!_ws) return;
-    var cur = _ws.getCurrentTime();
-    var tot = _dur || _ws.getDuration() || 0;
-    var c = ONIX_WF_ID('wf-time-cur');
-    var t = ONIX_WF_ID('wf-time-total');
-    if (c) c.textContent = _fmt(cur);
-    if (t) t.textContent = _fmt(tot);
+    var ec = _id('wf-time-cur');
+    var et = _id('wf-time-total');
+    if (ec) ec.textContent = _fmtLED(_ws.getCurrentTime());
+    if (et) et.textContent = _fmtLED(_dur || 0);
     if (_playing) _raf = requestAnimationFrame(_tick);
   }
 
   function _icon(playing) {
-    var svg = ONIX_WF_ID('wf-play-icon');
-    var btn = ONIX_WF_ID('wf-btn-play');
+    var svg = _id('wf-play-icon');
+    var btn = _id('wf-btn-play');
     if (!svg) return;
     if (playing) {
-      svg.innerHTML = '<rect x="4" y="2" width="5" height="20" rx="1" fill="currentColor"/>' + '<rect x="15" y="2" width="5" height="20" rx="1" fill="currentColor"/>';
+      svg.innerHTML = '<rect x="4" y="2" width="5" height="20" rx="1" fill="currentColor"/><rect x="15" y="2" width="5" height="20" rx="1" fill="currentColor"/>';
       if (btn) btn.title = 'Pausa';
     } else {
       svg.innerHTML = '<polygon points="5,2 21,12 5,22" fill="currentColor"/>';
@@ -59,208 +75,296 @@
     }
   }
 
-  function _clearReg() {
-    try { if (_rp) _rp.clearRegions(); } catch (e) { }
-    _reg = {};
+  function _updateInfoBar() {
+    var el = _id('wf-info-bar');
+    if (!el || !_dur) return;
+    el.innerHTML =
+      '<span class="wf-info__item">Duración: <strong>' + _fmtShort(_dur) + '</strong></span>' +
+      '<span class="wf-info__sep">·</span>' +
+      '<span class="wf-info__item" style="color:#ff9090">Intro: <strong>' + _fmtShort(_cues.intro || 0) + '</strong></span>' +
+      '<span class="wf-info__sep">·</span>' +
+      '<span class="wf-info__item" style="color:#00ddaa">Coro: <strong>' + _fmtShort(Math.max(0, (_cues.final_coro || 0) - (_cues.inicio_coro || 0))) + '</strong></span>';
   }
 
-  function _addReg(id, start, end, color) {
-    if (!_rp) return null;
-    try {
-      return _rp.addRegion({ id: id, start: start, end: end, color: color, drag: true, resize: true });
-    } catch (e) { return null; }
+  function _syncInputs() {
+    CUE_DEFS.forEach(function (def) {
+      var el = _id(def.inputId);
+      if (el) el.value = _r2(_cues[def.key] || 0);
+    });
+    _updateInfoBar();
   }
 
-  function _defaultReg() {
-    if (!_rp || !_dur) return;
-    _clearReg();
+  function _calcDefaults() {
+    if (!_dur) return {};
     var d = _dur;
-    _reg.intro = _addReg('intro', 0, _r1(Math.min(8, d * 0.1)), _C.intro);
-    _reg.outro = _addReg('outro', _r1(Math.max(0, d - 30)), _r1(Math.max(d - 25, d - 3)), _C.outro);
-    _reg.hook = _addReg('hook', _r1(d * 0.38), _r1(d * 0.38 + 6), _C.hook);
-    _syncIn();
+    return {
+      inicio:      0,
+      intro:       _r1(Math.min(d * 0.12, 8)),
+      inicio_coro: _r1(d * 0.30),
+      final_coro:  _r1(d * 0.65),
+      outro:       _r1(Math.max(d - 30, d * 0.80)),
+      mezcla:      _r1(Math.max(d - 6,  d * 0.95)),
+    };
   }
 
-  function _syncIn() {
-    var map = { intro: 'input-intro', outro: 'input-outro', hook: 'input-hook' };
-    for (var k in map) {
-      if (_reg[k]) {
-        var el = ONIX_WF_ID(map[k]);
-        if (el) el.value = _r1(_reg[k].start);
-      }
-    }
+  function _autoCue() {
+    if (!_dur) return;
+    var d = _calcDefaults();
+    for (var k in d) { _cues[k] = d[k]; }
+    _syncInputs();
+    _drawRegions();
   }
 
-  function _moveReg(id, newStart) {
-    var r = _reg[id];
-    if (!r || !_dur) return;
-    var w = r.end - r.start;
-    var s = Math.max(0, Math.min(newStart, _dur - w));
-    try { r.setOptions({ start: s, end: Math.min(_dur, s + w) }); } catch (e) { }
+  function _drawRegions() {
+    if (!_rp || !_dur) return;
+    try { _rp.clearRegions(); } catch (e) {}
+    _regions = {};
+    var s0 = _cues.inicio || 0, s1 = _cues.intro || 0;
+    if (s1 > s0) _regions.zona_intro   = _rp.addRegion({ id: 'zona_intro',    start: s0, end: s1,               color: 'rgba(180,30,30,0.28)',   drag: false, resize: false });
+    var s2 = _cues.final_coro || 0;
+    if (s2 > s1) _regions.zona_cuerpo  = _rp.addRegion({ id: 'zona_cuerpo',   start: s1, end: s2,               color: 'rgba(0,140,80,0.18)',    drag: false, resize: false });
+    var s4 = _cues.outro || 0, s5 = _cues.mezcla || _dur;
+    if (s5 > s4) _regions.zona_outro   = _rp.addRegion({ id: 'zona_outro',    start: s4, end: s5,               color: 'rgba(200,100,0,0.22)',   drag: false, resize: false });
+    if (_cues.mezcla) _regions.linea_m = _rp.addRegion({ id: 'linea_mezcla', start: _cues.mezcla, end: Math.min(_dur, _cues.mezcla + 0.05), color: 'rgba(60,130,255,0.90)', drag: false, resize: false });
+    _updateInfoBar();
   }
 
+  /* ── Panel show/hide: props individuales, NO cssText ─────────── */
   function _showPanel() {
-    var p = ONIX_WF_ID('wf-panel');
+    if (_panelVisible) return;           /* guard: no repaint doble */
+    var p = _id('wf-panel');
     if (!p) return;
-    p.style.cssText = 'display:block !important; visibility:visible !important; opacity:1 !important; z-index:99999 !important; position:relative !important;';
+    _panelVisible = true;
+    p.style.display    = 'block';
+    p.style.visibility = 'visible';
+    p.style.opacity    = '1';
+    p.style.zIndex     = '1';
+    p.style.position   = 'relative';
   }
 
   function _hidePanel() {
-    var p = ONIX_WF_ID('wf-panel');
-    if (p) p.style.cssText = 'display:none !important;';
+    var p = _id('wf-panel');
+    if (!p) return;
+    _panelVisible = false;
+    p.style.display = 'none';
   }
 
+  function _spinner(show) {
+    var sp = _id('wf-loading');
+    if (sp) sp.style.display = show ? 'flex' : 'none';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     wfInit
+  ══════════════════════════════════════════════════════════════ */
   function wfInit() {
     if (_inited) return;
+
     if (typeof WaveSurfer === 'undefined') {
       if (_tries++ < 50) { setTimeout(wfInit, 100); return; }
-      console.error('[ÓnixWF] WaveSurfer no disponible. Revisa el CDN.');
+      console.error('[ÓnixWF] WaveSurfer CDN no disponible.');
       return;
     }
-    var RP = (typeof RegionsPlugin !== 'undefined' && RegionsPlugin) || (typeof WaveSurferRegions !== 'undefined' && WaveSurferRegions) || (WaveSurfer.Regions ? WaveSurfer.Regions : null);
+
+    var RP =
+      (typeof RegionsPlugin     !== 'undefined' && RegionsPlugin)     ||
+      (typeof WaveSurferRegions !== 'undefined' && WaveSurferRegions) ||
+      (WaveSurfer.Regions ? WaveSurfer.Regions : null);
+
     if (!RP) {
       if (_tries++ < 50) { setTimeout(wfInit, 100); return; }
-      console.error('[ÓnixWF] Plugin Regions no disponible. Revisa el CDN.');
+      console.error('[ÓnixWF] Regions CDN no disponible.');
       return;
     }
+
     _inited = true;
-    _tries = 0;
+    _tries  = 0;
+
     try {
       _rp = RP.create();
       _ws = WaveSurfer.create({
-        container: '#waveform',
-        waveColor: _C.wave,
-        progressColor: _C.progress,
-        cursorColor: _C.cursor,
-        cursorWidth: 2,
-        height: 180,
-        barWidth: 4,
-        barGap: 1,
-        barRadius: 2,
-        normalize: true,
-        interact: true,
-        fillParent: true,
-        minPxPerSec: 50,
-        plugins: [_rp],
+        container:    '#waveform',
+        waveColor:    '#4a6a4a',
+        progressColor:'#6aaa6a',
+        cursorColor:  '#ffffff',
+        cursorWidth:  1,
+        height:       120,
+        barWidth:     2,
+        barGap:       1,
+        barRadius:    1,
+        normalize:    true,
+        interact:     true,
+        fillParent:   true,
+        minPxPerSec:  50,
+        plugins:      [_rp],
       });
+
       _ws.on('ready', function () {
         _dur = _ws.getDuration();
-        var sp = ONIX_WF_ID('wf-loading');
-        if (sp) sp.style.display = 'none';
-        var c = ONIX_WF_ID('wf-time-cur');
-        var t = ONIX_WF_ID('wf-time-total');
-        if (c) c.textContent = _fmt(0);
-        if (t) t.textContent = _fmt(_dur);
-        _defaultReg();
-        _ws.zoom(70);
-        console.info('[ÓnixWF] Listo — ' + _fmt(_dur));
+        _spinner(false);
+        var ec = _id('wf-time-cur');   if (ec) ec.textContent = _fmtLED(0);
+        var et = _id('wf-time-total'); if (et) et.textContent = _fmtLED(_dur);
+        _autoCue();
+        _ws.zoom(60);
+        console.info('[ÓnixWF] Listo — ' + _fmtLED(_dur));
       });
-      _ws.on('play', function () { _playing = true; _icon(true); _raf = requestAnimationFrame(_tick); });
-      _ws.on('pause', function () { _playing = false; _icon(false); if (_raf) { cancelAnimationFrame(_raf); _raf = null; } });
-      _ws.on('finish', function () { _playing = false; _icon(false); if (_raf) { cancelAnimationFrame(_raf); _raf = null; } var c = ONIX_WF_ID('wf-time-cur'); if (c) c.textContent = _fmt(_dur); });
-      _rp.on('region-updated', function (r) {
-        var map = { intro: 'input-intro', outro: 'input-outro', hook: 'input-hook' };
-        var el = ONIX_WF_ID(map[r.id]);
-        if (el) el.value = _r1(r.start);
+      _ws.on('play',   function () { _playing = true;  _icon(true);  _raf = requestAnimationFrame(_tick); });
+      _ws.on('pause',  function () { _playing = false; _icon(false); if (_raf) { cancelAnimationFrame(_raf); _raf = null; } });
+      _ws.on('finish', function () {
+        _playing = false; _icon(false);
+        if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+        var ec = _id('wf-time-cur'); if (ec) ec.textContent = _fmtLED(_dur);
       });
       console.info('[ÓnixWF] Inicializado.');
     } catch (err) {
-      console.error('[ÓnixWF] Error al crear WaveSurfer:', err);
+      console.error('[ÓnixWF] Error:', err);
       _inited = false;
     }
 
+    _attachListeners(); /* siempre al final, guarded por flag */
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     _attachListeners — separada de wfInit para evitar duplicados
+  ══════════════════════════════════════════════════════════════ */
+  function _attachListeners() {
+    if (_listenersAttached) return;
+    _listenersAttached = true;
+
     document.addEventListener('click', function (e) {
-      if (e.target.closest('#wf-btn-play')) { if (_ws) try { _ws.playPause(); } catch (er) { } return; }
+
+      if (e.target.closest('#wf-btn-play')) {
+        if (_ws) try { _ws.playPause(); } catch (er) {}
+        return;
+      }
       if (e.target.closest('#wf-btn-stop')) {
-        if (_ws) { try { _ws.stop(); } catch (er) { } _playing = false; _icon(false); if (_raf) { cancelAnimationFrame(_raf); _raf = null; } var c = ONIX_WF_ID('wf-time-cur'); if (c) c.textContent = _fmt(0); }
+        if (_ws) { try { _ws.stop(); } catch (er) {} _playing = false; _icon(false); if (_raf) { cancelAnimationFrame(_raf); _raf = null; } var ec = _id('wf-time-cur'); if (ec) ec.textContent = _fmtLED(0); }
         return;
       }
-      if (e.target.closest('#wf-btn-reset')) { if (_dur > 0) _defaultReg(); return; }
-      var mb = e.target.closest('[data-wf-mark]');
-      if (mb) {
-        if (!_ws) return;
-        var id = mb.dataset.wfMark;
-        var pos = _ws.getCurrentTime();
-        _moveReg(id, pos);
-        var inputMap = { intro: 'input-intro', outro: 'input-outro', hook: 'input-hook' };
-        var el = ONIX_WF_ID(inputMap[id]);
-        if (el) el.value = _r1(pos);
+      if (e.target.closest('#wf-btn-autocue') || e.target.closest('#wf-btn-reiniciar')) {
+        if (_dur > 0) _autoCue();
         return;
       }
+
+      var nudgeBtn = e.target.closest('[data-wf-nudge]');
+      if (nudgeBtn) {
+        var parts = nudgeBtn.dataset.wfNudge.split(':');
+        var key = parts[0], delta = parseFloat(parts[1]);
+        var nv = Math.max(0, Math.min(_dur, _r2((_cues[key] || 0) + delta)));
+        _cues[key] = nv;
+        var def = CUE_DEFS.find(function (d) { return d.key === key; });
+        if (def) { var inp = _id(def.inputId); if (inp) inp.value = nv; }
+        _drawRegions(); _updateInfoBar();
+        return;
+      }
+
+      var escBtn = e.target.closest('[data-wf-escuchar]');
+      if (escBtn && _ws) {
+        var t = _cues[escBtn.dataset.wfEscuchar] || 0;
+        try { _ws.seekTo(t / _dur); if (!_playing) _ws.play(); } catch (er) {}
+        return;
+      }
+
+      var reinBtn = e.target.closest('[data-wf-reiniciar]');
+      if (reinBtn) {
+        var rk = reinBtn.dataset.wfReiniciar;
+        var def2 = _calcDefaults();
+        if (def2[rk] !== undefined) {
+          _cues[rk] = def2[rk];
+          var rd = CUE_DEFS.find(function (d) { return d.key === rk; });
+          if (rd) { var ri = _id(rd.inputId); if (ri) ri.value = _r2(_cues[rk]); }
+          _drawRegions(); _updateInfoBar();
+        }
+        return;
+      }
+
     }, false);
 
     document.addEventListener('change', function (e) {
-      var map = { 'input-intro': 'intro', 'input-outro': 'outro', 'input-hook': 'hook' };
-      var id = map[e.target.id];
-      if (!id) return;
-      var v = parseFloat(e.target.value);
-      if (!isNaN(v) && v >= 0) _moveReg(id, v);
+      CUE_DEFS.forEach(function (def) {
+        if (e.target.id === def.inputId) {
+          var v = parseFloat(e.target.value);
+          if (!isNaN(v) && v >= 0 && v <= _dur) { _cues[def.key] = _r2(v); _drawRegions(); _updateInfoBar(); }
+        }
+      });
+      if (e.target.id === 'wf-volume') {
+        _vol = parseFloat(e.target.value) / 100;
+        if (_ws) try { _ws.setVolume(_vol); } catch (er) {}
+        var vl = _id('wf-volume-label'); if (vl) vl.textContent = Math.round(_vol * 100) + '%';
+      }
+      if (e.target.id === 'wf-fade-in')  _fadeIn  = parseFloat(e.target.value) || 0;
+      if (e.target.id === 'wf-fade-out') _fadeOut = parseFloat(e.target.value) || 0;
+    }, false);
+
+    document.addEventListener('input', function (e) {
+      if (e.target.id === 'wf-volume') {
+        _vol = parseFloat(e.target.value) / 100;
+        if (_ws) try { _ws.setVolume(_vol); } catch (er) {}
+        var vl = _id('wf-volume-label'); if (vl) vl.textContent = Math.round(_vol * 100) + '%';
+      }
     }, false);
   }
 
+  /* ══════════════════════════════════════════════════════════════
+     wfLoadFile
+  ══════════════════════════════════════════════════════════════ */
   function wfLoadFile(file) {
     if (!_ws) { setTimeout(function () { wfLoadFile(file); }, 200); return; }
-    _showPanel();
-    var fn = ONIX_WF_ID('wf-filename');
-    if (fn) fn.textContent = file.name;
-    var sp = ONIX_WF_ID('wf-loading');
-    if (sp) sp.style.display = 'flex';
+
+    _showPanel(); /* guard interno: no hace nada si ya está visible */
+
+    var fn = _id('wf-filename'); if (fn) fn.textContent = file.name;
+    _spinner(true);
     if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
-    _playing = false;
-    _dur = 0;
-    _reg = {};
+    _playing = false; _dur = 0; _cues = {}; _regions = {};
     _icon(false);
-    var c = ONIX_WF_ID('wf-time-cur');
-    var t = ONIX_WF_ID('wf-time-total');
-    if (c) c.textContent = '0:00.0';
-    if (t) t.textContent = '0:00.0';
-    try { if (_ws.isPlaying && _ws.isPlaying()) _ws.stop(); } catch (e) { }
+    var ec = _id('wf-time-cur');   if (ec) ec.textContent = '0:00.0';
+    var et = _id('wf-time-total'); if (et) et.textContent = '0:00.0';
+    var ib = _id('wf-info-bar');   if (ib) ib.innerHTML = '<span class="wf-info__item" style="color:#444">Analizando…</span>';
+    CUE_DEFS.forEach(function (def) { var inp = _id(def.inputId); if (inp) inp.value = '0'; });
+    try { if (_ws.isPlaying && _ws.isPlaying()) _ws.stop(); } catch (e) {}
+
     setTimeout(function () {
-      try {
-        _ws.loadBlob(file);
-      } catch (err) {
-        console.error('[ÓnixWF] loadBlob falló:', err);
-        var spErr = ONIX_WF_ID('wf-loading');
-        if (spErr) spErr.style.display = 'none';
-      }
-    }, 300);
+      try { _ws.loadBlob(file); }
+      catch (err) { console.error('[ÓnixWF] loadBlob:', err); _spinner(false); }
+    }, 250);
   }
+
+  function wfAutoCue()    { if (_dur > 0) _autoCue(); }
 
   function wfDestroy() {
     if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
     if (_ws) {
-      try { _ws.destroy(); } catch (e) { }
-      _ws = null;
-      _rp = null;
-      _reg = {};
-      _dur = 0;
-      _playing = false;
-      _inited = false;
+      try { _ws.destroy(); } catch (e) {}
+      _ws = null; _rp = null; _regions = {}; _cues = {};
+      _dur = 0; _playing = false; _inited = false;
     }
     _hidePanel();
-    var ids = ['input-intro', 'input-outro', 'input-hook'];
-    for (var i = 0; i < ids.length; i++) {
-      var el = ONIX_WF_ID(ids[i]);
-      if (el) el.value = '';
-    }
-    var c = ONIX_WF_ID('wf-time-cur');
-    var t = ONIX_WF_ID('wf-time-total');
-    if (c) c.textContent = '0:00.0';
-    if (t) t.textContent = '0:00.0';
+    _panelVisible = false;
+    CUE_DEFS.forEach(function (def) { var inp = _id(def.inputId); if (inp) inp.value = ''; });
+    var ec = _id('wf-time-cur');   if (ec) ec.textContent = '0:00.0';
+    var et = _id('wf-time-total'); if (et) et.textContent = '0:00.0';
     console.info('[ÓnixWF] Destruido.');
   }
 
   function wfGetMarkers() {
     return {
-      intro: _reg.intro ? _r1(_reg.intro.start) : null,
-      outro: _reg.outro ? _r1(_reg.outro.start) : null,
-      hook: _reg.hook ? _r1(_reg.hook.start) : null,
+      inicio:      _r2(_cues.inicio      || 0),
+      intro:       _r2(_cues.intro       || 0),
+      inicio_coro: _r2(_cues.inicio_coro || 0),
+      final_coro:  _r2(_cues.final_coro  || 0),
+      outro:       _r2(_cues.outro       || 0),
+      mezcla:      _r2(_cues.mezcla      || 0),
+      fade_in:     _fadeIn,
+      fade_out:    _fadeOut,
+      volumen:     Math.round(_vol * 100),
     };
   }
 
-  window.wfInit = wfInit;
-  window.wfLoadFile = wfLoadFile;
-  window.wfDestroy = wfDestroy;
+  window.wfInit       = wfInit;
+  window.wfLoadFile   = wfLoadFile;
+  window.wfDestroy    = wfDestroy;
   window.wfGetMarkers = wfGetMarkers;
+  window.wfAutoCue    = wfAutoCue;
 
 })();
