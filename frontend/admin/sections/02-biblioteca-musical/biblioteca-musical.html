@@ -2023,6 +2023,19 @@
     border-style: solid;
   }
 
+  .wf-cue-btn--marcar {
+    background: rgba(255, 102, 0, .12) !important;
+    border-color: rgba(255, 102, 0, .3) !important;
+    color: var(--neon-orange) !important;
+    font-weight: 800 !important;
+  }
+
+  .wf-cue-btn--marcar:hover {
+    background: var(--neon-orange) !important;
+    color: #000 !important;
+    box-shadow: 0 0 12px rgba(255, 102, 0, .4);
+  }
+
   /* Cue color tinting */
   .wf-cue--inicio .wf-cue__label {
     color: var(--cue-inicio);
@@ -2950,8 +2963,9 @@
                     <button class="wf-nudge" data-wf-nudge="inicio:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="inicio">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="inicio">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="inicio">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="inicio" style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 
@@ -2968,8 +2982,9 @@
                     <button class="wf-nudge" data-wf-nudge="intro:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="intro">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="intro">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="intro">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="intro" style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 
@@ -2986,8 +3001,10 @@
                     <button class="wf-nudge" data-wf-nudge="inicio_coro:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="inicio_coro">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="inicio_coro">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="inicio_coro">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="inicio_coro"
+                      style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 
@@ -3004,8 +3021,10 @@
                     <button class="wf-nudge" data-wf-nudge="final_coro:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="final_coro">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="final_coro">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="final_coro">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="final_coro"
+                      style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 
@@ -3022,8 +3041,9 @@
                     <button class="wf-nudge" data-wf-nudge="outro:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="outro">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="outro">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="outro">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="outro" style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 
@@ -3040,8 +3060,9 @@
                     <button class="wf-nudge" data-wf-nudge="mezcla:1">&gt;&gt;</button>
                   </div>
                   <div class="wf-cue__action-row">
+                    <button class="wf-cue-btn wf-cue-btn--marcar" data-wf-marcar="mezcla">MARCAR</button>
                     <button class="wf-cue-btn" data-wf-escuchar="mezcla">Escuchar</button>
-                    <button class="wf-cue-btn" data-wf-reiniciar="mezcla">Reiniciar</button>
+                    <button class="wf-cue-btn" data-wf-reiniciar="mezcla" style="grid-column: span 2">Reiniciar</button>
                   </div>
                 </div>
 

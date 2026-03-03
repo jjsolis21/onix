@@ -1,21 +1,29 @@
-<link rel="stylesheet" href="sections/03-pautas/pautas-css.css">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css">
 <div class="pautas-root" id="pautasRoot">
   <header class="pautas-header">
     <div class="pautas-header__title">
       <span class="pautas-header__icon">📡</span>
-      <div><h2>Programación de Pautas</h2><p>Gestión de spots publicitarios y horarios de emisión</p></div>
+      <div>
+        <h2>Programación de Pautas</h2>
+        <p>Gestión de spots publicitarios y horarios de emisión</p>
+      </div>
     </div>
     <button class="btn-primary" id="btnNuevaPauta"><span>＋</span> Nueva Pauta</button>
   </header>
   <div class="pautas-stats" id="pautasStats">
-    <div class="stat-card" id="statActivas"><span class="stat-card__num">0</span><span class="stat-card__lbl">Activas</span></div>
-    <div class="stat-card" id="statVencidas"><span class="stat-card__num">0</span><span class="stat-card__lbl">Vencidas</span></div>
-    <div class="stat-card" id="statSpots"><span class="stat-card__num">0</span><span class="stat-card__lbl">Spots / Semana</span></div>
-    <div class="stat-card" id="statClientes"><span class="stat-card__num">0</span><span class="stat-card__lbl">Clientes</span></div>
+    <div class="stat-card" id="statActivas"><span class="stat-card__num">0</span><span
+        class="stat-card__lbl">Activas</span></div>
+    <div class="stat-card" id="statVencidas"><span class="stat-card__num">0</span><span
+        class="stat-card__lbl">Vencidas</span></div>
+    <div class="stat-card" id="statSpots"><span class="stat-card__num">0</span><span class="stat-card__lbl">Spots /
+        Semana</span></div>
+    <div class="stat-card" id="statClientes"><span class="stat-card__num">0</span><span
+        class="stat-card__lbl">Clientes</span></div>
   </div>
   <div class="pautas-body">
     <div class="pautas-toolbar">
-      <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="pautaSearch" placeholder="Buscar por cliente o audio…"></div>
+      <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="pautaSearch"
+          placeholder="Buscar por cliente o audio…"></div>
       <div class="filter-group">
         <button class="filter-btn active" data-filter="todas">Todas</button>
         <button class="filter-btn" data-filter="activa">Activas</button>
@@ -24,23 +32,41 @@
     </div>
     <div class="table-wrap">
       <table class="pautas-table" id="pautasTable">
-        <thead><tr><th>Cliente</th><th>Audio</th><th>Inicio</th><th>Fin</th><th>Spots/Sem</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Audio</th>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Spots/Sem</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
         <tbody id="pautasTableBody"></tbody>
       </table>
-      <div class="table-empty hidden" id="pautasEmpty"><span>📭</span><p>No hay pautas. ¡Crea la primera!</p></div>
+      <div class="table-empty hidden" id="pautasEmpty"><span>📭</span>
+        <p>No hay pautas. ¡Crea la primera!</p>
+      </div>
     </div>
   </div>
 </div>
 <div class="modal-overlay hidden" id="pautaModal" role="dialog" aria-modal="true">
   <div class="modal-box">
-    <div class="modal-header"><h3 id="modalTitle">Nueva Pauta</h3><button class="modal-close" id="btnModalClose">✕</button></div>
+    <div class="modal-header">
+      <h3 id="modalTitle">Nueva Pauta</h3><button class="modal-close" id="btnModalClose">✕</button>
+    </div>
     <div class="modal-body">
       <section class="form-section">
         <h4 class="section-label">Datos de la Pauta</h4>
-        <div class="form-group"><label for="fCliente">Cliente <span class="required">*</span></label><input type="text" id="fCliente" placeholder="Ej: Coca-Cola Argentina" autocomplete="off"><span class="field-hint">Nombre del anunciante</span></div>
+        <div class="form-group"><label for="fCliente">Cliente <span class="required">*</span></label><input type="text"
+            id="fCliente" placeholder="Ej: Coca-Cola Argentina" autocomplete="off"><span class="field-hint">Nombre del
+            anunciante</span></div>
         <div class="form-group">
           <label for="fAudio">Audio / Spot <span class="required">*</span></label>
-          <div class="audio-selector" id="audioSelector"><input type="text" id="fAudio" placeholder="Seleccionar archivo de audio…" readonly><button class="btn-icon" id="btnSelectAudio" title="Explorar biblioteca">🎵</button></div>
+          <div class="audio-selector" id="audioSelector"><input type="text" id="fAudio"
+              placeholder="Seleccionar archivo de audio…" readonly><button class="btn-icon" id="btnSelectAudio"
+              title="Explorar biblioteca">🎵</button></div>
           <span class="field-hint" id="audioHint">Ningún archivo seleccionado</span>
         </div>
         <div class="audio-dropdown hidden" id="audioDropdown">
@@ -48,11 +74,15 @@
           <ul class="audio-list" id="audioList"></ul>
         </div>
         <div class="form-row">
-          <div class="form-group"><label for="fFechaInicio">Fecha Inicio <span class="required">*</span></label><input type="date" id="fFechaInicio"></div>
-          <div class="form-group"><label for="fFechaFin">Fecha Fin <span class="required">*</span></label><input type="date" id="fFechaFin"></div>
+          <div class="form-group"><label for="fFechaInicio">Fecha Inicio <span class="required">*</span></label><input
+              type="date" id="fFechaInicio"></div>
+          <div class="form-group"><label for="fFechaFin">Fecha Fin <span class="required">*</span></label><input
+              type="date" id="fFechaFin"></div>
         </div>
-        <div class="form-group"><label for="fNotas">Notas</label><textarea id="fNotas" rows="3" placeholder="Instrucciones especiales, restricciones…"></textarea></div>
-        <div class="matrix-summary" id="matrixSummary"><span>📊</span><span id="matrixSummaryText">Sin franjas horarias asignadas</span></div>
+        <div class="form-group"><label for="fNotas">Notas</label><textarea id="fNotas" rows="3"
+            placeholder="Instrucciones especiales, restricciones…"></textarea></div>
+        <div class="matrix-summary" id="matrixSummary"><span>📊</span><span id="matrixSummaryText">Sin franjas horarias
+            asignadas</span></div>
       </section>
       <section class="matrix-section">
         <div class="matrix-header">
@@ -68,24 +98,30 @@
           <span class="legend-item"><span class="legend-dot legend-dot--on"></span>Programado</span>
           <span class="legend-item"><span class="legend-dot legend-dot--prime"></span>Prime Time</span>
         </div>
-        <div class="matrix-scroll-wrap"><div class="matrix-grid" id="matrixGrid"></div></div>
+        <div class="matrix-scroll-wrap">
+          <div class="matrix-grid" id="matrixGrid"></div>
+        </div>
       </section>
     </div>
     <div class="modal-footer">
       <span class="modal-error hidden" id="modalError"></span>
       <button class="btn-secondary" id="btnModalCancel">Cancelar</button>
-      <button class="btn-primary" id="btnModalSave"><span id="btnSaveIcon">💾</span><span id="btnSaveText">Guardar Pauta</span></button>
+      <button class="btn-primary" id="btnModalSave"><span id="btnSaveIcon">💾</span><span id="btnSaveText">Guardar
+          Pauta</span></button>
     </div>
   </div>
 </div>
 <div class="modal-overlay hidden" id="deleteModal">
   <div class="modal-box modal-box--sm">
-    <div class="modal-header"><h3>Eliminar Pauta</h3><button class="modal-close" id="btnDeleteClose">✕</button></div>
+    <div class="modal-header">
+      <h3>Eliminar Pauta</h3><button class="modal-close" id="btnDeleteClose">✕</button>
+    </div>
     <div class="modal-body modal-body--center">
       <span class="delete-icon">⚠️</span>
       <p>¿Eliminar la pauta de <strong id="deleteClienteName"></strong>?</p>
       <p class="delete-warning">Esta acción no se puede deshacer.</p>
     </div>
-    <div class="modal-footer"><button class="btn-secondary" id="btnDeleteCancel">Cancelar</button><button class="btn-danger" id="btnDeleteConfirm">Eliminar</button></div>
+    <div class="modal-footer"><button class="btn-secondary" id="btnDeleteCancel">Cancelar</button><button
+        class="btn-danger" id="btnDeleteConfirm">Eliminar</button></div>
   </div>
 </div>

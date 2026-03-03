@@ -23,42 +23,57 @@ const Shell = {
         const routes = {
           dashboard: '01-estado-global',
           biblioteca: '02-biblioteca-musical',
-          pautas: '03-programacion-pautas',
+          pautas: '03-pautas',              // PARCHE 1
           cartuchera: '04-editor-cartuchera',
           logs: '05-historial-emision',
           engine: '06-motor-audio',
         };
-        this.loadSection(routes[module]);
+        // PARCHE 2: hook post-carga PautasController
+        this.loadSection(routes[module]).then(() => {
+          if (module === 'pautas') {
+            if (!window.PautasController) {
+              const s = document.createElement('script');
+              s.src = 'sections/03-pautas/pautas-controller.js';
+              s.async = true;
+              s.onload = () => window.PautasController?.init();
+              s.onerror = () => console.error('[Ónix] No se pudo cargar pautas-controller.js');
+              document.head.appendChild(s);
+            } else {
+              window.PautasController.init();
+            }
+          }
+        });
       });
     });
   },
+  // PARCHE 3: viewport-main + HTML_OVERRIDES
   async loadSection(sectionName) {
-    const container = document.getElementById(this.config.containerId);
+    const container = document.getElementById('viewport-main')
+      || document.getElementById(this.config.containerId);
     if (!container) return;
+    const HTML_OVERRIDES = {
+      '03-pautas': 'sections/03-programacion-pautas/programacion-pautas.html',
+    };
     try {
-      const url = `${this.config.basePath}${sectionName}/${sectionName.split('-').slice(1).join('-')}.html`;
+      const url = HTML_OVERRIDES[sectionName]
+        || `${this.config.basePath}${sectionName}/${sectionName.split('-').slice(1).join('-')}.html`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`No se pudo cargar: ${sectionName}`);
       container.innerHTML = await response.text();
       const titleEl = document.getElementById('module-title');
       if (titleEl) titleEl.textContent = sectionName.replace(/-/g, ' ').toUpperCase().slice(3);
     } catch (error) {
-      container.innerHTML = `<div class="error">Error al cargar pieza: ${error.message}</div>`;
+      container.innerHTML = `Error al cargar pieza: ${error.message}`;
     }
   },
 };
 document.addEventListener('DOMContentLoaded', () => Shell.init());
 
-/* ════════════════════════════════════════════════════════════════════════════
-   BIBLIOTECA MUSICAL
-════════════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-/* ── §1 · Schema de categorías ────────────────────────────────────────────── */
 let schema = { categorias: [] };
 const getCatValues = n => { const c = schema.categorias.find(x => x.nombre_interno === n); return c ? c.valores.map(v => v.valor) : []; };
 
-/* ── §2 · Estado ──────────────────────────────────────────────────────────── */
 let library = [];
 let filtered = [];
 let sortKey = null;
@@ -69,7 +84,6 @@ let audioEl = null;
 let playerTimer = null;
 let selectedFile = null;
 
-/* ── §3 · Helpers DOM (sin colisión con onix-waveform.js) ───────────────── */
 const $ = id => document.getElementById(id);
 const getOverlay = () => $('jz-overlay');
 const getTbody = () => $('jz-tbody');
@@ -77,12 +91,11 @@ const getCountEl = () => $('jz-count');
 const getStatusMsg = () => $('jz-status-msg');
 const getEmptyEl = () => $('jz-empty');
 
-/* ── §4 · Populación de selects ──────────────────────────────────────────── */
 const populateSelect = (selId, items, allLabel) => {
   const sel = $(selId);
   if (!sel) return;
   const cur = sel.value;
-  sel.innerHTML = `<option value="">${allLabel}</option>`;
+  sel.innerHTML = `${allLabel}`;
   items.forEach(v => {
     const o = document.createElement('option');
     o.value = v; o.textContent = v;
@@ -91,7 +104,6 @@ const populateSelect = (selId, items, allLabel) => {
   });
 };
 
-/* ── §5 · Renderizado de tabla ───────────────────────────────────────────── */
 const fmtDur = s => {
   const m = Math.floor(s / 60), sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
@@ -143,7 +155,6 @@ const render = () => {
   `).join('');
 };
 
-/* ── §6 · Filtrado y ordenamiento ────────────────────────────────────────── */
 const applyFilters = () => {
   const q = ($('jz-search')?.value || '').toLowerCase();
   const sc = $('jz-filter-sc')?.value || '';
@@ -151,9 +162,7 @@ const applyFilters = () => {
   const voz = $('jz-filter-voz')?.value || '';
   filtered = library.filter(t =>
     (!q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
-    (!sc || t.soundCode === sc) &&
-    (!pop || t.popularity === pop) &&
-    (!voz || t.voz === voz)
+    (!sc || t.soundCode === sc) && (!pop || t.popularity === pop) && (!voz || t.voz === voz)
   );
   if (sortKey) {
     filtered.sort((a, b) => {
@@ -166,7 +175,6 @@ const applyFilters = () => {
   render();
 };
 
-/* ── §7 · Mini Player ────────────────────────────────────────────────────── */
 const setPlayerInfo = track => {
   if ($('jz-player-title')) $('jz-player-title').textContent = track ? track.title : '—';
   if ($('jz-player-artist')) $('jz-player-artist').textContent = track ? track.artist : 'Sin pista cargada';
@@ -182,7 +190,7 @@ const stopPlayer = () => {
   if (prev) getTbody()?.querySelector(`tr[data-id="${prev}"]`)?.classList.remove('jz-row--playing');
   if ($('jz-timeline-fill')) $('jz-timeline-fill').style.width = '0%';
   if ($('jz-time-cur')) $('jz-time-cur').textContent = '0:00';
-  if ($('jz-player-icon')) $('jz-player-icon').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+  if ($('jz-player-icon')) $('jz-player-icon').innerHTML = '';
 };
 const updateTimeline = (cur, total) => {
   if ($('jz-timeline-fill')) $('jz-timeline-fill').style.width = `${(cur / total) * 100}%`;
@@ -206,9 +214,7 @@ const playTrack = track => {
       updateTimeline(t, track.duration);
     }, 500);
   });
-  audioEl.addEventListener('timeupdate', () => {
-    if (audioEl && !isNaN(audioEl.duration)) updateTimeline(audioEl.currentTime, track.duration);
-  });
+  audioEl.addEventListener('timeupdate', () => { if (audioEl && !isNaN(audioEl.duration)) updateTimeline(audioEl.currentTime, track.duration); });
   audioEl.addEventListener('ended', () => { stopPlayer(); setPlayerInfo(null); render(); });
   audioEl.addEventListener('error', () => {
     let t = 0;
@@ -222,42 +228,25 @@ const playTrack = track => {
   wsCmd('PREVIEW', { id: track.id });
 };
 
-/* ── §8 · Carga de audios ─────────────────────────────────────────────────── */
 const loadAudios = async () => {
   try {
     const res = await fetch(`${API_BASE}/api/v1/audios?limit=500&offset=0`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     library = (data.data || []).map(a => ({
-      id: a.id,
-      title: a.titulo || '—',
-      artist: a.artista || '—',
-      album: a.album || '',
-      duration: a.duracion || 0,
-      bpm: a.bpm || null,
-      year: a.fecha_lanzamiento || null,
-      soundCode: a.cat1 || '',
-      popularity: a.cat2 || '',
-      voz: a.voz || '',
-      codigoAuto: a.id ? String(a.id).padStart(6, '0') : '—',
-      archivo_path: a.archivo_path || '',
-      /* Cue points — nombres canonicos del backend */
-      cue_inicio: a.cue_inicio ?? a.intro ?? 0,
-      cue_intro: a.cue_intro ?? a.intro ?? 0,
-      cue_inicio_coro: a.cue_inicio_coro ?? 0,
-      cue_final_coro: a.cue_final_coro ?? 0,
-      cue_outro: a.cue_outro ?? a.outro ?? 0,
-      cue_mezcla: a.cue_mezcla ?? 0,
-      fade_in: a.fade_in ?? 0,
-      fade_out: a.fade_out ?? 0,
-      /* Retrocompatibilidad con campos simples */
-      intro: a.intro ?? a.cue_intro ?? 0,
-      outro: a.outro ?? a.cue_outro ?? 0,
+      id: a.id, title: a.titulo || '—', artist: a.artista || '—', album: a.album || '',
+      duration: a.duracion || 0, bpm: a.bpm || null, year: a.fecha_lanzamiento || null,
+      soundCode: a.cat1 || '', popularity: a.cat2 || '', voz: a.voz || '',
+      codigoAuto: a.id ? String(a.id).padStart(6, '0') : '—', archivo_path: a.archivo_path || '',
+      cue_inicio: a.cue_inicio ?? a.intro ?? 0, cue_intro: a.cue_intro ?? a.intro ?? 0,
+      cue_inicio_coro: a.cue_inicio_coro ?? 0, cue_final_coro: a.cue_final_coro ?? 0,
+      cue_outro: a.cue_outro ?? a.outro ?? 0, cue_mezcla: a.cue_mezcla ?? 0,
+      fade_in: a.fade_in ?? 0, fade_out: a.fade_out ?? 0,
+      intro: a.intro ?? a.cue_intro ?? 0, outro: a.outro ?? a.cue_outro ?? 0,
     }));
     filtered = [...library];
     applyFilters();
     if (getCountEl()) getCountEl().textContent = library.length;
-    /* Sync sidebar count badge */
     const sbCount = document.getElementById('jz-sb-count-lib');
     if (sbCount) sbCount.textContent = library.length;
   } catch (err) {
@@ -266,45 +255,21 @@ const loadAudios = async () => {
   }
 };
 
-/* ── §9 · MODAL: ABRIR ────────────────────────────────────────────────────── */
 async function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
-
-  /* 0. Actualizar selects de categorías dinámicas antes de abrir el modal */
-  if (typeof window.onixCategories?.syncSelects === 'function') {
-    window.onixCategories.syncSelects();
-  }
-
-  /* 1. Limpiezas previas de instancia */
+  if (typeof window.onixCategories?.syncSelects === 'function') window.onixCategories.syncSelects();
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
-
-  /* 2. Mostrar el modal (Crítico para dimensiones) */
-  overlay.classList.add('active');
-  overlay.style.display = 'flex';
-  overlay.style.zIndex = '9000';
-
-  /* 3. Inicializar motor de forma asíncrona */
+  overlay.classList.add('active'); overlay.style.display = 'flex'; overlay.style.zIndex = '9000';
   if (typeof window.wfInit === 'function') {
-    try {
-      await window.wfInit();
-      console.log('[Ónix] Waveform Motor listo.');
-    } catch (e) {
-      console.error('[Ónix] Error inicializando waveform:', e);
-    }
+    try { await window.wfInit(); } catch (e) { console.error('[Ónix] Error waveform:', e); }
   }
-
-  /* Asegurar que el panel sea visible */
-  const p = $('wf-panel');
-  if (p) p.style.display = 'block';
-
+  const p = $('wf-panel'); if (p) p.style.display = 'block';
   editingId = id;
   const fechaEl = $('modal-fecha');
   if (fechaEl) fechaEl.textContent = id ? '—' : new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
   if (id) {
-    const t = library.find(x => x.id === id);
-    if (!t) return;
+    const t = library.find(x => x.id === id); if (!t) return;
     if ($('modal-title-bar')) $('modal-title-bar').textContent = `${(t.artist || '').toUpperCase()} - ${(t.title || '').toUpperCase()}`;
     if ($('modal-artist')) $('modal-artist').value = (t.artist || '').toUpperCase();
     if ($('modal-title-input')) $('modal-title-input').value = (t.title || '').toUpperCase();
@@ -316,598 +281,208 @@ async function openModal(id = null) {
     if ($('modal-voz')) $('modal-voz').value = t.voz || '';
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'none';
     if ($('modal-archivo-path')) $('modal-archivo-path').value = t.archivo_path || '';
-
-    /* CARGAR WAVEFORM CON DATOS EXISTENTES */
     if (typeof window.wfLoadUrl === 'function' && t.archivo_path) {
-      let streamUrl = '';
       const parts = t.archivo_path.replace(/\\/g, '/').split('/');
-      const fileName = parts.pop();
-      const folderName = parts.pop() || 'musica';
-      streamUrl = `${API_BASE || 'http://localhost:8000'}/stream/${folderName}/${fileName}`;
-
-      const cues = {
-        inicio: t.cue_inicio || 0,
-        intro: t.cue_intro || 0,
-        inicio_coro: t.cue_inicio_coro || 0,
-        final_coro: t.cue_final_coro || 0,
-        outro: t.cue_outro || 0,
-        mezcla: t.cue_mezcla || 0
-      };
-
-      console.log('[BM] Editando:', t.id, 'Cargando onda:', streamUrl);
+      const fileName = parts.pop(), folderName = parts.pop() || 'musica';
+      const streamUrl = `${API_BASE || 'http://localhost:8000'}/stream/${folderName}/${fileName}`;
+      const cues = { inicio: t.cue_inicio || 0, intro: t.cue_intro || 0, inicio_coro: t.cue_inicio_coro || 0, final_coro: t.cue_final_coro || 0, outro: t.cue_outro || 0, mezcla: t.cue_mezcla || 0 };
       window.wfLoadUrl(streamUrl, cues);
     }
   } else {
     if ($('modal-title-bar')) $('modal-title-bar').textContent = 'NUEVA CANCIÓN';
-    ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm',
-      'modal-comentarios', 'modal-escritor', 'modal-compositor', 'modal-etiqueta',
-      'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => {
-        const el = $(fid); if (el) el.value = '';
-      });
+    ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm', 'modal-comentarios', 'modal-escritor', 'modal-compositor', 'modal-etiqueta', 'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => { const el = $(fid); if (el) el.value = ''; });
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
     if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
     if ($('modal-activado')) $('modal-activado').checked = true;
     if ($('modal-congelado')) $('modal-congelado').checked = false;
   }
-
-  overlay.classList.add('active');
-  overlay.style.display = 'flex';
-  overlay.style.zIndex = '9000';
+  overlay.classList.add('active'); overlay.style.display = 'flex'; overlay.style.zIndex = '9000';
   setTimeout(() => { const inp = $('modal-artist'); if (inp) inp.focus(); }, 100);
 }
 
-/* ── §10 · MODAL: CERRAR ─────────────────────────────────────────────────── */
 function closeModal() {
-  const overlay = getOverlay();
-  if (!overlay) return;
-  overlay.classList.remove('active');
-  overlay.style.display = '';
+  const overlay = getOverlay(); if (!overlay) return;
+  overlay.classList.remove('active'); overlay.style.display = '';
   editingId = null; selectedFile = null;
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
 }
 
-/* ── §11 · MODAL: GUARDAR ────────────────────────────────────────────────── */
 async function saveModal() {
   const titleVal = $('modal-title-input')?.value.trim();
   const artistVal = $('modal-artist')?.value.trim();
   if (!titleVal || !artistVal) { showToast('Título y artista son obligatorios', 'error'); return; }
   if (!editingId && !selectedFile) { showToast('Selecciona un archivo de audio', 'error'); return; }
-
-  /* ── Obtener cue points del editor de forma ────────────────────────────── */
   let markers = { inicio: 0, intro: 0, inicio_coro: 0, final_coro: 0, outro: 0, mezcla: 0, fade_in: 0, fade_out: 0 };
-  if (typeof window.wfGetMarkers === 'function') {
-    markers = window.wfGetMarkers();
-  }
-
+  if (typeof window.wfGetMarkers === 'function') markers = window.wfGetMarkers();
   const btnSave = $('jz-modal-save');
   if (btnSave) { btnSave.disabled = true; btnSave.textContent = 'Guardando…'; }
-
   try {
     let res;
-
     if (editingId) {
-      /* ── PUT: actualizar audio existente ─────────────────────────────── */
-      // Helper para uppercase seguro
       const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
-      const payload = {
-        titulo: titleVal,
-        artista: artistVal,
-        album: $('modal-album')?.value.trim() || null,
-        fecha_lanzamiento: $('modal-year')?.value.trim() || null,
-        bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null,
-        cat1: toUpper($('modal-sc1')?.value || $('modal-sc2')?.value) || null,
-        cat2: toUpper($('modal-popularity')?.value) || null,
-        voz: toUpper($('modal-voz')?.value) || null,
-        /* Cue points exactos del waveform */
-        cue_inicio: markers.inicio ?? 0,
-        cue_intro: markers.intro ?? 0,
-        cue_inicio_coro: markers.inicio_coro ?? 0,
-        cue_final_coro: markers.final_coro ?? 0,
-        cue_mezcla: markers.mezcla ?? 0,
-        fade_in: markers.fade_in ?? 0,
-        fade_out: markers.fade_out ?? 0,
-        /* Retrocompatibilidad */
-        intro: markers.intro ?? 0,
-        outro: markers.mezcla ?? 0,
-      };
-      // Limpiar nulls — el backend ignora campos ausentes en PUT parcial
+      const payload = { titulo: titleVal, artista: artistVal, album: $('modal-album')?.value.trim() || null, fecha_lanzamiento: $('modal-year')?.value.trim() || null, bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null, cat1: toUpper($('modal-sc1')?.value || $('modal-sc2')?.value) || null, cat2: toUpper($('modal-popularity')?.value) || null, voz: toUpper($('modal-voz')?.value) || null, cue_inicio: markers.inicio ?? 0, cue_intro: markers.intro ?? 0, cue_inicio_coro: markers.inicio_coro ?? 0, cue_final_coro: markers.final_coro ?? 0, cue_mezcla: markers.mezcla ?? 0, fade_in: markers.fade_in ?? 0, fade_out: markers.fade_out ?? 0, intro: markers.intro ?? 0, outro: markers.mezcla ?? 0 };
       Object.keys(payload).forEach(k => { if (payload[k] === null || payload[k] === '') delete payload[k]; });
-
-      res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
+      res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
-      /* ── POST: crear nuevo audio con archivo ─────────────────────────── */
       const formData = new FormData();
-      formData.append('titulo', titleVal);
-      formData.append('artista', artistVal);
-
-      const optionals = {
-        album: $('modal-album')?.value.trim(),
-        bpm: $('modal-bpm')?.value,
-        fecha_lanzamiento: $('modal-year')?.value.trim(),
-        cat1: $('modal-sc1')?.value || $('modal-sc2')?.value,
-        cat2: $('modal-popularity')?.value,
-        voz: $('modal-voz')?.value,
-      };
-      Object.entries(optionals).forEach(([k, v]) => { if (v) formData.append(k, v); });
-
-      /* Cue points del waveform */
-      formData.append('cue_inicio', markers.inicio ?? 0);
-      formData.append('cue_intro', markers.intro ?? 0);
-      formData.append('cue_inicio_coro', markers.inicio_coro ?? 0);
-      formData.append('cue_final_coro', markers.final_coro ?? 0);
-      formData.append('cue_mezcla', markers.mezcla ?? 0);
-      formData.append('fade_in', markers.fade_in ?? 0);
-      formData.append('fade_out', markers.fade_out ?? 0);
-      /* Retrocompatibilidad */
-      formData.append('intro', markers.intro ?? 0);
-      formData.append('outro', markers.mezcla ?? 0);
-
-      formData.append('file', selectedFile);
-
+      formData.append('titulo', titleVal); formData.append('artista', artistVal);
+      const opt = { album: $('modal-album')?.value.trim(), bpm: $('modal-bpm')?.value, fecha_lanzamiento: $('modal-year')?.value.trim(), cat1: $('modal-sc1')?.value || $('modal-sc2')?.value, cat2: $('modal-popularity')?.value, voz: $('modal-voz')?.value };
+      Object.entries(opt).forEach(([k, v]) => { if (v) formData.append(k, v); });
+      formData.append('cue_inicio', markers.inicio ?? 0); formData.append('cue_intro', markers.intro ?? 0); formData.append('cue_inicio_coro', markers.inicio_coro ?? 0); formData.append('cue_final_coro', markers.final_coro ?? 0); formData.append('cue_mezcla', markers.mezcla ?? 0); formData.append('fade_in', markers.fade_in ?? 0); formData.append('fade_out', markers.fade_out ?? 0); formData.append('intro', markers.intro ?? 0); formData.append('outro', markers.mezcla ?? 0); formData.append('file', selectedFile);
       res = await fetch(`${API_BASE}/api/v1/audios`, { method: 'POST', body: formData });
     }
-
     const data = await res.json();
-    if (!res.ok) {
-      const detail = data.detail;
-      showToast(typeof detail === 'object' ? (detail.mensaje || JSON.stringify(detail)) : (detail || `Error ${res.status}`), 'error');
-      return;
-    }
-
-    /* Notificar a otros módulos via WS (complementa el broadcast del servidor) */
+    if (!res.ok) { const detail = data.detail; showToast(typeof detail === 'object' ? (detail.mensaje || JSON.stringify(detail)) : (detail || `Error ${res.status}`), 'error'); return; }
     wsCmd('library_updated', { id: data.data?.id, titulo: titleVal, action: editingId ? 'update' : 'create' });
-
-    closeModal();
-    await loadAudios();
+    closeModal(); await loadAudios();
     showToast(editingId ? `✓ Actualizado: ${titleVal}` : `✓ Cargado: ${titleVal}`, 'success');
-
   } catch (err) {
-    showToast('Error de conexión con la API', 'error');
-    console.error('[BM·save]', err);
+    showToast('Error de conexión con la API', 'error'); console.error('[BM·save]', err);
   } finally {
     if (btnSave) { btnSave.disabled = false; btnSave.textContent = 'OK'; }
   }
 }
 
-/* ── §12 · Manejo de archivo ─────────────────────────────────────────────── */
 const handleFile = file => {
   if (!file || !file.type.startsWith('audio/')) { showToast('El archivo seleccionado no es audio', 'error'); return; }
   selectedFile = file;
   const info = $('modal-file-info');
   if (info) { info.textContent = `✓ ${file.name}  ·  ${(file.size / 1048576).toFixed(1)} MB`; info.style.display = 'block'; }
-  const ap = $('modal-archivo-path');
-  if (ap && !ap.value) ap.value = file.name;
-  const ti = $('modal-title-input');
-  if (ti && !ti.value) ti.value = file.name.replace(/\.[^.]+$/, '');
+  const ap = $('modal-archivo-path'); if (ap && !ap.value) ap.value = file.name;
+  const ti = $('modal-title-input'); if (ti && !ti.value) ti.value = file.name.replace(/\.[^.]+$/, '');
   if (typeof window.wfLoadFile === 'function') window.wfLoadFile(file);
   wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
 };
 
-/* ── §13 · Inicialización ────────────────────────────────────────────────── */
 const initApp = async () => {
-  /* Inicializar WaveSurfer — _waitWFStarted evita loops paralelos
-     si initApp() se llamara más de una vez.                        */
   if (!window._waitWFStarted) {
     window._waitWFStarted = true;
     const waitWF = () => {
-      if (document.getElementById('waveform') && typeof window.wfInit === 'function') {
-        window.wfInit();
-        console.log('[BM] WaveSurfer inicializado');
-      } else {
-        setTimeout(waitWF, 80);
-      }
+      if (document.getElementById('waveform') && typeof window.wfInit === 'function') { window.wfInit(); console.log('[BM] WaveSurfer inicializado'); }
+      else { setTimeout(waitWF, 80); }
     };
     waitWF();
   }
-
   setStatus('Cargando schema…');
-  try {
-    const r = await fetch(`${API_BASE}/api/v1/config/biblioteca/schema`);
-    if (r.ok) schema = await r.json();
-  } catch (e) { console.warn('[BM·schema]', e.message); }
-
-  setPlayerInfo(null);
-  setStatus('Cargando biblioteca…');
+  try { const r = await fetch(`${API_BASE}/api/v1/config/biblioteca/schema`); if (r.ok) schema = await r.json(); } catch (e) { console.warn('[BM·schema]', e.message); }
+  setPlayerInfo(null); setStatus('Cargando biblioteca…');
   await loadAudios();
   const n = library.length;
   setStatus(`Sistema listo · ${n} pista${n !== 1 ? 's' : ''} cargada${n !== 1 ? 's' : ''}`);
   showToast(`Biblioteca Musical lista · ${n} pistas`, 'success');
 };
 
-/* ── §14 · WS Bridge & Toast ─────────────────────────────────────────────── */
 const wsCmd = (cmd, data = {}) => {
   const msg = { module: 'biblioteca-musical', cmd, ts: Date.now(), data };
-  if (window.ShellWS?.send) { window.ShellWS.send(JSON.stringify(msg)); }
-  else { console.info('[BM·WS]', msg); }
+  if (window.ShellWS?.send) window.ShellWS.send(JSON.stringify(msg));
+  else console.info('[BM·WS]', msg);
 };
-
-const setStatus = msg => {
-  const el = getStatusMsg(); if (el) el.textContent = msg;
-};
-
+const setStatus = msg => { const el = getStatusMsg(); if (el) el.textContent = msg; };
 const showToast = (msg, type = 'info') => {
   const icons = { success: '✓', error: '✕', info: '·' };
   const t = document.createElement('div');
   t.className = `jz-toast jz-toast--${type}`;
-  t.innerHTML = `<span>${icons[type] || '·'}</span>${msg}`;
-  const container = $('jz-toasts');
-  if (container) container.appendChild(t);
-  setTimeout(() => {
-    t.style.cssText += 'opacity:0;transform:translateX(18px);transition:.3s';
-    setTimeout(() => t.remove(), 350);
-  }, 2800);
+  t.innerHTML = `${icons[type] || '·'}${msg}`;
+  const container = $('jz-toasts'); if (container) container.appendChild(t);
+  setTimeout(() => { t.style.cssText += 'opacity:0;transform:translateX(18px);transition:.3s'; setTimeout(() => t.remove(), 350); }, 2800);
 };
 
-/* ── §15 · Delegación global de eventos ──────────────────────────────────── */
 document.addEventListener('click', e => {
-
   if (e.target.closest('#jz-btn-add') || e.target.closest('#jz-sb-nueva')) { openModal(); return; }
   if (e.target.closest('#jz-modal-close')) { closeModal(); return; }
   if (e.target.closest('#jz-modal-cancel')) { closeModal(); return; }
   if (e.target.closest('#jz-modal-save')) { saveModal(); return; }
-
-  /* Sidebar: Cargar por lote — placeholder */
-  if (e.target.closest('#jz-sb-lote')) {
-    showToast('Carga por lote: próximamente', 'info');
-    return;
-  }
-
-  /* Sidebar: Eliminar seleccionados */
-  if (e.target.closest('#jz-sb-eliminar')) {
-    showToast('Selecciona una canción de la lista para eliminarla', 'info');
-    return;
-  }
-
-  /* Sidebar: Tareas */
+  if (e.target.closest('#jz-sb-lote')) { showToast('Carga por lote: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-sb-eliminar')) { showToast('Selecciona una canción de la lista para eliminarla', 'info'); return; }
   if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
-  if (e.target.closest('#jz-task-categorias')) {
-    if (window.onixCategories?.open) { window.onixCategories.open(); }
-    else { showToast('Editar Categorías: módulo no cargado', 'error'); }
-    return;
-  }
+  if (e.target.closest('#jz-task-categorias')) { if (window.onixCategories?.open) window.onixCategories.open(); else showToast('Editar Categorías: módulo no cargado', 'error'); return; }
   if (e.target.closest('#jz-task-estadisticas')) { showToast(`Estadísticas · ${library.length} pistas`, 'info'); return; }
   if (e.target.closest('#jz-task-exportar')) { showToast('Exportar BD: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-integridad')) { showToast('Chequeo de integridad: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-difusion')) { showToast('Análisis de difusión: próximamente', 'info'); return; }
-
   const overlay = getOverlay();
-  if (overlay && e.target === overlay) { closeModal(); return; }
-
-  /* Play en tabla */
-  const pb = e.target.closest('.jz-play-btn');
-  if (pb && pb.closest('#jz-tbody')) {
-    const track = library.find(t => t.id === +pb.dataset.id);
-    if (track) playTrack(track);
-    return;
-  }
-
-  /* Editar */
-  const eb = e.target.closest('.jz-action-edit');
-  if (eb) { openModal(+eb.dataset.id); return; }
-
-  /* Eliminar */
+  /* Bloqueo del cierre por clic en el overlay (Desactivado por seguridad) */
+  /* if (overlay && e.target === overlay) { closeModal(); return; } */
+  const pb = e.target.closest('.jz-play-btn'); if (pb && pb.closest('#jz-tbody')) { const track = library.find(t => t.id === +pb.dataset.id); if (track) playTrack(track); return; }
+  const eb = e.target.closest('.jz-action-edit'); if (eb) { openModal(+eb.dataset.id); return; }
   const db = e.target.closest('.jz-action-del');
   if (db) {
-    const id = +db.dataset.id;
-    const track = library.find(t => t.id === id);
+    const id = +db.dataset.id, track = library.find(t => t.id === id);
     if (!track || !confirm(`¿Eliminar "${track.title}"?`)) return;
     if (playingId === id) stopPlayer();
     fetch(`${API_BASE}/api/v1/audios/${id}`, { method: 'DELETE' })
-      .then(async res => {
-        if (!res.ok) { const d = await res.json().catch(() => ({})); showToast(d.detail || `Error ${res.status}`, 'error'); return; }
-        wsCmd('DELETE', { id });
-        showToast(`Eliminado: ${track.title}`, 'error');
-        loadAudios();
-      })
+      .then(async res => { if (!res.ok) { const d = await res.json().catch(() => ({})); showToast(d.detail || `Error ${res.status}`, 'error'); return; } wsCmd('DELETE', { id }); showToast(`Eliminado: ${track.title}`, 'error'); loadAudios(); })
       .catch(() => showToast('Error de conexión al eliminar', 'error'));
     return;
   }
-
-  /* Sort */
   const th = e.target.closest('.jz-table thead th[data-sort]');
-  if (th) {
-    const key = th.dataset.sort;
-    if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
-    document.querySelectorAll('.jz-table thead th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
-    th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
-    applyFilters();
-    return;
-  }
-
-  /* Mini player toggle */
+  if (th) { const key = th.dataset.sort; if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; } document.querySelectorAll('.jz-table thead th').forEach(h => h.classList.remove('sort-asc', 'sort-desc')); th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc'); applyFilters(); return; }
   if (e.target.closest('#jz-player-toggle')) { if (playingId) stopPlayer(); return; }
-
-  /* Timeline click */
-  const tl = e.target.closest('#jz-timeline');
-  if (tl && playingId) {
-    const rect = tl.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    if (audioEl?.duration) audioEl.currentTime = pct * audioEl.duration;
-    return;
-  }
-
-  /* Dropzone */
-  if (e.target.closest('#jz-dropzone')) {
-    if (e.target.id === 'modal-file') return;
-    const fi = $('modal-file'); if (fi) fi.click();
-    return;
-  }
-
+  const tl = e.target.closest('#jz-timeline'); if (tl && playingId) { const rect = tl.getBoundingClientRect(); const pct = (e.clientX - rect.left) / rect.width; if (audioEl?.duration) audioEl.currentTime = pct * audioEl.duration; return; }
+  if (e.target.closest('#jz-dropzone')) { if (e.target.id === 'modal-file') return; const fi = $('modal-file'); if (fi) fi.click(); return; }
 });
 
-/* Filtros */
 const FIDS = new Set(['jz-search', 'jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz']);
 document.addEventListener('input', e => { if (FIDS.has(e.target.id)) applyFilters(); });
-document.addEventListener('change', e => {
-  if (FIDS.has(e.target.id)) applyFilters();
-  if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]);
-});
-
-/* Drag & Drop */
+document.addEventListener('change', e => { if (FIDS.has(e.target.id)) applyFilters(); if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]); });
 document.addEventListener('dragover', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.add('drag-over'); } });
 document.addEventListener('dragleave', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) dz.classList.remove('drag-over'); });
-document.addEventListener('drop', e => {
-  const dz = e.target.closest('#jz-dropzone');
-  if (dz) { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); }
-});
-
-/* Teclado */
+document.addEventListener('drop', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); } });
 document.addEventListener('keydown', e => {
   const isOpen = getOverlay()?.classList.contains('active');
-  if (e.key === 'Escape' && isOpen) { closeModal(); return; }
+  /* Bloqueo del cierre por tecla Escape (Desactivado por seguridad) */
+  /* if (e.key === 'Escape' && isOpen) { closeModal(); return; } */
   if (e.key === 'n' && e.ctrlKey && !isOpen) { e.preventDefault(); openModal(); return; }
 });
 
-/* ── §16 · Poblar selects del modal de carga con categorías dinámicas ─────── */
-/**
- * populateUploadSelects()
- * Lee el estado actual de CategoriesModule y rellena los <select> del modal
- * de carga/edición de audio (modal-sc1, modal-sc2, modal-sc3, modal-popularity,
- * modal-era, modal-voz) con las opciones actuales.
- * Se invoca cada vez que se abre el modal para garantizar datos frescos.
- */
 function populateUploadSelects() {
   if (typeof window.onixCategories === 'undefined') return;
-  /* Force a sync so all selects get rebuilt from current state */
-  if (typeof window.onixCategories.syncSelects === 'function') {
-    window.onixCategories.syncSelects();
-  }
+  if (typeof window.onixCategories.syncSelects === 'function') window.onixCategories.syncSelects();
 }
 
-/* ── §17 · Exportar a window ─────────────────────────────────────────────── */
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveModal = saveModal;
 window.populateUploadSelects = populateUploadSelects;
-
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 
-
-/* ════════════════════════════════════════════════════════════════════════════
-   SISTEMA DE CATEGORÍAS ONIX FM
-════════════════════════════════════════════════════════════════════════════ */
 const CategoriesModule = (function () {
   const LS_KEY = 'onix_categories';
   const CATEGORY_KEYS = ['soundCode', 'popularity', 'era', 'voz', 'propiedades'];
   const DEFAULTS = {
-    soundCode: {
-      name: 'Sound Code', canRename: true, items: [
-        { label: 'POP', color: '#8e44ad', comment: '' },
-        { label: 'ROCK', color: '#6b7a1e', comment: '' },
-        { label: 'DANCE', color: '#cc0000', comment: '' },
-        { label: 'ALTERNATIVE', color: '#808080', comment: '' }
-      ]
-    },
-    popularity: {
-      name: 'Popularity', canRename: true, items: [
-        { label: 'HOT CURRENT', color: '#e67e22', comment: 'Default Category' },
-        { label: 'CURRENT', color: '#d35400', comment: '' },
-        { label: 'OLDIES 1', color: '#2980b9', comment: '' },
-        { label: 'OLDIES 2', color: '#1a5276', comment: '' }
-      ]
-    },
-    era: {
-      name: 'Era', canRename: true, items: [
-        { label: '60s', color: '#4a4a6a', comment: 'Default Category' },
-        { label: '70s', color: '#4a5a3a', comment: 'Default Category' },
-        { label: '80s', color: '#5a3a5a', comment: 'Default Category' },
-        { label: '90s', color: '#3a5a6a', comment: 'Default Category' },
-        { label: '2000s', color: '#5a4a2a', comment: '' },
-        { label: '2010s', color: '#2a4a5a', comment: '' },
-        { label: '2020s', color: '#3a3a5a', comment: '' }
-      ]
-    },
-    voz: {
-      name: 'Voz', canRename: false, items: [
-        { label: 'Female', color: '#8e44ad', comment: 'Default Category' },
-        { label: 'Male', color: '#555555', comment: 'Default Category' },
-        { label: 'Duo', color: '#555555', comment: 'Default Category' },
-        { label: 'Group', color: '#555555', comment: 'Default Category' },
-        { label: 'Collaboration', color: '#555555', comment: 'Default Category' }
-      ]
-    },
+    soundCode: { name: 'Sound Code', canRename: true, items: [{ label: 'POP', color: '#8e44ad', comment: '' }, { label: 'ROCK', color: '#6b7a1e', comment: '' }, { label: 'DANCE', color: '#cc0000', comment: '' }, { label: 'ALTERNATIVE', color: '#808080', comment: '' }] },
+    popularity: { name: 'Popularity', canRename: true, items: [{ label: 'HOT CURRENT', color: '#e67e22', comment: 'Default Category' }, { label: 'CURRENT', color: '#d35400', comment: '' }, { label: 'OLDIES 1', color: '#2980b9', comment: '' }, { label: 'OLDIES 2', color: '#1a5276', comment: '' }] },
+    era: { name: 'Era', canRename: true, items: [{ label: '60s', color: '#4a4a6a', comment: 'Default Category' }, { label: '70s', color: '#4a5a3a', comment: 'Default Category' }, { label: '80s', color: '#5a3a5a', comment: 'Default Category' }, { label: '90s', color: '#3a5a6a', comment: 'Default Category' }, { label: '2000s', color: '#5a4a2a', comment: '' }, { label: '2010s', color: '#2a4a5a', comment: '' }, { label: '2020s', color: '#3a3a5a', comment: '' }] },
+    voz: { name: 'Voz', canRename: false, items: [{ label: 'Female', color: '#8e44ad', comment: 'Default Category' }, { label: 'Male', color: '#555555', comment: 'Default Category' }, { label: 'Duo', color: '#555555', comment: 'Default Category' }, { label: 'Group', color: '#555555', comment: 'Default Category' }, { label: 'Collaboration', color: '#555555', comment: 'Default Category' }] },
     propiedades: { name: 'Propiedades', canRename: false, items: [] }
   };
-
-  let categories = {};
-  let activeKey = 'soundCode';
-  let selectedIdx = -1;
-
-  function load() {
-    try {
-      const stored = localStorage.getItem(LS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        CATEGORY_KEYS.forEach(k => {
-          categories[k] = Object.assign({}, DEFAULTS[k], parsed[k] || {});
-          if (!Array.isArray(categories[k].items)) categories[k].items = [];
-        });
-      } else { reset(); }
-    } catch (e) { reset(); }
-  }
-
+  let categories = {}, activeKey = 'soundCode', selectedIdx = -1;
+  function load() { try { const stored = localStorage.getItem(LS_KEY); if (stored) { const parsed = JSON.parse(stored); CATEGORY_KEYS.forEach(k => { categories[k] = Object.assign({}, DEFAULTS[k], parsed[k] || {}); if (!Array.isArray(categories[k].items)) categories[k].items = []; }); } else { reset(); } } catch (e) { reset(); } }
   function save() { localStorage.setItem(LS_KEY, JSON.stringify(categories)); }
   function reset() { CATEGORY_KEYS.forEach(k => { categories[k] = JSON.parse(JSON.stringify(DEFAULTS[k])); }); }
-
-  const SELECT_MAP = {
-    soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'],
-    popularity: ['modal-popularity', 'jz-filter-pop'],
-    era: ['modal-era'],
-    voz: ['modal-voz', 'jz-filter-voz'],
-    propiedades: []
-  };
-
-  const SELECT_LABELS = {
-    'modal-sc1': '— SC1 —', 'modal-sc2': '— SC2 —', 'modal-sc3': '— SC3 —', 'jz-filter-sc': 'Sound Code',
-    'modal-popularity': '— —', 'jz-filter-pop': 'Popularity', 'modal-era': '—', 'modal-voz': '—', 'jz-filter-voz': 'Voz'
-  };
-
-  function sync() {
-    CATEGORY_KEYS.forEach(key => {
-      const ids = SELECT_MAP[key] || [];
-      const items = categories[key]?.items || [];
-      ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        const cur = el.value;
-        el.innerHTML = `<option value="">${SELECT_LABELS[id] || '—'}</option>`;
-        items.forEach(it => {
-          const o = document.createElement('option');
-          o.value = it.label; o.textContent = it.label;
-          el.appendChild(o);
-        });
-        if (cur && [...el.options].some(o => o.value === cur)) el.value = cur;
-      });
-    });
-  }
-
-  function renderSidebar() {
-    const sb = document.getElementById('cat-sidebar');
-    if (!sb) return;
-    sb.innerHTML = CATEGORY_KEYS.map(key => `
-      <div class="cat-sidebar__item ${key === activeKey ? 'active' : ''}" data-key="${key}">
-        <span class="cat-sidebar__icon">♪</span>${categories[key].name}
-      </div>
-    `).join('');
-    if (!categories[activeKey]?.canRename) {
-      const n = document.createElement('div');
-      n.className = 'cat-sidebar__note';
-      n.textContent = 'Esta categoría no puede ser renombrada.';
-      sb.appendChild(n);
-    }
-  }
-
-  function renderItems() {
-    const list = document.getElementById('cat-items-list');
-    if (!list) return;
-    const items = categories[activeKey]?.items || [];
-    if (!items.length) {
-      list.innerHTML = '<div style="padding:24px;text-align:center;color:#444;font-size:11px;">— Sin ítems —</div>';
-      return;
-    }
-    list.innerHTML = items.map((it, i) => `
-      <div class="cat-item-row ${i === selectedIdx ? 'selected' : ''}" data-idx="${i}">
-        <div class="cat-item__name"><span class="cat-item__swatch" style="background:${it.color}"></span>${it.label}</div>
-        <div class="cat-item__comment">${it.comment || ''}</div>
-      </div>
-    `).join('');
-  }
-
-  function updateHeader() {
-    const cat = categories[activeKey];
-    const p = document.getElementById('cat-panel-prefix'), n = document.getElementById('cat-panel-name');
-    if (p) p.textContent = cat.canRename ? 'Cambiar Categoría por' : 'Cambiar';
-    if (n) n.textContent = cat.name;
-  }
-
+  const SELECT_MAP = { soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'], popularity: ['modal-popularity', 'jz-filter-pop'], era: ['modal-era'], voz: ['modal-voz', 'jz-filter-voz'], propiedades: [] };
+  const SELECT_LABELS = { 'modal-sc1': '— SC1 —', 'modal-sc2': '— SC2 —', 'modal-sc3': '— SC3 —', 'jz-filter-sc': 'Sound Code', 'modal-popularity': '— —', 'jz-filter-pop': 'Popularity', 'modal-era': '—', 'modal-voz': '—', 'jz-filter-voz': 'Voz' };
+  function sync() { CATEGORY_KEYS.forEach(key => { const ids = SELECT_MAP[key] || [], items = categories[key]?.items || []; ids.forEach(id => { const el = document.getElementById(id); if (!el) return; const cur = el.value; el.innerHTML = `${SELECT_LABELS[id] || '—'}`; items.forEach(it => { const o = document.createElement('option'); o.value = it.label; o.textContent = it.label; el.appendChild(o); }); if (cur && [...el.options].some(o => o.value === cur)) el.value = cur; }); }); }
+  function renderSidebar() { const sb = document.getElementById('cat-sidebar'); if (!sb) return; sb.innerHTML = CATEGORY_KEYS.map(key => `♪${categories[key].name}`).join(''); if (!categories[activeKey]?.canRename) { const n = document.createElement('div'); n.className = 'cat-sidebar__note'; n.textContent = 'Esta categoría no puede ser renombrada.'; sb.appendChild(n); } }
+  function renderItems() { const list = document.getElementById('cat-items-list'); if (!list) return; const items = categories[activeKey]?.items || []; if (!items.length) { list.innerHTML = '— Sin ítems —'; return; } list.innerHTML = items.map((it, i) => `${it.label}${it.comment || ''}`).join(''); }
+  function updateHeader() { const cat = categories[activeKey], p = document.getElementById('cat-panel-prefix'), n = document.getElementById('cat-panel-name'); if (p) p.textContent = cat.canRename ? 'Cambiar Categoría por' : 'Cambiar'; if (n) n.textContent = cat.name; }
   const publicApi = {
     init() { load(); sync(); },
     syncSelects() { sync(); },
-    open() {
-      const overlay = document.getElementById('cat-overlay');
-      if (!overlay) return;
-      activeKey = 'soundCode'; selectedIdx = -1;
-      overlay.classList.add('active');
-      renderSidebar(); renderItems(); updateHeader();
-    },
+    open() { const overlay = document.getElementById('cat-overlay'); if (!overlay) return; activeKey = 'soundCode'; selectedIdx = -1; overlay.classList.add('active'); renderSidebar(); renderItems(); updateHeader(); },
     close() { document.getElementById('cat-overlay')?.classList.remove('active'); },
     select(key) { activeKey = key; selectedIdx = -1; renderSidebar(); renderItems(); updateHeader(); },
-    add() {
-      const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase();
-      if (!label) return;
-      if (categories[activeKey].items.some(i => i.label === label)) return;
-      categories[activeKey].items.push({
-        label,
-        color: document.getElementById('cat-new-color')?.value || '#8e44ad',
-        comment: document.getElementById('cat-new-comment')?.value.trim() || ''
-      });
-      save(); sync(); renderItems();
-      document.getElementById('cat-add-form')?.classList.remove('visible');
-    },
-    openEdit() {
-      if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; }
-      const item = categories[activeKey].items[selectedIdx];
-      if (!item) return;
-      /* Close add form if open */
-      document.getElementById('cat-add-form')?.classList.remove('visible');
-      /* Pre-fill edit form with current values */
-      const nameEl = document.getElementById('cat-edit-name');
-      const colorEl = document.getElementById('cat-edit-color');
-      const commentEl = document.getElementById('cat-edit-comment');
-      if (nameEl) nameEl.value = item.label;
-      if (colorEl) colorEl.value = item.color || '#8e44ad';
-      if (commentEl) commentEl.value = item.comment || '';
-      document.getElementById('cat-edit-form')?.classList.add('visible');
-      if (nameEl) nameEl.focus();
-    },
-    confirmEdit() {
-      if (selectedIdx < 0) return;
-      const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase();
-      if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; }
-      const item = categories[activeKey].items[selectedIdx];
-      if (!item) return;
-      /* Check for duplicate label ignoring the item being edited */
-      const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel);
-      if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; }
-      item.label = newLabel;
-      item.color = document.getElementById('cat-edit-color')?.value || item.color;
-      item.comment = document.getElementById('cat-edit-comment')?.value.trim() ?? item.comment;
-      save(); sync(); renderItems();
-      document.getElementById('cat-edit-form')?.classList.remove('visible');
-      showToast(`✓ Ítem actualizado: ${newLabel}`, 'success');
-    },
-    delete() {
-      if (selectedIdx < 0) return;
-      categories[activeKey].items.splice(selectedIdx, 1);
-      selectedIdx = -1; save(); sync(); renderItems();
-    },
-    move(dir) {
-      const items = categories[activeKey].items;
-      if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;
-      [items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]];
-      selectedIdx += dir; save(); sync(); renderItems();
-    }
+    add() { const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase(); if (!label) return; if (categories[activeKey].items.some(i => i.label === label)) return; categories[activeKey].items.push({ label, color: document.getElementById('cat-new-color')?.value || '#8e44ad', comment: document.getElementById('cat-new-comment')?.value.trim() || '' }); save(); sync(); renderItems(); document.getElementById('cat-add-form')?.classList.remove('visible'); },
+    openEdit() { if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; document.getElementById('cat-add-form')?.classList.remove('visible'); const nameEl = document.getElementById('cat-edit-name'), colorEl = document.getElementById('cat-edit-color'), commentEl = document.getElementById('cat-edit-comment'); if (nameEl) nameEl.value = item.label; if (colorEl) colorEl.value = item.color || '#8e44ad'; if (commentEl) commentEl.value = item.comment || ''; document.getElementById('cat-edit-form')?.classList.add('visible'); if (nameEl) nameEl.focus(); },
+    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } item.label = newLabel; item.color = document.getElementById('cat-edit-color')?.value || item.color; item.comment = document.getElementById('cat-edit-comment')?.value.trim() ?? item.comment; save(); sync(); renderItems(); document.getElementById('cat-edit-form')?.classList.remove('visible'); showToast(`✓ Ítem actualizado: ${newLabel}`, 'success'); },
+    delete() { if (selectedIdx < 0) return; categories[activeKey].items.splice(selectedIdx, 1); selectedIdx = -1; save(); sync(); renderItems(); },
+    move(dir) { const items = categories[activeKey].items; if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;[items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]]; selectedIdx += dir; save(); sync(); renderItems(); }
   };
-
-  /* Event delegation for modal internal buttons */
   document.addEventListener('click', e => {
     const t = e.target;
-    if (t.closest('.cat-sidebar__item')) {
-      /* Close any open forms when switching categories */
-      document.getElementById('cat-add-form')?.classList.remove('visible');
-      document.getElementById('cat-edit-form')?.classList.remove('visible');
-      publicApi.select(t.closest('.cat-sidebar__item').dataset.key);
-    }
+    if (t.closest('.cat-sidebar__item')) { document.getElementById('cat-add-form')?.classList.remove('visible'); document.getElementById('cat-edit-form')?.classList.remove('visible'); publicApi.select(t.closest('.cat-sidebar__item').dataset.key); }
     if (t.closest('.cat-item-row')) { selectedIdx = parseInt(t.closest('.cat-item-row').dataset.idx); renderItems(); }
-    if (t.closest('#cat-btn-agregar')) {
-      document.getElementById('cat-edit-form')?.classList.remove('visible');
-      document.getElementById('cat-add-form')?.classList.add('visible');
-    }
+    if (t.closest('#cat-btn-agregar')) { document.getElementById('cat-edit-form')?.classList.remove('visible'); document.getElementById('cat-add-form')?.classList.add('visible'); }
     if (t.closest('#cat-confirm-add')) publicApi.add();
     if (t.closest('#cat-cancel-add')) document.getElementById('cat-add-form')?.classList.remove('visible');
     if (t.closest('#cat-btn-editar')) publicApi.openEdit();
@@ -919,12 +494,9 @@ const CategoriesModule = (function () {
     if (t.closest('#cat-close-btn') || t.closest('#cat-btn-ok')) publicApi.close();
     if (t.id === 'cat-overlay') publicApi.close();
   });
-
   return publicApi;
 })();
 
-/* ── §17 · Arranque ──────────────────────────────────────────────────────── */
 CategoriesModule.init();
 window.onixCategories = CategoriesModule;
-
 initApp();

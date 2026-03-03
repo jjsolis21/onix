@@ -282,6 +282,13 @@
         _syncInputs(); _drawMarkers(); return;
       }
 
+      var marcarBtn = e.target.closest('[data-wf-marcar]');
+      if (marcarBtn && _ws) {
+        var mk = marcarBtn.dataset.wfMarcar;
+        _cues[mk] = _r2(_ws.getCurrentTime());
+        _syncInputs(); _drawMarkers(); return;
+      }
+
       var escBtn = e.target.closest('[data-wf-escuchar]');
       if (escBtn && _ws) {
         var t = _cues[escBtn.dataset.wfEscuchar] || 0;
