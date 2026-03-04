@@ -8,7 +8,7 @@ media/*.m4a
 
 # --- Base de Datos y Binarios ---
 # Ignoramos la DB local para que no se sobreescriba en GitHub
-radio_core.db
+
 *.db-journal
 *.db-wal
 *.db-shm

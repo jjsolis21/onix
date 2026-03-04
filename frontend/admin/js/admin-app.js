@@ -23,24 +23,15 @@ const Shell = {
         const routes = {
           dashboard: '01-estado-global',
           biblioteca: '02-biblioteca-musical',
-          pautas: '03-pautas',              // PARCHE 1
+          pautas: '03-programacion-pautas',
           cartuchera: '04-editor-cartuchera',
           logs: '05-historial-emision',
           engine: '06-motor-audio',
         };
-        // PARCHE 2: hook post-carga PautasController
         this.loadSection(routes[module]).then(() => {
-          if (module === 'pautas') {
-            if (!window.PautasController) {
-              const s = document.createElement('script');
-              s.src = 'sections/03-pautas/pautas-controller.js';
-              s.async = true;
-              s.onload = () => window.PautasController?.init();
-              s.onerror = () => console.error('[Ónix] No se pudo cargar pautas-controller.js');
-              document.head.appendChild(s);
-            } else {
-              window.PautasController.init();
-            }
+          if (module === 'biblioteca') {
+            initApp();
+            if (typeof CategoriesModule !== 'undefined') CategoriesModule.syncSelects();
           }
         });
       });
@@ -51,9 +42,7 @@ const Shell = {
     const container = document.getElementById('viewport-main')
       || document.getElementById(this.config.containerId);
     if (!container) return;
-    const HTML_OVERRIDES = {
-      '03-pautas': 'sections/03-programacion-pautas/programacion-pautas.html',
-    };
+    const HTML_OVERRIDES = {};
     try {
       const url = HTML_OVERRIDES[sectionName]
         || `${this.config.basePath}${sectionName}/${sectionName.split('-').slice(1).join('-')}.html`;
@@ -126,33 +115,41 @@ const render = () => {
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
-  tbody.innerHTML = filtered.map(t => `
-    <tr data-id="${t.id}" class="${playingId === t.id ? 'jz-row--playing' : ''}">
+  tbody.innerHTML = filtered.map(t => {
+    const cat1Color = (window.onixCategories?.getCategories?.()?.soundCode?.items || []).find(i => i.label === t.soundCode)?.color;
+    const bgStyle = cat1Color ? `background: linear-gradient(90deg, ${cat1Color}22 0%, ${cat1Color}08 100%) !important; border-left: 3px solid ${cat1Color} !important;` : '';
+    return `
+    <tr data-id="${t.id}" class="${playingId === t.id ? 'jz-row--playing' : ''}" style="${bgStyle}">
       <td class="jz-cell-id">${t.id}</td>
       <td class="jz-cell-play">
         <button class="jz-play-btn ${playingId === t.id ? 'playing' : ''}"
           data-id="${t.id}" title="Preescucha">
           ${playingId === t.id
-      ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
-      : `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
+        ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+        : `<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`}
         </button>
       </td>
       <td class="jz-cell-cod">${t.codigoAuto || '—'}</td>
       <td class="jz-cell-title">${(t.title || '').toUpperCase()}</td>
       <td class="jz-cell-art">${(t.artist || '').toUpperCase()}</td>
-      <td class="jz-cell-sc">${(t.soundCode || '').toUpperCase() || '—'}</td>
+      <td class="jz-cell-sc" style="${cat1Color ? `color:${cat1Color};font-weight:bold` : ''}">${(t.soundCode || '').toUpperCase() || '—'}</td>
       <td class="jz-cell-pop">${t.popularity || '—'}</td>
       <td>${voxBadge(t.voz)}</td>
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--jz-text3);text-align:right">${t.bpm || '—'}</td>
       <td class="jz-cell-dur">${fmtDur(t.duration || 0)}</td>
       <td>
         <div class="jz-actions">
-          <button class="jz-btn jz-btn--sm jz-action-edit" data-id="${t.id}" title="Editar">✎</button>
-          <button class="jz-btn jz-btn--sm jz-btn--danger jz-action-del" data-id="${t.id}" title="Eliminar">✕</button>
+          <button class="jz-row-action jz-row-action--edit jz-action-edit" data-id="${t.id}" title="Editar">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="jz-row-action jz-row-action--del jz-action-del" data-id="${t.id}" title="Eliminar">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
         </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 };
 
 const applyFilters = () => {
@@ -160,9 +157,16 @@ const applyFilters = () => {
   const sc = $('jz-filter-sc')?.value || '';
   const pop = $('jz-filter-pop')?.value || '';
   const voz = $('jz-filter-voz')?.value || '';
+  const cat3 = $('jz-filter-cat3')?.value || '';
+  const year = $('jz-filter-year')?.value || '';
+
   filtered = library.filter(t =>
-    (!q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)) &&
-    (!sc || t.soundCode === sc) && (!pop || t.popularity === pop) && (!voz || t.voz === voz)
+    (!q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || (t.album && t.album.toLowerCase().includes(q))) &&
+    (!sc || t.soundCode === sc) &&
+    (!pop || t.popularity === pop) &&
+    (!voz || t.voz === voz) &&
+    (!cat3 || t.era === cat3) &&
+    (!year || String(t.year) === year)
   );
   if (sortKey) {
     filtered.sort((a, b) => {
@@ -290,7 +294,7 @@ async function openModal(id = null) {
     }
   } else {
     if ($('modal-title-bar')) $('modal-title-bar').textContent = 'NUEVA CANCIÓN';
-    ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm', 'modal-comentarios', 'modal-escritor', 'modal-compositor', 'modal-etiqueta', 'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => { const el = $(fid); if (el) el.value = ''; });
+    ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm', 'modal-escritor', 'modal-compositor', 'modal-etiqueta', 'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => { const el = $(fid); if (el) el.value = ''; });
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
     if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
     if ($('modal-activado')) $('modal-activado').checked = true;
@@ -354,6 +358,26 @@ const handleFile = file => {
   wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
 };
 
+const populateYearFilters = () => {
+  const sel = $('jz-filter-year');
+  if (!sel) {
+    if (!window._yearRetries) window._yearRetries = 0;
+    if (window._yearRetries < 20) {
+      window._yearRetries++;
+      setTimeout(populateYearFilters, 250);
+    }
+    return;
+  }
+  if (sel.options.length > 1) return;
+  const currentYear = new Date().getFullYear();
+  sel.innerHTML = '<option value="">Todos</option>';
+  for (let y = currentYear; y >= 1950; y--) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    sel.appendChild(o);
+  }
+};
+
 const initApp = async () => {
   if (!window._waitWFStarted) {
     window._waitWFStarted = true;
@@ -363,6 +387,7 @@ const initApp = async () => {
     };
     waitWF();
   }
+  populateYearFilters();
   setStatus('Cargando schema…');
   try { const r = await fetch(`${API_BASE}/api/v1/config/biblioteca/schema`); if (r.ok) schema = await r.json(); } catch (e) { console.warn('[BM·schema]', e.message); }
   setPlayerInfo(null); setStatus('Cargando biblioteca…');
@@ -396,7 +421,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#jz-sb-eliminar')) { showToast('Selecciona una canción de la lista para eliminarla', 'info'); return; }
   if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-categorias')) { if (window.onixCategories?.open) window.onixCategories.open(); else showToast('Editar Categorías: módulo no cargado', 'error'); return; }
-  if (e.target.closest('#jz-task-estadisticas')) { showToast(`Estadísticas · ${library.length} pistas`, 'info'); return; }
+  if (e.target.closest('#jz-task-estadisticas')) { window.ShellNav.activate('07-estadisticas'); return; }
   if (e.target.closest('#jz-task-exportar')) { showToast('Exportar BD: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-integridad')) { showToast('Chequeo de integridad: próximamente', 'info'); return; }
   if (e.target.closest('#jz-task-difusion')) { showToast('Análisis de difusión: próximamente', 'info'); return; }
@@ -450,6 +475,22 @@ document.addEventListener('click', e => {
     }
     return;
   }
+});
+
+document.addEventListener('dblclick', e => {
+  const row = e.target.closest('tr[data-id]');
+  if (row && row.closest('#jz-tbody')) {
+    const id = +row.dataset.id;
+    if (id) openModal(id);
+  }
+});
+
+/* ── DELEGATED LISTENERS — Búsqueda en tiempo real + filtros ──────── */
+document.addEventListener('input', e => {
+  if (e.target.id === 'jz-search') applyFilters();
+});
+document.addEventListener('change', e => {
+  if (['jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz', 'jz-filter-cat3', 'jz-filter-year', 'jz-filter-prioridad'].includes(e.target.id)) applyFilters();
 });
 
 /* ── LOTE WIZARD LOGIC ─────────────────────────────────────────────── */
@@ -721,31 +762,40 @@ const CategoriesModule = (function () {
   const LS_KEY = 'onix_categories';
   const CATEGORY_KEYS = ['soundCode', 'popularity', 'era', 'voz', 'propiedades'];
   const DEFAULTS = {
-    soundCode: { name: 'Sound Code', canRename: true, items: [{ label: 'POP', color: '#8e44ad', comment: '' }, { label: 'ROCK', color: '#6b7a1e', comment: '' }, { label: 'DANCE', color: '#cc0000', comment: '' }, { label: 'ALTERNATIVE', color: '#808080', comment: '' }] },
-    popularity: { name: 'Popularity', canRename: true, items: [{ label: 'HOT CURRENT', color: '#e67e22', comment: 'Default Category' }, { label: 'CURRENT', color: '#d35400', comment: '' }, { label: 'OLDIES 1', color: '#2980b9', comment: '' }, { label: 'OLDIES 2', color: '#1a5276', comment: '' }] },
-    era: { name: 'Era', canRename: true, items: [{ label: '60s', color: '#4a4a6a', comment: 'Default Category' }, { label: '70s', color: '#4a5a3a', comment: 'Default Category' }, { label: '80s', color: '#5a3a5a', comment: 'Default Category' }, { label: '90s', color: '#3a5a6a', comment: 'Default Category' }, { label: '2000s', color: '#5a4a2a', comment: '' }, { label: '2010s', color: '#2a4a5a', comment: '' }, { label: '2020s', color: '#3a3a5a', comment: '' }] },
-    voz: { name: 'Voz', canRename: false, items: [{ label: 'Female', color: '#8e44ad', comment: 'Default Category' }, { label: 'Male', color: '#555555', comment: 'Default Category' }, { label: 'Duo', color: '#555555', comment: 'Default Category' }, { label: 'Group', color: '#555555', comment: 'Default Category' }, { label: 'Collaboration', color: '#555555', comment: 'Default Category' }] },
+    soundCode: { name: 'Categoría 1', canRename: true, items: [{ label: 'POP', color: '#8e44ad' }, { label: 'ROCK', color: '#6b7a1e' }, { label: 'DANCE', color: '#cc0000' }, { label: 'ALTERNATIVE', color: '#808080' }] },
+    popularity: { name: 'Categoría 2', canRename: true, items: [{ label: 'HOT CURRENT', color: '#e67e22' }, { label: 'CURRENT', color: '#d35400' }, { label: 'OLDIES 1', color: '#2980b9' }, { label: 'OLDIES 2', color: '#1a5276' }] },
+    era: { name: 'Categoría 3', canRename: true, items: [{ label: '60s', color: '#4a4a6a' }, { label: '70s', color: '#4a5a3a' }, { label: '80s', color: '#5a3a5a' }, { label: '90s', color: '#3a5a6a' }, { label: '2000s', color: '#5a4a2a' }, { label: '2010s', color: '#2a4a5a' }, { label: '2020s', color: '#3a3a5a' }] },
+    voz: { name: 'Voz', canRename: false, items: [{ label: 'Female', color: '#8e44ad' }, { label: 'Male', color: '#555555' }, { label: 'Duo', color: '#555555' }, { label: 'Group', color: '#555555' }, { label: 'Collaboration', color: '#555555' }] },
     propiedades: { name: 'Propiedades', canRename: false, items: [] }
   };
   let categories = {}, activeKey = 'soundCode', selectedIdx = -1;
   function load() { try { const stored = localStorage.getItem(LS_KEY); if (stored) { const parsed = JSON.parse(stored); CATEGORY_KEYS.forEach(k => { categories[k] = Object.assign({}, DEFAULTS[k], parsed[k] || {}); if (!Array.isArray(categories[k].items)) categories[k].items = []; }); } else { reset(); } } catch (e) { reset(); } }
   function save() { localStorage.setItem(LS_KEY, JSON.stringify(categories)); }
   function reset() { CATEGORY_KEYS.forEach(k => { categories[k] = JSON.parse(JSON.stringify(DEFAULTS[k])); }); }
-  const SELECT_MAP = { soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'], popularity: ['modal-popularity', 'jz-filter-pop'], era: ['modal-era'], voz: ['modal-voz', 'jz-filter-voz'], propiedades: [] };
-  const SELECT_LABELS = { 'modal-sc1': '— SC1 —', 'modal-sc2': '— SC2 —', 'modal-sc3': '— SC3 —', 'jz-filter-sc': 'Sound Code', 'modal-popularity': '— —', 'jz-filter-pop': 'Popularity', 'modal-era': '—', 'modal-voz': '—', 'jz-filter-voz': 'Voz' };
-  function sync() { CATEGORY_KEYS.forEach(key => { const ids = SELECT_MAP[key] || [], items = categories[key]?.items || []; ids.forEach(id => { const el = document.getElementById(id); if (!el) return; const cur = el.value; el.innerHTML = `${SELECT_LABELS[id] || '—'}`; items.forEach(it => { const o = document.createElement('option'); o.value = it.label; o.textContent = it.label; el.appendChild(o); }); if (cur && [...el.options].some(o => o.value === cur)) el.value = cur; }); }); }
-  function renderSidebar() { const sb = document.getElementById('cat-sidebar'); if (!sb) return; sb.innerHTML = CATEGORY_KEYS.map(key => `♪${categories[key].name}`).join(''); if (!categories[activeKey]?.canRename) { const n = document.createElement('div'); n.className = 'cat-sidebar__note'; n.textContent = 'Esta categoría no puede ser renombrada.'; sb.appendChild(n); } }
-  function renderItems() { const list = document.getElementById('cat-items-list'); if (!list) return; const items = categories[activeKey]?.items || []; if (!items.length) { list.innerHTML = '— Sin ítems —'; return; } list.innerHTML = items.map((it, i) => `${it.label}${it.comment || ''}`).join(''); }
-  function updateHeader() { const cat = categories[activeKey], p = document.getElementById('cat-panel-prefix'), n = document.getElementById('cat-panel-name'); if (p) p.textContent = cat.canRename ? 'Cambiar Categoría por' : 'Cambiar'; if (n) n.textContent = cat.name; }
+  const SELECT_MAP = { soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'], popularity: ['modal-popularity', 'jz-filter-pop'], era: ['modal-era', 'jz-filter-cat3'], voz: ['modal-voz', 'jz-filter-voz'], propiedades: [] };
+  const SELECT_LABELS = { 'modal-sc1': '— CAT 1 —', 'modal-sc2': '— CAT 2 —', 'modal-sc3': '— CAT 3 —', 'jz-filter-sc': 'Categoría 1', 'modal-popularity': '— —', 'jz-filter-pop': 'Categoría 2', 'modal-era': '—', 'jz-filter-cat3': 'Categoría 3', 'modal-voz': '—', 'jz-filter-voz': 'Voz' };
+  function sync() { CATEGORY_KEYS.forEach(key => { const ids = SELECT_MAP[key] || [], items = categories[key]?.items || []; ids.forEach(id => { const el = document.getElementById(id); if (!el) return; const cur = el.value; el.innerHTML = `<option value="">${SELECT_LABELS[id] || '—'}</option>`; items.forEach(it => { const o = document.createElement('option'); o.value = it.label; o.textContent = it.label; el.appendChild(o); }); if (cur && [...el.options].some(o => o.value === cur)) el.value = cur; }); }); }
+  function renderSidebar() { const sb = document.getElementById('cat-sidebar'); if (!sb) return; sb.innerHTML = CATEGORY_KEYS.map(key => `<button class="cat-sidebar__item ${key === activeKey ? 'active' : ''}" data-key="${key}"><span class="cat-sidebar__dot" style="background:${categories[key].items[0]?.color || '#555'}"></span>${categories[key].name}</button>`).join(''); if (!categories[activeKey]?.canRename) { const n = document.createElement('div'); n.className = 'cat-sidebar__note'; n.textContent = 'Esta categoría no puede ser renombrada.'; sb.appendChild(n); } }
+  function renderItems() { const list = document.getElementById('cat-items-list'); if (!list) return; const items = categories[activeKey]?.items || []; if (!items.length) { list.innerHTML = '<div class="cat-empty">— Sin ítems —</div>'; return; } list.innerHTML = items.map((it, i) => `<div class="cat-item-row ${i === selectedIdx ? 'selected' : ''}" data-idx="${i}"><span class="cat-item__color" style="background:${it.color}"></span><span class="cat-item__label">${it.label}</span></div>`).join(''); }
+  function updateHeader() {
+    const cat = categories[activeKey], p = document.getElementById('cat-panel-prefix'), n = document.getElementById('cat-panel-name');
+    if (p) p.textContent = cat.canRename ? 'Cambiar Categoría por' : 'Cambiar';
+    if (n) n.textContent = cat.name;
+    const isCat1 = activeKey === 'soundCode';
+    const c1 = document.getElementById('cat-new-color'), c2 = document.getElementById('cat-edit-color');
+    if (c1) c1.style.display = isCat1 ? 'inline-block' : 'none';
+    if (c2) c2.style.display = isCat1 ? 'inline-block' : 'none';
+  }
   const publicApi = {
     init() { load(); sync(); },
     syncSelects() { sync(); },
+    getCategories() { return categories; },
     open() { const overlay = document.getElementById('cat-overlay'); if (!overlay) return; activeKey = 'soundCode'; selectedIdx = -1; overlay.classList.add('active'); renderSidebar(); renderItems(); updateHeader(); },
     close() { document.getElementById('cat-overlay')?.classList.remove('active'); },
     select(key) { activeKey = key; selectedIdx = -1; renderSidebar(); renderItems(); updateHeader(); },
-    add() { const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase(); if (!label) return; if (categories[activeKey].items.some(i => i.label === label)) return; categories[activeKey].items.push({ label, color: document.getElementById('cat-new-color')?.value || '#8e44ad', comment: document.getElementById('cat-new-comment')?.value.trim() || '' }); save(); sync(); renderItems(); document.getElementById('cat-add-form')?.classList.remove('visible'); },
-    openEdit() { if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; document.getElementById('cat-add-form')?.classList.remove('visible'); const nameEl = document.getElementById('cat-edit-name'), colorEl = document.getElementById('cat-edit-color'), commentEl = document.getElementById('cat-edit-comment'); if (nameEl) nameEl.value = item.label; if (colorEl) colorEl.value = item.color || '#8e44ad'; if (commentEl) commentEl.value = item.comment || ''; document.getElementById('cat-edit-form')?.classList.add('visible'); if (nameEl) nameEl.focus(); },
-    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } item.label = newLabel; item.color = document.getElementById('cat-edit-color')?.value || item.color; item.comment = document.getElementById('cat-edit-comment')?.value.trim() ?? item.comment; save(); sync(); renderItems(); document.getElementById('cat-edit-form')?.classList.remove('visible'); showToast(`✓ Ítem actualizado: ${newLabel}`, 'success'); },
+    add() { const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase(); if (!label) return; if (categories[activeKey].items.some(i => i.label === label)) return; categories[activeKey].items.push({ label, color: document.getElementById('cat-new-color')?.value || '#8e44ad' }); save(); sync(); renderItems(); document.getElementById('cat-add-form')?.classList.remove('visible'); },
+    openEdit() { if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; document.getElementById('cat-add-form')?.classList.remove('visible'); const nameEl = document.getElementById('cat-edit-name'), colorEl = document.getElementById('cat-edit-color'); if (nameEl) nameEl.value = item.label; if (colorEl) colorEl.value = item.color || '#8e44ad'; document.getElementById('cat-edit-form')?.classList.add('visible'); if (nameEl) nameEl.focus(); },
+    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } item.label = newLabel; item.color = document.getElementById('cat-edit-color')?.value || item.color; save(); sync(); renderItems(); document.getElementById('cat-edit-form')?.classList.remove('visible'); showToast(`✓ Ítem actualizado: ${newLabel}`, 'success'); },
     delete() { if (selectedIdx < 0) return; categories[activeKey].items.splice(selectedIdx, 1); selectedIdx = -1; save(); sync(); renderItems(); },
     move(dir) { const items = categories[activeKey].items; if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;[items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]]; selectedIdx += dir; save(); sync(); renderItems(); }
   };

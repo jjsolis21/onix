@@ -1,0 +1,353 @@
+<!-- ============================================================
+     ÓNIX FM · Módulo: Estadísticas y Auditoría
+     Sección 02 – Biblioteca Musical
+     Archivo: sections/02-biblioteca-musical/estadisticas/estadisticas.html
+     Cargado dinámicamente por admin-app.js
+     ============================================================ -->
+<section id="modulo-estadisticas" class="stats-root" aria-label="Estadísticas y Auditoría">
+
+  <!-- ── CABECERA DEL MÓDULO ───────────────────────────────────── -->
+  <header class="stats-header">
+    <div class="stats-header__title-group">
+      <span class="stats-header__eyebrow">Biblioteca Musical</span>
+      <h2 class="stats-header__title">
+        <svg class="stats-header__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3 3v18h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M7 16l4-5 4 3 4-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+        Estadísticas &amp; Auditoría
+      </h2>
+    </div>
+
+    <!-- Filtros rápidos de período -->
+    <nav class="stats-period-nav" role="navigation" aria-label="Filtro de período">
+      <button class="stats-period-btn stats-period-btn--active" data-period="day" aria-pressed="true">
+        <span class="stats-period-btn__label">HOY</span>
+      </button>
+      <button class="stats-period-btn" data-period="week" aria-pressed="false">
+        <span class="stats-period-btn__label">ESTA SEMANA</span>
+      </button>
+      <button class="stats-period-btn" data-period="month" aria-pressed="false">
+        <span class="stats-period-btn__label">ESTE MES</span>
+      </button>
+      <!-- Indicador deslizante (posicionado por JS) -->
+      <span class="stats-period-slider" aria-hidden="true"></span>
+    </nav>
+  </header>
+
+  <!-- ── BARRA DE BÚSQUEDA INTERNA ────────────────────────────── -->
+  <div class="stats-search-bar" role="search">
+    <svg class="stats-search-bar__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.5" />
+      <path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+    </svg>
+    <input type="search" id="stats-search-input" class="stats-search-bar__input"
+      placeholder="Buscar por título o artista…" aria-label="Buscar en el Top 40" autocomplete="off"
+      spellcheck="false" />
+    <span class="stats-search-bar__count" id="stats-search-count" aria-live="polite"></span>
+  </div>
+
+  <!-- ── CUADRÍCULA PRINCIPAL ──────────────────────────────────── -->
+  <div class="stats-grid">
+
+    <!-- ╔══════════════════════════════════════════╗
+         ║         TOP 40 DINÁMICO                  ║
+         ╚══════════════════════════════════════════╝ -->
+    <article class="stats-panel stats-panel--top40" aria-labelledby="top40-heading">
+
+      <div class="stats-panel__header">
+        <h3 class="stats-panel__title" id="top40-heading">
+          <span class="stats-panel__badge" aria-hidden="true">40</span>
+          Top Reproducidos
+        </h3>
+        <div class="stats-panel__meta" id="top40-period-label" aria-live="polite">Hoy</div>
+      </div>
+
+      <!-- Columnas de la tabla -->
+      <div class="stats-table-head" role="row" aria-label="Encabezados de la tabla">
+        <span role="columnheader" class="col-rank">#</span>
+        <span role="columnheader" class="col-type">Tipo</span>
+        <span role="columnheader" class="col-title">Título / Artista</span>
+        <span role="columnheader" class="col-category">Categoría</span>
+        <span role="columnheader" class="col-plays">Toques</span>
+        <span role="columnheader" class="col-trend">Tendencia</span>
+      </div>
+
+      <!-- Filas generadas dinámicamente por JS -->
+      <div id="top40-list" class="stats-table-body" role="table" aria-label="Top 40 canciones y pautas"
+        aria-busy="true">
+        <!-- Skeleton loader (8 filas) -->
+        <div class="stats-skeleton" aria-hidden="true">
+          <div class="stats-skeleton__row" style="--delay:0ms"></div>
+          <div class="stats-skeleton__row" style="--delay:80ms"></div>
+          <div class="stats-skeleton__row" style="--delay:160ms"></div>
+          <div class="stats-skeleton__row" style="--delay:240ms"></div>
+          <div class="stats-skeleton__row" style="--delay:320ms"></div>
+          <div class="stats-skeleton__row" style="--delay:400ms"></div>
+          <div class="stats-skeleton__row" style="--delay:480ms"></div>
+          <div class="stats-skeleton__row" style="--delay:560ms"></div>
+        </div>
+      </div>
+
+      <!-- Paginación / cargar más -->
+      <footer class="stats-panel__footer">
+        <button id="btn-load-more" class="stats-btn-ghost" aria-label="Cargar más entradas">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 3v10M3 8l5 5 5-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          Mostrar más
+        </button>
+        <span class="stats-panel__footer-info" id="top40-count-label" aria-live="polite"></span>
+      </footer>
+    </article>
+
+    <!-- ╔══════════════════════════════════════════╗
+         ║         REPORTE DE OLVIDO                ║
+         ╚══════════════════════════════════════════╝ -->
+    <article class="stats-panel stats-panel--forgotten" aria-labelledby="forgotten-heading">
+
+      <div class="stats-panel__header">
+        <h3 class="stats-panel__title" id="forgotten-heading">
+          <svg class="stats-panel__title-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+            <path d="M12 7v5l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          Reporte de Olvido
+        </h3>
+        <div class="stats-panel__badge-alert" aria-live="polite" id="forgotten-count-badge">
+          <span id="forgotten-count">0</span> ítems
+        </div>
+      </div>
+
+      <p class="stats-panel__subtitle">
+        Temas y pautas sin emisión en los últimos <strong>30 días</strong>.
+        Doble clic en una fila para auditar.
+      </p>
+
+      <div class="stats-table-head stats-table-head--forgotten" role="row" aria-label="Encabezados olvido">
+        <span role="columnheader" class="col-type">Tipo</span>
+        <span role="columnheader" class="col-title">Título / Artista</span>
+        <span role="columnheader" class="col-days">Días sin sonar</span>
+        <span role="columnheader" class="col-last">Última emisión</span>
+      </div>
+
+      <div id="forgotten-list" class="stats-table-body stats-table-body--forgotten" role="table"
+        aria-label="Reporte de olvido" aria-busy="true">
+        <div class="stats-skeleton" aria-hidden="true">
+          <div class="stats-skeleton__row" style="--delay:0ms"></div>
+          <div class="stats-skeleton__row" style="--delay:100ms"></div>
+          <div class="stats-skeleton__row" style="--delay:200ms"></div>
+          <div class="stats-skeleton__row" style="--delay:300ms"></div>
+        </div>
+      </div>
+
+      <footer class="stats-panel__footer">
+        <button id="btn-export-forgotten" class="stats-btn-ghost" aria-label="Exportar reporte de olvido">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2 10v4h12v-4M8 2v8M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          Exportar lista
+        </button>
+      </footer>
+    </article>
+
+  </div><!-- /stats-grid -->
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MODAL DE AUDITORÍA
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="audit-modal" class="audit-modal" role="dialog" aria-modal="true" aria-labelledby="audit-modal-title"
+    aria-hidden="true">
+    <!-- Backdrop -->
+    <div class="audit-modal__backdrop" id="audit-backdrop" aria-hidden="true"></div>
+
+    <!-- Panel principal -->
+    <div class="audit-modal__panel" tabindex="-1">
+
+      <!-- Cabecera del modal -->
+      <header class="audit-modal__header">
+        <div class="audit-modal__title-group">
+          <!-- Badge dinámico: TEMA / PAUTA -->
+          <span class="audit-modal__type-badge" id="audit-type-badge" aria-label="Tipo de elemento">TEMA</span>
+          <div>
+            <h2 class="audit-modal__title" id="audit-modal-title">—</h2>
+            <p class="audit-modal__artist" id="audit-modal-artist">—</p>
+          </div>
+        </div>
+        <div class="audit-modal__header-actions">
+          <!-- Botón Exportar PDF -->
+          <button id="btn-export-pdf" class="audit-btn-pdf" aria-label="Exportar certificado PDF">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" stroke-width="1.4" />
+              <path d="M7 6h6M7 10h6M7 14h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+              <path d="M13 13l3 3M16 13l-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+            </svg>
+            Exportar Certificado PDF
+          </button>
+          <!-- Cerrar modal -->
+          <button id="audit-modal-close" class="audit-modal__close" aria-label="Cerrar modal de auditoría">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Alerta especial para pautas -->
+      <div class="audit-compliance-banner" id="audit-compliance-banner" hidden aria-live="assertive">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 2L2 17h16L10 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+          <path d="M10 8v4M10 14v1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+        <div>
+          <strong>Auditoría de Pauta — Informe de Cumplimiento</strong>
+          <p id="audit-compliance-text">Verificando datos de cumplimiento del cliente…</p>
+        </div>
+        <div class="audit-compliance-meter" aria-label="Porcentaje de cumplimiento">
+          <div class="audit-compliance-meter__bar">
+            <div class="audit-compliance-meter__fill" id="compliance-fill" style="--pct:0%"></div>
+          </div>
+          <span class="audit-compliance-meter__label" id="compliance-pct-label">0%</span>
+        </div>
+      </div>
+
+      <!-- Cuerpo del modal (dos columnas) -->
+      <div class="audit-modal__body">
+
+        <!-- Columna izquierda: Reproductor + Estadísticas rápidas -->
+        <div class="audit-modal__col-left">
+
+          <!-- ── REPRODUCTOR PERSONALIZADO ─────────────────── -->
+          <div class="audit-player" role="region" aria-label="Reproductor de audio">
+
+            <!-- Waveform visual (pseudo) -->
+            <div class="audit-player__waveform" id="audit-waveform" aria-hidden="true">
+              <canvas id="waveform-canvas" width="340" height="56"></canvas>
+              <!-- Cursor de posición -->
+              <div class="audit-player__waveform-cursor" id="waveform-cursor"></div>
+            </div>
+
+            <!-- Seekbar -->
+            <div class="audit-player__seekbar-wrap" aria-label="Barra de progreso">
+              <input type="range" id="audio-seekbar" class="audit-player__seekbar" min="0" max="100" value="0"
+                step="0.1" aria-label="Posición de reproducción" />
+              <div class="audit-player__seekbar-progress" id="seekbar-progress" style="--pct:0%"></div>
+            </div>
+
+            <!-- Tiempos -->
+            <div class="audit-player__times" aria-live="off">
+              <span id="audio-current-time" class="audit-player__time">0:00</span>
+              <span id="audio-duration" class="audit-player__time audit-player__time--total">0:00</span>
+            </div>
+
+            <!-- Controles -->
+            <div class="audit-player__controls">
+              <button id="btn-rewind" class="audit-player__ctrl" aria-label="Retroceder 10 segundos">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-4.48 2.77" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round" />
+                  <text x="8.5" y="17" font-size="5" fill="currentColor" font-family="monospace">10</text>
+                </svg>
+              </button>
+
+              <button id="btn-play-pause" class="audit-player__play" aria-label="Reproducir">
+                <!-- Ícono Play (por defecto) -->
+                <svg id="icon-play" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <polygon points="6,4 20,12 6,20" fill="currentColor" />
+                </svg>
+                <!-- Ícono Pause (oculto) -->
+                <svg id="icon-pause" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display:none">
+                  <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+
+              <button id="btn-forward" class="audit-player__ctrl" aria-label="Adelantar 10 segundos">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 5V2l5 4-5 4V7a5 5 0 1 0 4.48 2.77" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round" />
+                  <text x="8.5" y="17" font-size="5" fill="currentColor" font-family="monospace">10</text>
+                </svg>
+              </button>
+
+              <!-- Volumen -->
+              <div class="audit-player__vol-group" aria-label="Control de volumen">
+                <button id="btn-mute" class="audit-player__ctrl audit-player__ctrl--vol" aria-label="Silenciar">
+                  <svg id="icon-vol-on" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" />
+                  </svg>
+                  <svg id="icon-vol-off" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display:none">
+                    <path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor" />
+                    <path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <input type="range" id="audio-volume" class="audit-player__vol-slider" min="0" max="1" step="0.02"
+                  value="0.85" aria-label="Volumen" />
+              </div>
+            </div><!-- /controls -->
+
+            <!-- Elemento de audio oculto -->
+            <audio id="audit-audio" preload="none" aria-hidden="true"></audio>
+          </div><!-- /audit-player -->
+
+          <!-- ── ESTADÍSTICAS RÁPIDAS ───────────────────────── -->
+          <div class="audit-quick-stats" aria-label="Estadísticas rápidas del elemento">
+            <div class="audit-quick-stat">
+              <span class="audit-quick-stat__value" id="qs-total-plays">—</span>
+              <span class="audit-quick-stat__label">Total toques</span>
+            </div>
+            <div class="audit-quick-stat">
+              <span class="audit-quick-stat__value" id="qs-last-play">—</span>
+              <span class="audit-quick-stat__label">Último toque</span>
+            </div>
+            <div class="audit-quick-stat">
+              <span class="audit-quick-stat__value" id="qs-avg-day">—</span>
+              <span class="audit-quick-stat__label">Promedio / día</span>
+            </div>
+            <div class="audit-quick-stat">
+              <span class="audit-quick-stat__value" id="qs-duration">—</span>
+              <span class="audit-quick-stat__label">Duración</span>
+            </div>
+          </div>
+
+        </div><!-- /col-left -->
+
+        <!-- Columna derecha: Lista cronológica de emisiones -->
+        <div class="audit-modal__col-right">
+          <div class="audit-log-header">
+            <h3 class="audit-log-title">Historial de Emisiones</h3>
+            <span class="audit-log-total" id="audit-log-total" aria-live="polite">— registros</span>
+          </div>
+
+          <div id="audit-log-list" class="audit-log-list" role="list" aria-label="Lista cronológica de emisiones"
+            aria-busy="true">
+            <!-- Ítems generados dinámicamente -->
+            <div class="stats-skeleton" aria-hidden="true">
+              <div class="stats-skeleton__row stats-skeleton__row--slim" style="--delay:0ms"></div>
+              <div class="stats-skeleton__row stats-skeleton__row--slim" style="--delay:60ms"></div>
+              <div class="stats-skeleton__row stats-skeleton__row--slim" style="--delay:120ms"></div>
+              <div class="stats-skeleton__row stats-skeleton__row--slim" style="--delay:180ms"></div>
+              <div class="stats-skeleton__row stats-skeleton__row--slim" style="--delay:240ms"></div>
+            </div>
+          </div>
+
+          <!-- Filtro de fecha dentro del historial -->
+          <div class="audit-log-filter" role="search">
+            <input type="date" id="audit-log-date-filter" class="audit-log-date-input"
+              aria-label="Filtrar historial por fecha" />
+            <button id="btn-clear-date" class="stats-btn-ghost" aria-label="Limpiar filtro de fecha">Limpiar</button>
+          </div>
+        </div><!-- /col-right -->
+
+      </div><!-- /audit-modal__body -->
+
+    </div><!-- /audit-modal__panel -->
+  </div><!-- /audit-modal -->
+
+</section><!-- /modulo-estadisticas -->

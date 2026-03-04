@@ -15,7 +15,7 @@ import time
 import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from contextlib import asynccontextmanager
 
@@ -38,6 +38,13 @@ try:
 except ImportError:
     # Si falla, intentamos importación relativa
     from scripts.init_db import initialize_database
+
+# Schemas para el módulo Pautas (Sección 03)
+# Archivo: backend/api/schemas_pautas.py
+try:
+    from schemas_pautas import PautaIn, PautaOut
+except ImportError:
+    from backend.api.schemas_pautas import PautaIn, PautaOut
 
 # Importar el motor de audio (singleton)
 try:
@@ -65,7 +72,9 @@ def get_connection(db_path: str = None) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("onix.api")
 
-DB_PATH      = os.getenv("RADIO_DB_PATH", "radio_core.db")
+# DB path: resuelto relativo a este archivo → backend/api/radio_core.db
+_DB_DEFAULT  = str(Path(__file__).resolve().parent / "radio_core.db")
+DB_PATH      = os.getenv("RADIO_DB_PATH", _DB_DEFAULT)
 MEDIA_ROOT   = Path(os.getenv("RADIO_MEDIA_ROOT", "/media/onix"))
 STAGING_DIR  = MEDIA_ROOT / "staging"
 LIBRARY_DIR  = MEDIA_ROOT / "library"
@@ -1002,12 +1011,17 @@ async def update_audio(
     tags=["Audios"],
 )
 def list_audios(
+    # ── Filtro multi-valor para pautas-controller.js ──────────────────────
+    # ?categoria_1=COMERCIAL&categoria_1=PUBLICIDAD  → subgenero IN (…)
+    # Retrocompatible: si no se envía, cat1 (valor único) sigue funcionando.
+    categoria_1: Optional[List[str]] = None,
+    # ── Filtros originales (Biblioteca Musical) ───────────────────────────
     cat1: Optional[str] = None,
     cat2: Optional[str] = None,
     cat3: Optional[str] = None,
     voz: Optional[str]  = None,
     busqueda: Optional[str] = None,
-    limit: int = 50,
+    limit: int = 500,   # subido de 50 → 500 para el selector de pautas
     offset: int = 0,
     conn: sqlite3.Connection = Depends(get_db),
 ):
@@ -1027,7 +1041,13 @@ def list_audios(
     """
     params = []
 
-    if cat1:
+    # categoria_1 (multi-valor, pautas-controller): tiene precedencia sobre cat1
+    if categoria_1:
+        ph = ", ".join("?" * len(categoria_1))
+        query += f" AND subgenero IN ({ph})"
+        params.extend(categoria_1)
+    elif cat1:
+        # cat1 (valor único, biblioteca-musical): retrocompatibilidad
         query += " AND subgenero = ?"
         params.append(cat1)
     if cat2:
@@ -1092,6 +1112,192 @@ def delete_audio(
     logger.info(f"Audio id={audio_id} ('{audio['titulo']}') marcado como inactivo")
 
     return {"mensaje": f"Audio '{audio['titulo']}' eliminado correctamente"}
+
+# ===========================================================================
+# SECCIÓN: PAUTAS — CRUD completo (Sección 03 — Programación de Pautas)
+#
+# Endpoints:
+#   GET    /api/v1/pautas          → lista pautas (matriz parseada como dict)
+#   POST   /api/v1/pautas          → crea pauta (matriz dict → JSON str en DB)
+#   PUT    /api/v1/pautas/{id}     → actualiza pauta
+#   DELETE /api/v1/pautas/{id}     → elimina pauta de la DB
+#
+# Invariante de marca: cliente siempre en MAYÚSCULAS (gestionado en PautaIn).
+# ===========================================================================
+
+
+@app.get(
+    "/api/v1/pautas",
+    summary="Listar pautas",
+    tags=["Pautas"],
+)
+def list_pautas(
+    activo: Optional[int] = None,
+    limit:  int = 200,
+    offset: int = 0,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """
+    Devuelve la lista de pautas.
+
+    - **activo=1** → solo las activas  |  **activo=0** → solo las vencidas/inactivas
+    - Sin parámetro `activo`: devuelve todas.
+    - El campo `matriz` se devuelve como objeto JSON (no string), listo para
+      consumir en pautas-controller.js sin procesamiento adicional.
+    """
+    logger.info(f"GET /api/v1/pautas → activo={activo}, limit={limit}, offset={offset}")
+
+    conditions: list = []
+    params:     list = []
+
+    if activo is not None:
+        conditions.append("activo = ?")
+        params.append(activo)
+
+    where  = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    sql    = f"SELECT * FROM pautas {where} ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    rows = conn.execute(sql, params).fetchall()
+    data = [PautaOut.from_row(r).model_dump() for r in rows]
+
+    logger.info(f"  → {len(data)} pauta(s) encontradas")
+    return data
+
+
+@app.post(
+    "/api/v1/pautas",
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear pauta",
+    tags=["Pautas"],
+)
+def create_pauta(
+    body: PautaIn,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """
+    Crea una nueva pauta publicitaria.
+
+    - `cliente` se normaliza a MAYÚSCULAS automáticamente.
+    - `matriz` (dict) se serializa a JSON string para almacenamiento.
+    - Devuelve la pauta creada con el `id` asignado por la base de datos.
+    """
+    logger.info(f"POST /api/v1/pautas → cliente='{body.cliente}', audio_id={body.audio_id}")
+
+    db_data = body.to_db_dict()
+    now     = "datetime('now')"
+
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO pautas
+                (cliente, audio_id, audio_nombre, matriz,
+                 fecha_inicio, fecha_fin, notas, activo, created_at, updated_at)
+            VALUES
+                (:cliente, :audio_id, :audio_nombre, :matriz,
+                 :fecha_inicio, :fecha_fin, :notas, 1, datetime('now'), datetime('now'))
+            """,
+            db_data,
+        )
+    except sqlite3.IntegrityError as exc:
+        logger.error(f"  → IntegrityError al crear pauta: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"No se pudo crear la pauta: {exc}. "
+                   f"Verifica que audio_id={body.audio_id} exista en la Biblioteca.",
+        )
+
+    new_id = cur.lastrowid
+    row    = conn.execute("SELECT * FROM pautas WHERE id = ?", (new_id,)).fetchone()
+
+    logger.info(f"  → Pauta creada con id={new_id}")
+    return PautaOut.from_row(row).model_dump()
+
+
+@app.put(
+    "/api/v1/pautas/{pauta_id}",
+    summary="Actualizar pauta",
+    tags=["Pautas"],
+)
+def update_pauta(
+    pauta_id: int,
+    body:     PautaIn,
+    conn:     sqlite3.Connection = Depends(get_db),
+):
+    """
+    Actualiza todos los campos de una pauta existente.
+
+    - Devuelve la pauta actualizada completa.
+    - 404 si el `pauta_id` no existe.
+    """
+    logger.info(f"PUT /api/v1/pautas/{pauta_id} → cliente='{body.cliente}'")
+
+    existing = conn.execute(
+        "SELECT id FROM pautas WHERE id = ?", (pauta_id,)
+    ).fetchone()
+
+    if not existing:
+        logger.warning(f"  → Pauta id={pauta_id} no encontrada")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pauta con id={pauta_id} no encontrada.",
+        )
+
+    db_data = body.to_db_dict()
+
+    conn.execute(
+        """
+        UPDATE pautas SET
+            cliente      = :cliente,
+            audio_id     = :audio_id,
+            audio_nombre = :audio_nombre,
+            matriz       = :matriz,
+            fecha_inicio = :fecha_inicio,
+            fecha_fin    = :fecha_fin,
+            notas        = :notas,
+            updated_at   = datetime('now')
+        WHERE id = :id
+        """,
+        {**db_data, "id": pauta_id},
+    )
+
+    row = conn.execute("SELECT * FROM pautas WHERE id = ?", (pauta_id,)).fetchone()
+    logger.info(f"  → Pauta id={pauta_id} actualizada")
+    return PautaOut.from_row(row).model_dump()
+
+
+@app.delete(
+    "/api/v1/pautas/{pauta_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar pauta",
+    tags=["Pautas"],
+)
+def delete_pauta(
+    pauta_id: int,
+    conn:     sqlite3.Connection = Depends(get_db),
+):
+    """
+    Elimina permanentemente una pauta de la base de datos.
+
+    - 404 si el `pauta_id` no existe.
+    - 204 No Content si la eliminación fue exitosa (sin cuerpo de respuesta).
+    """
+    logger.info(f"DELETE /api/v1/pautas/{pauta_id}")
+
+    existing = conn.execute(
+        "SELECT id, cliente FROM pautas WHERE id = ?", (pauta_id,)
+    ).fetchone()
+
+    if not existing:
+        logger.warning(f"  → Pauta id={pauta_id} no encontrada")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pauta con id={pauta_id} no encontrada.",
+        )
+
+    conn.execute("DELETE FROM pautas WHERE id = ?", (pauta_id,))
+    logger.info(f"  → Pauta id={pauta_id} ('{existing['cliente']}') eliminada")
+    # FastAPI devuelve 204 sin cuerpo automáticamente cuando el handler retorna None
 
 
 # ---------------------------------------------------------------------------

@@ -733,8 +733,51 @@
   /* Ops actions */
   .jz-actions {
     display: flex;
-    gap: 5px;
+    gap: 8px;
     align-items: center;
+    justify-content: flex-end;
+  }
+
+  .jz-row-action {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, .03);
+    color: var(--jz-text3);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+  }
+
+  .jz-row-action:hover {
+    transform: translateY(-2px);
+    background: var(--jz-hover);
+    border-color: var(--jz-border2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
+  }
+
+  .jz-row-action--edit:hover {
+    color: var(--neon-cyan);
+    border-color: rgba(0, 200, 240, 0.3);
+    background: rgba(0, 200, 240, 0.08);
+  }
+
+  .jz-row-action--del:hover {
+    color: #ff5252;
+    border-color: rgba(255, 82, 82, 0.3);
+    background: rgba(255, 82, 82, 0.08);
+  }
+
+  .jz-row-action svg {
+    transition: transform 0.2s ease;
+  }
+
+  .jz-row-action:active {
+    transform: translateY(0) scale(0.95);
   }
 
   /* ══════════════════════════════════════════════════════════════
@@ -2451,7 +2494,7 @@
       <div class="jz-topbar__filters">
         <span class="jz-filter-label">Filtros</span>
 
-        <label class="jz-filter-chip" title="Sound Code">
+        <label class="jz-filter-chip" title="Categoría 1">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
             <path
@@ -2563,8 +2606,8 @@
             <th class="col-cod" data-sort="codigo">CÓDIGO</th>
             <th class="col-title" data-sort="title">TÍTULO</th>
             <th class="col-art" data-sort="artist">ARTISTA</th>
-            <th class="col-sc" data-sort="soundCode">SOUND CODE</th>
-            <th class="col-pop" data-sort="popularity">POPULARITY</th>
+            <th class="col-sc" data-sort="soundCode">CATEGORÍA 1</th>
+            <th class="col-pop" data-sort="popularity">CATEGORÍA 2</th>
             <th class="col-voz" data-sort="voz">VOZ</th>
             <th class="col-bpm" data-sort="bpm">BPM</th>
             <th class="col-dur" data-sort="duration">DUR.</th>
@@ -2759,45 +2802,43 @@
             <label>Escritor</label>
             <input class="jz-input" id="modal-escritor" type="text" placeholder="—" />
           </div>
-          <div class="jz-field">
-            <label>Comentarios</label>
-            <textarea class="jz-input" id="modal-comentarios" rows="2" placeholder="—"></textarea>
-          </div>
+
         </div>
         <div class="jz-field">
           <label>Compositor</label>
           <input class="jz-input" id="modal-compositor" type="text" placeholder="—" />
         </div>
 
-        <!-- SOUND CODE + POPULARITY -->
+        <!-- CATEGORÍA 1 + CATEGORÍA 2 -->
         <div class="jz-section">
           <div style="display:grid;grid-template-columns:1fr 1fr;">
             <div
               style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);border-right:1px solid var(--jz-border);">
               <span
-                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">SOUND
-                CODE</span>
+                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">CATEGORÍA
+                1</span>
             </div>
             <div style="padding:5px 10px;background:var(--jz-raised);border-bottom:1px solid var(--jz-border);">
               <span
-                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">POPULARITY</span>
+                style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--jz-text2);text-transform:uppercase">CATEGORÍA
+                2</span>
             </div>
           </div>
           <div class="jz-section__body" style="padding:10px;">
             <div class="jz-grid-4">
               <div class="jz-field">
                 <select class="jz-select" id="modal-sc1">
-                  <option value="">— SC1 —</option>
+                  <option value="">— CAT 1 —</option>
                 </select>
               </div>
               <div class="jz-field">
                 <select class="jz-select" id="modal-sc2">
-                  <option value="">— SC2 —</option>
+                  <option value="">— CAT 2 —</option>
                 </select>
               </div>
               <div class="jz-field">
                 <select class="jz-select" id="modal-sc3">
-                  <option value="">— SC3 —</option>
+                  <option value="">— CAT 3 —</option>
                 </select>
               </div>
               <div class="jz-field">
@@ -2809,11 +2850,11 @@
           </div>
         </div>
 
-        <!-- ERA / Voz / Prioridad / Año / BPM -->
+        <!-- CATEGORÍA 3 / Voz / Prioridad / Año / BPM -->
         <div class="jz-section">
           <div class="jz-grid-5" style="padding:8px 10px;">
             <div class="jz-field">
-              <label>ERA</label>
+              <label>Categoría 3</label>
               <select class="jz-select" id="modal-era" style="width:100%">
                 <option value="">—</option>
               </select>
@@ -3341,7 +3382,7 @@
   /* ── Items table ─────────────────────────────────────────────── */
   .cat-table-head {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     padding: 5px 16px;
     background: #111;
     border-bottom: 1px solid #252525;
@@ -3362,7 +3403,7 @@
 
   .cat-item-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     align-items: center;
     border-bottom: 1px solid #222;
     cursor: pointer;
@@ -3686,7 +3727,6 @@
 
         <div class="cat-table-head">
           <span>Nombre</span>
-          <span>Comentarios</span>
         </div>
 
         <div class="cat-items-list" id="cat-items-list">
@@ -3697,8 +3737,6 @@
         <div class="cat-add-form" id="cat-add-form">
           <input class="cat-add-input" id="cat-new-name" type="text" placeholder="Nombre del ítem…" maxlength="40" />
           <input class="cat-add-color" id="cat-new-color" type="color" value="#8e44ad" title="Color" />
-          <input class="cat-add-comment" id="cat-new-comment" type="text" placeholder="Comentario (opcional)"
-            maxlength="60" />
           <button class="cat-btn cat-btn--confirm" id="cat-confirm-add">✔ Agregar</button>
           <button class="cat-btn cat-btn--danger" id="cat-cancel-add">✕</button>
         </div>
@@ -3708,8 +3746,6 @@
           <span class="cat-edit-label">✎ Editar:</span>
           <input class="cat-add-input" id="cat-edit-name" type="text" placeholder="Nuevo nombre…" maxlength="40" />
           <input class="cat-add-color" id="cat-edit-color" type="color" value="#8e44ad" title="Color" />
-          <input class="cat-add-comment" id="cat-edit-comment" type="text" placeholder="Comentario (opcional)"
-            maxlength="60" />
           <button class="cat-btn cat-btn--confirm" id="cat-confirm-edit">✔ Guardar</button>
           <button class="cat-btn cat-btn--danger" id="cat-cancel-edit">✕</button>
         </div>
@@ -4071,11 +4107,11 @@
 
         <div class="lote-meta-grid">
           <div class="jz-field">
-            <label>Sound Code (Cat 1)</label>
+            <label>Categoría 1</label>
             <select id="lote-sc1" class="jz-input"></select>
           </div>
           <div class="jz-field">
-            <label>Popularity (Cat 2)</label>
+            <label>Categoría 2</label>
             <select id="lote-pop" class="jz-input"></select>
           </div>
           <div class="jz-field">

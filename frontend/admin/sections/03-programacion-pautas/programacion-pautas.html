@@ -111,27 +111,30 @@
         <div class="form-group">
           <label for="fAudio">Audio / Spot <span class="required">*</span></label>
           <div class="audio-selector" id="audioSelector">
-            <input type="text" id="fAudio" placeholder="Seleccionar archivo de audio…" readonly>
-            <button class="btn-icon" id="btnSelectAudio" title="Explorar biblioteca">🎵</button>
+            <input type="text" id="fAudio" placeholder="Haz clic en 🎵 para cargar un audio…" readonly>
+            <button class="btn-icon" id="btnSelectAudio" title="Explorar archivos de audio en tu PC"
+              type="button">🎵</button>
           </div>
+          <!-- Input file oculto — activado por btnSelectAudio -->
+          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,.wma,audio/*"
+            style="display:none" aria-hidden="true">
           <span class="field-hint" id="audioHint">Ningún archivo seleccionado</span>
+          <!-- Barra de progreso de subida -->
+          <div class="upload-progress hidden" id="uploadProgress">
+            <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
+            <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
+          </div>
+          <!-- Mini reproductor de audio (aparece tras subir) -->
+          <div class="audio-player hidden" id="audioPlayer">
+            <button class="audio-player__btn" id="btnAudioPlay" type="button" title="Reproducir">▶</button>
+            <button class="audio-player__btn" id="btnAudioStop" type="button" title="Detener">⏹</button>
+            <div class="audio-player__track" id="audioTrackBar">
+              <div class="audio-player__progress" id="audioPlayProgress" style="width:0%"></div>
+            </div>
+            <span class="audio-player__time" id="audioTimeLabel">0:00 / 0:00</span>
+          </div>
         </div>
 
-        <!-- Selector de audio (dropdown avanzado) -->
-        <div class="audio-dropdown hidden" id="audioDropdown">
-          <div class="audio-search">
-            <span class="audio-search__icon">🔍</span>
-            <input type="text" id="audioSearchInput" placeholder="Buscar cuña por nombre…" autocomplete="off">
-            <span class="audio-search__clear hidden" id="audioSearchClear" title="Limpiar">✕</span>
-          </div>
-          <div class="audio-dropdown__meta" id="audioDropdownMeta">— audios disponibles —</div>
-          <ul class="audio-list" id="audioList">
-            <!-- Items generados dinámicamente por controller -->
-          </ul>
-          <div class="audio-dropdown__empty hidden" id="audioDropdownEmpty">
-            <span>🔇</span> Sin resultados para "<span id="audioEmptyTerm"></span>"
-          </div>
-        </div>
 
         <div class="form-row">
           <div class="form-group">

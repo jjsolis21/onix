@@ -36,6 +36,7 @@
 
   <!-- Layout estructural del shell -->
   <link rel="stylesheet" href="css/shell.css" />
+  <link rel="stylesheet" href="sections/02-biblioteca-musical/estadisticas/estadisticas-estilos.css" />
 </head>
 
 <body>
@@ -227,6 +228,16 @@
           <span class="nav-btn__num">06</span>
         </button>
 
+        <!--
+          SECCIÓN 07: ESTADÍSTICAS
+          Métricas de emisión, reportes de reproducciones y análisis de biblioteca.
+        -->
+        <button class="nav-btn" data-section="07-estadisticas" data-tooltip="Estadísticas">
+          <span class="nav-btn__icon" aria-hidden="true">📈</span>
+          <span class="nav-btn__label">Estadísticas</span>
+          <span class="nav-btn__num">07</span>
+        </button>
+
       </div>
 
       <!--
@@ -311,6 +322,9 @@
       <div class="section-panel" id="section-panel-06-motor-audio" data-section-id="06-motor-audio" data-loaded="false"
         role="region" aria-label="Motor de Audio"></div>
 
+      <div class="section-panel" id="section-panel-07-estadisticas" data-section-id="07-estadisticas"
+        data-loaded="false" role="region" aria-label="Estadísticas"></div>
+
     </main>
   </div>
 
@@ -383,6 +397,12 @@
         name: "Motor de Audio (BASS)",
         sub: "Ajustes técnicos del motor",
         src: "sections/06-motor-audio/motor-audio.html",
+      },
+      "07-estadisticas": {
+        icon: "📈",
+        name: "Estadísticas",
+        sub: "Métricas y reportes de emisión",
+        src: "sections/02-biblioteca-musical/estadisticas/estadisticas.html",
       },
     };
 
@@ -679,6 +699,13 @@
 
       // 7. Cargar el HTML de la sección (si no estaba cargado)
       await loadSection(sectionId);
+
+      // 8. Inicialización específica del módulo si es necesario
+      if (sectionId === "07-estadisticas" && window.EstadisticasModule) {
+        window.EstadisticasModule.init().catch(e => {
+          console.error("[Estadísticas] Error en init:", e);
+        });
+      }
     }
 
     /* Registrar listeners en los botones del sidebar */
@@ -719,8 +746,9 @@
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
   <script src="js/onix-waveform.js"></script>
-
   <script src="js/admin-app.js"></script>
+  <script src="sections/03-programacion-pautas/pautas-controller.js?v=2"></script>
+  <script src="sections/02-biblioteca-musical/estadisticas/estadisticas-controller.js"></script>
 </body>
 
 </html>

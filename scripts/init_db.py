@@ -1,16 +1,19 @@
 """
 init_db.py — Ónix FM Radio Core
 Inicialización y migración del esquema de base de datos.
-Versión 2.0: Sistema dinámico de categorías para Biblioteca.
+Versión 2.1: Agrega tabla pautas (Sección 03 — Programación de Pautas).
 """
 
 import sqlite3
 import logging
 import os
+from pathlib import Path
 
 logger = logging.getLogger("onix.init_db")
 
-DB_PATH = os.getenv("RADIO_DB_PATH", "radio_core.db")
+# Ruta relativa al archivo actual (Sube de scripts/ a la raíz) → backend/api/radio_core.db
+_DB_DEFAULT = str(Path(__file__).resolve().parent.parent / "backend" / "api" / "radio_core.db")
+DB_PATH = os.getenv("RADIO_DB_PATH", _DB_DEFAULT)
 
 # ---------------------------------------------------------------------------
 # SEED DATA — Categorías y valores por defecto del sistema Jazler/Biblioteca
@@ -189,6 +192,57 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         else:
             logger.info(f"  → Columna {col_name} ya existe: SKIP")
     logger.info("  → Cue points extendidos verificados/añadidos: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 8 — Tabla pautas (Sección 03 — Programación de Pautas)
+    #
+    # Diseño:
+    #   · audio_id   → FK a audios(id). ON DELETE RESTRICT para no perder
+    #                  el historial de pautas si se borra un audio.
+    #   · audio_nombre → cache desnormalizado del nombre de archivo para
+    #                    mostrar en el listado sin JOIN.
+    #   · matriz     → JSON string con el mapa de horarios:
+    #                  { "dia-hora": true }  ej: {"1-8": true, "5-18": true}
+    #                  dia: 0=Dom…6=Sáb  |  hora: 0–23
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando tabla pautas...")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pautas (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente        TEXT    NOT NULL,
+            audio_id       INTEGER NOT NULL
+                               REFERENCES audios(id)
+                               ON DELETE RESTRICT
+                               ON UPDATE CASCADE,
+            audio_nombre   TEXT    NOT NULL DEFAULT '',
+            matriz         TEXT    NOT NULL DEFAULT '{}',
+            fecha_inicio   TEXT             DEFAULT '',
+            fecha_fin      TEXT             DEFAULT '',
+            notas          TEXT             DEFAULT '',
+            activo         INTEGER NOT NULL DEFAULT 1,
+            created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+
+    # Índices de búsqueda más frecuente en pautas
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pautas_cliente
+        ON pautas(cliente)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pautas_audio_id
+        ON pautas(audio_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pautas_fecha_inicio
+        ON pautas(fecha_inicio)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pautas_activo
+        ON pautas(activo)
+    """)
+    logger.info("  → Tabla pautas e índices: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
