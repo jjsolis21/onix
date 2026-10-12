@@ -81,6 +81,9 @@
 
   const $ = id => document.getElementById(id);
 
+  /** Asigna si el campo existe (un HTML viejo en caché no rompe el modal) */
+  function _val(id, v) { const el = $(id); if (el) el.value = v; }
+
   function _showEl(el) { el && el.classList.remove('hidden'); }
   function _hideEl(el) { el && el.classList.add('hidden'); }
 
@@ -478,6 +481,8 @@
         <td>${estado}</td>
         <td>
           <div class="row-actions">
+            <button class="btn-row"
+              title="Reporte del cliente" data-action="reporte" data-id="${_esc(String(p.id))}">🖨</button>
             <button class="btn-row btn-row--edit"
               title="Editar" data-action="edit" data-id="${_esc(String(p.id))}">✏️</button>
             <button class="btn-row btn-row--delete"
@@ -572,6 +577,34 @@
     $('cmPreviaTit').textContent = `${p.cliente} — ${p.audio_nombre}`;
     $('cmPlay').disabled = $('cmStop').disabled = false;
     if ($('cmAutoPlay')?.checked) _previa.audio.play().catch(() => {});
+  }
+
+  // ── Reporte por cliente ──
+  function _abrirReporte(cliente) {
+    const clientes = [...new Set(_pautas.map(p => p.cliente))].sort();
+    if (!clientes.length) { alert('Todavía no hay pautas.'); return; }
+    $('repCliente').innerHTML = clientes.map(c => `<option value="${_esc(c)}">${_esc(c)}</option>`).join('');
+    $('repCliente').value = cliente || _filtros.cliente || clientes[0];
+    _rangoReporte('mes');
+    _showEl($('reporteModal'));
+  }
+
+  function _rangoReporte(rango) {
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const hoy = new Date();
+    let desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1), hasta = hoy;
+    if (rango === 'pasado') { desde = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1); hasta = new Date(hoy.getFullYear(), hoy.getMonth(), 0); }
+    if (rango === '7') desde = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 6);
+    if (rango === 'vigencia') {
+      const ps = _pautas.filter(p => p.cliente === $('repCliente').value);
+      const ini = ps.map(p => p.fecha_inicio).filter(Boolean).sort()[0];
+      const fin = ps.map(p => p.fecha_fin).filter(Boolean).sort().pop();
+      $('repDesde').value = ini || iso(desde);
+      $('repHasta').value = fin && fin < iso(hoy) ? fin : iso(hoy);
+      return;
+    }
+    $('repDesde').value = iso(desde);
+    $('repHasta').value = iso(hasta);
   }
 
   function _pararPrevia() {
@@ -948,9 +981,9 @@
       $('fRubro').value       = p.rubro    || meta.rubro    || '';
       $('fContrato').value    = p.contrato || meta.contrato || '';
       $('fMenciones').value   = p.menciones ?? meta.menciones ?? 4;
-      $('fPrioridad').value   = String(p.prioridad ?? 0);
-      $('fPosicion').value    = String(p.posicion ?? 0);
-      $('fAgencia').value     = p.agencia || '';
+      _val('fPrioridad', String(p.prioridad ?? 0));
+      _val('fPosicion',  String(p.posicion ?? 0));
+      _val('fAgencia',   p.agencia || '');
       _cargarSecciones(p.seccion ?? 3);
       $('btnSaveText').textContent = 'Actualizar Pauta';
 
@@ -999,9 +1032,9 @@
       $('fRubro').value            = '';
       $('fContrato').value         = '';
       $('fMenciones').value        = '4';
-      $('fPrioridad').value        = '0';
-      $('fPosicion').value         = '0';
-      $('fAgencia').value          = '';
+      _val('fPrioridad', '0');
+      _val('fPosicion',  '0');
+      _val('fAgencia',   '');
       _cargarSecciones(3);
       $('btnSaveText').textContent = 'Guardar Pauta';
 
@@ -1460,6 +1493,7 @@
       const { action, id } = btn.dataset;
       if (action === 'edit')   _openModal(id);
       if (action === 'delete') _openDeleteModal(id);
+      if (action === 'reporte') _abrirReporte(_pautas.find(p => String(p.id) === String(id))?.cliente);
     });
 
     // ── Búsqueda en tiempo real ──
@@ -1502,6 +1536,18 @@
       if (a) a.paused ? a.play().catch(() => {}) : a.pause();
     });
     $('cmStop')?.addEventListener('click', _pararPrevia);
+
+    // ── Reporte por cliente ──
+    $('btnReporte')?.addEventListener('click', () => _abrirReporte());
+    $('repCerrar')?.addEventListener('click', () => _hideEl($('reporteModal')));
+    $('reporteModal')?.addEventListener('click', e => { if (e.target.id === 'reporteModal') _hideEl($('reporteModal')); });
+    $('repCliente')?.addEventListener('change', () => _rangoReporte('mes'));
+    document.querySelectorAll('.cm-rep-rapido [data-rango]').forEach(b =>
+      b.addEventListener('click', () => _rangoReporte(b.dataset.rango)));
+    $('repAbrir')?.addEventListener('click', () => {
+      const q = new URLSearchParams({ cliente: $('repCliente').value, desde: $('repDesde').value, hasta: $('repHasta').value });
+      window.open(`/api/v1/reportes/certificado?${q}`, '_blank');
+    });
     $('cmBarra')?.addEventListener('click', e => {
       const a = _previa.audio;
       if (!a || !a.duration) return;

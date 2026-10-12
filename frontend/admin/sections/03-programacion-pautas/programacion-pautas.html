@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=3">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=4">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=2">
 
 <div class="pautas-root" id="pautasRoot">
@@ -109,6 +109,7 @@
         <select id="filtPosicion"><option value="">Todas</option>
           <option value="1">📌 Primero</option><option value="2">📌 Último</option><option value="0">Libre</option></select></label>
       <button class="cm-reiniciar" id="btnFilterClear" type="button">Reiniciar filtros</button>
+      <button class="cm-reiniciar cm-reporte" id="btnReporte" type="button">🖨 Reporte por cliente</button>
       <p class="cm-cuenta" id="cmCuenta">—</p>
     </aside>
 
@@ -157,6 +158,27 @@
 
 </div><!-- /pautas-root -->
 
+
+<!-- Reporte imprimible por cliente (certificado de emisión) -->
+<div class="modal-overlay hidden" id="reporteModal" role="dialog" aria-modal="true" aria-labelledby="repTitulo">
+  <div class="cm-rep">
+    <div class="cm-rep-cab"><h3 id="repTitulo">🖨 Certificado de emisión</h3>
+      <button class="modal-close" id="repCerrar" type="button" aria-label="Cerrar">✕</button></div>
+    <label class="cm-f">Cliente <select id="repCliente"></select></label>
+    <div class="cm-rep-fechas">
+      <label class="cm-f">Desde <input type="date" id="repDesde"></label>
+      <label class="cm-f">Hasta <input type="date" id="repHasta"></label>
+    </div>
+    <div class="cm-rep-rapido">
+      <button type="button" data-rango="mes">Este mes</button>
+      <button type="button" data-rango="pasado">Mes pasado</button>
+      <button type="button" data-rango="7">Últimos 7 días</button>
+      <button type="button" data-rango="vigencia">Toda la vigencia</button>
+    </div>
+    <p class="cm-rep-ayuda">Muestra lo que <b>realmente salió al aire</b> (fecha y hora de cada salida) frente a lo contratado. Se abre en otra pestaña lista para imprimir o guardar como PDF.</p>
+    <button class="btn-primary" id="repAbrir" type="button">Abrir certificado</button>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════
      MODAL PRINCIPAL — EDITOR DE PAUTAS PRO (Dashboard v3.1)

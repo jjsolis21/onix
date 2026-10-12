@@ -176,3 +176,16 @@ def test_pauta_sin_fecha_inicio_cuenta_desde_su_creacion():
                             ahora=datetime(2026, 10, 13, 0, 0))
     assert r["programadas"] == 1
     conn.close()
+
+
+def test_certificado_imprimible_por_cliente(client, tmp_path):
+    from tests.test_api import subir_cancion
+    aid = subir_cancion(client, tmp_path, "Cuña Cert")["id"]
+    r = client.post("/api/v1/pautas", json={"cliente": "panaderia sol", "audio_id": aid,
+                                             "audio_nombre": "Cuña Cert", "matriz": {"1-10": True},
+                                             "menciones_diarias": 2})
+    assert r.status_code == 201, r.text
+    r = client.get("/api/v1/reportes/certificado", params={"cliente": "PANADERIA SOL"})
+    assert r.status_code == 200
+    assert "Certificado de emisión" in r.text and "PANADERIA SOL" in r.text
+    assert client.get("/api/v1/reportes/certificado", params={"cliente": "NADIE"}).status_code == 404

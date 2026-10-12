@@ -320,3 +320,127 @@ def reporte_pauta(pauta_id: int, desde: Optional[str] = None, hasta: Optional[st
                     [{"cliente": r["cliente"], **e} for e in r["emisiones"]])
     r.update({"desde": d_desde.isoformat(), "hasta": d_hasta.isoformat()})
     return r
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Certificado de emisión imprimible (lo que se entrega al cliente)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+
+
+def _e(v) -> str:
+    from html import escape
+    return escape(str(v if v is not None else ""))
+
+
+@router.get("/api/v1/reportes/certificado", summary="Certificado de emisión imprimible por cliente")
+def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = None,
+                hasta: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Página lista para imprimir o guardar como PDF: por cada spot del cliente,
+    contratadas vs emitidas y la lista de cada salida REAL al aire (fecha y
+    hora del historial de emisión, no lo programado).
+    """
+    from fastapi.responses import HTMLResponse
+    hoy = date.today()
+    d_desde = _parse_fecha(desde, hoy.replace(day=1))
+    d_hasta = _parse_fecha(hasta, hoy)
+    pautas = conn.execute(
+        "SELECT p.* FROM pautas p LEFT JOIN tanda_secciones s ON s.numero = COALESCE(p.seccion, 3)"
+        " WHERE COALESCE(s.comercial, 1) = 1 AND p.cliente = ? ORDER BY p.id",
+        (cliente.strip().upper(),)).fetchall()
+    if not pautas:
+        raise HTTPException(status_code=404, detail=f"El cliente {cliente} no tiene spots")
+    try:
+        emisora = conn.execute("SELECT valor FROM config WHERE clave = 'emisora_nombre'").fetchone()
+        emisora = emisora[0] if emisora and emisora[0] else "ÓNIX FM"
+    except sqlite3.Error:
+        emisora = "ÓNIX FM"
+
+    bloques, tot_prog, tot_emit = [], 0, 0
+    for p in pautas:
+        r = _cumplimiento_pauta(conn, p, d_desde, d_hasta)
+        emis = conn.execute(
+            "SELECT iniciado_en FROM historial_emision"
+            " WHERE pauta_id = ? AND iniciado_en >= ? AND iniciado_en < ? ORDER BY iniciado_en",
+            (p["id"], d_desde.isoformat(), (d_hasta + timedelta(days=1)).isoformat())).fetchall()
+        if not (r["programadas"] or emis):
+            continue
+        tot_prog += r["programadas"]
+        tot_emit += len(emis)
+        por_dia: dict[str, list[str]] = {}
+        for (t,) in emis:
+            por_dia.setdefault(t[:10], []).append(t[11:16])
+        filas = "".join(
+            f"<tr><td>{_DIAS[date.fromisoformat(d).weekday()]} {d[8:10]}/{d[5:7]}/{d[:4]}</td>"
+            f"<td class='n'>{len(hs)}</td><td>{' · '.join(hs)}</td></tr>"
+            for d, hs in sorted(por_dia.items()))
+        # Mismo conteo que el total: salidas reales del período frente a lo contratado
+        pct = f"{min(100, 100 * len(emis) / r['programadas']):.0f} %" if r["programadas"] else "—"
+        bloques.append(f"""
+        <section>
+          <h2>{_e(p['audio_nombre'] or 'Spot')}</h2>
+          <p class="meta">Contrato: {_e(p['contrato_id'] or '—')} · Vigencia: {_e(p['fecha_inicio'] or '—')} a {_e(p['fecha_fin'] or 'sin fin')}
+             · {_e(p['menciones_diarias'] or '—')} menciones por día</p>
+          <div class="kpis"><div><b>{r['programadas']}</b>Contratadas en el período</div>
+            <div><b>{len(emis)}</b>Emitidas</div><div><b>{pct}</b>Cumplimiento</div></div>
+          {f'<table><thead><tr><th>Día</th><th>Salidas</th><th>Horas al aire</th></tr></thead><tbody>{filas}</tbody></table>'
+           if filas else '<p class="vacio">Sin emisiones registradas en el período.</p>'}
+        </section>""")
+
+    pct_total = f"{min(100, 100 * tot_emit / tot_prog):.0f} %" if tot_prog else "—"
+    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Certificado de emisión — {_e(pautas[0]['cliente'])}</title>
+<style>
+  body {{ font: 13px/1.45 "Segoe UI", Arial, sans-serif; color: #111; background: #fff; margin: 0; padding: 28px; }}
+  .hoja {{ max-width: 820px; margin: 0 auto; }}
+  header {{ display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #111; padding-bottom: 10px; }}
+  header h1 {{ margin: 0; font-size: 22px; letter-spacing: .02em; }}
+  header .emisora {{ font-size: 18px; font-weight: 800; }}
+  .datos {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin: 14px 0 6px; }}
+  .datos b {{ display: inline-block; min-width: 70px; }}
+  .kpis {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }}
+  .kpis div {{ border: 1px solid #bbb; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: #555; }}
+  .kpis b {{ display: block; font-size: 20px; color: #111; }}
+  .total {{ background: #f2f2f2; border-radius: 8px; padding: 6px 12px; margin: 10px 0 16px; }}
+  section {{ margin: 18px 0; page-break-inside: avoid; }}
+  h2 {{ font-size: 15px; margin: 0 0 2px; }}
+  .meta {{ margin: 0; color: #555; font-size: 12px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+  th, td {{ border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }}
+  th {{ background: #f2f2f2; }}
+  td.n {{ text-align: center; font-weight: 700; width: 60px; }}
+  .vacio {{ color: #a00; }}
+  .firma {{ display: flex; justify-content: space-between; margin-top: 60px; gap: 40px; }}
+  .firma div {{ flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 12px; }}
+  .pie {{ margin-top: 18px; font-size: 11px; color: #777; }}
+  .acciones {{ position: fixed; top: 12px; right: 12px; }}
+  .acciones button {{ font: 600 14px "Segoe UI", Arial; padding: 9px 16px; border-radius: 6px; border: 0; background: #111; color: #fff; cursor: pointer; }}
+  #emisora:hover {{ outline: 1px dashed #999; }}
+  @media print {{ .acciones {{ display: none; }} body {{ padding: 0; }} }}
+</style></head><body>
+<div class="acciones"><button onclick="window.print()">🖨 Imprimir / Guardar PDF</button></div>
+<div class="hoja">
+  <header><div><div class="emisora" id="emisora" contenteditable="true" title="Clic para escribir el nombre de tu emisora">{_e(emisora)}</div><h1>Certificado de emisión</h1></div>
+    <div>Emitido el {hoy.strftime('%d/%m/%Y')}</div></header>
+  <div class="datos">
+    <div><b>Cliente:</b> {_e(pautas[0]['cliente'])}</div>
+    <div><b>Período:</b> {d_desde.strftime('%d/%m/%Y')} al {d_hasta.strftime('%d/%m/%Y')}</div>
+    <div><b>Agencia:</b> {_e(pautas[0]['agencia'] or '—') if 'agencia' in pautas[0].keys() else '—'}</div>
+    <div><b>Rubro:</b> {_e(pautas[0]['rubro'] or '—')}</div>
+  </div>
+  <div class="kpis total"><div><b>{tot_prog}</b>Contratadas en el período</div>
+    <div><b>{tot_emit}</b>Emitidas al aire</div><div><b>{pct_total}</b>Cumplimiento total</div></div>
+  {''.join(bloques) or '<p class="vacio">Este cliente no tiene salidas en el período.</p>'}
+  <div class="firma"><div>Responsable de programación</div><div>Recibido por el cliente</div></div>
+  <p class="pie">Las horas corresponden al registro automático de emisión del sistema (lo que realmente salió al aire).</p>
+</div>
+<script>
+  // El nombre de la emisora se escribe una vez y queda recordado en esta PC
+  const el = document.getElementById('emisora');
+  try {{ const v = localStorage.getItem('onix_emisora'); if (v) el.textContent = v; }} catch (e) {{}}
+  el.addEventListener('input', () => {{ try {{ localStorage.setItem('onix_emisora', el.textContent.trim()); }} catch (e) {{}} }});
+</script></body></html>"""
+    return HTMLResponse(html)

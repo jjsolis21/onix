@@ -1309,3 +1309,25 @@
   border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit;
 }
 #pautaModal .form-group select:focus { outline: 2px solid var(--p-accent); border-color: transparent; }
+
+/* Reporte por cliente */
+.cm-reporte { background: var(--p-accent); color: #000; border-color: var(--p-accent); }
+.cm-reporte:hover { filter: brightness(1.1); color: #000; }
+.cm-rep {
+  width: min(440px, 94vw); background: var(--choc-1, #0a0a0a); border: 1px solid var(--p-border);
+  border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+}
+.cm-rep-cab { display: flex; justify-content: space-between; align-items: center; }
+.cm-rep-cab h3 { margin: 0; font-size: 16px; color: var(--p-text); }
+.cm-rep-fechas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cm-rep input[type=date] {
+  background: var(--choc-2, #111); color: var(--p-text); border: 1px solid var(--p-border);
+  border-radius: 5px; padding: 7px 8px; font-family: inherit; color-scheme: dark;
+}
+.cm-rep-rapido { display: flex; flex-wrap: wrap; gap: 6px; }
+.cm-rep-rapido button {
+  background: var(--choc-3, #1a1a1a); color: var(--p-text); border: 1px solid var(--p-border);
+  border-radius: 14px; padding: 5px 11px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.cm-rep-rapido button:hover { border-color: var(--p-accent); color: var(--p-accent); }
+.cm-rep-ayuda { margin: 0; font-size: 12px; color: var(--p-text-muted); }
