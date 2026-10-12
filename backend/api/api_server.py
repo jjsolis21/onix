@@ -103,7 +103,7 @@ ENGINE_EVENTS = (
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
-    "programa_actualizado", "tanda_excedida", "tanda_inmediata",
+    "programa_actualizado", "tanda_excedida", "tanda_inmediata", "detener_al_terminar",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -1614,7 +1614,8 @@ def get_status():
 # ===========================================================================
 
 PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue",
-                   "lanzar_tanda", "cue", "cue_stop"}
+                   "lanzar_tanda", "cue", "cue_stop", "detener_al_terminar",
+                   "plan_insertar", "plan_mover", "plan_quitar"}
 
 
 def _player_command(cmd: str, msg: dict) -> dict:
@@ -1668,6 +1669,20 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
             raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
     elif cmd == "cue_stop":
         engine.cue_stop()
+    elif cmd == "detener_al_terminar":
+        engine.detener_al_terminar(bool(msg.get("activo", True)))
+    elif cmd == "plan_insertar":
+        if not engine.plan_insertar(_audio_id(), int(msg.get("posicion") or 0)):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd in ("plan_mover", "plan_quitar"):
+        try:
+            uid = int(msg["uid"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Falta uid")
+        if cmd == "plan_mover":
+            engine.plan_mover(uid, int(msg.get("posicion") or 0))
+        else:
+            engine.plan_quitar(uid)
     else:
         raise ValueError(f"Comando desconocido: {cmd}")
     return {"ok": True, "cmd": cmd}
@@ -1679,6 +1694,9 @@ class PlayerCommand(BaseModel):
     mode:         Optional[str] = None
     ahora:        Optional[bool] = False    # lanzar_tanda: ya, sin esperar el cambio de pista
     desde:        Optional[float] = 0.0     # cue: segundo desde el que se preescucha
+    activo:       Optional[bool] = True     # detener_al_terminar
+    posicion:     Optional[int] = 0         # plan_insertar / plan_mover
+    uid:          Optional[int] = None      # plan_mover / plan_quitar
 
 
 @app.post("/api/v1/player/{cmd}", tags=["Player"], summary="Enviar comando al motor de audio")
@@ -2270,6 +2288,11 @@ async def read_index():
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html no encontrado en frontend/")
     return FileResponse(index_path)
+
+@app.get("/studio")
+async def read_studio():
+    """Studio nuevo (estilo Jazler SoHo). Mientras se prueba, el anterior sigue en "/"."""
+    return FileResponse(FRONTEND_DIR / "studio" / "index.html")
 
 # Montar carpetas estáticas
 # /static -> frontend/ (para main.css, app.js, etc.)

@@ -494,3 +494,49 @@ def test_aviso_de_tanda_demasiado_larga(engine, media):
     engine._check_pautas()
     exc = [d for e, d in engine.events if e == "tanda_excedida"]
     assert exc and exc[0]["duracion"] >= 6 and exc[0]["maximo"] == 3
+
+
+# ── Studio nuevo: detener al terminar e insertar en el programa ──────────────
+
+def test_detener_al_terminar_retiene_la_automatizacion(engine, media):
+    for i in range(3):
+        add_audio(engine, media, f"TEMA {i}", seconds=1.0, artista=f"A{i}")
+    assert engine._advance()
+    engine.detener_al_terminar(True)
+    engine._drain_commands()
+    assert engine.status["detener_al_terminar"] is True
+    import time as _t
+    for _ in range(60):                       # deja terminar la pista (1 s en mock)
+        engine._tick()
+        if engine._current_track is None:
+            break
+        _t.sleep(0.05)
+    assert engine._current_track is None
+    st = engine.status
+    assert st["retenido"] is True and st["detener_al_terminar"] is False
+    engine._idle_retry_at = 0
+    engine._tick()                            # en automático NO arranca sola
+    assert engine._current_track is None
+    engine.play_next()                        # el operador retoma
+    engine._drain_commands()
+    assert engine._current_track is not None and engine.status["retenido"] is False
+
+
+def test_insertar_audio_en_el_programa(engine, media):
+    for i in range(4):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"A{i}")
+    pedido = add_audio(engine, media, "PEDIDO", seconds=60.0)
+    engine._actualizar_programa(forzar=True)
+    assert engine.plan_insertar(pedido, 1)
+    engine._drain_commands()
+    items = engine.programa()["items"]
+    assert items[1]["audio_id"] == pedido and items[1]["operador"] is True
+    st = engine.status
+    assert engine.plan_insertar(999999) is False
+
+
+def test_status_trae_las_marcas_de_la_pista(engine, media):
+    aid = add_audio(engine, media, "CON INTRO", seconds=10.0, cue_intro=3.5, cue_mezcla=8.0)
+    assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
+    ct = engine.status["current_track"]
+    assert ct["cue_intro"] == 3.5 and ct["mezcla"] == 8.0 and ct["tipo_audio"] == "Musica"

@@ -105,6 +105,24 @@ Corren en cualquier sistema (motor simulado, BD y audios temporales).
 | `normalizacion_activa` | 1 | Normalizar volumen |
 | `normalizacion_lufs` | -16 | Sonoridad objetivo (LUFS) |
 
+## 🎛️ Studio nuevo (en prueba): `http://localhost:8001/studio`
+
+Pantalla del operador al estilo Jazler SoHo. Mientras se prueba al aire, el Studio
+anterior sigue en `http://localhost:8001/`.
+
+- **Reproductor**: cuenta regresiva grande de lo que suena, **cuenta del intro** (cuánto
+  queda para hablar encima; cambia a VOZ cuando entra la voz), barra con marcas de intro
+  y mezcla, y **SIGUE** con su cuenta "entra en".
+- **DETENER AL TERMINAR**: la canción suena completa y no entra nada más, ni en automático.
+  El aire queda libre hasta que el operador presiona **REPRODUCIR**.
+- **Programa a la izquierda**: tarjetas con color por tipo (tanda en rojo); se **reordena
+  arrastrando** y se **sueltan canciones desde la biblioteca** en la posición exacta (✋).
+- **Biblioteca** por tipo (música, jingles, sweepers, cuñas, programas, tips), con búsqueda
+  y filtros. Doble clic = a la cola.
+- **Derecha**: próxima tanda con cuenta regresiva, historial y cartuchera.
+- Solo avisa lo importante (errores, tandas, respaldo). Si se pierde la conexión aparece un
+  aviso rojo fijo; lo que suena no se corta.
+
 ## 🕐 Relojes y programa (modo automático estilo Jazler SoHo)
 
 - **Reloj** (Admin → 08 Relojes): filas en orden, por ejemplo *ID → Éxito → Nuevo → Éxito*.

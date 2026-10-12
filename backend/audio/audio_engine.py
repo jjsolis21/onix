@@ -822,6 +822,12 @@ class AudioEngine:
         # Modo manual: el operador libera la tanda pendiente
         self._tanda_liberada   = False
 
+        # "Detener al terminar" (stop-next de Jazler): la pista actual suena
+        # completa, no entra nada despues y la automatizacion queda RETENIDA
+        # hasta que el operador pida reproducir (para hablar en vivo).
+        self._detener_al_terminar = False
+        self._retenido            = False
+
         # Programa: lo que sonara las proximas horas (ver planner.py).
         # Solo el hilo del motor lo modifica; el lock protege las lecturas de la API.
         self._programa:        deque = deque()
@@ -959,7 +965,8 @@ class AudioEngine:
                     if not self._mix_fired and pos >= self._mix_point:
                         # Si no hay siguiente, la pista simplemente termina completa.
                         self._mix_fired = True
-                        self._advance()
+                        if not self._detener_al_terminar:
+                            self._advance()
                     return
 
             # La pista termino sin relevo previo.
@@ -967,12 +974,20 @@ class AudioEngine:
             self._current_track = None
             self._current_item  = None
             self.bus.emit("track_ended", {"audio_id": track.get("id"), "completada": True})
+            if self._detener_al_terminar:
+                self._detener_al_terminar = False
+                self._retenido = True
+                self._should_be_playing = False
+                self.bus.emit("playback_stopped", {"reason": "detener_al_terminar"})
+                self.bus.emit("detener_al_terminar", {"activo": False, "retenido": True})
+                return
             if not self._advance():
                 self._should_be_playing = False
                 self.bus.emit("playback_stopped", {"reason": "sin_siguiente"})
             return
 
-        if self._mode == "automatico" and time.monotonic() >= self._idle_retry_at:
+        if (self._mode == "automatico" and not self._retenido
+                and time.monotonic() >= self._idle_retry_at):
             if not self._advance():
                 self._idle_retry_at = time.monotonic() + self.IDLE_RETRY
 
@@ -1060,6 +1075,7 @@ class AudioEngine:
             raise ValueError(f"Modo invalido: {mode!r}")
         self._mode = mode
         self._idle_retry_at = 0.0
+        self._retenido = False
         self._update_cfg_db("modo", mode)
         self.bus.emit("mode_changed", {"modo": mode, "mode": mode})
 
@@ -1070,6 +1086,8 @@ class AudioEngine:
             except queue.Empty:
                 return
             name = cmd[0]
+            if name in ("play", "play_next", "skip", "lanzar_tanda"):
+                self._retenido = False          # el operador retoma la emision
             if name == "play":
                 self._start(cmd[1])
             elif name == "play_next":
@@ -1079,6 +1097,12 @@ class AudioEngine:
             elif name == "skip":
                 if not self._advance(permitir_plan=True):
                     self._do_stop("skip_sin_siguiente")
+            elif name == "detener_al_terminar":
+                self._detener_al_terminar = bool(cmd[1])
+                self.bus.emit("detener_al_terminar", {"activo": self._detener_al_terminar,
+                                                      "retenido": self._retenido})
+            elif name == "plan_insertar":
+                self._plan_insertar(cmd[1], cmd[2])
             elif name == "plan_quitar":
                 self._plan_quitar(cmd[1])
             elif name == "plan_mover":
@@ -1235,6 +1259,20 @@ class AudioEngine:
         return {"inicio": self._now().isoformat(timespec="seconds"),
                 "reloj_id": it.get("reloj_id"), "fila": it.get("fila")}
 
+    def _plan_insertar(self, track: dict, posicion: int):
+        from backend.audio.planner import _item
+        it = _item("audio", self._now(), duracion_efectiva(track, self._crossfade_secs),
+                   audio_id=track["id"], titulo=track["titulo"], artista=track["artista"],
+                   tipo_audio=track.get("tipo_audio") or TIPO_MUSICA,
+                   genero_vocal=track.get("genero_vocal"), duracion_total=track.get("duracion") or 0,
+                   reloj_id=None, reloj=None, color=None, fila=None,
+                   compensacion=False, cortada=False, operador=True)
+        with self._programa_lock:
+            items = list(self._programa)
+            items.insert(max(0, min(int(posicion), len(items))), it)
+            self._programa = deque(items)
+        self._emit_programa()
+
     def _plan_quitar(self, uid: int):
         with self._programa_lock:
             self._programa = deque(i for i in self._programa if i["uid"] != uid)
@@ -1280,6 +1318,18 @@ class AudioEngine:
             t += timedelta(seconds=it["duracion"])
         return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
                 "items": items, "fin": t.strftime("%H:%M:%S")}
+
+    def detener_al_terminar(self, activo: bool = True):
+        """Stop-next: la pista actual termina y no entra nada mas (ni en automatico)."""
+        self._cmds.put(("detener_al_terminar", bool(activo)))
+
+    def plan_insertar(self, audio_id: int, posicion: int = 0) -> bool:
+        """Mete un audio en el programa en esa posicion (arrastrar desde la biblioteca)."""
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        self._cmds.put(("plan_insertar", track, int(posicion)))
+        return True
 
     def plan_quitar(self, uid: int):
         self._cmds.put(("plan_quitar", int(uid)))
@@ -2009,6 +2059,14 @@ class AudioEngine:
                 "artista": track.get("artista", ""),
                 "origen":  item.get("origen", "manual"),
                 "cliente": item.get("cliente"),
+                "tipo_audio":   track.get("tipo_audio") or TIPO_MUSICA,
+                "genero_vocal": track.get("genero_vocal"),
+                "reloj":        item.get("reloj"),
+                # Marcas en segundos del archivo (como position_sec)
+                "cue_inicio":   self._cue_range(item)[0] if item.get("track") else 0,
+                "cue_intro":    float(track.get("cue_intro") or track.get("intro") or 0),
+                "mezcla":       round(self._mix_point, 2) if self._mix_point != float("inf") else None,
+                "fin":          round(self._hard_end, 2) if self._hard_end != float("inf") else None,
             } if track else None,
             "position_sec":      round(self._audio.get_position_sec(self._active_canal), 2) if track else 0,
             "duration_sec":      round(self._duration, 2) if track else 0,
@@ -2031,6 +2089,8 @@ class AudioEngine:
             "crossfade_active":  self._xfade is not None,
             "crossfade_seg":     self._crossfade_secs,
             "should_be_playing": self._should_be_playing,
+            "detener_al_terminar": self._detener_al_terminar,
+            "retenido":          self._retenido,
             "is_playing":        bool(track) and self._audio.is_playing(self._active_canal),
             "last_error":        self.last_error,
         }

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONIX FM — Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=1" />
+</head>
+<body>
+
+  <!-- ═══════════ BARRA SUPERIOR ═══════════ -->
+  <header class="topbar">
+    <div class="brand">ONIX <span>FM</span></div>
+    <div class="modo" role="group" aria-label="Modo de emisión">
+      <button class="modo-btn" data-modo="manual">MANUAL</button>
+      <button class="modo-btn" data-modo="automatico">AUTO</button>
+    </div>
+    <div class="motor-estado" id="motorEstado" title="Estado del motor de audio">
+      <span class="dot"></span><span class="txt">CONECTANDO…</span>
+    </div>
+    <div class="spacer"></div>
+    <a class="top-link" href="/admin/" target="_blank" rel="noopener">ADMIN</a>
+    <div class="reloj">
+      <div class="reloj-hora" id="relojHora">--:--:--</div>
+      <div class="reloj-fecha" id="relojFecha"></div>
+    </div>
+  </header>
+
+  <!-- ═══════════ REPRODUCTOR ═══════════ -->
+  <section class="player">
+    <div class="pl-now">
+      <div class="pl-label">AL AIRE</div>
+      <div class="pl-info">
+        <div class="pl-chips"><span class="chip" id="nowTipo">—</span><span class="chip chip-soft" id="nowReloj"></span></div>
+        <div class="pl-titulo" id="nowTitulo">Sin reproducción</div>
+        <div class="pl-artista" id="nowArtista">&nbsp;</div>
+      </div>
+      <div class="pl-tiempos">
+        <div class="intro" id="nowIntro" hidden><span>INTRO</span><b id="nowIntroSeg">0</b></div>
+        <div class="cuenta" id="nowRestante">0:00</div>
+      </div>
+      <div class="barra" id="nowBarra">
+        <div class="barra-fill" id="nowFill"></div>
+        <div class="marca marca-intro" id="marcaIntro" hidden title="Fin del intro"></div>
+        <div class="marca marca-mezcla" id="marcaMezcla" hidden title="Punto de mezcla"></div>
+        <div class="barra-tiempos"><span id="nowTranscurrido">0:00</span><span id="nowTotal">0:00</span></div>
+      </div>
+    </div>
+
+    <div class="pl-controles">
+      <button class="ctl ctl-play" id="btnPlay" title="Reproducir lo siguiente">▶<small>REPRODUCIR</small></button>
+      <button class="ctl ctl-next" id="btnNext" title="Pasar a lo siguiente (con crossfade)">⏭<small>SIGUIENTE</small></button>
+      <button class="ctl ctl-detener" id="btnDetener" title="La pista actual termina y no entra nada más">⏹<small>DETENER AL TERMINAR</small></button>
+      <button class="ctl ctl-stop" id="btnStop" title="Corta el aire ahora">■<small>PARAR</small></button>
+    </div>
+
+    <div class="pl-next">
+      <div class="pl-label pl-label-next">SIGUE</div>
+      <div class="pl-info">
+        <div class="pl-chips"><span class="chip" id="nextTipo">—</span></div>
+        <div class="pl-titulo" id="nextTitulo">—</div>
+        <div class="pl-artista" id="nextArtista">&nbsp;</div>
+      </div>
+      <div class="pl-tiempos">
+        <div class="entra"><span id="nextEntraLbl">ENTRA EN</span><b id="nextEntra">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ AVISOS FIJOS ═══════════ -->
+  <div class="aviso aviso-rojo" id="avisoConexion" hidden>⚠ SIN CONEXIÓN CON ONIX — reintentando… (lo que suena no se corta)</div>
+  <div class="aviso aviso-ambar" id="avisoRetenido" hidden>
+    ⏹ AUTOMATIZACIÓN DETENIDA AL TERMINAR — el aire está libre. Presiona <b>REPRODUCIR</b> para seguir.
+  </div>
+  <div class="aviso aviso-ambar aviso-tanda" id="avisoTanda" hidden>
+    <span id="avisoTandaTxt">📢 TANDA EN ESPERA</span>
+    <button id="btnTandaAhora">LANZAR AHORA</button>
+    <button id="btnTandaLuego">AL TERMINAR LA CANCIÓN</button>
+  </div>
+  <div class="aviso aviso-cyan" id="avisoCue" hidden>
+    <span id="avisoCueTxt">🎧 PREESCUCHA</span>
+    <button id="btnCueStop">■ DETENER</button>
+  </div>
+
+  <!-- ═══════════ CUERPO ═══════════ -->
+  <main class="cuerpo">
+
+    <!-- ── Decks: lo que viene ── -->
+    <section class="panel decks">
+      <div class="panel-head">
+        <span>PROGRAMA</span>
+        <span class="panel-sub" id="decksFin"></span>
+        <button class="icon-btn" id="btnRegenerar" title="Volver a planificar desde ahora">↻</button>
+      </div>
+      <div class="decks-lista" id="decksLista"></div>
+      <div class="panel-foot">
+        <span id="decksInfo">Arrastra para reordenar · suelta canciones desde la biblioteca</span>
+        <button class="icon-btn" id="btnVaciarCola" title="Vaciar la cola del operador">✕ COLA</button>
+      </div>
+    </section>
+
+    <!-- ── Biblioteca ── -->
+    <section class="panel biblioteca">
+      <div class="lib-tabs" id="libTabs"></div>
+      <div class="lib-filtros">
+        <input type="search" id="libBuscar" placeholder="Buscar título, artista o categoría…" autocomplete="off" />
+        <select id="libCat1" title="Género"><option value="">Género</option></select>
+        <select id="libCat2" title="Rotación"><option value="">Rotación</option></select>
+        <select id="libVoz" title="Voz"><option value="">Voz</option></select>
+      </div>
+      <div class="lib-tabla-wrap">
+        <table class="lib-tabla">
+          <thead><tr><th>Título / Artista</th><th>Rotación</th><th>Voz</th><th class="num">Intro</th><th class="num">Dur</th><th></th></tr></thead>
+          <tbody id="libFilas"><tr><td colspan="6" class="vacio">Cargando biblioteca…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel-foot"><span id="libInfo"></span><span>Doble clic = a la cola · arrastra al programa</span></div>
+    </section>
+
+    <!-- ── Derecha: próxima tanda, historial, cartuchera ── -->
+    <section class="panel derecha">
+      <div class="tanda-box" id="tandaBox">
+        <div class="tanda-lbl">PRÓXIMA TANDA</div>
+        <div class="tanda-hora" id="tandaHora">—</div>
+        <div class="tanda-cuenta" id="tandaCuenta"></div>
+        <div class="tanda-det" id="tandaDet"></div>
+      </div>
+
+      <div class="panel-head"><span>HISTORIAL</span></div>
+      <div class="historial" id="historial"></div>
+
+      <div class="panel-head">
+        <span>CARTUCHERA</span>
+        <div class="cart-tabs">
+          <button class="cart-tab active" data-banco="jingles">JINGLES</button>
+          <button class="cart-tab" data-banco="publicidad">PUBLICIDAD</button>
+        </div>
+      </div>
+      <div class="cartuchera" id="cartuchera"></div>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts"></div>
+  <script src="/static/studio/studio.js?v=1"></script>
+</body>
+</html>

@@ -225,6 +225,12 @@ class RemoteEngine:
     def plan_regenerar(self):
         self._call("plan_regenerar")
 
+    def plan_insertar(self, audio_id: int, posicion: int = 0) -> bool:
+        return bool(self._call("plan_insertar", audio_id, posicion))
+
+    def detener_al_terminar(self, activo: bool = True):
+        self._call("detener_al_terminar", activo)
+
     def reload_config(self):
         try:
             self._call("reload_config")
