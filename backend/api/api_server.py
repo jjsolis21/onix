@@ -55,12 +55,16 @@ except ImportError:
 
 from backend.audio.loudness import NormalizadorWorker
 
-# Importar el motor de audio (singleton)
-try:
-    from backend.audio.audio_engine import engine
-except ImportError:
-    # Ajuste de path si es necesario
-    sys.path.append(str(root_path))
+# Motor de audio:
+#   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
+#   ONIX_ENGINE=remoto → el motor es otro proceso (backend/audio/engine_service.py)
+#                        y reiniciar la API no corta el aire.
+ENGINE_MODE = os.getenv("ONIX_ENGINE", "local").strip().lower()
+if ENGINE_MODE == "remoto":
+    from backend.audio.engine_client import RemoteEngine
+    engine = RemoteEngine(os.getenv("ONIX_ENGINE_HOST", "127.0.0.1"),
+                          int(os.getenv("ONIX_ENGINE_PORT", "8766")))
+else:
     from backend.audio.audio_engine import engine
 
 # ---------------------------------------------------------------------------
@@ -96,7 +100,7 @@ ENGINE_EVENTS = (
     "track_started", "track_ended", "crossfade_start", "playback_stopped",
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
-    "engine_stopped",
+    "engine_stopped", "engine_connected",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -1587,8 +1591,16 @@ def _player_command(cmd: str, msg: dict) -> dict:
     Ejecuta un comando de reproducción. Lanza ValueError con un mensaje
     para el operador si el comando o sus datos no son válidos.
     """
-    if not engine.status["running"]:
-        raise ValueError(f"Motor de audio detenido: {engine.last_error or 'no iniciado'}")
+    st = engine.status
+    if not st["running"]:
+        raise ValueError(f"Motor de audio detenido: {st.get('last_error') or engine.last_error or 'no iniciado'}")
+    try:
+        return _run_player_command(cmd, msg)
+    except (ConnectionError, RuntimeError) as exc:   # motor remoto caído o sin respuesta
+        raise ValueError(str(exc))
+
+
+def _run_player_command(cmd: str, msg: dict) -> dict:
 
     def _audio_id() -> int:
         try:

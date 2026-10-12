@@ -76,6 +76,7 @@ log = logging.getLogger("AudioEngine")
 # Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
 from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
 from backend.audio.loudness import ganancia_db
+from backend.audio.eventbus import EventBus  # noqa: F401  (re-export)
 
 _THIS_FILE = Path(__file__).resolve()
 
@@ -212,42 +213,6 @@ if BASS_LIB_PATH:
 else:
     BACKEND = "mock"
     log.warning("[ENGINE] BASS no disponible -> modo mock (sin sonido).")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# EventBus -- Pub/Sub interno
-# ══════════════════════════════════════════════════════════════════════════════
-class EventBus:
-    """
-    Bus de eventos pub/sub desacoplado.
-    Permite que api_server.py se suscriba a eventos del motor
-    sin importar directamente las clases del motor.
-    """
-
-    def __init__(self):
-        self._listeners: dict[str, list[Callable]] = {}
-        self._lock = threading.Lock()
-
-    def subscribe(self, event: str, callback: Callable):
-        with self._lock:
-            self._listeners.setdefault(event, []).append(callback)
-
-    def unsubscribe(self, event: str, callback: Callable):
-        with self._lock:
-            if event in self._listeners:
-                self._listeners[event] = [
-                    c for c in self._listeners[event] if c != callback
-                ]
-
-    def emit(self, event: str, payload: dict = None):
-        payload = payload or {}
-        with self._lock:
-            callbacks = list(self._listeners.get(event, []))
-        for cb in callbacks:
-            try:
-                cb(event, payload)
-            except Exception as exc:
-                log.error("[EventBus] Error en '%s': %s", event, exc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
