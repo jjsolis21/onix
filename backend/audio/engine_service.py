@@ -135,6 +135,12 @@ class EngineServer:
             clientes, self._clients = self._clients, []
         self.engine.bus.unsubscribe(WILDCARD, self._on_event)
         if self._sock:
+            # shutdown despierta al hilo bloqueado en accept(); sin esto el
+            # puerto queda ocupado y un motor nuevo no puede volver a abrirlo.
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             self._sock.close()
         for c in clientes:
             c.close()
