@@ -334,3 +334,77 @@ def test_tarjeta_inexistente_no_rompe_el_aire(engine, media):
     assert engine.status["preescucha"] is None
     assert any(d.get("reason") == "error_preescucha" for e, d in engine.events if e == "playback_error")
     assert engine.status["current_track"]["id"] == aire
+
+
+# ── Programa de relojes (modo automático estilo SoHo) ────────────────────────
+
+def test_automatico_consume_el_programa_en_orden(engine, media):
+    for i in range(6):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    engine._actualizar_programa(forzar=True)
+    plan = engine.programa()["items"]
+    assert len(plan) >= 3 and plan[0]["hora"]
+    primero = plan[0]["audio_id"]
+    assert engine._advance()
+    assert engine._current_track["id"] == primero
+    assert engine.programa()["items"][0]["uid"] != plan[0]["uid"]
+
+
+def test_manual_muestra_el_programa_pero_no_avanza_solo(engine, media):
+    engine._mode = "manual"
+    for i in range(4):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    engine._actualizar_programa(forzar=True)
+    assert engine.programa()["items"]
+    assert engine._advance() is False                    # fin de pista: no toma del plan
+    engine.play_next()                                   # el operador pide "siguiente"
+    engine._drain_commands()
+    assert engine._current_item["origen"] == "auto"
+
+
+def test_cola_del_operador_va_antes_del_programa(engine, media):
+    for i in range(4):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    pedido = add_audio(engine, media, "PEDIDO", seconds=60.0)
+    engine._actualizar_programa(forzar=True)
+    engine.queue_track(pedido)
+    vista = engine.programa()
+    assert vista["cola"][0]["id"] == pedido
+    assert engine._advance() and engine._current_track["id"] == pedido
+
+
+def test_quitar_y_mover_items_del_programa(engine, media):
+    for i in range(6):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    engine._actualizar_programa(forzar=True)
+    items = engine.programa()["items"]
+    engine.plan_mover(items[2]["uid"], 0)
+    engine.plan_quitar(items[1]["uid"])
+    engine._drain_commands()
+    nuevos = [i["uid"] for i in engine.programa()["items"]]
+    assert nuevos[0] == items[2]["uid"] and items[1]["uid"] not in nuevos
+
+
+def test_marcador_de_tanda_la_lanza_aunque_falten_segundos(engine, media):
+    add_pauta(engine, media, "ADELANTADA")
+    engine._now.dt = datetime(2026, 10, 12, 10, 14, 30)   # 30 s antes de la tanda :15
+    engine._check_pautas()
+    assert en_cola(engine) == []
+    with engine._programa_lock:
+        engine._programa.append({"uid": 999, "tipo": "tanda", "slot": "2026-10-12-10",
+                                 "minuto": 15, "duracion": 30, "inicio": "2026-10-12T10:14:30"})
+    item = engine._pick_next()
+    assert item["origen"] == "pauta" and item["cliente"] == "ADELANTADA"
+
+
+def test_cartuchera_por_su_propia_salida(engine, media):
+    from backend.audio.audio_engine import CANAL_EFX_BASE
+    jid = add_audio(engine, media, "JINGLE", tipo="Efecto", seconds=3.0)
+    engine._devices.update({"aire": 1, "cartuchera": 2})
+    engine.fire_effect(jid)
+    engine._drain_commands()
+    assert engine._audio.device_of(CANAL_EFX_BASE) == 2
+    engine._devices["cartuchera"] = -2                    # "igual que el aire"
+    engine.fire_effect(jid)
+    engine._drain_commands()
+    assert engine._audio.device_of(CANAL_EFX_BASE) == 1

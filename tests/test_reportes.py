@@ -131,7 +131,7 @@ def test_reporte_pautas_endpoint(client):
 def test_dispositivos_y_salidas(client):
     r = client.get("/api/v1/audio/dispositivos").json()
     assert {d["index"] for d in r["dispositivos"]} == {0, 1, 2}     # mock
-    assert r["salidas"] == {"aire": -1, "preescucha": -1}
+    assert r["salidas"] == {"aire": -1, "preescucha": -1, "cartuchera": -2}
 
     r = client.put("/api/v1/audio/salidas", json={"preescucha": 2})
     assert r.status_code == 200 and r.json()["salidas"]["preescucha"] == 2

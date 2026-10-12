@@ -46,6 +46,7 @@ METHODS = {
     "status", "play_track", "play_next", "queue_track", "clear_queue", "skip",
     "stop_playback", "fire_effect", "set_mode", "reload_config",
     "lanzar_tanda", "cue_play", "cue_stop", "list_devices",
+    "programa", "plan_quitar", "plan_mover", "plan_regenerar",
 }
 
 

@@ -59,6 +59,13 @@ SEED_CONFIG = [
     # Salidas de audio: índice de tarjeta BASS (-1 = predeterminada del sistema)
     ("dispositivo_aire",       "-1"),
     ("dispositivo_preescucha", "-1"),
+    ("dispositivo_cartuchera", "-2"),   # -2 = la misma tarjeta que el aire
+    # Planificador (relojes)
+    ("horas_planificadas",   "2"),      # cuánto se ve y se carga por adelantado
+    ("aleatoriedad",         "3"),      # 0 = estricto (la menos tocada); N = al azar entre N candidatas
+    ("tolerancia_tanda_seg", "90"),     # margen para que la tanda caiga en su minuto
+    ("separacion_cancion_dias", "1"),   # no repetir la canción N días seguidos…
+    ("separacion_cancion_ventana_min", "60"),  # …en la misma franja (± minutos)
 ]
 
 
@@ -400,6 +407,48 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         if col_name not in columnas_audios_v5:
             cursor.execute(f"ALTER TABLE audios ADD COLUMN {col_name} {col_def}")
             logger.info(f"  → Columna {col_name} añadida a audios: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 14 — Relojes (modo automático estilo Jazler SoHo)
+    #   · relojes      → patrón de la hora (nombre, color, filtro de compensación)
+    #   · reloj_filas  → filas en orden: qué tipo de audio y con qué filtros
+    #   · reloj_grilla → qué reloj rige cada hora de cada día (7 × 24)
+    #   Ver backend/audio/planner.py
+    # ------------------------------------------------------------------
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS relojes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre      TEXT    NOT NULL UNIQUE,
+            color       TEXT    NOT NULL DEFAULT '#0a9396',
+            comentario  TEXT    NOT NULL DEFAULT '',
+            -- Compensación: de dónde salen las canciones de relleno para
+            -- llegar a la tanda a tiempo (JSON con los mismos filtros de una fila)
+            compensacion TEXT   NOT NULL DEFAULT '{}',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS reloj_filas (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            reloj_id  INTEGER NOT NULL REFERENCES relojes(id) ON DELETE CASCADE,
+            orden     INTEGER NOT NULL DEFAULT 0,
+            -- Tipo de audio a elegir: Musica | Efecto | Sweeper | Tips | Programa
+            tipo_audio TEXT   NOT NULL DEFAULT 'Musica',
+            -- Filtros (JSON): {"cat1": "...", "cat2": "...", "cat3": "...",
+            --  "voz": "...", "origen": "...", "energia_min": 1, "energia_max": 5}
+            filtros   TEXT    NOT NULL DEFAULT '{}',
+            -- Audio fijo (opcional): esta fila siempre pone este audio
+            audio_id  INTEGER REFERENCES audios(id) ON DELETE SET NULL,
+            nota      TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_reloj_filas_reloj ON reloj_filas(reloj_id, orden);
+        CREATE TABLE IF NOT EXISTS reloj_grilla (
+            dia      INTEGER NOT NULL,          -- 0=Dom … 6=Sáb (igual que la matriz de pautas)
+            hora     INTEGER NOT NULL,          -- 0–23
+            reloj_id INTEGER NOT NULL REFERENCES relojes(id) ON DELETE CASCADE,
+            PRIMARY KEY (dia, hora)
+        );
+    """)
+    logger.info("  → relojes, reloj_filas y reloj_grilla: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")

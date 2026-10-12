@@ -55,6 +55,7 @@ except ImportError:
 
 from backend.audio.loudness import NormalizadorWorker
 from backend.api.reportes import router as reportes_router
+from backend.api import relojes as relojes_api
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -102,6 +103,7 @@ ENGINE_EVENTS = (
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
+    "programa_actualizado",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -177,6 +179,9 @@ app = FastAPI(
 )
 
 app.include_router(reportes_router)
+# La grilla (/relojes/grilla) se declara antes que /relojes/{id} dentro del router
+relojes_api.engine = engine
+app.include_router(relojes_api.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1770,6 +1775,11 @@ class MotorConfig(BaseModel):
     max_mismo_genero:    Optional[int]   = Field(None, ge=1, le=10)
     ducking_db:          Optional[float] = Field(None, ge=-40, le=0)
     normalizacion_activa: Optional[bool] = None
+    horas_planificadas:  Optional[float] = Field(None, ge=0.5, le=24)
+    aleatoriedad:        Optional[int]   = Field(None, ge=0, le=50)
+    tolerancia_tanda_seg: Optional[int]  = Field(None, ge=0, le=600)
+    separacion_cancion_dias: Optional[int] = Field(None, ge=0, le=14)
+    separacion_cancion_ventana_min: Optional[int] = Field(None, ge=0, le=720)
     normalizacion_lufs:  Optional[float] = Field(None, ge=-30, le=-5)
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos de las tandas, p. ej. '15,45'")
@@ -1796,6 +1806,11 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
         "normalizacion_activa": valores.get("normalizacion_activa", "1") not in ("0", "false", ""),
         "normalizacion_lufs":  float(valores.get("normalizacion_lufs", -16)),
+        "horas_planificadas":  float(valores.get("horas_planificadas", 2)),
+        "aleatoriedad":        int(float(valores.get("aleatoriedad", 3))),
+        "tolerancia_tanda_seg": int(float(valores.get("tolerancia_tanda_seg", 90))),
+        "separacion_cancion_dias": int(float(valores.get("separacion_cancion_dias", 1))),
+        "separacion_cancion_ventana_min": int(float(valores.get("separacion_cancion_ventana_min", 60))),
     }
 
 
@@ -1839,18 +1854,20 @@ def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
 # SECCIÓN: SALIDAS DE AUDIO — Tarjetas de sonido y roles (aire / preescucha)
 # ===========================================================================
 
-ROLES_SALIDA = ("aire", "preescucha")
+ROLES_SALIDA = ("aire", "preescucha", "cartuchera")
 
 
 class SalidasIn(BaseModel):
     aire:       Optional[int] = Field(None, ge=-1, description="-1 = predeterminada del sistema")
     preescucha: Optional[int] = Field(None, ge=-1)
+    cartuchera: Optional[int] = Field(None, ge=-2, description="-2 = la misma tarjeta que el aire")
 
 
 def _read_salidas(conn: sqlite3.Connection) -> dict:
     valores = {r["clave"]: r["valor"] for r in conn.execute(
         "SELECT clave, valor FROM config WHERE clave LIKE 'dispositivo_%'")}
-    return {rol: int(float(valores.get(f"dispositivo_{rol}", -1))) for rol in ROLES_SALIDA}
+    return {rol: int(float(valores.get(f"dispositivo_{rol}", -2 if rol == "cartuchera" else -1)))
+            for rol in ROLES_SALIDA}
 
 
 def _listar_dispositivos() -> list:
@@ -1878,7 +1895,7 @@ def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
     """
     disponibles = {d["index"] for d in _listar_dispositivos()}
     for rol, idx in body.model_dump(exclude_none=True).items():
-        if idx != -1 and disponibles and idx not in disponibles:
+        if idx >= 0 and disponibles and idx not in disponibles:
             raise HTTPException(status_code=422, detail=f"La tarjeta {idx} no existe en esta PC")
         conn.execute(
             "INSERT INTO config (clave, valor) VALUES (?, ?)"

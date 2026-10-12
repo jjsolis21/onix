@@ -213,6 +213,18 @@ class RemoteEngine:
     def list_devices(self) -> list:
         return self._call("list_devices") or []
 
+    def programa(self) -> dict:
+        return self._call("programa") or {}
+
+    def plan_quitar(self, uid: int):
+        self._call("plan_quitar", uid)
+
+    def plan_mover(self, uid: int, posicion: int):
+        self._call("plan_mover", uid, posicion)
+
+    def plan_regenerar(self):
+        self._call("plan_regenerar")
+
     def reload_config(self):
         try:
             self._call("reload_config")

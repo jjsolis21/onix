@@ -76,6 +76,7 @@ log = logging.getLogger("AudioEngine")
 # Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
 from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
 from backend.audio.loudness import ganancia_db
+from backend.audio.planner import Planner, duracion_efectiva
 from backend.audio.eventbus import EventBus  # noqa: F401  (re-export)
 
 _THIS_FILE = Path(__file__).resolve()
@@ -584,100 +585,6 @@ class MockBackend:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Algoritmo de Rotacion
-# ══════════════════════════════════════════════════════════════════════════════
-class RotationAlgorithm:
-    """
-    Selecciona la siguiente pista musical aplicando reglas en cascada.
-    0. Solo audios de tipo 'Musica' que no esten ligados a una pauta: las
-       cuñas, jingles y demas tipos nunca salen por rotacion.
-    1. Excluir artistas reproducidos en los ultimos N minutos.
-    2. Bloquear la voz (genero_vocal) si se repite mas de M veces seguidas.
-    3. Ordenar por ultima_reproduccion ASC (las menos escuchadas primero).
-    """
-
-    _BASE = (
-        "a.activo=1"
-        " AND a.tipo_audio = ?"
-        " AND a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)"
-    )
-
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
-
-    def _cfg(self, conn, clave: str, default: str) -> str:
-        row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
-        return row["valor"] if row else default
-
-    def select_next(self, recent_history: deque, exclude_ids=()) -> Optional[dict]:
-        conn = _db_conn(self.db_path)
-        try:
-            ventana_min = int(self._cfg(conn, "ventana_artista_min", "60"))
-            max_genero  = int(self._cfg(conn, "max_mismo_genero",     "2"))
-            ventana_ini = datetime.now() - timedelta(minutes=ventana_min)
-            history     = list(recent_history)
-
-            artistas_bloq = {
-                h["artista"] for h in history
-                if datetime.fromisoformat(h["ts"]) >= ventana_ini
-            }
-
-            genero_bloq = None
-            if max_genero > 0 and len(history) >= max_genero:
-                generos = {h["genero_vocal"] for h in history[-max_genero:]}
-                if len(generos) == 1:
-                    genero_bloq = generos.pop()   # None si no estan clasificadas
-
-            base_clauses = [self._BASE]
-            base_params  = [TIPO_MUSICA]
-            if exclude_ids:
-                ph = ",".join("?" * len(exclude_ids))
-                base_clauses.append(f"a.id NOT IN ({ph})")
-                base_params.extend(exclude_ids)
-
-            clauses, params = list(base_clauses), list(base_params)
-            if artistas_bloq:
-                ph = ",".join("?" * len(artistas_bloq))
-                clauses.append(f"a.artista NOT IN ({ph})")
-                params.extend(artistas_bloq)
-            if genero_bloq:
-                clauses.append("COALESCE(a.genero_vocal,'') != ?")
-                params.append(genero_bloq)
-
-            order = "a.ultima_reproduccion ASC NULLS FIRST"
-            rows = conn.execute(
-                f"SELECT a.* FROM audios a WHERE {' AND '.join(clauses)}"
-                f" ORDER BY {order} LIMIT 10",
-                params
-            ).fetchall()
-
-            if not rows:
-                # Biblioteca pequeña: relajar reglas, solo evitar repetir artista seguido.
-                ult = history[-1]["artista"] if history else None
-                rows = conn.execute(
-                    f"SELECT a.* FROM audios a WHERE {' AND '.join(base_clauses)}"
-                    f" AND (? IS NULL OR a.artista != ?)"
-                    f" ORDER BY {order} LIMIT 3",
-                    base_params + [ult, ult]
-                ).fetchall()
-
-            if not rows:
-                # Ultimo recurso: cualquier pista musical disponible.
-                rows = conn.execute(
-                    f"SELECT a.* FROM audios a WHERE {' AND '.join(base_clauses)}"
-                    f" ORDER BY {order} LIMIT 1",
-                    base_params
-                ).fetchall()
-
-            if not rows:
-                return None
-
-            return dict(random.choice(rows[:5]))
-        finally:
-            conn.close()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # Watchdog -- Guardian de reproduccion 24/7
 # ══════════════════════════════════════════════════════════════════════════════
 class Watchdog:
@@ -837,7 +744,8 @@ CANAL_CUE      = 8  # preescucha (sale por la tarjeta de preescucha, nunca al ai
 
 # Salidas de audio (roles). Cada una apunta a una tarjeta de la PC
 # (config dispositivo_<rol>; -1 = predeterminada del sistema).
-ROLES_SALIDA = ("aire", "preescucha")
+ROLES_SALIDA = ("aire", "preescucha", "cartuchera")
+IGUAL_QUE_AIRE = -2   # valor de dispositivo_cartuchera: misma tarjeta que el aire
 
 
 class AudioEngine:
@@ -854,6 +762,13 @@ class AudioEngine:
         play_track, play_next, queue_track, clear_queue, skip, stop_playback,
         fire_effect, set_mode, lanzar_tanda, cue_play, cue_stop,
         list_devices, status
+
+    MODO AUTOMATICO (estilo Jazler SoHo):
+        El planificador (planner.py) arma las proximas `horas_planificadas`
+        siguiendo los relojes de cada hora, con las tandas como marcadores.
+        El motor consume ese plan en orden; el operador lo ve en el Studio y
+        puede quitar o mover items. En manual el plan tambien se ve, pero
+        solo avanza cuando el operador pide "siguiente".
 
     PAUTAS SEGUN EL MODO:
         automatico → las tandas salen solas en el siguiente cambio de pista.
@@ -877,7 +792,7 @@ class AudioEngine:
         self._db       = db_path or DB_PATH
         self._respaldo_dir = respaldo_dir or RESPALDO_DIR
         self._now      = datetime.now          # reloj de pared (las pruebas lo sustituyen)
-        self._rotation = RotationAlgorithm(self._db)
+        self._planner  = Planner(self._db)
         self._watchdog = Watchdog(self.bus, self._watchdog_state)
 
         self._mode             = "manual"
@@ -906,6 +821,14 @@ class AudioEngine:
 
         # Modo manual: el operador libera la tanda pendiente
         self._tanda_liberada   = False
+
+        # Programa: lo que sonara las proximas horas (ver planner.py).
+        # Solo el hilo del motor lo modifica; el lock protege las lecturas de la API.
+        self._programa:        deque = deque()
+        self._programa_lock    = threading.Lock()
+        self._horas_plan       = 2.0
+        self._last_plan_check  = 0.0
+        self._replanificar     = True
 
         self._duration         = 0.0
         self._mix_point        = float("inf")
@@ -980,7 +903,10 @@ class AudioEngine:
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:
-                self._devices[rol] = int(float(self._cfg(f"dispositivo_{rol}", "-1")))
+                defecto = str(IGUAL_QUE_AIRE) if rol == "cartuchera" else "-1"
+                self._devices[rol] = int(float(self._cfg(f"dispositivo_{rol}", defecto)))
+            self._horas_plan = max(0.5, min(24.0, float(self._cfg("horas_planificadas", "2"))))
+            self._replanificar = True
             # Compatibilidad: ONIX_AUDIO_DEVICE fuerza la tarjeta del aire
             if os.getenv("ONIX_AUDIO_DEVICE") not in (None, ""):
                 self._devices["aire"] = int(os.environ["ONIX_AUDIO_DEVICE"])
@@ -1000,6 +926,7 @@ class AudioEngine:
                 self._finish_crossfade()
                 self._restore_ducking()
                 self._check_pautas()
+                self._actualizar_programa()
                 self._tick()
                 self._process_deferred_moves()
             except Exception as exc:
@@ -1062,7 +989,9 @@ class AudioEngine:
             return False
         self._playlist_queue.append({
             "id": track["id"], "titulo": track["titulo"], "artista": track["artista"],
+            "duracion_efectiva": duracion_efectiva(track, self._crossfade_secs),
         })
+        self._replanificar = True
         self._emit_queue()
         return True
 
@@ -1106,12 +1035,17 @@ class AudioEngine:
     def cue_stop(self):
         self._cmds.put(("cue_stop",))
 
+    def _device_de(self, rol: str) -> int:
+        idx = self._devices.get(rol, -1)
+        return self._devices["aire"] if idx == IGUAL_QUE_AIRE else idx
+
     def list_devices(self) -> list[dict]:
         """Tarjetas de sonido de la PC y que rol tiene asignado cada una."""
         devs = self._audio.list_devices()
         for d in devs:
-            d["roles"] = [rol for rol, idx in self._devices.items()
-                          if idx == d["index"] or (idx == -1 and d["predeterminado"])]
+            d["roles"] = [rol for rol in self._devices
+                          if (idx := self._device_de(rol)) == d["index"]
+                          or (idx == -1 and d["predeterminado"])]
         return devs
 
     def set_mode(self, mode: str):
@@ -1132,11 +1066,20 @@ class AudioEngine:
             if name == "play":
                 self._start(cmd[1])
             elif name == "play_next":
-                if not self._current_track and not self._advance():
+                # El operador pide "siguiente": tambien vale lo planificado
+                if not self._current_track and not self._advance(permitir_plan=True):
                     self._emit_error(None, "cola_vacia", "No hay nada en cola para reproducir")
             elif name == "skip":
-                if not self._advance():
+                if not self._advance(permitir_plan=True):
                     self._do_stop("skip_sin_siguiente")
+            elif name == "plan_quitar":
+                self._plan_quitar(cmd[1])
+            elif name == "plan_mover":
+                self._plan_mover(cmd[1], cmd[2])
+            elif name == "plan_regenerar":
+                self._vaciar_programa()
+                self._replanificar = True
+                self._actualizar_programa()
             elif name == "stop":
                 self._do_stop("manual")
             elif name == "effect":
@@ -1156,18 +1099,63 @@ class AudioEngine:
 
     # ── Seleccion y arranque de pistas ────────────────────────────────────────
 
-    def _advance(self) -> bool:
+    def _advance(self, permitir_plan: Optional[bool] = None) -> bool:
         """Arranca el siguiente elemento disponible. False si no hay ninguno."""
         for _ in range(5):
-            item = self._pick_next()
+            item = self._pick_next(permitir_plan)
             if not item:
                 return False
             if self._start(item):
                 return True
         return False
 
-    def _pick_next(self) -> Optional[dict]:
-        """Prioridad: pautas de la hora > cola manual > rotacion automatica."""
+    def _pick_next(self, permitir_plan: Optional[bool] = None) -> Optional[dict]:
+        """
+        Prioridad: pautas liberadas > cola del operador > programa (relojes)
+        > lista de respaldo. El programa se consume solo en automatico, o en
+        manual cuando el operador pide "siguiente" (permitir_plan=True).
+        """
+        if permitir_plan is None:
+            permitir_plan = self._mode == "automatico"
+        now = time.monotonic()
+        self._failed_ids = {i: t for i, t in self._failed_ids.items() if now - t < self.FAILED_TTL}
+
+        for _ in range(200):
+            item = self._pop_pauta()
+            if item:
+                return item
+
+            while self._playlist_queue:
+                queued = self._playlist_queue.popleft()
+                self._emit_queue()
+                track = self._fetch_track(queued["id"])
+                if track:
+                    return {"track": track, "origen": "cola"}
+
+            if not permitir_plan:
+                return None
+            if not self._programa:
+                self._actualizar_programa(forzar=True)
+            with self._programa_lock:
+                it = self._programa.popleft() if self._programa else None
+            if it is None:
+                break
+            self._emit_programa()
+            if it["tipo"] == "tanda":
+                # Marcador de tanda: la tanda sale aqui aunque falten unos
+                # segundos para su minuto (compensacion del planificador).
+                self._check_pautas(forzar=(it["slot"], it["minuto"]))
+                continue
+            track = self._fetch_track(it["audio_id"])
+            if track and it["audio_id"] not in self._failed_ids:
+                return {"track": track, "origen": "auto", "reloj": it.get("reloj"),
+                        "plan_uid": it["uid"]}
+
+        if self._mode == "automatico":
+            return self._pick_respaldo()
+        return None
+
+    def _pop_pauta(self) -> Optional[dict]:
         tanda_permitida = self._mode == "automatico" or self._tanda_liberada
         if not self._priority_queue:
             self._tanda_liberada = False
@@ -1179,30 +1167,104 @@ class AudioEngine:
             if track:
                 return {"track": track, "origen": "pauta", **pauta}
             self._pautas_fallidas.add((pauta["slot"], pauta["pauta_id"]))
-
-        while self._playlist_queue:
-            queued = self._playlist_queue.popleft()
-            self._emit_queue()
-            track = self._fetch_track(queued["id"])
-            if track:
-                return {"track": track, "origen": "cola"}
-
-        if self._mode == "automatico":
-            now = time.monotonic()
-            self._failed_ids = {i: t for i, t in self._failed_ids.items()
-                                if now - t < self.FAILED_TTL}
-            try:
-                track = self._rotation.select_next(
-                    self._recent_history,
-                    exclude_ids=tuple(i for i in self._failed_ids if isinstance(i, int)),
-                )
-            except Exception as exc:
-                log.error("[Engine] Rotacion no disponible: %s", exc)
-                track = None
-            if track:
-                return {"track": track, "origen": "auto"}
-            return self._pick_respaldo()
         return None
+
+    # ── Programa (relojes) ────────────────────────────────────────────────────
+
+    PLAN_INTERVAL = 5.0
+
+    def _fin_actual(self) -> datetime:
+        """Hora estimada en que arranca lo siguiente a lo que suena."""
+        now = self._now()
+        if self._current_track and self._mix_point != float("inf"):
+            pos = self._audio.get_position_sec(self._active_canal)
+            return now + timedelta(seconds=max(0.0, self._mix_point - pos))
+        return now
+
+    def _vaciar_programa(self):
+        with self._programa_lock:
+            self._programa.clear()
+
+    def _actualizar_programa(self, forzar: bool = False):
+        """Completa el programa hasta `horas_planificadas` desde ahora."""
+        if not forzar and not self._replanificar and \
+                time.monotonic() - self._last_plan_check < self.PLAN_INTERVAL:
+            return
+        self._last_plan_check = time.monotonic()
+        self._replanificar = False
+
+        t = self._fin_actual()
+        cola = list(self._playlist_queue)
+        t += timedelta(seconds=sum(float(q.get("duracion_efectiva") or 180) for q in cola))
+        with self._programa_lock:
+            actual = list(self._programa)
+        for it in actual:
+            t += timedelta(seconds=it["duracion"])
+        hasta = self._now() + timedelta(hours=self._horas_plan)
+        if t >= hasta:
+            return
+        lanzadas = {(self._plan_slot, m) for m in self._tandas_lanzadas} if self._plan_slot else set()
+        try:
+            nuevos = self._planner.extender(
+                actual, t, hasta, list(self._recent_history), self._tandas_minutos,
+                excluir={i for i in self._failed_ids if isinstance(i, int)},
+                tandas_emitidas=lanzadas,
+            )
+        except Exception as exc:
+            log.error("[Engine] Planificador: %s", exc, exc_info=True)
+            return
+        if nuevos:
+            with self._programa_lock:
+                self._programa.extend(nuevos)
+            self._emit_programa()
+
+    def _plan_quitar(self, uid: int):
+        with self._programa_lock:
+            self._programa = deque(i for i in self._programa if i["uid"] != uid)
+        self._replanificar = True
+        self._emit_programa()
+
+    def _plan_mover(self, uid: int, posicion: int):
+        with self._programa_lock:
+            items = list(self._programa)
+            it = next((i for i in items if i["uid"] == uid), None)
+            if it is None:
+                return
+            items.remove(it)
+            items.insert(max(0, min(int(posicion), len(items))), it)
+            self._programa = deque(items)
+        self._emit_programa()
+
+    def _emit_programa(self):
+        self.bus.emit("programa_actualizado", {"items": len(self._programa)})
+
+    def programa(self) -> dict:
+        """
+        Lo que viene, con hora estimada de inicio: primero la cola del
+        operador y luego el programa de los relojes.
+        """
+        t = self._fin_actual()
+        cola = []
+        for q in list(self._playlist_queue):
+            cola.append({**q, "hora": t.strftime("%H:%M:%S")})
+            t += timedelta(seconds=float(q.get("duracion_efectiva") or 180))
+        with self._programa_lock:
+            items = [dict(i) for i in self._programa]
+        for it in items:
+            it["hora"] = t.strftime("%H:%M:%S")
+            t += timedelta(seconds=it["duracion"])
+        return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
+                "items": items, "fin": t.strftime("%H:%M:%S")}
+
+    def plan_quitar(self, uid: int):
+        self._cmds.put(("plan_quitar", int(uid)))
+
+    def plan_mover(self, uid: int, posicion: int):
+        self._cmds.put(("plan_mover", int(uid), int(posicion)))
+
+    def plan_regenerar(self):
+        """Vuelve a planificar desde ahora (tras cambiar relojes o la grilla)."""
+        self._cmds.put(("plan_regenerar",))
 
     def _pick_respaldo(self) -> Optional[dict]:
         """
@@ -1437,7 +1499,7 @@ class AudioEngine:
             self._emit_error(track.get("id"), "archivo_no_encontrado",
                              f"Efecto no encontrado: {track.get('titulo', '')}", path=str(path))
             return
-        if not self._audio.load_stream(path, canal, self._devices["aire"]):
+        if not self._audio.load_stream(path, canal, self._device_de("cartuchera")):
             self._emit_error(track.get("id"), "error_carga_backend",
                              f"No se pudo abrir el efecto: {track.get('titulo', '')}")
             return
@@ -1497,7 +1559,7 @@ class AudioEngine:
 
     # ── Programacion de pautas ────────────────────────────────────────────────
 
-    def _check_pautas(self):
+    def _check_pautas(self, forzar: Optional[tuple] = None):
         """
         Programa las tandas de la hora en curso. Clave de matriz: "dia-hora",
         dia 0=Dom…6=Sab, hora 0–23.
@@ -1510,7 +1572,7 @@ class AudioEngine:
            Si el motor arranca tarde, las tandas ya vencidas salen enseguida.
         3. Lo que no alcanzo a salir en su hora se descarta (no se acumula).
         """
-        if time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
+        if forzar is None and time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
             return
         self._last_pautas_check = time.monotonic()
 
@@ -1576,9 +1638,14 @@ class AudioEngine:
 
         self._plan_hour(slot, now.minute, list(de_la_hora.values()))
 
+        # forzar=(slot, minuto): el programa llego al marcador de esa tanda
+        # unos segundos antes de su minuto; sale ya.
+        limite = now.minute
+        if forzar and forzar[0] == slot:
+            limite = max(limite, forzar[1])
         en_cola = {p["pauta_id"] for p in self._priority_queue}
         for minuto in sorted(self._plan):
-            if minuto > now.minute:
+            if minuto > limite:
                 break
             lanzadas = []
             for pid in self._plan[minuto]:
@@ -1713,6 +1780,7 @@ class AudioEngine:
         if tipo_audio == TIPO_MUSICA and tipo == "musica":
             self._recent_history.append({
                 "audio_id":     track["id"],
+                "tipo_audio":   TIPO_MUSICA,
                 "artista":      track["artista"],
                 "genero_vocal": track.get("genero_vocal"),
                 "ts":           datetime.now().isoformat(),
@@ -1735,6 +1803,7 @@ class AudioEngine:
             "pauta_id":     item.get("pauta_id"),
             "cliente":      item.get("cliente"),
             "tanda":        item.get("tanda"),
+            "reloj":        item.get("reloj"),
             # ─ Cue points (6 marcadores Jazler) ───────────────────────────
             "cue_inicio":      track.get("cue_inicio")      or 0,
             "cue_intro":       track.get("cue_intro")       or track.get("intro") or 0,
@@ -1848,6 +1917,7 @@ class AudioEngine:
             "tanda_en_espera":   (len(self._priority_queue)
                                   if self._mode == "manual" and not self._tanda_liberada else 0),
             "salidas":           dict(self._devices),
+            "programa_items":    len(self._programa),
             "preescucha":        {
                 "audio_id": self._cue_track.get("id"),
                 "titulo":   self._cue_track.get("titulo", ""),
