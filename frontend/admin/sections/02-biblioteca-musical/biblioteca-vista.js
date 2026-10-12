@@ -51,6 +51,7 @@
     nodo: { tipo: 'todo' }, q: '', orden: leer('bv_orden', { k: 'artista', dir: 1 }),
     visibles: new Set(leer('bv_cols', COLUMNAS.filter(c => !c.oculta).map(c => c.k))),
     sel: new Set(), ancla: null, cursor: -1, sonando: null, abiertos: leer('bv_grupos', {}),
+    verFicha: leer('bv_ficha', true), fichaId: null,
   };
   let audio = null;
 
@@ -327,6 +328,101 @@
     l.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
+  // ── Ficha lateral (fase B) ──────────────────────────────
+  let tFicha, tOnda, onda = null;
+  function mostrarFicha(id, forzar = false) {
+    if (!S.verFicha || !id || (id === S.fichaId && !forzar)) return;
+    S.fichaId = id;
+    clearTimeout(tFicha);
+    tFicha = setTimeout(async () => {
+      try {
+        const f = await fetch(`/api/v1/biblioteca/${id}/ficha`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+        if (S.fichaId !== id) return;                 // ya se movió a otra
+        pintarFicha(f);
+        clearTimeout(tOnda);
+        tOnda = setTimeout(() => { if (S.fichaId === id) dibujarOnda(f); }, 350);   // solo si se queda en ella
+      } catch (e) { $('bvFicha').innerHTML = `<p class="bv-ficha-vacia">No se pudo cargar la ficha (${esc(e.message)})</p>`; }
+    }, 120);
+  }
+
+  function pintarFicha(f) {
+    const etq = Object.fromEntries((S.schema?.categorias || []).map(c => [c.nombre_interno, c.etiqueta_visible]));
+    const h = f.historial, max = Math.max(1, ...h.por_hora_30d);
+    const marcas = { 1: '✂ automáticas', 0: '✋ a mano', '-1': '⚠ no se pudieron detectar' }[f.marcas_auto] ?? 'pendientes';
+    const volumen = f.loudness_estado === 'ok' ? `${f.loudness_lufs} LUFS · ${f.ganancia_db > 0 ? '+' : ''}${f.ganancia_db ?? 0} dB`
+      : (f.loudness_estado === 'error' ? '⚠ no se pudo medir' : 'midiendo…');
+    const dato = (t, v) => v !== null && v !== undefined && v !== '' ? `<dt>${t}</dt><dd title="${esc(v)}">${esc(v)}</dd>` : '';
+    $('bvFicha').innerHTML = `
+      <div class="bv-f-tit">${esc(f.titulo)}</div>
+      <div class="bv-f-art">${esc(f.artista)}${f.album ? ` · <span style="color:var(--text-lo)">${esc(f.album)}</span>` : ''}</div>
+      ${f.tipo_audio === 'Musica' && !f.aprobada ? `<div class="bv-f-bandeja">📥 En la Bandeja: no suena en automático hasta aprobarla.</div>` : ''}
+      <div class="bv-f-acc">
+        <button class="bv-btn" data-f="play">${S.sonando === f.id ? '■ Parar' : '▶ Escuchar'}</button>
+        <button class="bv-btn" data-f="editar">✎ Editar marcas y datos</button>
+        ${f.tipo_audio === 'Musica' && !f.aprobada ? `<button class="bv-btn bv-btn--ok" data-f="aprobar">✓ Aprobar</button>` : ''}
+      </div>
+      <div class="bv-onda" id="bvOnda"></div>
+      <div class="bv-onda-ley">
+        <span style="color:#52b788">▏inicio ${fmt(f.cue_inicio)}</span>
+        ${f.cue_intro ? `<span style="color:var(--blue-next)">▏intro ${Math.round(f.cue_intro)}s</span>` : ''}
+        ${f.cue_mezcla ? `<span style="color:var(--gold-1)">▏mezcla ${fmt(f.cue_mezcla)}</span>` : ''}
+        <span>${fmt(f.duracion)}</span>
+      </div>
+      ${f.duplicados.length ? `<div class="bv-f-sec"><h4>⚠ Posibles duplicados</h4>${f.duplicados.map(d =>
+        `<div class="bv-f-dup" data-f="ir" data-id="${d.id}">${esc(d.titulo)} — ${esc(d.artista)} · ${fmt(d.duracion)} <small>(#${d.id}, ir)</small></div>`).join('')}</div>` : ''}
+      <div class="bv-f-sec"><h4>Datos</h4><dl class="bv-f-datos">
+        ${dato(etq.cat1 || 'Género', f.cat1)}${dato(etq.cat2 || 'Rotación', f.cat2)}${dato(etq.cat3 || 'Subgénero', f.cat3)}
+        ${dato('Voz', f.voz)}${dato('Origen', f.origen)}${dato('Energía', f.energia ? '●'.repeat(f.energia) : '')}
+        ${dato('Año', f.anio)}${dato('BPM', f.bpm)}${dato('Volumen', volumen)}${dato('Marcas', marcas)}
+        ${dato('Cargada', (f.creado || '').slice(0, 10))}${dato('Archivo', f.archivo_path)}
+      </dl></div>
+      <div class="bv-f-sec"><h4>Al aire</h4>
+        <div class="bv-f-kpi"><div><b>${h.total}</b><span>veces en total</span></div><div><b>${h.ultimos_30_dias}</b><span>últimos 30 días</span></div></div>
+        ${h.ultimos_30_dias ? `<div class="bv-horas" title="A qué hora sonó (30 días)">${h.por_hora_30d.map((n, i) =>
+          `<i style="height:${Math.round(n / max * 100)}%" title="${String(i).padStart(2, '0')}h: ${n}"></i>`).join('')}</div>
+          <div class="bv-horas-ej"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>` : ''}
+        ${f.en_programa.length ? `<p style="font-size:12px;color:var(--gold-1);margin:6px 0">▶ En el programa de hoy: ${f.en_programa.map(esc).join(', ')}</p>` : ''}
+        ${h.ultimas.length ? `<div class="bv-f-ultimas">${h.ultimas.map(u => `<div>${esc(u.slice(0, 16).replace('T', ' '))}</div>`).join('')}</div>` : '<p style="font-size:12px;color:var(--text-lo)">Todavía no salió al aire.</p>'}
+      </div>
+      <div class="bv-f-sec"><h4>Relojes que pueden elegirla</h4>
+        ${f.tipo_audio !== 'Musica' ? '<p style="font-size:12px;color:var(--text-lo)">Solo aplica a música.</p>'
+          : f.relojes.length ? f.relojes.map(r => `<div class="bv-f-reloj"><i style="background:${esc(r.color)}"></i>
+            <div>${esc(r.nombre)}<small>fila ${r.filas.map(x => `${x.fila} (${esc(x.filtros)})`).join(', ')} · ${r.horas_en_grilla} h en la grilla</small></div></div>`).join('')
+          : '<p class="bv-f-alerta">Ningún reloj la puede elegir: solo sonará si la pone el operador o en horas sin reloj.</p>'}
+      </div>`;
+  }
+
+  function dibujarOnda(f) {
+    const cont = $('bvOnda');
+    if (!cont || typeof WaveSurfer === 'undefined') return;
+    try { onda?.destroy(); } catch (_) { }
+    onda = WaveSurfer.create({ container: cont, height: 70, waveColor: '#0a9396', progressColor: '#0a9396',
+                               cursorWidth: 0, interact: false, normalize: true, barWidth: 2, barGap: 1,
+                               url: `/api/v1/audios/${f.id}/stream` });
+    onda.on('ready', () => {
+      const dur = onda.getDuration() || f.duracion || 1;
+      [[f.cue_inicio, '#52b788'], [f.cue_intro, 'var(--blue-next)'], [f.cue_mezcla, 'var(--gold-1)']].forEach(([t, color]) => {
+        if (!t) return;
+        const m = document.createElement('div');
+        m.className = 'marca'; m.style.left = `${Math.min(100, t / dur * 100)}%`; m.style.background = color;
+        cont.appendChild(m);
+      });
+    });
+    onda.on('error', () => { cont.innerHTML = '<p class="bv-ficha-vacia" style="margin:22px 0">Sin archivo de audio</p>'; });
+  }
+
+  /** Ir a otra canción (desde "posibles duplicados"). */
+  function irA(id) {
+    S.nodo = { tipo: 'todo' }; S.q = ''; $('bvBuscar').value = '';
+    filtrar(); pintarArbol();
+    const i = S.filtrados.findIndex(a => a.id === id);
+    if (i < 0) return;
+    S.cursor = i;
+    $('bvScroll').scrollTop = Math.max(0, i * 34 - 100);
+    pintarFilas();
+    mostrarFicha(id);
+  }
+
   // ── Eventos ──────────────────────────────────────────────
   function enlazar() {
     let t;
@@ -377,6 +473,7 @@
       S.cursor = +f.dataset.i;
       document.querySelectorAll('.bv-fila.cursor').forEach(x => x.classList.remove('cursor'));
       f.classList.add('cursor');
+      mostrarFicha(S.filtrados[S.cursor]?.id);
     });
     $('bvFilas').addEventListener('dblclick', e => {
       const f = e.target.closest('.bv-fila');
@@ -392,6 +489,7 @@
         if (S.cursor * alto < sc.scrollTop) sc.scrollTop = S.cursor * alto;
         if ((S.cursor + 1) * alto > sc.scrollTop + sc.clientHeight) sc.scrollTop = (S.cursor + 1) * alto - sc.clientHeight;
         pintarFilas();
+        mostrarFicha(S.filtrados[S.cursor]?.id);
       } else if (e.key === ' ' && S.cursor >= 0) { e.preventDefault(); seleccionar(S.cursor, e); }
       else if (e.key === 'Enter' && S.cursor >= 0) editar(S.filtrados[S.cursor].id);
       else if (e.key === 'Escape') { S.sel.clear(); pintarFilas(); pintarCabecera(); pintarMasiva(); }
@@ -425,6 +523,23 @@
     $('bvLote').addEventListener('click', () => typeof openLoteModal === 'function' && openLoteModal());
     $('bvCategorias').addEventListener('click', () => window.onixCategories?.open?.());
     $('bvExportar').addEventListener('click', exportar);
+    document.querySelector('.bv-cuerpo').classList.toggle('con-ficha', S.verFicha);
+    $('bvVerFicha').addEventListener('click', () => {
+      S.verFicha = !S.verFicha; guardar('bv_ficha', S.verFicha);
+      document.querySelector('.bv-cuerpo').classList.toggle('con-ficha', S.verFicha);
+      pintarFilas();
+      if (S.verFicha && S.cursor >= 0) mostrarFicha(S.filtrados[S.cursor]?.id, true);
+    });
+    $('bvFicha').addEventListener('click', e => {
+      const b = e.target.closest('[data-f]');
+      if (!b) return;
+      const id = S.fichaId;
+      if (b.dataset.f === 'play') escuchar(id);
+      if (b.dataset.f === 'editar') editar(id);
+      if (b.dataset.f === 'aprobar') { const antes = new Set(S.sel); S.sel = new Set([id]);
+        lote({ cambios: { aprobada: 1 } }, () => '✓ Aprobada: ya puede salir al aire').then(() => { S.sel = antes; pintarMasiva(); mostrarFicha(id, true); }); }
+      if (b.dataset.f === 'ir') irA(+b.dataset.id);
+    });
     $('bvColumnas').addEventListener('click', e => {
       const m = $('bvMenuCols');
       if (!m.hidden) { m.hidden = true; return; }

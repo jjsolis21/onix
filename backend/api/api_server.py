@@ -59,6 +59,7 @@ from backend.api import relojes as relojes_api
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
+from backend.api import biblioteca as biblioteca_api
 from backend.api import auth as auth_api
 
 # Motor de audio:
@@ -195,6 +196,8 @@ problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)
 app.include_router(red_router)
+biblioteca_api.engine = engine
+app.include_router(biblioteca_api.router)
 app.include_router(auth_api.router)
 _respaldos = respaldos_api.RespaldoWorker()
 

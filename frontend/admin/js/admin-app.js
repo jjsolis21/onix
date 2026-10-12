@@ -359,6 +359,18 @@ const handleFile = file => {
   const ap = $('modal-archivo-path'); if (ap && !ap.value) ap.value = file.name;
   const ti = $('modal-title-input'); if (ti && !ti.value) ti.value = file.name.replace(/\.[^.]+$/, '');
   if (typeof window.wfLoadFile === 'function') window.wfLoadFile(file);
+  // Etiquetas del MP3 y aviso de duplicado (como Jazler al importar)
+  leerEtiquetas(file).then(t => {
+    const poner = (id, v) => { const el = $(id); if (el && v && (!el.value || el.value === file.name.replace(/\.[^.]+$/, ''))) el.value = String(v).toUpperCase(); };
+    poner('modal-title-input', t.titulo); poner('modal-artist', t.artista); poner('modal-album', t.album);
+    const y = $('modal-year'); if (y && !y.value && t.anio) y.value = t.anio;
+    if (info) {
+      const d = t.duplicados?.[0];
+      info.innerHTML = `✓ ${file.name} · ${(file.size / 1048576).toFixed(1)} MB` +
+        (t.origen_datos === 'etiquetas' ? ' · 🏷 datos de las etiquetas' : '') +
+        (d ? `<br><b style="color:#ff5a5f">⚠ Ya existe en la biblioteca: ${d.titulo} — ${d.artista} (#${d.id}). ¿Seguro que quieres cargarla otra vez?</b>` : '');
+    }
+  }).catch(() => { /* sin servidor de etiquetas: se completa a mano */ });
   wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
 };
 
@@ -398,7 +410,7 @@ const initApp = async () => {
   await loadAudios();
   const n = library.length;
   setStatus(`Sistema listo · ${n} pista${n !== 1 ? 's' : ''} cargada${n !== 1 ? 's' : ''}`);
-  showToast(`Biblioteca Musical lista · ${n} pistas`, 'success');
+  // (sin aviso: la vista nueva ya muestra el resumen)
 };
 
 const wsCmd = (cmd, data = {}) => {
@@ -545,7 +557,7 @@ function loteUpdateUI() {
 function loteNextStep() {
   if (loteStep === 1) {
     if (loteFiles.length === 0) { showToast('Selecciona una carpeta válida primero', 'error'); return; }
-    loteStep = 2; renderLoteFiles();
+    loteStep = 2; renderLoteFiles(); analizarLote();
   } else if (loteStep === 2) {
     loteStep = 3;
     $('lote-final-count').textContent = loteFiles.filter(f => f.selected).length;
@@ -566,12 +578,64 @@ function loteReset() {
 
 /* Evento manejado por delegación global para evitar problemas con carga dinámica */
 
+/* ── Carga inteligente: etiquetas ID3 y duplicados ──
+   Se manda al servidor solo el comienzo de cada archivo (ahí van las
+   etiquetas del MP3): rápido aunque sean cientos y desde otra PC. */
+async function leerEtiquetas(file) {
+  const fd = new FormData();
+  fd.append('file', file.slice(0, 2 * 1024 * 1024), file.name);
+  fd.append('nombre', file.name);
+  const r = await fetch(`${API_BASE}/api/v1/biblioteca/etiquetas`, { method: 'POST', body: fd });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+let loteAnalisis = null;
+function analizarLote() {
+  if (loteAnalisis) return loteAnalisis;
+  const pendientes = loteFiles.filter(f => !f.tags && !f.analizando);
+  let idx = 0, dibujar = null;
+  const repintar = () => { if (!dibujar) dibujar = requestAnimationFrame(() => { dibujar = null; if (loteStep === 2) renderLoteFiles(); }); };
+  const trabajador = async () => {
+    while (idx < pendientes.length) {
+      const f = pendientes[idx++];
+      f.analizando = true; repintar();
+      try {
+        f.tags = await leerEtiquetas(f.file);
+        // Un duplicado se desmarca solo (si el usuario no lo tocó)
+        if (f.tags.duplicados?.length && !f.tocado) f.selected = false;
+      } catch (e) { f.tags = { error: true }; }
+      f.analizando = false; repintar();
+    }
+  };
+  loteAnalisis = Promise.all([1, 2, 3, 4].map(trabajador)).then(() => {
+    loteAnalisis = null;
+    const dups = loteFiles.filter(f => f.tags?.duplicados?.length).length;
+    if (dups) showToast(`${dups} archivo(s) ya están en la biblioteca: quedaron sin marcar`, 'info');
+    if (loteStep === 2) { renderLoteFiles(); $('lote-next-step').disabled = !loteFiles.some(f => f.selected); }
+  });
+  return loteAnalisis;
+}
+
+function loteEstado(f) {
+  if (f.analizando || (!f.tags && loteAnalisis)) return '<span style="color:#888">⏳ leyendo…</span>';
+  if (!f.tags || f.tags.error) return '<span style="color:#888">—</span>';
+  if (f.tags.duplicados?.length) {
+    const d = f.tags.duplicados[0];
+    return `<span style="color:#ff5a5f;font-weight:700" title="Ya existe: ${d.titulo} — ${d.artista} (#${d.id})">⚠ DUPLICADO</span>`;
+  }
+  return f.tags.origen_datos === 'etiquetas' ? '<span style="color:#52b788" title="Datos leídos de las etiquetas del archivo">🏷 etiquetas</span>'
+                                             : '<span style="color:#e6a817" title="Sin etiquetas: datos tomados del nombre del archivo">📄 del nombre</span>';
+}
+
 function renderLoteFiles() {
   const list = $('lote-file-list');
+  const e = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   list.innerHTML = loteFiles.map((f, i) => `
     <tr class="lote-row ${lotePlayerIdx === i ? 'playing' : ''}" data-idx="${i}" style="cursor: pointer;">
       <td><input type="checkbox" class="lote-file-check" data-idx="${i}" ${f.selected ? 'checked' : ''}></td>
-      <td>${f.name}</td>
+      <td><div>${e(f.name)}</div>${f.tags && !f.tags.error ? `<div style="font-size:11px;color:#9ab">${e(f.tags.artista || '¿artista?')} — ${e(f.tags.titulo)}${f.tags.anio ? ` · ${e(f.tags.anio)}` : ''}</div>` : ''}</td>
+      <td style="font-size:12px">${loteEstado(f)}</td>
       <td style="font-family: var(--font-mono); font-size: 11px; color:#666;">${f.size}</td>
       <td><button class="lote-player-btn lote-play-row" data-idx="${i}">${lotePlayerIdx === i ? '■' : '▶'}</button></td>
     </tr>
@@ -583,6 +647,7 @@ function renderLoteFiles() {
     ck.onchange = (e) => {
       e.stopPropagation();
       loteFiles[ck.dataset.idx].selected = ck.checked;
+      loteFiles[ck.dataset.idx].tocado = true;
       $('lote-next-step').disabled = !loteFiles.some(f => f.selected);
     };
   });
@@ -676,12 +741,15 @@ async function processLote() {
 
     try {
       const formData = new FormData();
-      let artist = 'Unknown Artist', title = item.name.replace(/\.[^.]+$/, '');
-      if (item.name.includes(' - ')) {
+      // Datos de las etiquetas del archivo (o de su nombre, si no tiene)
+      let artist = item.tags?.artista || 'Unknown Artist', title = item.tags?.titulo || item.name.replace(/\.[^.]+$/, '');
+      if (!item.tags?.artista && item.name.includes(' - ')) {
         const parts = item.name.split(' - ');
         artist = parts[0].trim();
         title = parts[1].split('.')[0].trim();
       }
+      if (item.tags?.album) formData.append('album', item.tags.album);
+      if (item.tags?.anio && !globalMeta.year) formData.append('fecha_lanzamiento', item.tags.anio);
 
       formData.append('titulo', title);
       formData.append('artista', artist);
@@ -742,6 +810,7 @@ document.addEventListener('change', e => {
         size: (file.size / 1024 / 1024).toFixed(1) + ' MB',
         selected: true
       }));
+    loteAnalisis = null;      // carpeta nueva: analizar de cero
 
     if (loteFiles.length > 0) {
       const pathInfo = $('lote-path-info');

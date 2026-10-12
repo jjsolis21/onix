@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=2">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=3">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2475,6 +2475,7 @@
       <button class="bv-btn" id="bvLote">⬆ Cargar lote</button>
       <button class="bv-btn" id="bvCategorias">🏷 Categorías</button>
       <button class="bv-btn" id="bvColumnas" title="Elegir columnas">☰ Columnas</button>
+      <button class="bv-btn" id="bvVerFicha" title="Mostrar u ocultar la ficha de la canción">ⓘ Ficha</button>
       <button class="bv-btn" id="bvExportar" title="Exportar lo que se ve a CSV (Excel)">⬇ CSV</button>
     </div>
   </header>
@@ -2514,11 +2515,15 @@
         <span class="bv-ayuda">Doble clic = editar · Mayús+clic = rango · Ctrl+A = todas</span>
       </footer>
     </section>
+
+    <aside class="bv-ficha" id="bvFicha" aria-label="Ficha de la canción">
+      <p class="bv-ficha-vacia">Elige una canción de la tabla (clic o flechas ↑ ↓) para ver su ficha.</p>
+    </aside>
   </div>
 
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=3"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=4"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)
@@ -3906,8 +3911,9 @@
             <thead>
               <tr>
                 <th width="30"></th>
-                <th>Nombre del Archivo</th>
-                <th width="100">Tamaño</th>
+                <th>Archivo · artista y título detectados</th>
+                <th width="130">Estado</th>
+                <th width="80">Tamaño</th>
                 <th width="40">Play</th>
               </tr>
             </thead>
