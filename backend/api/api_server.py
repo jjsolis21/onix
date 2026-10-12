@@ -1695,12 +1695,12 @@ def create_pauta(
                 (cliente, audio_id, audio_nombre, matriz,
                  fecha_inicio, fecha_fin, notas,
                  cue_intro, cue_outro, menciones_diarias, rubro, prioridad, contrato_id,
-                 seccion, activo, created_at, updated_at)
+                 agencia, posicion, seccion, activo, created_at, updated_at)
             VALUES
                 (:cliente, :audio_id, :audio_nombre, :matriz,
                  :fecha_inicio, :fecha_fin, :notas,
                  :cue_intro, :cue_outro, :menciones_diarias, :rubro, :prioridad, :contrato_id,
-                 :seccion, 1, datetime('now'), datetime('now'))
+                 :agencia, :posicion, :seccion, 1, datetime('now'), datetime('now'))
             """,
             db_data,
         )
@@ -1766,6 +1766,8 @@ def update_pauta(
             rubro        = :rubro,
             prioridad    = :prioridad,
             contrato_id  = :contrato_id,
+            agencia      = :agencia,
+            posicion     = :posicion,
             seccion      = :seccion,
             updated_at   = datetime('now')
         WHERE id = :id

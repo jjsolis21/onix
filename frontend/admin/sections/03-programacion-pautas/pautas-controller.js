@@ -5,7 +5,7 @@
  *
  * NUEVAS FUNCIONALIDADES v3:
  *   · Editor de Cue Points vía onix-waveform.js (wfInit/wfLoadFile/wfLoadUrl)
- *   · Campos extra: rubro, contrato, urgente, menciones/día
+ *   · Campos extra: rubro, agencia, contrato, prioridad, posición fija, menciones/día
  *   · Persistencia de campos extra dentro de matriz.__meta (sin cambios de schema)
  *   · Semáforo de vencimientos (rojo / amarillo / urgente) en las filas
  *   · Centro de Notificaciones (campana) con conteo de alertas
@@ -63,7 +63,7 @@
   let _deletingId  = null;      // id pendiente de borrado
   let _isSaving    = false;     // guard anti-doble-submit
   let _searchTerm  = '';
-  let _filterEstado= 'todas';   // 'todas'|'activa'|'vencida'|'por_vencer'|'urgente'
+  let _filterEstado= 'activa';  // 'todas'|'activa'|'hoy'|'vencida'|'por_vencer'
   let _filterRubro = '';
 
   // Estado de arrastre en la matriz
@@ -102,20 +102,14 @@
 
   /**
    * Calcula el estado semafórico de una pauta.
-   * Retorna: 'vencida' | 'por-vencer' | 'urgente' | 'activa'
-   *
-   * "urgente" toma precedencia sobre todos los demás estados
-   * para que la fila siempre llame la atención.
+   * Retorna: 'vencida' | 'por-vencer' | 'activa'
    */
   function _semaphore(pauta) {
-    const meta = pauta.matriz?.__meta ?? {};
-    const urgente = pauta.urgente ?? meta.urgente ?? false;
     const hoy = _today();
     const fin = pauta.fecha_fin;
 
     if (!fin || fin < hoy)  return 'vencida';
     if (fin <= _offsetDate(DAYS_WARN)) return 'por-vencer';
-    if (urgente) return 'urgente';
     return 'activa';
   }
 
@@ -189,7 +183,9 @@
       notas:        data.notas        ?? '',
       rubro:        data.rubro             ?? data.matriz?.__meta?.rubro       ?? '',
       contrato:     data.contrato_id       ?? data.matriz?.__meta?.contrato    ?? '',
-      urgente:      data.prioridad         ?? data.matriz?.__meta?.urgente     ?? false,
+      prioridad:    Number(data.prioridad ?? (data.matriz?.__meta?.urgente ? 1 : 0)) || 0,
+      agencia:      data.agencia           ?? '',
+      posicion:     Number(data.posicion   ?? 0) || 0,
       menciones:    data.menciones_diarias ?? data.matriz?.__meta?.menciones ?? 4,
       seccion:      data.seccion           ?? 3,
       cue_intro:    data.cue_intro         ?? data.matriz?.__meta?.cue_intro   ?? 0,
@@ -390,38 +386,51 @@
   // 9. RENDERIZADO: TABLA CON SEMÁFORO
   // ──────────────────────────────────────────────────────────
 
+  const PRIORIDAD = { '1': '▲ Alta', '0': '● Normal', '-1': '▼ Baja' };
+  const POSICION  = { 1: 'Primero', 2: 'Último' };
+
+  /** ¿Sale hoy? Vigente y con alguna hora marcada para el día de hoy. */
+  function _alAireHoy(p) {
+    if (!_isActiva(p)) return false;
+    const d = new Date().getDay();
+    return Object.keys(p.matriz || {}).some(k => k.startsWith(d + '-') && p.matriz[k]);
+  }
+
   function _renderTable() {
     const term  = _searchTerm.toLowerCase();
     const tbody = $('pautasTableBody');
     if (!tbody) return;
 
     const visible = _pautas.filter(p => {
-      // Búsqueda en tiempo real (cliente, rubro, contrato, audio)
       const meta = _getMeta(p);
-      const rubro    = (p.rubro    || meta.rubro    || '').toLowerCase();
+      const rubro    = (p.rubro    || meta.rubro    || '');
       const contrato = (p.contrato || meta.contrato || '').toLowerCase();
       const matchSearch = !term ||
         p.cliente.toLowerCase().includes(term)     ||
         p.audio_nombre.toLowerCase().includes(term) ||
-        rubro.includes(term)                         ||
+        rubro.toLowerCase().includes(term)           ||
+        (p.agencia || '').toLowerCase().includes(term) ||
         contrato.includes(term);
 
-      // Filtro de estado
       const semaf = _semaphore(p);
-      let matchFilter = true;
-      if      (_filterEstado === 'activa')     matchFilter = _isActiva(p);
-      else if (_filterEstado === 'vencida')    matchFilter = semaf === 'vencida';
-      else if (_filterEstado === 'por_vencer') matchFilter = semaf === 'por-vencer';
-      else if (_filterEstado === 'urgente')    matchFilter = semaf === 'urgente';
+      let matchEstado = true;
+      if      (_filterEstado === 'activa')     matchEstado = _isActiva(p);
+      else if (_filterEstado === 'hoy')        matchEstado = _alAireHoy(p);
+      else if (_filterEstado === 'vencida')    matchEstado = semaf === 'vencida';
+      else if (_filterEstado === 'por_vencer') matchEstado = semaf === 'por-vencer';
 
-      // Filtro de rubro
-      const matchRubro = !_filterRubro ||
-        (p.rubro || meta.rubro || '').toLowerCase() === _filterRubro.toLowerCase();
-
-      return matchSearch && matchFilter && matchRubro;
+      const f = _filtros;
+      return matchSearch && matchEstado &&
+        (!_filterRubro || rubro.toLowerCase() === _filterRubro.toLowerCase()) &&
+        (!f.cliente  || p.cliente === f.cliente) &&
+        (!f.agencia  || (p.agencia || '') === f.agencia) &&
+        (f.prioridad === '' || String(p.prioridad) === f.prioridad) &&
+        (f.posicion  === '' || String(p.posicion)  === f.posicion);
     });
 
     tbody.innerHTML = '';
+    const cuenta = $('cmCuenta');
+    if (cuenta) cuenta.textContent = `${visible.length} de ${_pautas.length} spots`;
 
     if (!visible.length) {
       _showEl($('pautasEmpty'));
@@ -429,64 +438,44 @@
     }
     _hideEl($('pautasEmpty'));
 
+    // Fijados primero (como el alfiler de Jazler), luego por cliente
+    visible.sort((a, b) => (+!a.posicion) - (+!b.posicion) || a.cliente.localeCompare(b.cliente));
+
     visible.forEach(p => {
       const semaf     = _semaphore(p);
       const meta      = _getMeta(p);
       const rubro     = p.rubro     || meta.rubro     || '—';
       const contrato  = p.contrato  || meta.contrato  || '';
-      const urgente   = p.urgente   || meta.urgente   || false;
       const menciones = p.menciones ?? meta.menciones ?? 4;
 
-      // Clase de semáforo para el fondo de la fila
-      const rowClass = {
-        'vencida':    'row--vencida',
-        'por-vencer': 'row--por-vencer',
-        'urgente':    'row--urgente',
-        'activa':     '',
-      }[semaf] ?? '';
-
-      // Badge de estado
-      let estadoBadge = '';
-      if (semaf === 'vencida') {
-        estadoBadge = `<span class="badge badge--dot badge--vencida">Vencida</span>`;
-      } else if (semaf === 'por-vencer') {
-        estadoBadge = `<span class="badge badge--dot badge--por-vencer">Por Vencer</span>`;
-      } else if (semaf === 'urgente') {
-        estadoBadge = `<span class="badge badge--dot badge--activa">Activa</span>`;
-      } else {
-        estadoBadge = `<span class="badge badge--dot badge--activa">Activa</span>`;
-      }
-
-      // Badge URGENTE adicional en el nombre del cliente
-      const urgenteBadge = urgente
-        ? `<span class="badge-urgente-row">URGENTE</span>`
-        : '';
+      const rowClass = { 'vencida': 'row--vencida', 'por-vencer': 'row--por-vencer' }[semaf] ?? '';
+      const estado = semaf === 'vencida'
+        ? `<span class="badge badge--dot badge--vencida">Vencido</span>`
+        : semaf === 'por-vencer'
+          ? `<span class="badge badge--dot badge--por-vencer">Por vencer</span>`
+          : !_isActiva(p)
+            ? `<span class="badge badge--dot">Aún no inicia</span>`
+            : _alAireHoy(p)
+              ? `<span class="badge badge--dot badge--activa">Al aire hoy</span>`
+              : `<span class="badge badge--dot badge--activa">Activo</span>`;
 
       const tr = document.createElement('tr');
       tr.dataset.id = p.id;
       if (rowClass) tr.classList.add(rowClass);
+      if (String(p.id) === String(_previa.id)) tr.classList.add('cm-sel');
 
       tr.innerHTML = `
-        <td>
-          <strong>${_esc(p.cliente)}</strong>
-          ${urgenteBadge}
-          ${contrato
-            ? `<br><span style="font-size:.72rem;color:var(--p-text-muted)">${_esc(contrato)}</span>`
-            : ''}
-        </td>
+        <td class="cm-pin" title="${p.posicion ? 'Siempre ' + POSICION[p.posicion].toLowerCase() + ' en la tanda' : ''}">${p.posicion ? '📌<small>' + (p.posicion === 1 ? '1º' : 'ÚLT') + '</small>' : ''}</td>
+        <td><span class="cm-spot" title="${_esc(p.audio_nombre)}">${_esc(_truncate(p.audio_nombre, 34))}</span>
+          ${contrato ? `<small class="cm-sub">${_esc(contrato)}</small>` : ''}</td>
+        <td><strong>${_esc(p.cliente)}</strong></td>
+        <td>${_esc(p.agencia || '—')}</td>
         <td>${_esc(_truncate(rubro, 22))}</td>
-        <td>
-          <span title="${_esc(p.audio_nombre)}">
-            🎵 ${_esc(_truncate(p.audio_nombre, 26))}
-          </span>
-        </td>
-        <td style="white-space:nowrap">
-          ${_fmt(p.fecha_inicio)} → ${_fmt(p.fecha_fin)}
-        </td>
-        <td style="text-align:center">
-          <span style="color:var(--p-accent);font-weight:700">${menciones}</span>
-        </td>
-        <td>${estadoBadge}</td>
+        <td class="cm-fecha">${_fmt(p.fecha_inicio)}</td>
+        <td class="cm-fecha">${p.fecha_fin ? _fmt(p.fecha_fin) : 'Nunca'}</td>
+        <td class="cm-num">${menciones}</td>
+        <td class="cm-pri cm-pri--${p.prioridad > 0 ? 'alta' : p.prioridad < 0 ? 'baja' : 'normal'}">${PRIORIDAD[String(p.prioridad)] || PRIORIDAD['0']}</td>
+        <td>${estado}</td>
         <td>
           <div class="row-actions">
             <button class="btn-row btn-row--edit"
@@ -503,71 +492,92 @@
   function _render() {
     _renderStats();
     _renderNotifications();
+    _populateFiltros();
     _renderTable();
-    _populateRubroFilter();
   }
 
   // ──────────────────────────────────────────────────────────
-  // 10. FILTRO AVANZADO
+  // 10. FILTROS (panel izquierdo, estilo Jazler)
   // ──────────────────────────────────────────────────────────
 
-  /** Llena el <select> de rubros con los valores únicos del listado */
-  function _populateRubroFilter() {
-    const sel = $('filtRubro');
-    if (!sel) return;
-    const rubros = [...new Set(
-      _pautas.map(p => p.rubro || _getMeta(p).rubro || '')
-        .filter(Boolean)
-    )].sort();
+  const _filtros = { cliente: '', agencia: '', prioridad: '', posicion: '' };
 
-    const current = sel.value;
-    sel.innerHTML = '<option value="">Todos los rubros</option>';
-    rubros.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r;
-      opt.textContent = r;
-      if (r === current) opt.selected = true;
-      sel.appendChild(opt);
-    });
+  function _llenarSelect(id, valores, todos) {
+    const sel = $(id);
+    if (!sel) return;
+    const actual = sel.value;
+    sel.innerHTML = `<option value="">${todos}</option>` +
+      valores.map(v => `<option value="${_esc(v)}">${_esc(v)}</option>`).join('');
+    sel.value = valores.includes(actual) ? actual : '';
+  }
+
+  /** Llena rubros, clientes y agencias con los valores del listado */
+  function _populateFiltros() {
+    const unicos = f => [...new Set(_pautas.map(f).filter(Boolean))].sort();
+    _llenarSelect('filtRubro', unicos(p => p.rubro || _getMeta(p).rubro || ''), 'Todos');
+    _llenarSelect('filtCliente', unicos(p => p.cliente), 'Todos');
+    const agencias = unicos(p => p.agencia);
+    _llenarSelect('filtAgencia', agencias, 'Todas');
+    const dl = $('cmAgencias');
+    if (dl) dl.innerHTML = agencias.map(a => `<option value="${_esc(a)}">`).join('');
+    _filterRubro     = $('filtRubro')?.value   ?? '';
+    _filtros.cliente = $('filtCliente')?.value ?? '';
+    _filtros.agencia = $('filtAgencia')?.value ?? '';
   }
 
   function _applyFilter() {
-    const dot = $('filterDotActive');
-    const hasFilter = _filterEstado !== 'todas' || _filterRubro !== '';
-    hasFilter ? _showEl(dot) : _hideEl(dot);
     _renderTable();
   }
 
   function _clearFilters() {
-    _filterEstado = 'todas';
+    _filterEstado = 'activa';
     _filterRubro  = '';
-    // Resetear los radios
-    document.querySelectorAll('[name="filtEstado"]').forEach(r => {
-      r.checked = r.value === 'todas';
-    });
-    const sel = $('filtRubro');
-    if (sel) sel.value = '';
-    _hideEl($('filterDotActive'));
+    Object.assign(_filtros, { cliente: '', agencia: '', prioridad: '', posicion: '' });
+    if ($('filtEstadoSel')) $('filtEstadoSel').value = 'activa';
+    ['filtRubro', 'filtCliente', 'filtAgencia', 'filtPrioridad', 'filtPosicion', 'pautaSearch']
+      .forEach(id => { if ($(id)) $(id).value = ''; });
+    _searchTerm = '';
     _renderTable();
-    _hideFilterPanel();
   }
 
-  function _toggleFilterPanel() {
-    const panel = $('filterPanel');
-    const btn   = $('btnFilterToggle');
-    if (!panel) return;
-    const open = !panel.classList.contains('hidden');
-    open ? _hideFilterPanel() : _showFilterPanel();
+  // ──────────────────────────────────────────────────────────
+  // 10b. VISTA PREVIA (clic = escuchar · doble clic = editar)
+  // ──────────────────────────────────────────────────────────
+
+  const _previa = { id: null, audio: null };
+
+  function _mmss(t) {
+    t = Math.max(0, Math.floor(t || 0));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
   }
 
-  function _showFilterPanel() {
-    _showEl($('filterPanel'));
-    $('btnFilterToggle')?.setAttribute('aria-expanded', 'true');
+  function _elegirPrevia(id) {
+    const p = _pautas.find(x => String(x.id) === String(id));
+    if (!p || !p.audio_id) return;
+    _previa.id = p.id;
+    document.querySelectorAll('#pautasTableBody tr').forEach(tr =>
+      tr.classList.toggle('cm-sel', tr.dataset.id === String(p.id)));
+    if (!_previa.audio) {
+      const a = _previa.audio = new Audio();
+      a.addEventListener('timeupdate', () => {
+        $('cmPreviaT').textContent = `${_mmss(a.currentTime)} / ${_mmss(a.duration)}`;
+        $('cmBarraFill').style.width = a.duration ? `${a.currentTime / a.duration * 100}%` : '0';
+      });
+      const icono = () => { $('cmPlay').textContent = a.paused ? '▶' : '❚❚'; };
+      a.addEventListener('play', icono);
+      a.addEventListener('pause', icono);
+      a.addEventListener('ended', icono);
+    }
+    _previa.audio.src = `/api/v1/audios/${p.audio_id}/stream`;
+    $('cmPreviaTit').textContent = `${p.cliente} — ${p.audio_nombre}`;
+    $('cmPlay').disabled = $('cmStop').disabled = false;
+    if ($('cmAutoPlay')?.checked) _previa.audio.play().catch(() => {});
   }
 
-  function _hideFilterPanel() {
-    _hideEl($('filterPanel'));
-    $('btnFilterToggle')?.setAttribute('aria-expanded', 'false');
+  function _pararPrevia() {
+    if (!_previa.audio) return;
+    _previa.audio.pause();
+    _previa.audio.currentTime = 0;
   }
 
   // ──────────────────────────────────────────────────────────
@@ -938,7 +948,9 @@
       $('fRubro').value       = p.rubro    || meta.rubro    || '';
       $('fContrato').value    = p.contrato || meta.contrato || '';
       $('fMenciones').value   = p.menciones ?? meta.menciones ?? 4;
-      $('fUrgente').checked   = !!(p.urgente ?? meta.urgente ?? false);
+      $('fPrioridad').value   = String(p.prioridad ?? 0);
+      $('fPosicion').value    = String(p.posicion ?? 0);
+      $('fAgencia').value     = p.agencia || '';
       _cargarSecciones(p.seccion ?? 3);
       $('btnSaveText').textContent = 'Actualizar Pauta';
 
@@ -987,7 +999,9 @@
       $('fRubro').value            = '';
       $('fContrato').value         = '';
       $('fMenciones').value        = '4';
-      $('fUrgente').checked        = false;
+      $('fPrioridad').value        = '0';
+      $('fPosicion').value         = '0';
+      $('fAgencia').value          = '';
       _cargarSecciones(3);
       $('btnSaveText').textContent = 'Guardar Pauta';
 
@@ -1016,10 +1030,11 @@
 
   /** Actualiza el badge URGENTE del header del modal según el checkbox */
   function _syncUrgenteHeader() {
-    const cb    = $('fUrgente');
+    const sel   = $('fPrioridad');
     const badge = $('urgenteBadgeHeader');
-    if (!cb || !badge) return;
-    cb.checked ? _showEl(badge) : _hideEl(badge);
+    if (!sel || !badge) return;
+    badge.textContent = 'PRIORIDAD ALTA';
+    sel.value === '1' ? _showEl(badge) : _hideEl(badge);
   }
 
   // ──────────────────────────────────────────────────────────
@@ -1061,7 +1076,10 @@
     const notas    = ($('fNotas')?.value     ?? '').trim().toUpperCase();
     const rubro    = ($('fRubro')?.value     ?? '').trim();
     const contrato = ($('fContrato')?.value  ?? '').trim();
-    const urgente  = $('fUrgente')?.checked  ?? false;
+    const prioridad= parseInt($('fPrioridad')?.value ?? '0', 10) || 0;
+    const posicion = parseInt($('fPosicion')?.value ?? '0', 10) || 0;
+    const agencia  = ($('fAgencia')?.value   ?? '').trim().toUpperCase();
+    const urgente  = prioridad > 0;
     const menciones= parseInt($('fMenciones')?.value ?? '4', 10);
     const seccion  = parseInt($('fSeccion')?.value ?? '3', 10) || 3;
 
@@ -1138,7 +1156,9 @@
       // received their default values (empty string / False / None) instead
       // of the user's input, and any validation error caused a 422 Unprocessable.
       contrato_id:       contrato,
-      prioridad:         urgente,
+      prioridad,
+      agencia,
+      posicion,
       menciones_diarias: menciones,
       seccion,
       // cue_intro / cue_outro are top-level fields in PautaIn (not just __meta).
@@ -1393,7 +1413,7 @@
     $('btnModalSave')?.addEventListener('click', _savePauta);
 
     // ── Urgente: sincronizar badge del header en tiempo real ──
-    $('fUrgente')?.addEventListener('change', _syncUrgenteHeader);
+    $('fPrioridad')?.addEventListener('change', _syncUrgenteHeader);
 
     // ── Menciones: botones +/- ──
     $('btnMencionesDown')?.addEventListener('click', () => {
@@ -1461,25 +1481,32 @@
       if (wrap && !wrap.contains(e.target)) _closeNotifications();
     });
 
-    // ── Filtro avanzado ──
-    $('btnFilterToggle')?.addEventListener('click', e => {
-      e.stopPropagation();
-      _toggleFilterPanel();
-    });
+    // ── Filtros del panel izquierdo ──
     $('btnFilterClear')?.addEventListener('click', _clearFilters);
+    $('filtEstadoSel')?.addEventListener('change', e => { _filterEstado = e.target.value; _applyFilter(); });
+    [['filtCliente', 'cliente'], ['filtAgencia', 'agencia'], ['filtPrioridad', 'prioridad'], ['filtPosicion', 'posicion']]
+      .forEach(([id, k]) => $(id)?.addEventListener('change', e => { _filtros[k] = e.target.value; _applyFilter(); }));
 
-    // Cerrar filtro al clicar fuera
-    document.addEventListener('click', e => {
-      const wrap = $('filterWrap');
-      if (wrap && !wrap.contains(e.target)) _hideFilterPanel();
+    // ── Vista previa: clic = escuchar · doble clic = editar ──
+    $('pautasTableBody')?.addEventListener('click', e => {
+      if (e.target.closest('[data-action]')) return;
+      const tr = e.target.closest('tr[data-id]');
+      if (tr) _elegirPrevia(tr.dataset.id);
     });
-
-    // Radios de estado
-    document.querySelectorAll('[name="filtEstado"]').forEach(radio => {
-      radio.addEventListener('change', e => {
-        _filterEstado = e.target.value;
-        _applyFilter();
-      });
+    $('pautasTableBody')?.addEventListener('dblclick', e => {
+      const tr = e.target.closest('tr[data-id]');
+      if (tr && !e.target.closest('[data-action]')) { _pararPrevia(); _openModal(tr.dataset.id); }
+    });
+    $('cmPlay')?.addEventListener('click', () => {
+      const a = _previa.audio;
+      if (a) a.paused ? a.play().catch(() => {}) : a.pause();
+    });
+    $('cmStop')?.addEventListener('click', _pararPrevia);
+    $('cmBarra')?.addEventListener('click', e => {
+      const a = _previa.audio;
+      if (!a || !a.duration) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      a.currentTime = (e.clientX - r.left) / r.width * a.duration;
     });
 
     // Select de rubro

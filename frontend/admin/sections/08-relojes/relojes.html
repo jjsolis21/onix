@@ -221,10 +221,10 @@
   }
 
   const audioLabel = a => `${a.titulo} — ${a.artista} #${a.id}`;
-  // Energía: 1–2 Baja · 3–4 Media · 5 Alta
+  // Energía: 1 Lenta · 2 Suave · 3 Media · 4 Movida · 5 Rápida
   const selectEnergia = (campo, txt, valor) => `<select class="ox-select" data-filtro="${campo}" title="${txt}">
     <option value="">${txt}: todas</option>${[1, 2, 3, 4, 5].map(n =>
-      `<option value="${n}" ${+valor === n ? "selected" : ""}>${txt.split(" ")[1]} ${n} · ${n <= 2 ? "Baja" : n <= 4 ? "Media" : "Alta"}</option>`).join("")}</select>`;
+      `<option value="${n}" ${+valor === n ? "selected" : ""}>${txt.split(" ")[1]} ${n} · ${["", "Lenta", "Suave", "Media", "Movida", "Rápida"][n]}</option>`).join("")}</select>`;
 
   function pintarFilas(vista) {
     const tb = $("rjFilas");

@@ -66,6 +66,17 @@ def test_pauta_desde_subida_comercial(client, tmp_path):
     })
     assert r.status_code == 201, r.text
     assert r.json()["cliente"] == "FERRETERIA"
+    pid = r.json()["id"]
+    # agencia, posición fija y prioridad de 3 niveles (el sí/no viejo = Alta)
+    r = client.put(f"/api/v1/pautas/{pid}", json={
+        "cliente": "ferreteria", "audio_id": audio_id, "matriz": {"1-10": True},
+        "agencia": "medios sur", "posicion": 2, "prioridad": -1,
+    })
+    assert r.status_code == 200, r.text
+    assert (r.json()["agencia"], r.json()["posicion"], r.json()["prioridad"]) == ("MEDIOS SUR", 2, -1)
+    r = client.put(f"/api/v1/pautas/{pid}", json={
+        "cliente": "ferreteria", "audio_id": audio_id, "matriz": {"1-10": True}, "prioridad": True})
+    assert r.json()["prioridad"] == 1
 
 
 def test_play_pone_al_aire(client, tmp_path):

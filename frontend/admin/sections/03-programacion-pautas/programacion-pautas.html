@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=2">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=3">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=2">
 
 <div class="pautas-root" id="pautasRoot">
@@ -79,72 +79,77 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════
-       CUERPO PRINCIPAL
+       CUERPO: filtros a la izquierda · lista · vista previa
        ══════════════════════════════════════════════════════ -->
-  <div class="pautas-body">
+  <div class="pautas-body cm-body">
 
-    <!-- Barra de herramientas: búsqueda + filtro avanzado -->
-    <div class="pautas-toolbar">
+    <aside class="cm-lado" aria-label="Filtros de comerciales">
       <div class="search-wrap">
         <svg class="search-svg-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
           <path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <input type="search" id="pautaSearch" placeholder="Buscar por cliente, rubro o contrato…" autocomplete="off">
+        <input type="search" id="pautaSearch" placeholder="Buscar spot, cliente, contrato…" autocomplete="off">
       </div>
+      <label class="cm-f">Estado
+        <select id="filtEstadoSel">
+          <option value="todas">Todos</option>
+          <option value="activa" selected>Activos</option>
+          <option value="hoy">Al aire hoy</option>
+          <option value="por_vencer">Por vencer</option>
+          <option value="vencida">Vencidos</option>
+        </select></label>
+      <label class="cm-f">Prioridad
+        <select id="filtPrioridad"><option value="">Todas</option>
+          <option value="1">▲ Alta</option><option value="0">● Normal</option><option value="-1">▼ Baja</option></select></label>
+      <label class="cm-f">Rubro <select id="filtRubro" class="filter-select"><option value="">Todos</option></select></label>
+      <label class="cm-f">Cliente <select id="filtCliente"><option value="">Todos</option></select></label>
+      <label class="cm-f">Agencia <select id="filtAgencia"><option value="">Todas</option></select></label>
+      <label class="cm-f">Posición en tanda
+        <select id="filtPosicion"><option value="">Todas</option>
+          <option value="1">📌 Primero</option><option value="2">📌 Último</option><option value="0">Libre</option></select></label>
+      <button class="cm-reiniciar" id="btnFilterClear" type="button">Reiniciar filtros</button>
+      <p class="cm-cuenta" id="cmCuenta">—</p>
+    </aside>
 
-      <!-- Filtro avanzado con dropdown -->
-      <div class="filter-advanced-wrap" id="filterWrap">
-        <button class="btn-filter-advanced" id="btnFilterToggle" aria-expanded="false" aria-controls="filterPanel">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Filtrar
-          <span class="filter-dot-active hidden" id="filterDotActive"></span>
-        </button>
-
-        <div class="filter-panel hidden" id="filterPanel" role="region" aria-label="Filtros avanzados">
-          <div class="filter-panel__group">
-            <span class="filter-panel__label">Estado</span>
-            <label class="filter-radio"><input type="radio" name="filtEstado" value="todas" checked> Todas</label>
-            <label class="filter-radio"><input type="radio" name="filtEstado" value="activa"> Activas</label>
-            <label class="filter-radio"><input type="radio" name="filtEstado" value="por_vencer"> Por Vencer</label>
-            <label class="filter-radio"><input type="radio" name="filtEstado" value="vencida"> Vencidas</label>
-            <label class="filter-radio"><input type="radio" name="filtEstado" value="urgente"> Urgentes</label>
-          </div>
-          <div class="filter-panel__group">
-            <span class="filter-panel__label">Rubro</span>
-            <select id="filtRubro" class="filter-select">
-              <option value="">Todos los rubros</option>
-              <!-- Poblado dinámicamente por JS -->
-            </select>
-          </div>
-          <button class="filter-panel__clear" id="btnFilterClear">Limpiar filtros</button>
+    <div class="cm-centro">
+      <div class="table-wrap">
+        <table class="pautas-table cm-tabla" id="pautasTable">
+          <thead>
+            <tr>
+              <th class="cm-pin" title="Posición fija en la tanda">📌</th>
+              <th>Spot</th>
+              <th>Cliente</th>
+              <th>Agencia</th>
+              <th>Rubro</th>
+              <th>Inicia</th>
+              <th>Hasta</th>
+              <th title="Menciones por día">Mencs./día</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="pautasTableBody">
+            <!-- Filas inyectadas por pautas-controller.js -->
+          </tbody>
+        </table>
+        <div class="table-empty hidden" id="pautasEmpty">
+          <span>📭</span>
+          <p>No hay comerciales con esos filtros.</p>
         </div>
       </div>
-    </div>
 
-    <!-- Tabla principal de pautas -->
-    <div class="table-wrap">
-      <table class="pautas-table" id="pautasTable">
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Rubro</th>
-            <th>Audio / Spot</th>
-            <th>Vigencia</th>
-            <th>Mencs./día</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="pautasTableBody">
-          <!-- Filas inyectadas por pautas-controller.js -->
-        </tbody>
-      </table>
-      <div class="table-empty hidden" id="pautasEmpty">
-        <span>📭</span>
-        <p>No hay pautas registradas. ¡Crea la primera!</p>
+      <!-- Vista previa (clic en una fila = escuchar, doble clic = editar) -->
+      <div class="cm-previa" id="cmPrevia">
+        <button class="cm-previa-play" id="cmPlay" type="button" title="Escuchar / pausar" disabled>▶</button>
+        <button class="cm-previa-play" id="cmStop" type="button" title="Detener" disabled>■</button>
+        <div class="cm-previa-info">
+          <b id="cmPreviaTit">Elige un spot para escucharlo…</b>
+          <div class="cm-previa-barra" id="cmBarra"><i id="cmBarraFill"></i></div>
+        </div>
+        <span class="cm-previa-t" id="cmPreviaT">0:00 / 0:00</span>
+        <label class="cm-auto"><input type="checkbox" id="cmAutoPlay"> AutoPlay</label>
       </div>
     </div>
 
@@ -219,11 +224,18 @@
             <span class="field-hint">Se normaliza automáticamente a MAYÚSCULAS</span>
           </div>
 
+          <!-- Agencia de publicidad -->
+          <div class="form-group">
+            <label for="fAgencia">Agencia de publicidad</label>
+            <input type="text" id="fAgencia" placeholder="Opcional · Ej: MEDIOS SUR" autocomplete="off" list="cmAgencias">
+            <datalist id="cmAgencias"></datalist>
+          </div>
+
           <!-- Rubro -->
           <div class="form-group">
             <label for="fRubro">Rubro</label>
             <input type="text" id="fRubro" placeholder="Ej: Bebidas, Política, Tecnología, Automotriz…">
-            <span class="field-hint">Categoría del anunciante — Marca Blanca</span>
+            <span class="field-hint">Dos spots del mismo rubro nunca salen seguidos y se reparten en tandas distintas</span>
           </div>
 
           <!-- Sección de la tanda (orden dentro del corte, como en Jazler) -->
@@ -262,16 +274,26 @@
             </div>
           </div>
 
-          <!-- Checkbox Urgente -->
-          <div class="form-group">
-            <label class="urgente-label" for="fUrgente">
-              <input type="checkbox" id="fUrgente" class="urgente-checkbox">
-              <span class="urgente-label__text">
-                <span class="urgente-pill" aria-hidden="true">URGENTE</span>
-                Marcar como Urgente
-              </span>
-            </label>
-            <span class="field-hint">Destaca la pauta en rojo en todas las vistas</span>
+          <!-- Prioridad y posición fija en la tanda -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fPrioridad">Prioridad</label>
+              <select id="fPrioridad">
+                <option value="1">▲ Alta</option>
+                <option value="0" selected>● Normal</option>
+                <option value="-1">▼ Baja</option>
+              </select>
+              <span class="field-hint">Alta sale antes dentro de la tanda</span>
+            </div>
+            <div class="form-group">
+              <label for="fPosicion">Posición en la tanda</label>
+              <select id="fPosicion">
+                <option value="0" selected>Libre</option>
+                <option value="1">📌 Siempre primero</option>
+                <option value="2">📌 Siempre último</option>
+              </select>
+              <span class="field-hint">Para jingles de apertura o cierre de tanda</span>
+            </div>
           </div>
 
           <!-- Notas -->

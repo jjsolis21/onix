@@ -238,8 +238,10 @@
 .bv-prio.p1 { color: var(--gold-2); }
 .bv-prio.p3 { color: var(--text-lo); }
 
-/* Energía con nombre: Baja · Media · Alta */
+/* Energía con nombre: Lenta → Rápida (frío a caliente) */
 .bv-energia { font-size: 12px; font-weight: 700; letter-spacing: 0; }
-.bv-energia.e-baja { color: #7fb8ff; }
-.bv-energia.e-media { color: var(--gold-1); }
-.bv-energia.e-alta { color: #ff6b6b; }
+.bv-energia.e-1 { color: #7fb8ff; }
+.bv-energia.e-2 { color: #8fd3c8; }
+.bv-energia.e-3 { color: var(--gold-1); }
+.bv-energia.e-4 { color: #ffa94d; }
+.bv-energia.e-5 { color: #ff6b6b; }

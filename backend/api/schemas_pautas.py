@@ -49,8 +49,10 @@ class PautaIn(BaseModel):
     cue_outro:    Optional[float]= Field(None, description="Punto final o outro de la pauta")
     menciones_diarias: Optional[int] = Field(None, ge=1, le=24, description="Cantidad de veces a reproducir por día")
     rubro:        str            = Field("", max_length=200)
-    prioridad:    bool           = Field(False, description="¿Es urgente o de alta prioridad?")
+    prioridad:    int            = Field(0, ge=-1, le=1, description="1 Alta · 0 Normal · -1 Baja")
     contrato_id:  str            = Field("", max_length=100)
+    agencia:      str            = Field("", max_length=200)
+    posicion:     int            = Field(0, ge=0, le=2, description="0 libre · 1 primero · 2 último en la tanda")
     seccion:      int            = Field(3, ge=1, le=99,
                                          description="Sección de la tanda (1 ID, 2 cortina de entrada, 3 comerciales…)")
 
@@ -67,7 +69,15 @@ class PautaIn(BaseModel):
     def notas_upper(cls, v: str) -> str:
         return (v or "").strip().upper()
 
-    @field_validator("rubro", "contrato_id", mode="before")
+    @field_validator("prioridad", mode="before")
+    @classmethod
+    def prioridad_nivel(cls, v: Any) -> int:
+        """Acepta el sí/no viejo (urgente = Alta) o el nivel -1/0/1."""
+        if isinstance(v, bool) or v is None:
+            return 1 if v else 0
+        return v
+
+    @field_validator("rubro", "contrato_id", "agencia", mode="before")
     @classmethod
     def rubro_contrato_str_upper(cls, v: str) -> str:
         return (v or "").strip().upper()
@@ -130,8 +140,10 @@ class PautaIn(BaseModel):
             "cue_outro":    self.cue_outro,
             "menciones_diarias": self.menciones_diarias,
             "rubro":        self.rubro,
-            "prioridad":    1 if self.prioridad else 0,
+            "prioridad":    self.prioridad,
             "contrato_id":  self.contrato_id,
+            "agencia":      self.agencia,
+            "posicion":     self.posicion,
             "seccion":      self.seccion,
         }
 
@@ -159,8 +171,10 @@ class PautaOut(BaseModel):
     cue_outro:    Optional[float]
     menciones_diarias: Optional[int]
     rubro:        str
-    prioridad:    bool
+    prioridad:    int = 0
     contrato_id:  str
+    agencia:      str = ""
+    posicion:     int = 0
     seccion:      int = 3
     activo:       int
     created_at:   str
@@ -203,6 +217,8 @@ class PautaOut(BaseModel):
         
         # Parse boolean properties
         prioridad_val = data.get("prioridad")
-        data["prioridad"] = bool(prioridad_val) if prioridad_val is not None else False
+        data["prioridad"] = int(prioridad_val or 0)
+        data["agencia"] = data.get("agencia") or ""
+        data["posicion"] = int(data.get("posicion") or 0)
 
         return cls(**data)

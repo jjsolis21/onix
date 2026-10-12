@@ -608,6 +608,21 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE audios ADD COLUMN repeticion_horas INTEGER DEFAULT NULL")
     logger.info("  → audios.cue_outro y repeticion_horas: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 24 — Comerciales al estilo Jazler
+    #   agencia:  agencia de publicidad (aparte del cliente/anunciante)
+    #   posicion: 0 libre · 1 siempre primero · 2 siempre último en la tanda
+    #   prioridad pasa de sí/no a 3 niveles: 1 Alta · 0 Normal · -1 Baja
+    #     (las "urgentes" viejas ya valen 1 = Alta)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(pautas)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    if "agencia" not in cols:
+        cursor.execute("ALTER TABLE pautas ADD COLUMN agencia TEXT DEFAULT ''")
+    if "posicion" not in cols:
+        cursor.execute("ALTER TABLE pautas ADD COLUMN posicion INTEGER DEFAULT 0")
+    logger.info("  → pautas.agencia y posicion: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

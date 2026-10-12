@@ -39,3 +39,14 @@ def test_orden_dentro_de_la_tanda_evita_rubros_seguidos():
 def test_rubro_unico_no_se_puede_separar_pero_no_se_pierde():
     plan = planificar_tandas([P(1, "BANCO"), P(2, "BANCO"), P(3, "BANCO")], [0])
     assert [p["pauta_id"] for p in plan[0]] == [1, 2, 3]
+
+
+def test_fijadas_abren_y_cierran_la_tanda():
+    orden = ordenar_tanda([
+        {**P(1, "BANCO"), "posicion": 2}, P(2, "AUTOS"),
+        {**P(3, "BANCO"), "posicion": 1}, P(4, "BANCO"),
+    ])
+    ids = [p["pauta_id"] for p in orden]
+    assert ids[0] == 3 and ids[-1] == 1
+    # tras la fijada BANCO no viene otro BANCO
+    assert ids == [3, 2, 4, 1]

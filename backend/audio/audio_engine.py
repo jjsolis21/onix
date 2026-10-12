@@ -110,16 +110,22 @@ def _rubro(pauta: dict) -> str:
 
 def ordenar_tanda(pautas: list[dict]) -> list[dict]:
     """
-    Orden de salida dentro de una tanda: respeta el orden recibido
-    (prioridad primero) pero evita dos cuñas seguidas del mismo rubro.
+    Orden de salida dentro de una tanda: las fijadas "primero" abren y las
+    fijadas "último" cierran (como el alfiler de Jazler); el resto respeta el
+    orden recibido (prioridad primero) evitando dos cuñas seguidas del mismo
+    rubro.
     """
-    pendientes, orden = list(pautas), []
+    pos = lambda p: int(p.get("posicion") or 0)
+    primeras = [p for p in pautas if pos(p) == 1]
+    ultimas = [p for p in pautas if pos(p) == 2]
+    pendientes, orden = [p for p in pautas if pos(p) not in (1, 2)], []
+    previo_ini = _rubro(primeras[-1]) if primeras else ""
     while pendientes:
-        previo = _rubro(orden[-1]) if orden else ""
+        previo = _rubro(orden[-1]) if orden else previo_ini
         idx = next((i for i, p in enumerate(pendientes)
                     if not previo or _rubro(p) != previo), 0)
         orden.append(pendientes.pop(idx))
-    return orden
+    return primeras + orden + ultimas
 
 
 def planificar_tandas(pautas: list[dict], minutos: list[int]) -> dict[int, list[dict]]:
@@ -1887,7 +1893,8 @@ class AudioEngine:
                     """
                     SELECT p.id, p.cliente, p.audio_id, p.matriz, p.rubro,
                            p.menciones_diarias, p.cue_intro, p.cue_outro,
-                           COALESCE(p.seccion, 3) AS seccion, a.duracion
+                           COALESCE(p.seccion, 3) AS seccion, a.duracion,
+                           COALESCE(p.posicion, 0) AS posicion
                     FROM pautas p
                     JOIN audios a ON a.id = p.audio_id AND a.activo = 1
                     WHERE p.activo = 1
@@ -1937,7 +1944,7 @@ class AudioEngine:
                     "menciones_diarias": row["menciones_diarias"],
                     "cue_intro": row["cue_intro"], "cue_outro": row["cue_outro"],
                     "seccion": row["seccion"], "duracion": row["duracion"] or 0,
-                    "slot": slot,
+                    "posicion": row["posicion"], "slot": slot,
                 }
 
         # Seccion desconocida = comercial (asi nunca se pierde una cuña de cliente)

@@ -123,7 +123,7 @@
               <label>${esc(etq('cat3', 'Subgénero'))} <select id="ecCat3">${opcionesCat('cat3', f.cat3)}</select></label>
               <label>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
               <label>Origen <select id="ecOrigen"><option value="">—</option>${['NACIONAL', 'INTERNACIONAL'].map(o => `<option ${String(f.origen || '').toUpperCase() === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
-              <label>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${n <= 2 ? 'Baja' : n <= 4 ? 'Media' : 'Alta'}</option>`).join('')}</select></label>
+              <label>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${['', 'Lenta', 'Suave', 'Media', 'Movida', 'Rápida'][n]}</option>`).join('')}</select></label>
               <label>Prioridad <select id="ecPrioridad">${[1, 2, 3].map(n => `<option value="${n}" ${(+f.prioridad || 2) === n ? 'selected' : ''}>${PRIORIDAD[n]}</option>`).join('')}</select></label>
             </div>
           </section>

@@ -63,9 +63,8 @@
     ['origen', 'Origen'], ['energia', 'Energía'], ['prioridad', 'Prioridad'], ['coro', 'Coro'], ['decada', 'Década'],
   ];
   const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
-  // Energía: 1–2 Baja · 3–4 Media · 5 Alta (se guarda el número)
-  const ENERGIA = { 1: '1 · Baja', 2: '2 · Baja', 3: '3 · Media', 4: '4 · Media', 5: '5 · Alta' };
-  const nivelEnergia = n => (n <= 2 ? 'baja' : n <= 4 ? 'media' : 'alta');
+  // Energía = tempo de la canción (se guarda el número)
+  const ENERGIA = { 1: '1 · Lenta', 2: '2 · Suave', 3: '3 · Media', 4: '4 · Movida', 5: '5 · Rápida' };
   const CALIDAD = [['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
     ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'], ['olvidadas', '💤 Olvidadas (30 días)'],
     ['restringidas', '⏱ Con restricciones']];
@@ -261,7 +260,7 @@
         <span class="bv-tapa" data-tapa="${a.id}">${S.sinTapa?.has(a.id) ? '♪' : `<img loading="lazy" src="/api/v1/audios/${a.id}/caratula" alt="" onerror="this.parentNode.textContent='♪';window.BibliotecaVista&&window.BibliotecaVista.sinTapa(${a.id})">`}</span>
         <b>${esc(a.titulo)}</b><small>${esc(a.artista)}</small></div>`;
       case 'cat1': return `<div>${a.cat1 ? `<span class="bv-chip" style="background:${esc(S.colores[String(a.cat1).toUpperCase()] || '#777')}">${esc(a.cat1)}</span>` : ''}</div>`;
-      case 'energia': return `<div class="bv-energia e-${a.energia ? nivelEnergia(a.energia) : ''}" title="Energía ${a.energia ?? '—'}">${a.energia ? ENERGIA[a.energia] : ''}</div>`;
+      case 'energia': return `<div class="bv-energia e-${a.energia || ''}" title="Energía ${a.energia ?? '—'}">${a.energia ? ENERGIA[a.energia] : ''}</div>`;
       case 'prioridad': return `<div class="bv-prio p${a.prioridad}">${a.prioridad === 2 ? '' : PRIORIDAD[a.prioridad]}</div>`;
       case 'bpm': return `<div class="bv-num">${a.bpm || ''}</div>`;
       case 'duracion': return `<div class="bv-num">${fmt(a.duracion)}</div>`;
