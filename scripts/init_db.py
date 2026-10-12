@@ -642,6 +642,21 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE pautas ADD COLUMN orden INTEGER DEFAULT NULL")
     logger.info("  → pauta_audios y pautas.orden: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 26 — Día específico (Jazler "Día Específico")
+    #   Para una fecha concreta, qué reloj rige cada hora, por encima de la
+    #   grilla semanal. reloj_id NULL = esa hora solo música.
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reloj_dias (
+            fecha    TEXT    NOT NULL,          -- YYYY-MM-DD
+            hora     INTEGER NOT NULL,          -- 0–23
+            reloj_id INTEGER REFERENCES relojes(id) ON DELETE CASCADE,
+            PRIMARY KEY (fecha, hora)
+        )
+    """)
+    logger.info("  → reloj_dias: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

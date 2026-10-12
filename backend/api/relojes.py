@@ -168,6 +168,111 @@ def asignar_grilla(body: GrillaIn, conn: sqlite3.Connection = Depends(get_db)):
     return grilla(conn)
 
 
+# ── Día específico (también antes de /relojes/{reloj_id}) ────────────────────
+
+class DiaIn(BaseModel):
+    fecha:    str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    horas:    list[int]
+    accion:   str = Field("reloj", pattern=r"^(reloj|musica|semana)$")   # semana = quitar la excepción
+    reloj_id: Optional[int] = None
+
+
+@router.get("/api/v1/relojes/dias", summary="Días específicos: excepciones a la grilla semanal")
+def dias_especificos(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+    """Sin fecha: las fechas futuras (y de ayer) con excepciones. Con fecha: sus horas."""
+    if fecha:
+        return [dict(r) for r in conn.execute(
+            "SELECT fecha, hora, reloj_id FROM reloj_dias WHERE fecha = ? ORDER BY hora", (fecha,))]
+    return [{"fecha": r[0], "horas": r[1]} for r in conn.execute(
+        "SELECT fecha, COUNT(*) FROM reloj_dias WHERE fecha >= date('now', 'localtime', '-1 day')"
+        " GROUP BY fecha ORDER BY fecha")]
+
+
+@router.put("/api/v1/relojes/dias", summary="Asignar horas de un día específico")
+def asignar_dia(body: DiaIn, conn: sqlite3.Connection = Depends(get_db)):
+    if body.accion == "reloj" and (body.reloj_id is None or not conn.execute(
+            "SELECT 1 FROM relojes WHERE id = ?", (body.reloj_id,)).fetchone()):
+        raise HTTPException(status_code=404, detail="Reloj no encontrado")
+    for h in body.horas:
+        if not 0 <= int(h) <= 23:
+            raise HTTPException(status_code=422, detail=f"Hora inválida: {h}")
+        if body.accion == "semana":
+            conn.execute("DELETE FROM reloj_dias WHERE fecha = ? AND hora = ?", (body.fecha, h))
+        else:
+            conn.execute("INSERT OR REPLACE INTO reloj_dias (fecha, hora, reloj_id) VALUES (?, ?, ?)",
+                         (body.fecha, h, body.reloj_id if body.accion == "reloj" else None))
+    conn.commit()
+    _replanificar()
+    return dias_especificos(body.fecha, conn)
+
+
+# ── Vista previa de un reloj sin guardar ─────────────────────────────────────
+
+class VistaIn(BaseModel):
+    filas: list[FilaIn] = Field(default_factory=list)
+
+
+def _tanda_media_seg(conn) -> float:
+    """Cuánto ocupan las tandas en una hora (promedio de los últimos 7 días con cuñas)."""
+    row = conn.execute(
+        "SELECT SUM(a.duracion), COUNT(DISTINCT substr(h.iniciado_en, 1, 13)) FROM historial_emision h"
+        " JOIN audios a ON a.id = h.audio_id WHERE h.pauta_id IS NOT NULL"
+        " AND h.iniciado_en >= datetime('now', 'localtime', '-7 days')").fetchone()
+    return round((row[0] or 0) / row[1]) if row and row[1] else 0.0
+
+
+def _vista_filas(conn, filas: list[dict]) -> dict:
+    """
+    Por fila: audios que cumplen el filtro, duración media y minuto en que
+    arranca en la primera vuelta. Además la hora simulada: las filas se repiten
+    en orden hasta llenar lo que dejan las tandas (como "Completar dando vuelta
+    al reloj" de Jazler, que en ONIX siempre está activo).
+    """
+    from backend.audio.planner import Planner
+    p = Planner(DB_PATH)
+    try:
+        crossfade = float(conn.execute("SELECT valor FROM config WHERE clave = 'crossfade_seg'").fetchone()[0])
+    except (TypeError, ValueError):
+        crossfade = 4.0
+    out, t = [], 0.0
+    for f in filas:
+        if f.get("audio_id"):
+            row = conn.execute("SELECT COUNT(*), AVG(duracion) FROM audios WHERE id = ? AND activo = 1",
+                               (f["audio_id"],)).fetchone()
+        else:
+            clauses, params = p._where_filtros(_limpiar_filtros(f.get("filtros") or {}))
+            where = " AND ".join(["a.activo = 1", "a.tipo_audio = ?"] + clauses)
+            row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}",
+                               [f.get("tipo_audio", "Musica")] + params).fetchone()
+        n, media = row[0], round(row[1] or 0)
+        efectiva = max(1.0, media - crossfade) if media else 0
+        out.append({**f, "candidatos": n, "duracion_media": media, "inicio": round(t)})
+        t += efectiva
+    ciclo = round(t)
+    tandas = _tanda_media_seg(conn)
+    disponible = max(0, 3600 - tandas)
+    # Hora simulada: qué fila cae en cada momento (las filas sin audios se saltan)
+    linea, t, vueltas = [], 0.0, 0
+    validas = [(i, f) for i, f in enumerate(out) if f["candidatos"] and f["duracion_media"]]
+    while validas and t < disponible and len(linea) < 200:
+        for i, f in validas:
+            if t >= disponible:
+                break
+            d = max(1.0, f["duracion_media"] - crossfade)
+            linea.append({"fila": i, "inicio": round(t), "dur": round(min(d, disponible - t))})
+            t += d
+        vueltas += 1
+    ultima = linea[-1]["fila"] if linea else None
+    return {"filas": out, "duracion_ciclo": ciclo, "tandas_seg": tandas, "disponible_seg": disponible,
+            "vueltas": round(disponible / ciclo, 1) if ciclo else 0, "linea": linea,
+            "ultima_fila": ultima, "saltadas": [i for i, f in enumerate(out) if not f["candidatos"]]}
+
+
+@router.post("/api/v1/relojes/vista-previa", summary="Cómo queda la hora con estas filas (sin guardar)")
+def vista_previa(body: VistaIn, conn: sqlite3.Connection = Depends(get_db)):
+    return _vista_filas(conn, [f.model_dump() for f in body.filas])
+
+
 # ── Eventos a hora fija ──────────────────────────────────────────────────────
 # También antes de /relojes/{reloj_id}.
 
@@ -298,25 +403,10 @@ def vista(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
     Por fila: cuántos audios cumplen sus filtros y su duración media. Una fila
     con 0 audios se salta al planificar (avisar al programador).
     """
-    from backend.audio.planner import Planner
     r = conn.execute("SELECT * FROM relojes WHERE id = ?", (reloj_id,)).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
-    p = Planner(DB_PATH)
-    out, total = [], 0.0
-    for f in _reloj_out(conn, r)["filas"]:
-        if f["audio_id"]:
-            row = conn.execute("SELECT COUNT(*), AVG(duracion) FROM audios WHERE id = ? AND activo = 1",
-                               (f["audio_id"],)).fetchone()
-        else:
-            clauses, params = p._where_filtros(f["filtros"])
-            where = " AND ".join(["a.activo = 1", "a.tipo_audio = ?"] + clauses)
-            row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}",
-                               [f["tipo_audio"]] + params).fetchone()
-        n, media = row[0], round(row[1] or 0)
-        total += media
-        out.append({**f, "candidatos": n, "duracion_media": media})
-    return {"id": reloj_id, "filas": out, "duracion_ciclo": round(total)}
+    return {"id": reloj_id, **_vista_filas(conn, _reloj_out(conn, r)["filas"])}
 
 
 # ── Programa ─────────────────────────────────────────────────────────────────

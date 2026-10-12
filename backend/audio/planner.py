@@ -118,6 +118,12 @@ class Planner:
                 })
         self.grilla = {(g["dia"], g["hora"]): g["reloj_id"]
                        for g in conn.execute("SELECT dia, hora, reloj_id FROM reloj_grilla")}
+        # Día específico: manda sobre la grilla semanal (None = solo música)
+        try:
+            self.dias_especificos = {(d["fecha"], d["hora"]): d["reloj_id"] for d in conn.execute(
+                "SELECT fecha, hora, reloj_id FROM reloj_dias")}
+        except sqlite3.OperationalError:       # BD sin la migración 26
+            self.dias_especificos = {}
         # Restricciones por canción (si la BD no las tiene aún, no se aplican)
         try:
             self._con_tope = {r[0]: r[1] for r in conn.execute(
@@ -156,6 +162,10 @@ class Planner:
             return float(defecto)
 
     def reloj_de(self, t: datetime) -> Optional[dict]:
+        clave = (t.date().isoformat(), t.hour)
+        if clave in getattr(self, "dias_especificos", {}):
+            rid = self.dias_especificos[clave]
+            return self.relojes.get(rid) if rid else None
         rid = self.grilla.get(((t.weekday() + 1) % 7, t.hour))
         return self.relojes.get(rid) if rid else None
 

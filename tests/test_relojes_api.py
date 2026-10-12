@@ -104,3 +104,22 @@ def test_eventos_a_hora_fija_crud(client):
     assert any(e["id"] == ev["id"] for e in client.get("/api/v1/relojes/eventos").json())
     assert client.delete(f"/api/v1/relojes/eventos/{ev['id']}").status_code == 204
     assert client.delete(f"/api/v1/relojes/eventos/{ev['id']}").status_code == 404
+
+
+def test_vista_previa_y_dia_especifico(client, tmp_path):
+    subir(client, tmp_path, "PREV A", cat2="PREVIA", seconds=3.0)
+    r = client.post("/api/v1/relojes/vista-previa", json={"filas": [
+        {"tipo_audio": "Musica", "filtros": {"cat2": "PREVIA"}},
+        {"tipo_audio": "Musica", "filtros": {"cat2": "NO EXISTE"}}]})
+    assert r.status_code == 200, r.text
+    v = r.json()
+    assert v["filas"][0]["candidatos"] >= 1 and v["filas"][1]["candidatos"] == 0
+    assert v["saltadas"] == [1] and v["filas"][1]["inicio"] >= 0
+    rid = client.post("/api/v1/relojes", json={"nombre": "Feriado", "filas": []}).json()["id"]
+    r = client.put("/api/v1/relojes/dias", json={"fecha": "2030-12-24", "horas": [20, 21], "reloj_id": rid})
+    assert r.status_code == 200 and len(r.json()) == 2
+    client.put("/api/v1/relojes/dias", json={"fecha": "2030-12-24", "horas": [21], "accion": "musica"})
+    client.put("/api/v1/relojes/dias", json={"fecha": "2030-12-24", "horas": [20], "accion": "semana"})
+    horas = client.get("/api/v1/relojes/dias", params={"fecha": "2030-12-24"}).json()
+    assert horas == [{"fecha": "2030-12-24", "hora": 21, "reloj_id": None}]
+    assert any(d["fecha"] == "2030-12-24" for d in client.get("/api/v1/relojes/dias").json())

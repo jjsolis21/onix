@@ -362,3 +362,17 @@ def test_tanda_usa_la_duracion_de_la_version_que_toca(tmp_db):
     conn.commit()
     assert pl._cunas_tanda(conn, LUNES_10, 0, [0]) == (1, 60.0)      # ahora la B
     conn.close()
+
+
+def test_dia_especifico_manda_sobre_la_grilla(base):
+    for i in range(4):
+        audio(base, f"EXITO {i}", categoria="EXITO")
+        audio(base, f"FIESTA {i}", categoria="FIESTA")
+    reloj(base, "Normal", [{"filtros": {"cat2": "EXITO"}}])
+    especial = reloj(base, "Especial", [{"filtros": {"cat2": "FIESTA"}}], horas=())
+    conn = db(base)
+    conn.execute("INSERT INTO reloj_dias (fecha, hora, reloj_id) VALUES ('2026-10-12', 10, ?)", (especial,))
+    conn.commit()
+    conn.close()
+    items = [i for i in planear(base, tandas=()) if i["tipo"] == "audio"]
+    assert items and all(i["titulo"].startswith("FIESTA") for i in items)
