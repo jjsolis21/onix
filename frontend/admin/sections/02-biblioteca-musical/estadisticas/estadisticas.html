@@ -192,6 +192,20 @@
       <div class="an-cli" id="anCli"></div>
     </article>
   </div>
+  <article class="stats-panel an-panel an-dia" id="anDia">
+    <header class="an-cab"><h3>Reloj de un día</h3>
+      <div class="an-dia-nav">
+        <button type="button" id="anDiaAnt" title="Día anterior">◀</button>
+        <input type="date" id="anDiaFecha">
+        <button type="button" id="anDiaSig" title="Día siguiente">▶</button>
+        <button type="button" id="anDiaHoy">Hoy</button>
+      </div>
+      <span class="an-meta" id="anDiaMeta">—</span></header>
+    <div class="an-dia-cuerpo">
+      <div class="an-dia-horas" id="anDiaHoras"></div>
+      <div class="an-dia-det" id="anDiaDet"><p class="an-nota">Elige una hora.</p></div>
+    </div>
+  </article>
   <script>
   (function () {
     const $ = id => document.getElementById(id);
@@ -292,11 +306,60 @@
       }).join('') : '<p class="an-nota">Sin pautas con salidas programadas este mes.</p>';
     }
 
+    // ── Reloj de un día ──
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    let dia = null, horaSel = null;
+    async function cargarDia(fecha) {
+      try { dia = await fetch(`/api/v1/stats/dia?fecha=${fecha}`).then(r => r.json()); } catch (_) { return; }
+      $('anDiaFecha').value = dia.fecha;
+      const ahora = new Date(), esHoy = dia.fecha === iso(ahora);
+      $('anDiaMeta').textContent = `${dia.total} salidas al aire`;
+      $('anDiaHoras').innerHTML = dia.horas.map(h => {
+        const min = Math.min(60, h.segundos / 60);
+        const vacia = !h.items.length, futura = esHoy && h.hora > ahora.getHours();
+        return `<button type="button" class="an-h ${vacia ? 'vacia' : ''} ${futura ? 'futura' : ''} ${esHoy && h.hora === ahora.getHours() ? 'ahora' : ''}" data-h="${h.hora}"
+          title="${String(h.hora).padStart(2, '0')}:00 · ${h.musica} canciones · ${h.cunas} cuñas · ${Math.round(min)} min con audio">
+          <b>${String(h.hora).padStart(2, '0')}</b>
+          <span class="an-h-barra"><i style="width:${min / 60 * 100}%"></i></span>
+          <small>${vacia ? (futura ? '' : 'sin aire') : `🎵${h.musica}${h.cunas ? ` · 📢${h.cunas}` : ''}`}</small></button>`;
+      }).join('');
+      if (horaSel == null || !dia.horas[horaSel].items.length) {
+        const conDatos = dia.horas.filter(h => h.items.length);
+        horaSel = esHoy && dia.horas[ahora.getHours()].items.length ? ahora.getHours() : (conDatos.length ? conDatos[conDatos.length - 1].hora : null);
+      }
+      pintarHora();
+    }
+    function pintarHora() {
+      document.querySelectorAll('.an-h').forEach(b => b.classList.toggle('sel', +b.dataset.h === horaSel));
+      const h = horaSel == null ? null : dia.horas[horaSel];
+      if (!h || !h.items.length) { $('anDiaDet').innerHTML = '<p class="an-nota">No hay salidas registradas en esa hora.</p>'; return; }
+      let tandaPrevia = null;
+      $('anDiaDet').innerHTML = `<div class="an-det-cab"><b>${String(h.hora).padStart(2, '0')}:00 – ${String(h.hora).padStart(2, '0')}:59</b>
+        <span>${h.musica} canciones · ${h.cunas} cuñas · ${mmss(h.segundos)} de audio</span></div>` +
+        h.items.map(it => {
+          const cuna = it.tipo === 'cuña';
+          const cab = cuna && it.tanda != null && it.tanda !== tandaPrevia ? `<div class="an-det-tanda">TANDA :${String(it.tanda).padStart(2, '0')}</div>` : '';
+          tandaPrevia = cuna ? it.tanda : null;
+          return `${cab}<div class="an-det-f ${cuna ? 'cuna' : ''}"><span class="t">${it.hora}</span>
+            <span class="n"><b>${esc(cuna && it.cliente ? it.cliente : it.titulo)}</b><small>${esc(cuna ? it.titulo : it.artista)}</small></span>
+            <span class="r">${esc(cuna ? 'cuña' : it.rotacion || it.tipo)}</span>
+            <span class="o" title="Origen">${esc(it.origen || '')}</span>
+            <span class="d">${it.duracion ? mmss(it.duracion) : ''}</span></div>`;
+        }).join('');
+    }
+    $('anDiaHoras')?.addEventListener('click', e => { const b = e.target.closest('.an-h'); if (b) { horaSel = +b.dataset.h; pintarHora(); } });
+    $('anDiaFecha')?.addEventListener('change', e => { horaSel = null; cargarDia(e.target.value); });
+    const mover = n => { const d = new Date(`${$('anDiaFecha').value}T12:00`); d.setDate(d.getDate() + n); horaSel = null; cargarDia(iso(d)); };
+    $('anDiaAnt')?.addEventListener('click', () => mover(-1));
+    $('anDiaSig')?.addEventListener('click', () => mover(1));
+    $('anDiaHoy')?.addEventListener('click', () => { horaSel = null; cargarDia(iso(new Date())); });
+
     const actual = () => document.querySelector('.stats-period-btn--active')?.dataset.period || 'day';
     document.querySelectorAll('.stats-period-btn').forEach(b => b.addEventListener('click', () => setTimeout(() => {
       cargar(actual()); cargarRotacion(actual());
     }, 0)));
-    cargar(actual()); cargarRotacion(actual()); cargarQuemadas(); cargarClientes();
+    cargar(actual()); cargarRotacion(actual()); cargarQuemadas(); cargarClientes(); cargarDia(iso(new Date()));
   })();
   </script>
 

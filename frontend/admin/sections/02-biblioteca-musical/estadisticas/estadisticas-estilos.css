@@ -1489,3 +1489,38 @@
 .an-c b { background: none !important; font-family: var(--font-mono); font-size: 12px; text-align: right; }
 .an-c small { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
 .an-c a { text-decoration: none; text-align: center; padding: 2px 0; }
+
+/* ── Reloj de un día ── */
+.an-dia { margin-top: 16px; }
+.an-dia .an-cab { flex-wrap: wrap; }
+.an-dia-nav { display: flex; gap: 6px; align-items: center; margin-right: auto; margin-left: 16px; }
+.an-dia-nav button, .an-dia-nav input { background: var(--choc-0); color: var(--text-hi); border: 1px solid var(--choc-5);
+  border-radius: 5px; padding: 5px 9px; font-size: 13px; font-family: inherit; cursor: pointer; color-scheme: dark; }
+.an-dia-nav button:hover { border-color: var(--gold-0); color: var(--gold-1); }
+.an-dia-cuerpo { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; min-height: 0; }
+@media (max-width: 900px) { .an-dia-cuerpo { grid-template-columns: 1fr; } }
+.an-dia-horas { display: flex; flex-direction: column; gap: 2px; max-height: 460px; overflow-y: auto; padding-right: 4px; }
+.an-h { display: grid; grid-template-columns: 26px 1fr 84px; align-items: center; gap: 8px; padding: 4px 8px;
+  background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--text-primary); cursor: pointer; font-family: inherit; text-align: left; }
+.an-h:hover { background: var(--choc-3); }
+.an-h.sel { background: var(--choc-3); border-color: var(--gold-0); }
+.an-h b { font-family: var(--font-mono); font-size: 13px; }
+.an-h small { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.an-h.vacia:not(.futura) small { color: var(--color-danger); }
+.an-h.futura { opacity: .4; }
+.an-h.ahora b { color: var(--gold-1); }
+.an-h-barra { height: 6px; background: var(--choc-3); border-radius: 3px; overflow: hidden; }
+.an-h-barra i { display: block; height: 100%; background: var(--accent); }
+.an-dia-det { max-height: 460px; overflow-y: auto; border-left: 1px solid var(--onix-border); padding-left: 14px; }
+.an-det-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.an-det-cab b { color: var(--text-primary); font-size: 15px; }
+.an-det-cab span { color: var(--text-secondary); font-size: 12px; }
+.an-det-tanda { margin: 8px 0 2px; font-size: 10px; letter-spacing: .12em; font-weight: 700; color: var(--gold-1); }
+.an-det-f { display: grid; grid-template-columns: 64px minmax(0, 1fr) 70px 70px 44px; gap: 8px; align-items: center;
+  padding: 4px 0; border-bottom: 1px solid var(--onix-border); font-size: 12px; }
+.an-det-f.cuna { box-shadow: inset 3px 0 0 var(--gold-0); padding-left: 6px; }
+.an-det-f .t, .an-det-f .d { font-family: var(--font-mono); color: var(--text-secondary); }
+.an-det-f .n { min-width: 0; display: flex; gap: 6px; align-items: baseline; overflow: hidden; }
+.an-det-f .n b { color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-det-f .n small { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-det-f .r, .an-det-f .o { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

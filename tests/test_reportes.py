@@ -257,3 +257,17 @@ def test_rotacion_y_quemadas(client):
     assert (f["canciones"], f["toques"], f["sin_sonar"]) == (5, 13, 3)
     q = client.get("/api/v1/stats/quemadas").json()["data"]
     assert any(x["id"] == ids[0] for x in q) and not any(x["id"] == ids[1] for x in q)
+
+
+def test_dia_al_aire_por_hora(client):
+    import sqlite3
+    from backend.paths import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("INSERT INTO historial_emision (titulo, artista, tipo, iniciado_en) VALUES ('Uno', 'A', 'musica', '2026-03-03 15:05:00')")
+    conn.execute("INSERT INTO historial_emision (titulo, tipo, pauta_id, iniciado_en) VALUES ('Cuña', 'pauta', 999, '2026-03-03 15:50:00')")
+    conn.commit()
+    conn.close()
+    d = client.get("/api/v1/stats/dia", params={"fecha": "2026-03-03"}).json()
+    h = d["horas"][15]
+    assert (h["musica"], h["cunas"]) == (1, 1) and h["items"][1]["tipo"] == "cuña"
+    assert d["horas"][14]["items"] == []

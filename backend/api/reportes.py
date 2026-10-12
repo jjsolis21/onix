@@ -642,3 +642,40 @@ def quemadas(dias: int = 7, factor: float = 2.0, minimo: int = 5, conn: sqlite3.
            for r in rows if r["n"] >= minimo and r["n"] > factor * prom[r["rot"]]]
     out.sort(key=lambda x: -(x["veces_promedio"] or 0))
     return {"dias": dias, "data": out[:100]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reloj vivo de un día: qué sonó, hora por hora
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/api/v1/stats/dia", summary="Lo que salió al aire en un día, hora por hora")
+def dia_al_aire(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+    d = _parse_fecha(fecha, date.today())
+    ini, fin = d.isoformat(), (d + timedelta(days=1)).isoformat()
+    filas = conn.execute(
+        """
+        SELECT h.iniciado_en, h.titulo, h.artista, h.tipo, h.origen, h.pauta_id, h.tanda,
+               a.duracion, COALESCE(a.categoria, '') AS rotacion, p.cliente
+        FROM historial_emision h
+        LEFT JOIN audios a ON a.id = h.audio_id
+        LEFT JOIN pautas p ON p.id = h.pauta_id
+        WHERE h.iniciado_en >= ? AND h.iniciado_en < ?
+        ORDER BY h.iniciado_en
+        """, (ini, fin)).fetchall()
+    horas = [{"hora": h, "items": [], "musica": 0, "cunas": 0, "segundos": 0.0} for h in range(24)]
+    for r in filas:
+        try:
+            h = int(r["iniciado_en"][11:13])
+        except (TypeError, ValueError):
+            continue
+        bloque = horas[h]
+        es_cuna = r["pauta_id"] is not None or r["tipo"] == "pauta"
+        bloque["items"].append({
+            "hora": r["iniciado_en"][11:19], "titulo": r["titulo"], "artista": r["artista"] or "",
+            "tipo": "cuña" if es_cuna else (r["tipo"] or "musica"), "origen": r["origen"],
+            "cliente": r["cliente"] or "", "tanda": r["tanda"], "rotacion": r["rotacion"],
+            "duracion": r["duracion"] or 0,
+        })
+        bloque["cunas" if es_cuna else "musica"] += 1
+        bloque["segundos"] += float(r["duracion"] or 0)
+    return {"fecha": ini, "total": len(filas), "horas": horas}
