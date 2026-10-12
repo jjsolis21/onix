@@ -668,8 +668,8 @@
     const barW = (W / bars) * 0.6;
     const gap = (W / bars) * 0.4;
     const midY = H / 2;
-    const accent = '#FF6600';
-    const dim = '#1c2e44';
+    const accent = '#ee9b00';
+    const dim = '#24242a';
 
     // Generar datos del waveform si no existen aún
     if (!STATE.waveformData.length) {

@@ -12,12 +12,12 @@
   --onix-bg-elevated:  #162336;
   --onix-bg-hover:     #1c2e44;
   --onix-border:       rgba(255, 255, 255, 0.07);
-  --onix-border-glow:  rgba(255, 102, 0, 0.3);
+  --onix-border-glow:  rgba(238, 155, 0, 0.3);
 
   /* Acento de marca */
   --accent:            #FF6600;
-  --accent-dim:        rgba(255, 102, 0, 0.18);
-  --accent-glow:       rgba(255, 102, 0, 0.45);
+  --accent-dim:        rgba(238, 155, 0, 0.18);
+  --accent-glow:       rgba(238, 155, 0, 0.45);
   --accent-text:       #ff8433;
 
   /* Texto */
@@ -82,7 +82,7 @@
 
   /* Textura de ruido muy sutil */
   background-image:
-    radial-gradient(ellipse 60% 40% at 80% 0%, rgba(255,102,0,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 0%, rgba(238,155,0,0.04) 0%, transparent 60%),
     radial-gradient(ellipse 40% 30% at 20% 100%, rgba(0, 80, 160, 0.06) 0%, transparent 60%);
 }
 
@@ -158,7 +158,7 @@
   transition: transform var(--dur-normal) var(--ease-snap);
   pointer-events: none;
   z-index: 0;
-  box-shadow: 0 2px 8px rgba(255,102,0,0.4);
+  box-shadow: 0 2px 8px rgba(238,155,0,0.4);
 }
 
 .stats-period-btn {
@@ -503,14 +503,14 @@
 
 .badge-type--tema {
   background: rgba(100, 160, 255, 0.12);
-  color: #6eb3ff;
+  color: #7fb8ff;
   border: 1px solid rgba(100, 160, 255, 0.2);
 }
 
 .badge-type--pauta {
   background: var(--accent-dim);
   color: var(--accent-text);
-  border: 1px solid rgba(255, 102, 0, 0.25);
+  border: 1px solid rgba(238, 155, 0, 0.25);
 }
 
 /* Celda de título */
@@ -576,7 +576,7 @@
 .trend-bar__fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--accent) 0%, #ffaa44 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--gold-2) 100%);
   transition: width 0.8s var(--ease-snap);
 }
 
@@ -763,7 +763,7 @@
 
 .audit-modal__type-badge[data-type="TEMA"] {
   background: rgba(100, 160, 255, 0.15);
-  color: #6eb3ff;
+  color: #7fb8ff;
   border: 1px solid rgba(100, 160, 255, 0.25);
 }
 
@@ -827,7 +827,7 @@
 }
 
 .audit-btn-pdf:hover {
-  background: #ff7a1a;
+  background: var(--gold-1);
   box-shadow: var(--shadow-glow);
   transform: translateY(-1px);
 }
@@ -869,8 +869,8 @@
   align-items: flex-start;
   gap: 14px;
   padding: 14px 24px;
-  background: rgba(255, 102, 0, 0.06);
-  border-bottom: 1px solid rgba(255, 102, 0, 0.2);
+  background: rgba(238, 155, 0, 0.06);
+  border-bottom: 1px solid rgba(238, 155, 0, 0.2);
   flex-shrink: 0;
   animation: bannerSlide var(--dur-normal) var(--ease-snap);
 }
@@ -1054,7 +1054,7 @@
   left: 0; top: 0;
   height: 4px;
   width: var(--pct, 0%);
-  background: linear-gradient(90deg, var(--accent), #ff9955);
+  background: linear-gradient(90deg, var(--accent), var(--gold-2));
   border-radius: 2px;
   pointer-events: none;
   transition: width 0.1s linear;
@@ -1130,7 +1130,7 @@
 .audit-player__play svg { width: 20px; height: 20px; }
 
 .audit-player__play:hover {
-  background: #ff7a1a;
+  background: var(--gold-1);
   box-shadow: 0 0 0 6px var(--accent-dim);
   transform: scale(1.05);
 }
@@ -1414,3 +1414,29 @@
 .an-mes-col i.medio { background: var(--color-warn); }
 .an-mes-col i.mal { background: var(--color-danger); }
 .an-mes-n { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; }
+
+/* ══════════════════════════════════════════════════════════
+   TEMA AZABACHE: los mismos tokens del resto del Admin
+   (css/variables.css). Va al final para ganar a los de arriba.
+   ══════════════════════════════════════════════════════════ */
+.stats-root, .audit-modal {
+  --onix-bg-deep:     var(--choc-0);
+  --onix-bg-panel:    var(--choc-1);
+  --onix-bg-surface:  var(--choc-2);
+  --onix-bg-elevated: var(--choc-3);
+  --onix-bg-hover:    var(--choc-4);
+  --onix-border:      var(--choc-5);
+  --onix-border-glow: rgba(238, 155, 0, .3);
+  --accent:           var(--gold-0);
+  --accent-dim:       rgba(238, 155, 0, .16);
+  --accent-glow:      rgba(238, 155, 0, .4);
+  --accent-text:      var(--gold-1);
+  --text-primary:     var(--text-hi);
+  --text-secondary:   var(--text-lo);
+  --text-muted:       #5c5c66;
+  --text-on-accent:   #000;
+  --font-display:     var(--font-ui), 'Segoe UI', sans-serif;
+  --font-body:        var(--font-ui), 'Segoe UI', sans-serif;
+}
+.stats-root { background: var(--choc-1); }
+.stats-root [hidden], .audit-modal [hidden] { display: none !important; }
