@@ -1,4 +1,4 @@
-# iniciar_onix.ps1 — Arranca ONIX FM con el motor de audio en un proceso aparte.
+﻿# iniciar_onix.ps1 — Arranca ONIX FM con el motor de audio en un proceso aparte.
 #
 # El motor queda en su propia ventana (minimizada). Cerrar o reiniciar la API
 # NO corta el aire; la API se reconecta sola al motor.
