@@ -19,6 +19,13 @@ DB_PATH = Path(os.getenv("RADIO_DB_PATH", str(ROOT_DIR / "backend" / "api" / "ra
 # Por defecto la carpeta media/ del proyecto. RADIO_MEDIA_ROOT la sobreescribe.
 MEDIA_ROOT = Path(os.getenv("RADIO_MEDIA_ROOT", str(ROOT_DIR / "media"))).resolve()
 
+# Lista de respaldo: audios que el motor pone al aire si se queda sin nada
+# que sonar (biblioteca vacía, BD caída, todos los archivos fallan).
+# Se leen directamente de la carpeta, sin pasar por la BD.
+RESPALDO_DIR = MEDIA_ROOT / "respaldo"
+
+AUDIO_EXTS = (".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma")
+
 # Prefijo absoluto que usaban las versiones anteriores al guardar rutas
 _LEGACY_PREFIX = "/media/onix/"
 

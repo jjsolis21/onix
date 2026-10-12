@@ -735,11 +735,12 @@ const MotorConfig = (() => {
     ventana_artista_min: "#cfgVentana",
     max_mismo_genero:    "#cfgMaxGenero",
   };
+  const TEXT_FIELDS = { tandas_minutos: "#cfgTandas" };
 
   async function load() {
     try {
       const cfg = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/config/motor`).then(r => r.json());
-      for (const [clave, sel] of Object.entries(FIELDS)) {
+      for (const [clave, sel] of Object.entries({ ...FIELDS, ...TEXT_FIELDS })) {
         const el = $s(sel);
         if (el && cfg[clave] != null) el.value = cfg[clave];
       }
@@ -759,11 +760,21 @@ const MotorConfig = (() => {
       const v = parseFloat($s(sel)?.value);
       if (!isNaN(v)) body[clave] = v;
     }
+    for (const [clave, sel] of Object.entries(TEXT_FIELDS)) {
+      const v = $s(sel)?.value.trim();
+      if (v) body[clave] = v;
+    }
     const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/config/motor`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
-    studioToast(res.ok ? "✓ Configuración del motor guardada" : "No se pudo guardar la configuración",
-                res.ok ? "success" : "error");
+    if (res.ok) {
+      studioToast("✓ Configuración del motor guardada", "success");
+      load();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      const msg = Array.isArray(err.detail) ? err.detail.map(d => d.msg).join("; ") : (err.detail || "");
+      studioToast(`No se pudo guardar la configuración ${msg}`, "error");
+    }
   });
 
   return { load };
@@ -837,9 +848,15 @@ StudioWS.onEvent("queue_updated", (data) => {
   Transport.renderQueue(data?.queue ?? []);
 });
 
-// ── Pauta programada para esta hora ───────────────────────────
-StudioWS.onEvent("pauta_scheduled", (data) => {
-  studioToast(`📢 Pauta en cola: ${data?.cliente ?? ""}`, "info", 3000);
+// ── Tanda de pautas lanzada (sale en el próximo cambio de pista) ──
+StudioWS.onEvent("tanda_scheduled", (data) => {
+  const n = data?.pautas?.length ?? 0;
+  studioToast(`📢 Tanda :${String(data?.minuto ?? 0).padStart(2, "0")} — ${n} cuña(s) en cola`, "info", 4000);
+});
+
+// ── Lista de respaldo (la rotación no tenía nada que sonar) ───
+StudioWS.onEvent("respaldo_activado", (data) => {
+  studioToast(`⚠ Sonando lista de respaldo: ${data?.archivo ?? ""}`, "warning", 5000);
 });
 
 // ── Motor detenido ────────────────────────────────────────────

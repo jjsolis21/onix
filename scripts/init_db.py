@@ -51,6 +51,8 @@ SEED_CONFIG = [
     ("ventana_artista_min", "60"),
     ("max_mismo_genero",    "2"),
     ("ducking_db",          "-12"),
+    # Minutos de cada hora en que salen las tandas de pautas
+    ("tandas_minutos",      "15,45"),
 ]
 
 

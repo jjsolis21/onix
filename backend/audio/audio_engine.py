@@ -26,11 +26,19 @@ MEZCLA (CROSSFADE):
     en el otro canal y desliza los volumenes con BASS_ChannelSlideAttribute
     (rampa nativa dentro del mixer, sin time.sleep en Python).
 
-PAUTAS:
+PAUTAS (TANDAS):
     Cada pocos segundos se consulta la tabla `pautas`. Las que tienen marcada
-    la celda dia-hora actual en su matriz entran a una cola prioritaria y salen
-    al aire en el siguiente cambio de pista, una sola vez por hora
-    (se registra en historial_emision.slot).
+    la celda dia-hora actual en su matriz se reparten entre las tandas de la
+    hora (config `tandas_minutos`, p. ej. "15,45"), separando anunciantes del
+    mismo rubro. Al llegar el minuto de una tanda, sus cuñas entran juntas a
+    una cola prioritaria y salen en bloque en el siguiente cambio de pista.
+    Cada pauta sale una sola vez por hora (historial_emision.slot) y nunca mas
+    de `menciones_diarias` veces en el dia.
+
+RESPALDO:
+    En modo automatico, si la rotacion no devuelve nada (biblioteca vacia,
+    BD caida, archivos rotos) suena la carpeta media/respaldo/ en vez de
+    quedar en silencio.
 
 WATCHDOG:
     Hilo independiente que verifica cada 2 segundos si el canal activo sigue
@@ -50,6 +58,7 @@ import os
 import platform
 import queue
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -65,7 +74,7 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("AudioEngine")
 
 # Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
-from backend.paths import DB_PATH, resolve_media
+from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
 
 _THIS_FILE = Path(__file__).resolve()
 
@@ -73,6 +82,58 @@ _THIS_FILE = Path(__file__).resolve()
 # automatica; las cuñas salen unicamente por la programacion de pautas.
 TIPO_MUSICA = "Musica"
 TIPO_CUNA   = "Cuña"
+
+# Normalizacion: la ganancia por audio (audios.ganancia_db) se aplica como
+# volumen del canal. Se permite subir hasta +6 dB (volumen 2.0); el analisis
+# ya limita la ganancia para que el pico no pase de -1 dBFS.
+MAX_BOOST_DB = 6.0
+VOL_MAX      = 10 ** (MAX_BOOST_DB / 20)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tandas de pautas -- funciones puras (se prueban sin motor)
+# ══════════════════════════════════════════════════════════════════════════════
+def parse_minutos(valor: str) -> list[int]:
+    """'15, 45' -> [15, 45]. Sin minutos validos la hora tiene una sola tanda en :00."""
+    minutos = {int(x) for x in re.split(r"[,;\s]+", valor or "")
+               if x.isdigit() and 0 <= int(x) <= 59}
+    return sorted(minutos) or [0]
+
+
+def _rubro(pauta: dict) -> str:
+    return (pauta.get("rubro") or "").strip().upper()
+
+
+def ordenar_tanda(pautas: list[dict]) -> list[dict]:
+    """
+    Orden de salida dentro de una tanda: respeta el orden recibido
+    (prioridad primero) pero evita dos cuñas seguidas del mismo rubro.
+    """
+    pendientes, orden = list(pautas), []
+    while pendientes:
+        previo = _rubro(orden[-1]) if orden else ""
+        idx = next((i for i, p in enumerate(pendientes)
+                    if not previo or _rubro(p) != previo), 0)
+        orden.append(pendientes.pop(idx))
+    return orden
+
+
+def planificar_tandas(pautas: list[dict], minutos: list[int]) -> dict[int, list[dict]]:
+    """
+    Reparte las pautas de una hora entre sus tandas. `pautas` llega ordenada
+    por prioridad. Cada pauta va a la tanda con menos anunciantes de su mismo
+    rubro y, a igualdad, a la menos cargada (y la mas temprana).
+    """
+    tandas: dict[int, list[dict]] = {m: [] for m in minutos}
+    for p in pautas:
+        rubro = _rubro(p)
+
+        def costo(m: int):
+            mismos = sum(1 for q in tandas[m] if rubro and _rubro(q) == rubro)
+            return (mismos, len(tandas[m]), m)
+
+        tandas[min(minutos, key=costo)].append(p)
+    return {m: ordenar_tanda(lst) for m, lst in tandas.items()}
 
 
 def _db_conn(db_path: Path = None) -> sqlite3.Connection:
@@ -321,7 +382,7 @@ class BASSBackend:
         handle = self._handles.get(channel_idx)
         if handle:
             self._bass.BASS_ChannelSetAttribute(
-                handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(1.0, vol)))
+                handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(VOL_MAX, vol)))
             )
 
     def slide_volume(self, channel_idx: int, vol: float, ms: int):
@@ -329,7 +390,7 @@ class BASSBackend:
         handle = self._handles.get(channel_idx)
         if handle:
             self._bass.BASS_ChannelSlideAttribute(
-                handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(1.0, vol))), max(0, int(ms))
+                handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(VOL_MAX, vol))), max(0, int(ms))
             )
 
     def is_playing(self, channel_idx: int) -> bool:
@@ -732,12 +793,14 @@ class AudioEngine:
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
 
-    def __init__(self):
+    def __init__(self, db_path: Path = None, respaldo_dir: Path = None):
         self.bus = EventBus()
 
         self._audio = BASSBackend() if BACKEND == "bass" else MockBackend()
 
-        self._db       = DB_PATH
+        self._db       = db_path or DB_PATH
+        self._respaldo_dir = respaldo_dir or RESPALDO_DIR
+        self._now      = datetime.now          # reloj de pared (las pruebas lo sustituyen)
         self._rotation = RotationAlgorithm(self._db)
         self._watchdog = Watchdog(self.bus, self._watchdog_state)
 
@@ -761,7 +824,16 @@ class AudioEngine:
 
         self._duration         = 0.0
         self._mix_point        = float("inf")
+        self._hard_end         = float("inf")   # corte duro (cue_outro de la pauta)
         self._mix_fired        = False
+
+        # Tandas de la hora en curso: {minuto: [pauta_id, ...]}
+        self._tandas_minutos:  list[int] = [15, 45]
+        self._plan_slot:       Optional[str] = None
+        self._plan:            dict[int, list[int]] = {}
+        self._tandas_lanzadas: set[int] = set()
+        self._pautas_fallidas: set[tuple[str, int]] = set()   # (slot, pauta_id)
+        self._respaldo_recent: deque = deque(maxlen=20)
 
         self._running            = False
         self._thread:            Optional[threading.Thread] = None
@@ -820,6 +892,10 @@ class AudioEngine:
             modo = self._cfg("modo", "manual")
             self._mode = modo if modo in ("manual", "automatico") else "manual"
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
+            minutos = parse_minutos(self._cfg("tandas_minutos", "15,45"))
+            if minutos != self._tandas_minutos:
+                self._tandas_minutos = minutos
+                self._plan_slot = None   # replanificar la hora con las nuevas tandas
         except Exception as exc:
             log.warning("[Engine] Config no cargada: %s", exc)
 
@@ -849,12 +925,13 @@ class AudioEngine:
         track = self._current_track
         if track:
             if self._audio.is_active(self._active_canal):
-                if (not self._mix_fired
-                        and self._audio.get_position_sec(self._active_canal) >= self._mix_point):
-                    # Si no hay siguiente, la pista simplemente termina completa.
-                    self._mix_fired = True
-                    self._advance()
-                return
+                pos = self._audio.get_position_sec(self._active_canal)
+                if pos < self._hard_end:
+                    if not self._mix_fired and pos >= self._mix_point:
+                        # Si no hay siguiente, la pista simplemente termina completa.
+                        self._mix_fired = True
+                        self._advance()
+                    return
 
             # La pista termino sin relevo previo.
             self._audio.stop(self._active_canal)
@@ -963,6 +1040,7 @@ class AudioEngine:
             track = self._fetch_track(pauta["audio_id"])
             if track:
                 return {"track": track, "origen": "pauta", **pauta}
+            self._pautas_fallidas.add((pauta["slot"], pauta["pauta_id"]))
 
         while self._playlist_queue:
             queued = self._playlist_queue.popleft()
@@ -975,12 +1053,44 @@ class AudioEngine:
             now = time.monotonic()
             self._failed_ids = {i: t for i, t in self._failed_ids.items()
                                 if now - t < self.FAILED_TTL}
-            track = self._rotation.select_next(
-                self._recent_history, exclude_ids=tuple(self._failed_ids)
-            )
+            try:
+                track = self._rotation.select_next(
+                    self._recent_history,
+                    exclude_ids=tuple(i for i in self._failed_ids if isinstance(i, int)),
+                )
+            except Exception as exc:
+                log.error("[Engine] Rotacion no disponible: %s", exc)
+                track = None
             if track:
                 return {"track": track, "origen": "auto"}
+            return self._pick_respaldo()
         return None
+
+    def _pick_respaldo(self) -> Optional[dict]:
+        """
+        Ultimo recurso antes del silencio: un archivo de media/respaldo/
+        (leido del disco, sin BD), evitando repetir los ultimos que sonaron.
+        """
+        try:
+            archivos = sorted(p for p in self._respaldo_dir.rglob("*")
+                              if p.is_file() and p.suffix.lower() in AUDIO_EXTS)
+        except OSError:
+            archivos = []
+        archivos = [p for p in archivos if str(p) not in self._failed_ids]
+        if not archivos:
+            return None
+        frescos = [p for p in archivos if str(p) not in self._respaldo_recent] or archivos
+        elegido = random.choice(frescos)
+        self._respaldo_recent.append(str(elegido))
+        log.warning("[Engine] Sin rotacion disponible -> lista de respaldo: %s", elegido.name)
+        self.bus.emit("respaldo_activado", {"archivo": elegido.name})
+        return {
+            "track": {
+                "id": None, "titulo": elegido.stem, "artista": "RESPALDO",
+                "archivo_path": str(elegido), "tipo_audio": TIPO_MUSICA, "duracion": 0,
+            },
+            "origen": "respaldo",
+        }
 
     def _start(self, item: dict) -> bool:
         """
@@ -992,7 +1102,7 @@ class AudioEngine:
 
         if not path or not Path(path).exists():
             log.error("[Engine] Archivo no encontrado: '%s' (id=%s)", path, track.get("id"))
-            self._failed_ids[track.get("id")] = time.monotonic()
+            self._mark_failed(item, path)
             self._emit_error(track.get("id"), "archivo_no_encontrado",
                              f"Archivo no encontrado: {track.get('titulo', '')}", path=str(path))
             return False
@@ -1009,27 +1119,21 @@ class AudioEngine:
             self._audio.stop(CANAL_B)
 
         if not self._audio.load_stream(path, canal):
-            self._failed_ids[track.get("id")] = time.monotonic()
+            self._mark_failed(item, path)
             self._emit_error(track.get("id"), "error_carga_backend",
                              f"No se pudo abrir el audio: {track.get('titulo', '')}")
             return False
 
-        cue_in = float(track.get("cue_inicio") or 0)
+        cue_in, cue_out = self._cue_range(item)
         if cue_in > 0:
             self._audio.set_position_sec(canal, cue_in)
 
         dur     = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 0)
-        is_spot  = self._is_spot(item)
-        was_spot = bool(self._current_item and self._is_spot(self._current_item))
-        target  = self._target_volume()
+        is_spot = self._is_spot(item)
+        target  = self._target_volume(track)
 
         if outgoing_active:
-            if is_spot:
-                fade = self.SPOT_FADE_IN
-            elif was_spot:
-                fade = self.SPOT_FADE_OUT
-            else:
-                fade = self._crossfade_secs
+            fade_in, fade_out = self._fade_times(self._current_item, item)
             prev = self._current_track
             self._audio.set_volume(canal, 0.0)
             if not self._audio.play(canal):
@@ -1037,8 +1141,9 @@ class AudioEngine:
                 self._emit_error(track.get("id"), "error_play_backend",
                                  f"No se pudo reproducir: {track.get('titulo', '')}")
                 return False
-            self._audio.slide_volume(canal, target, int(fade * 1000))
-            self._audio.slide_volume(outgoing, 0.0, int(fade * 1000))
+            self._audio.slide_volume(canal, target, int(fade_in * 1000))
+            self._audio.slide_volume(outgoing, 0.0, int(fade_out * 1000))
+            fade = max(fade_in, fade_out)
             self._xfade = {"canal": outgoing, "until": time.monotonic() + fade, "track": prev}
             self.bus.emit("crossfade_start", {
                 "from_id": prev.get("id"),
@@ -1047,29 +1152,39 @@ class AudioEngine:
                 "duracion_seg":       fade,
             })
         else:
-            self._audio.set_volume(canal, target)
+            # Arranque en frio: respeta el fade_in propio de la pista.
+            fade_in = 0.0 if (is_spot or item.get("_restart")) else float(track.get("fade_in") or 0)
+            self._audio.set_volume(canal, 0.0 if fade_in > 0 else target)
             if not self._audio.play(canal):
                 self._audio.stop(canal)
                 self._emit_error(track.get("id"), "error_play_backend",
                                  f"No se pudo reproducir: {track.get('titulo', '')}")
                 return False
+            if fade_in > 0:
+                self._audio.slide_volume(canal, target, int(fade_in * 1000))
 
-        # Punto de mezcla: cue_mezcla > outro > (duracion - crossfade).
-        # Las cuñas suenan completas: se empalman justo al final.
+        # Punto de mezcla (donde arranca la siguiente):
+        #   musica: cue_mezcla > outro > duracion - fade_out > duracion - crossfade
+        #   cuñas:  suenan completas (o hasta el cue_outro de la pauta) y se
+        #           empalman justo al final.
+        fin = cue_out if cue_out > 0 else dur
         if dur <= 0:
             mix = float("inf")
         elif is_spot:
-            mix = max(dur - self.SPOT_FADE_OUT, 0.0)
+            mix = max(fin - self.SPOT_FADE_OUT, cue_in)
         else:
             mix = float(track.get("cue_mezcla") or track.get("outro") or 0)
             if not (cue_in < mix < dur):
-                mix = max(dur - min(self._crossfade_secs, dur / 4), 0.0)
+                fade_out_trk = float(track.get("fade_out") or 0)
+                lead = fade_out_trk if 0 < fade_out_trk < dur else min(self._crossfade_secs, dur / 4)
+                mix = max(dur - lead, 0.0)
 
         self._active_canal      = canal
         self._current_track     = track
         self._current_item      = item
         self._duration          = dur
         self._mix_point         = mix
+        self._hard_end          = cue_out if cue_out > 0 else float("inf")
         self._mix_fired         = False
         self._should_be_playing = True
 
@@ -1109,8 +1224,59 @@ class AudioEngine:
         """Las cuñas suenan completas: no se les aplica el crossfade musical."""
         return item.get("origen") == "pauta" or item["track"].get("tipo_audio") == TIPO_CUNA
 
-    def _target_volume(self) -> float:
-        return self._master_volume * (self._ducking_vol if self._effect_ducking else 1.0)
+    @staticmethod
+    def _cue_range(item: dict) -> tuple[float, float]:
+        """
+        (inicio, fin) de reproduccion. fin = 0 significa "hasta el final".
+        Una pauta puede recortar su cuña con sus propios cue_intro/cue_outro
+        (marcados en el editor de pautas); si no, vale el cue_inicio del audio.
+        """
+        cue_in, cue_out = float(item["track"].get("cue_inicio") or 0), 0.0
+        if item.get("origen") == "pauta":
+            p_in  = float(item.get("cue_intro") or 0)
+            p_out = float(item.get("cue_outro") or 0)
+            if p_in > 0:
+                cue_in = p_in
+            if p_out > cue_in:
+                cue_out = p_out
+        return cue_in, cue_out
+
+    def _fade_times(self, prev_item: Optional[dict], item: dict) -> tuple[float, float]:
+        """
+        Duracion (s) de la entrada de `item` y de la salida de `prev_item`.
+        Entre canciones vale el fade_in / fade_out de cada pista y, si no
+        tienen, el crossfade general. Con cuñas de por medio se usan los
+        empalmes cortos fijos (la musica no debe quedar debajo de la cuña).
+        """
+        if self._is_spot(item):
+            return self.SPOT_FADE_IN, self.SPOT_FADE_IN
+        if prev_item and self._is_spot(prev_item):
+            return self.SPOT_FADE_OUT, self.SPOT_FADE_OUT
+        fade_in  = float(item["track"].get("fade_in") or 0) or self._crossfade_secs
+        fade_out = (float(prev_item["track"].get("fade_out") or 0) if prev_item else 0) \
+            or self._crossfade_secs
+        return fade_in, fade_out
+
+    def _mark_failed(self, item: dict, path) -> None:
+        """Evita reintentar enseguida un audio (o pauta) cuyo archivo fallo."""
+        track = item["track"]
+        self._failed_ids[track.get("id") if track.get("id") is not None else str(path)] = time.monotonic()
+        if item.get("origen") == "pauta":
+            self._pautas_fallidas.add((item.get("slot"), item.get("pauta_id")))
+
+    @staticmethod
+    def _gain_of(track: Optional[dict]) -> float:
+        """Factor lineal de la ganancia de normalizacion guardada en el audio."""
+        try:
+            db = float((track or {}).get("ganancia_db") or 0)
+        except (TypeError, ValueError):
+            return 1.0
+        return 10 ** (max(-30.0, min(MAX_BOOST_DB, db)) / 20)
+
+    def _target_volume(self, track: Optional[dict] = None) -> float:
+        track = track if track is not None else self._current_track
+        duck  = self._ducking_vol if self._effect_ducking else 1.0
+        return self._master_volume * duck * self._gain_of(track)
 
     # ── Cartuchera ────────────────────────────────────────────────────────────
 
@@ -1127,7 +1293,7 @@ class AudioEngine:
                              f"No se pudo abrir el efecto: {track.get('titulo', '')}")
             return
 
-        self._audio.set_volume(canal, self._master_volume)
+        self._audio.set_volume(canal, self._master_volume * self._gain_of(track))
         self._audio.play(canal)
 
         dur = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 5)
@@ -1153,21 +1319,26 @@ class AudioEngine:
 
     def _check_pautas(self):
         """
-        Encola las pautas activas cuya matriz marca la celda dia-hora actual
-        y que aun no han salido en esta hora. Salen en el proximo cambio de
-        pista (o de inmediato si el motor esta en automatico y sin sonar).
-        Clave de matriz: "dia-hora", dia 0=Dom…6=Sab, hora 0–23.
+        Programa las tandas de la hora en curso. Clave de matriz: "dia-hora",
+        dia 0=Dom…6=Sab, hora 0–23.
+
+        1. Al empezar cada hora se reparten sus pautas entre las tandas
+           (planificar_tandas). Las que se crean a mitad de hora van a la
+           proxima tanda que quede (o salen ya si no queda ninguna).
+        2. Al llegar el minuto de una tanda, sus cuñas pendientes entran
+           juntas a la cola prioritaria y salen en el proximo cambio de pista.
+           Si el motor arranca tarde, las tandas ya vencidas salen enseguida.
+        3. Lo que no alcanzo a salir en su hora se descarta (no se acumula).
         """
         if time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
             return
         self._last_pautas_check = time.monotonic()
 
-        now  = datetime.now()
+        now  = self._now()
         slot = now.strftime("%Y-%m-%d-%H")
         key  = f"{(now.weekday() + 1) % 7}-{now.hour}"
         hoy  = now.date().isoformat()
 
-        # Lo que no alcanzo a salir en su hora se descarta (no se acumula).
         perdidas = [p for p in self._priority_queue if p["slot"] != slot]
         if perdidas:
             self._priority_queue = deque(p for p in self._priority_queue if p["slot"] == slot)
@@ -1180,7 +1351,8 @@ class AudioEngine:
             try:
                 rows = conn.execute(
                     """
-                    SELECT p.id, p.cliente, p.audio_id, p.matriz
+                    SELECT p.id, p.cliente, p.audio_id, p.matriz, p.rubro,
+                           p.menciones_diarias, p.cue_intro, p.cue_outro
                     FROM pautas p
                     JOIN audios a ON a.id = p.audio_id AND a.activo = 1
                     WHERE p.activo = 1
@@ -1196,30 +1368,88 @@ class AudioEngine:
                         " WHERE slot = ? AND pauta_id IS NOT NULL", (slot,)
                     )
                 }
+                del_dia = dict(conn.execute(
+                    "SELECT pauta_id, COUNT(*) FROM historial_emision"
+                    " WHERE slot LIKE ? AND pauta_id IS NOT NULL GROUP BY pauta_id",
+                    (hoy + "-%",),
+                ).fetchall())
             finally:
                 conn.close()
         except Exception as exc:
             log.error("[Pautas] Error consultando pautas: %s", exc)
             return
 
-        en_cola = {p["pauta_id"] for p in self._priority_queue}
+        de_la_hora = {}
         for row in rows:
-            if row["id"] in emitidas or row["id"] in en_cola:
-                continue
             try:
                 matriz = json.loads(row["matriz"] or "{}")
             except (TypeError, ValueError):
                 continue
-            if not isinstance(matriz, dict) or not matriz.get(key):
+            if isinstance(matriz, dict) and matriz.get(key):
+                de_la_hora[row["id"]] = {
+                    "pauta_id": row["id"], "cliente": row["cliente"],
+                    "audio_id": row["audio_id"], "rubro": row["rubro"] or "",
+                    "menciones_diarias": row["menciones_diarias"],
+                    "cue_intro": row["cue_intro"], "cue_outro": row["cue_outro"],
+                    "slot": slot,
+                }
+
+        self._plan_hour(slot, now.minute, list(de_la_hora.values()))
+
+        en_cola = {p["pauta_id"] for p in self._priority_queue}
+        for minuto in sorted(self._plan):
+            if minuto > now.minute:
+                break
+            lanzadas = []
+            for pid in self._plan[minuto]:
+                pauta = de_la_hora.get(pid)
+                if (pauta is None or pid in emitidas or pid in en_cola
+                        or (slot, pid) in self._pautas_fallidas):
+                    continue
+                tope = pauta["menciones_diarias"]
+                if tope and del_dia.get(pid, 0) >= tope:
+                    continue
+                pauta = {**pauta, "tanda": minuto}
+                self._priority_queue.append(pauta)
+                en_cola.add(pid)
+                lanzadas.append(pauta)
+                log.info("[Pautas] Tanda :%02d → %s (pauta %d)", minuto, pauta["cliente"], pid)
+                self.bus.emit("pauta_scheduled", pauta)
+            if lanzadas:
+                self._idle_retry_at = 0.0
+                if minuto not in self._tandas_lanzadas:
+                    self._tandas_lanzadas.add(minuto)
+                    self.bus.emit("tanda_scheduled", {
+                        "minuto": minuto, "slot": slot,
+                        "pautas": [{"pauta_id": p["pauta_id"], "cliente": p["cliente"]}
+                                   for p in lanzadas],
+                    })
+
+    def _plan_hour(self, slot: str, minuto_actual: int, pautas: list[dict]):
+        """Reparte las pautas de la hora en tandas (una vez por hora)."""
+        if self._plan_slot != slot:
+            plan = planificar_tandas(pautas, self._tandas_minutos)
+            self._plan = {m: [p["pauta_id"] for p in lst] for m, lst in plan.items()}
+            self._plan_slot = slot
+            self._tandas_lanzadas = set()
+            self._pautas_fallidas = {f for f in self._pautas_fallidas if f[0] == slot}
+            return
+        planificadas = {pid for ids in self._plan.values() for pid in ids}
+        for p in pautas:
+            if p["pauta_id"] in planificadas:
                 continue
-            pauta = {
-                "pauta_id": row["id"], "cliente": row["cliente"],
-                "audio_id": row["audio_id"], "slot": slot,
-            }
-            self._priority_queue.append(pauta)
-            self._idle_retry_at = 0.0
-            log.info("[Pautas] Programada para esta hora: %s (pauta %d)", row["cliente"], row["id"])
-            self.bus.emit("pauta_scheduled", pauta)
+            futuras = [m for m in self._plan if m > minuto_actual]
+            destino = min(futuras) if futuras else max(self._plan)
+            self._plan[destino].append(p["pauta_id"])
+            log.info("[Pautas] Pauta nueva %d → tanda :%02d", p["pauta_id"], destino)
+
+    def _proxima_tanda(self) -> Optional[dict]:
+        """Siguiente tanda de la hora con cuñas planificadas (para el Studio)."""
+        minuto_actual = self._now().minute
+        for m in sorted(self._plan):
+            if m > minuto_actual and self._plan[m]:
+                return {"minuto": m, "pautas": len(self._plan[m])}
+        return None
 
     # ── Gestion de archivos diferida (segura durante reproduccion) ────────────
 
@@ -1315,7 +1545,7 @@ class AudioEngine:
             "artista":      track.get("artista", ""),
             "duracion":     duracion,
             "duracion_seg": duracion,
-            "posicion_seg": float(track.get("cue_inicio") or 0),  # arranca en cue_inicio
+            "posicion_seg": self._cue_range(item)[0],   # arranca en el cue de inicio
             "genero_vocal": track.get("genero_vocal") or "",
             "cat1":         track.get("subgenero") or "",
             "cat2":         track.get("categoria") or "",
@@ -1323,6 +1553,7 @@ class AudioEngine:
             "origen":       origen,
             "pauta_id":     item.get("pauta_id"),
             "cliente":      item.get("cliente"),
+            "tanda":        item.get("tanda"),
             # ─ Cue points (6 marcadores Jazler) ───────────────────────────
             "cue_inicio":      track.get("cue_inicio")      or 0,
             "cue_intro":       track.get("cue_intro")       or track.get("intro") or 0,
@@ -1431,6 +1662,8 @@ class AudioEngine:
             "queue":             list(self._playlist_queue),
             "queue_length":      len(self._playlist_queue),
             "pautas_pendientes": len(self._priority_queue),
+            "tandas_minutos":    list(self._tandas_minutos),
+            "proxima_tanda":     self._proxima_tanda(),
             "crossfade_active":  self._xfade is not None,
             "crossfade_seg":     self._crossfade_secs,
             "should_be_playing": self._should_be_playing,

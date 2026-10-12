@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -89,7 +90,8 @@ MUSICA_DIR   = LIBRARY_DIR / "musica"   # destino para archivos subidos via /upl
 ENGINE_EVENTS = (
     "track_started", "track_ended", "crossfade_start", "playback_stopped",
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
-    "pauta_scheduled", "pauta_missed", "engine_stopped",
+    "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
+    "engine_stopped",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -182,7 +184,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Debug Validation: Imprime exactamente qué campo falló para evitar 422 silenciosos.
     """
     logger.error(f"422 Validation Error en {request.url}: {exc.errors()}")
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    # jsonable_encoder: los errores de validadores propios traen la excepción
+    # en ctx y json.dumps no la sabe serializar (daba 500 en vez de 422).
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
 
 # ---------------------------------------------------------------------------
@@ -1704,6 +1708,18 @@ class MotorConfig(BaseModel):
     ventana_artista_min: Optional[int]   = Field(None, ge=0, le=1440)
     max_mismo_genero:    Optional[int]   = Field(None, ge=1, le=10)
     ducking_db:          Optional[float] = Field(None, ge=-40, le=0)
+    tandas_minutos:      Optional[str]   = Field(None, max_length=200,
+                                                 description="Minutos de las tandas, p. ej. '15,45'")
+
+    @field_validator("tandas_minutos")
+    @classmethod
+    def _minutos_validos(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        partes = [x for x in re.split(r"[,;\s]+", v) if x]
+        if not partes or any(not x.isdigit() or int(x) > 59 for x in partes):
+            raise ValueError("tandas_minutos: minutos entre 0 y 59 separados por coma, p. ej. '15,45'")
+        return ",".join(str(m) for m in sorted({int(x) for x in partes}))
 
 
 def _read_motor_config(conn: sqlite3.Connection) -> dict:
@@ -1714,6 +1730,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "ventana_artista_min": int(float(valores.get("ventana_artista_min", 60))),
         "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
         "ducking_db":          float(valores.get("ducking_db", -12)),
+        "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
     }
 
 

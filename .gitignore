@@ -9,6 +9,7 @@ media/*.m4a
 media/library/
 media/staging/
 media/COMERCIALES/
+media/respaldo/
 
 # --- Base de Datos y Binarios ---
 # Ignoramos la DB local para que no se sobreescriba en GitHub
