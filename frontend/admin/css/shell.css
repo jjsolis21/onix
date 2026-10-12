@@ -593,7 +593,11 @@ textarea {
 .section-panel {
   display: none;
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  /* Si una sección no cabe (pantalla chica o Windows al 125 %), hace scroll
+     en vez de cortar lo de abajo. Las que ya se ajustan solas no lo notan. */
+  overflow-y: auto;
+  overflow-x: hidden;
   flex-direction: column;
   animation: section-mount .2s ease;
 }
