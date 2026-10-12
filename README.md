@@ -12,9 +12,11 @@ onix/
 │   ├── api/
 │   │   ├── api_server.py        ← FastAPI REST + WebSocket
 │   │   ├── reportes.py          ← Top 40, historial, cumplimiento de pautas
+│   │   ├── relojes.py           ← Relojes, grilla semanal y programa
 │   │   └── schemas_pautas.py
 │   └── audio/
-│       ├── audio_engine.py      ← Motor: crossfade, rotación, tandas, watchdog
+│       ├── audio_engine.py      ← Motor: crossfade, programa, tandas, watchdog
+│       ├── planner.py           ← Relojes: arma las próximas horas
 │       ├── engine_service.py    ← Motor como proceso aparte (socket local)
 │       ├── engine_client.py     ← Cliente del motor remoto (lo usa la API)
 │       ├── loudness.py          ← Medición LUFS (ffmpeg) para normalizar
@@ -94,11 +96,31 @@ Corren en cualquier sistema (motor simulado, BD y audios temporales).
 | `ducking_db` | -12 | Atenuación de la música al disparar la cartuchera |
 | `dispositivo_aire` | -1 | Tarjeta de sonido del AIRE (-1 = predeterminada de Windows) |
 | `dispositivo_preescucha` | -1 | Tarjeta de la PREESCUCHA (escucha interna) |
+| `dispositivo_cartuchera` | -2 | Tarjeta de la cartuchera (-2 = la misma del aire) |
+| `horas_planificadas` | 2 | Cuánto planifica el programa por adelantado |
+| `aleatoriedad` | 3 | 0 = estricta (la que hace más tiempo no suena); N = al azar entre N |
+| `tolerancia_tanda_seg` | 90 | Margen para que la tanda caiga en su minuto |
+| `separacion_cancion_dias` / `_ventana_min` | 1 / 60 | No repetir la canción en la misma franja de días anteriores |
 | `tandas_minutos` | 15,45 | Minutos de cada hora en que salen las pautas |
 | `normalizacion_activa` | 1 | Normalizar volumen |
 | `normalizacion_lufs` | -16 | Sonoridad objetivo (LUFS) |
 
-## 🔊 Salidas de audio (aire y preescucha)
+## 🕐 Relojes y programa (modo automático estilo Jazler SoHo)
+
+- **Reloj** (Admin → 08 Relojes): filas en orden, por ejemplo *ID → Éxito → Nuevo → Éxito*.
+  Cada fila pide un tipo de audio con filtros (rotación, género, voz, origen, energía) o un
+  audio fijo. Las filas se repiten hasta que termina la hora; cada hora empieza en la fila 1.
+- **Grilla semanal**: qué reloj rige cada hora de cada día. Se pinta arrastrando un rectángulo.
+  Las horas sin reloj suenan solo con música.
+- **Programa** (columna izquierda del Studio): las próximas `horas_planificadas` con hora
+  estimada, agrupadas por reloj, con las tandas como marcadores. Se puede preescuchar, subir o
+  quitar cada ítem, o regenerar todo. En automático se toca solo; en manual avanza con ▶/⏭.
+- **Compensación**: si una canción haría llegar tarde la tanda (más que `tolerancia_tanda_seg`),
+  se elige otra que encaje (⚖ en el Studio), de la categoría de compensación del reloj.
+- Reglas: separación de artista, máximo de voces seguidas, sin repetir en el plan, no repetir
+  la canción en la misma franja de los días anteriores y `aleatoriedad` (0 = estricta).
+
+## 🔊 Salidas de audio (aire, preescucha y cartuchera)
 
 ONIX usa dos salidas, cada una en la tarjeta de sonido que elijas en
 **Admin → 06 Motor de Audio**:

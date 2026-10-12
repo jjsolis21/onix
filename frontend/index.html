@@ -69,6 +69,27 @@
     }
     .cue-strip button { color: var(--blue-next); border: 1px solid var(--blue-next); }
     .lib-btn-prev.previewing { color: var(--blue-next); border-color: var(--blue-next); }
+    /* ── Programa (relojes) ── */
+    .pg-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 6px; border-bottom: 1px solid var(--choc-3);
+      border-left: 3px solid transparent; font-size: .78rem; }
+    .pg-item:hover { background: var(--choc-2); }
+    .pg-hora { font-family: var(--font-data); font-size: .62rem; color: var(--gold-0); min-width: 36px; }
+    .pg-ico { width: 16px; text-align: center; opacity: .8; }
+    .pg-info { flex: 1; min-width: 0; }
+    .pg-tit { color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pg-art { color: var(--text-lo); font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pg-dur { font-family: var(--font-data); font-size: .6rem; color: var(--text-lo); }
+    .pg-acc { display: none; gap: 2px; }
+    .pg-item:hover .pg-acc { display: flex; }
+    .pg-acc button { background: none; border: 1px solid var(--choc-5); color: var(--text-mid); font-size: .6rem;
+      border-radius: 3px; cursor: pointer; padding: 1px 5px; }
+    .pg-acc button:hover { border-color: var(--gold-0); color: var(--gold-1); }
+    .pg-cola { background: rgba(72, 202, 228, .06); }
+    .pg-tanda { background: rgba(238, 155, 0, .12); color: var(--gold-2); font-family: var(--font-data); font-size: .66rem;
+      letter-spacing: .08em; justify-content: space-between; }
+    .pg-comp { color: var(--gold-1); font-size: .6rem; margin-left: 4px; }
+    .pg-sep { font-family: var(--font-data); font-size: .58rem; letter-spacing: .12em; color: var(--text-lo);
+      padding: 6px 8px 3px; text-transform: uppercase; }
     .ingesta-feedback.ok  { color: var(--green-on); }
     .ingesta-feedback.err { color: var(--red-live); }
   </style>
@@ -206,9 +227,10 @@
     <aside class="col-playlist">
       <div class="col-header">
         <span class="col-icon">≡</span>
-        <span class="col-title">PLAYLIST</span>
+        <span class="col-title">PROGRAMA</span>
         <span class="playlist-duration" id="playlistDuration">—</span>
-        <button class="hdr-btn" id="btnClearQueue" title="Vaciar cola">✕</button>
+        <button class="hdr-btn" id="btnRegenerar" title="Volver a planificar desde ahora">↻</button>
+        <button class="hdr-btn" id="btnClearQueue" title="Vaciar la cola del operador">✕</button>
       </div>
 
       <div class="playlist-items" id="playlistList">
@@ -519,7 +541,7 @@
   </main>
 
   <div class="toast-container" id="toastContainer"></div>
-  <script src="/static/js/app.js?v=7"></script>
+  <script src="/static/js/app.js?v=8"></script>
 </body>
 
 </html>

@@ -1149,6 +1149,7 @@ class AudioEngine:
             track = self._fetch_track(it["audio_id"])
             if track and it["audio_id"] not in self._failed_ids:
                 return {"track": track, "origen": "auto", "reloj": it.get("reloj"),
+                        "reloj_id": it.get("reloj_id"), "fila": it.get("fila"),
                         "plan_uid": it["uid"]}
 
         if self._mode == "automatico":
@@ -1209,6 +1210,7 @@ class AudioEngine:
                 actual, t, hasta, list(self._recent_history), self._tandas_minutos,
                 excluir={i for i in self._failed_ids if isinstance(i, int)},
                 tandas_emitidas=lanzadas,
+                ultimo=self._ultimo_del_reloj(),
             )
         except Exception as exc:
             log.error("[Engine] Planificador: %s", exc, exc_info=True)
@@ -1217,6 +1219,14 @@ class AudioEngine:
             with self._programa_lock:
                 self._programa.extend(nuevos)
             self._emit_programa()
+
+    def _ultimo_del_reloj(self) -> Optional[dict]:
+        """Lo que suena ahora, si vino del programa (para seguir el reloj)."""
+        it = self._current_item or {}
+        if it.get("origen") != "auto" or it.get("fila") is None:
+            return None
+        return {"inicio": self._now().isoformat(timespec="seconds"),
+                "reloj_id": it.get("reloj_id"), "fila": it.get("fila")}
 
     def _plan_quitar(self, uid: int):
         with self._programa_lock:

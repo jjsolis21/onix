@@ -617,21 +617,23 @@ const Transport = (() => {
   $s("#btnFadeNext")?.addEventListener("click", () => StudioWS.send({ cmd: "skip" }));
   $s("#btnClearQueue")?.addEventListener("click", () => StudioWS.send({ cmd: "clear_queue" }));
 
-  /** Bloque NEXT: lo primero de la cola (o lo que decida el modo automático) */
-  function renderNext(queue = [], st = null) {
-    const t = queue[0];
+  /** Bloque NEXT: lo primero de la cola del operador o del programa */
+  function renderNext(prog) {
     const set = (sel, txt) => { const el = $s(sel); if (el) el.textContent = txt; };
-    if (t) {
-      const full = StudioLibrary.tracks().find(x => x.id === t.id) ?? {};
-      set("#nextTitle", t.titulo); set("#nextArtist", t.artista);
+    const q = prog?.cola?.[0];
+    const it = (prog?.items ?? []).find(i => i.tipo === "audio");
+    if (q) {
+      const full = StudioLibrary.tracks().find(x => x.id === q.id) ?? {};
+      set("#nextTitle", q.titulo); set("#nextArtist", q.artista);
       set("#nextGenero", full.genero_vocal || "—"); set("#nextOrigen", "COLA");
       set("#nextDuracion", fmtSec(full.duracion_seg));
+    } else if (it) {
+      set("#nextTitle", it.titulo); set("#nextArtist", it.artista);
+      set("#nextGenero", it.genero_vocal || "—"); set("#nextOrigen", it.reloj ? `RELOJ ${it.reloj}` : "AUTO");
+      set("#nextDuracion", fmtSec(it.duracion_total));
     } else {
-      const auto = (st?.modo ?? ModeToggle.get()) === "automatico";
-      set("#nextTitle", auto ? "Rotación automática" : "—");
-      set("#nextArtist", auto ? "elige el motor" : "Cola vacía");
-      set("#nextGenero", "—"); set("#nextOrigen", auto ? "AUTO" : "—");
-      set("#nextDuracion", "0:00");
+      set("#nextTitle", "—"); set("#nextArtist", "Nada programado");
+      set("#nextGenero", "—"); set("#nextOrigen", "—"); set("#nextDuracion", "0:00");
     }
   }
 
@@ -664,20 +666,9 @@ const Transport = (() => {
     }
   }
 
-  function renderQueue(queue = []) {
-    renderNext(queue);
-    const list = $s("#playlistList");
-    if (!list) return;
-    list.innerHTML = queue.length
-      ? queue.map((t, i) => `
-          <div class="pl-item">
-            <span class="pl-pos">${i + 1}</span>
-            <div class="pl-info">
-              <div class="pl-title">${escHtml(t.titulo)}</div>
-              <div class="pl-artist">${escHtml(t.artista)}</div>
-            </div>
-          </div>`).join("")
-      : `<div class="empty-state"><span class="empty-icon">♪</span><span>Cola vacía</span></div>`;
+  /** La columna PROGRAMA se pinta en el módulo Programa (cola + relojes) */
+  function renderQueue() {
+    Programa.load();
   }
 
   /** Estado inicial desde la API (modo, pista al aire, cola) */
@@ -686,8 +677,7 @@ const Transport = (() => {
       const st = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/status`).then(r => r.json());
       ModeToggle.setMode(st.modo ?? "manual");
       NowPlaying.syncFromStatus(st);
-      renderQueue(st.queue ?? []);
-      renderNext(st.queue ?? [], st);
+      Programa.load();
       EstadoMotor.apply(st);
     } catch (err) {
       console.warn("[Transport] No se pudo leer /api/v1/status:", err);
@@ -795,6 +785,102 @@ const Cartuchera = (() => {
   }
 
   return { load, assign, logFired };
+})();
+
+
+/* ============================================================
+   MÓDULO: PROGRAMA
+   Columna izquierda: lo que va a sonar con hora estimada.
+     · COLA      → lo que el operador agregó con "+ COLA" (va primero)
+     · RELOJES   → lo que planificó el motor para las próximas horas
+     · 📢 TANDA  → marcador de la tanda con su duración estimada
+   En AUTOMÁTICO se toca solo; en MANUAL avanza con ▶ / ⏭.
+   ============================================================ */
+const Programa = (() => {
+  const ICONOS = { Musica: "♪", Efecto: "⚡", Sweeper: "〰", Tips: "💡", Programa: "🎙" };
+  let _cargando = false, _pendiente = false;
+
+  async function load() {
+    if (_cargando) { _pendiente = true; return; }
+    _cargando = true;
+    try {
+      const prog = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/programa`).then(r => r.json());
+      render(prog);
+      Transport.renderNext(prog);
+    } catch (err) {
+      console.warn("[Programa] No disponible:", err);
+    } finally {
+      _cargando = false;
+      if (_pendiente) { _pendiente = false; load(); }
+    }
+  }
+
+  function render(prog) {
+    const list = $s("#playlistList");
+    if (!list) return;
+    const dur = $s("#playlistDuration");
+    if (dur) dur.textContent = prog?.fin ? `hasta ${prog.fin.slice(0, 5)}` : "—";
+    const cola = prog?.cola ?? [], items = prog?.items ?? [];
+    if (!cola.length && !items.length) {
+      list.innerHTML = `<div class="empty-state"><span class="empty-icon">♪</span><span>Nada programado</span></div>`;
+      return;
+    }
+    let html = "";
+    if (cola.length) {
+      html += `<div class="pg-sep">Cola del operador</div>`;
+      html += cola.map(q => `<div class="pg-item pg-cola">
+          <span class="pg-hora">${escHtml(q.hora.slice(0, 5))}</span><span class="pg-ico">➕</span>
+          <div class="pg-info"><div class="pg-tit">${escHtml(q.titulo)}</div><div class="pg-art">${escHtml(q.artista)}</div></div>
+        </div>`).join("");
+      html += `<div class="pg-sep">Programa</div>`;
+    }
+    let reloj = null;
+    html += items.map((it, idx) => {
+      let cab = "";
+      if (it.tipo === "audio" && it.reloj !== reloj) {
+        reloj = it.reloj;
+        cab = `<div class="pg-sep">${it.reloj ? `🕐 ${escHtml(it.reloj)}` : "Solo música (sin reloj)"}</div>`;
+      }
+      if (it.tipo === "tanda") {
+        return `${cab}<div class="pg-item pg-tanda"><span>📢 ${escHtml(it.hora.slice(0, 5))} · TANDA :${String(it.minuto).padStart(2, "0")}</span>
+          <span>${it.cunas} cuña(s) · ${fmtSec(it.duracion)}</span></div>`;
+      }
+      return `${cab}<div class="pg-item" style="border-left-color:${escHtml(it.color || "transparent")}">
+        <span class="pg-hora">${escHtml(it.hora.slice(0, 5))}</span>
+        <span class="pg-ico" title="${escHtml(it.tipo_audio)}">${ICONOS[it.tipo_audio] ?? "♪"}</span>
+        <div class="pg-info"><div class="pg-tit">${escHtml(it.titulo)}${it.compensacion ? `<span class="pg-comp" title="Elegida para que la tanda caiga a su hora">⚖</span>` : ""}</div>
+          <div class="pg-art">${escHtml(it.artista)}</div></div>
+        <span class="pg-dur">${fmtSec(it.duracion_total)}</span>
+        <span class="pg-acc">
+          <button data-pg-cue="${it.audio_id}" title="Preescuchar">🎧</button>
+          <button data-pg-subir="${it.uid}" data-pos="${Math.max(0, idx - 1)}" title="Subir" ${idx === 0 ? "disabled" : ""}>▲</button>
+          <button data-pg-quitar="${it.uid}" title="Quitar del programa">✕</button>
+        </span></div>`;
+    }).join("");
+    list.innerHTML = html;
+  }
+
+  const post = (url, body) => fetch(`${STUDIO_CONFIG.apiBase}${url}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
+  });
+
+  $s("#playlistList")?.addEventListener("click", async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.pgCue) StudioWS.send({ cmd: "cue", audio_id: parseInt(b.dataset.pgCue) });
+    if (b.dataset.pgQuitar) await post(`/api/v1/programa/${b.dataset.pgQuitar}/quitar`);
+    if (b.dataset.pgSubir) await post(`/api/v1/programa/${b.dataset.pgSubir}/mover`, { posicion: parseInt(b.dataset.pos) });
+    setTimeout(load, 150);
+  });
+  $s("#btnRegenerar")?.addEventListener("click", async () => {
+    if (!confirm("¿Volver a planificar todo el programa desde ahora? Se pierden los cambios hechos a mano.")) return;
+    await post("/api/v1/programa/regenerar");
+    setTimeout(load, 400);
+  });
+
+  // Las horas estimadas se corren con el tiempo: refresco suave
+  setInterval(load, 15000);
+  return { load };
 })();
 
 
@@ -1020,9 +1106,13 @@ const EffectPanel = (() => {
    ============================================================ */
 
 // ── Track empezó ──────────────────────────────────────────────
+const _debouncedPrograma = debounce(() => Programa.load(), 300);
+StudioWS.onEvent("programa_actualizado", _debouncedPrograma);
+
 StudioWS.onEvent("track_started", (data) => {
   NowPlaying.setTrack(data);
   Transport.addHistory(data);
+  _debouncedPrograma();
   studioToast(`▶ ${data.artista} — ${data.titulo}`, "info", 2500);
 });
 
@@ -1054,9 +1144,7 @@ StudioWS.onEvent("cartuchera_updated", () => {
 });
 
 // ── Cola manual actualizada ───────────────────────────────────
-StudioWS.onEvent("queue_updated", (data) => {
-  Transport.renderQueue(data?.queue ?? []);
-});
+StudioWS.onEvent("queue_updated", () => _debouncedPrograma());
 
 // ── Tanda de pautas lanzada (sale en el próximo cambio de pista) ──
 StudioWS.onEvent("tanda_scheduled", (data) => {

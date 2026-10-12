@@ -166,3 +166,41 @@ def test_tanda_ya_emitida_no_se_planifica_otra_vez(base):
     items = Planner(base).extender([], LUNES_10, LUNES_10 + timedelta(minutes=30), [], [15],
                                    tandas_emitidas={("2026-10-12-10", 15)})
     assert not [i for i in items if i["tipo"] == "tanda"]
+
+
+def test_biblioteca_chica_repite_canciones_en_vez_de_solo_jingles(base):
+    """Con pocas canciones el plan repite música; nunca se llena de jingles."""
+    jid = audio(base, "ID", tipo="Efecto", dur=8)
+    for i in range(3):
+        audio(base, f"TEMA {i}", artista=f"A{i}", dur=200)
+    reloj(base, "Con ID", [{"tipo": "Efecto", "audio_id": jid}, {}, {}], horas=((1, 10), (1, 11)))
+    items = planear(base, minutos=120, tandas=())
+    musica = [i for i in items if i["tipo_audio"] == "Musica"]
+    assert len(items) < 80
+    assert len(musica) >= 30                      # 2 h de música de 200 s
+    for k in range(len(items) - 1):               # nunca dos ID seguidos
+        assert not (items[k]["titulo"] == "ID" and items[k + 1]["titulo"] == "ID")
+    titulos = [m["titulo"] for m in musica]
+    for k in range(len(titulos) - 1):             # ni la misma canción dos veces seguidas
+        assert titulos[k] != titulos[k + 1]
+
+
+def test_extender_a_mitad_de_hora_sigue_el_reloj(base):
+    """Al completar el plan (o regenerarlo) el reloj no vuelve a la fila 1."""
+    from datetime import timedelta
+    jid = audio(base, "ID", tipo="Efecto", dur=8)
+    for i in range(20):
+        audio(base, f"TEMA {i}", artista=f"A{i}", dur=200)
+    reloj(base, "Con ID", [{"tipo": "Efecto", "audio_id": jid}, {}, {}, {}, {}, {}])
+    p = Planner(base)
+    primera = p.extender([], LUNES_10, LUNES_10 + timedelta(minutes=10), [], [])
+    assert primera[0]["titulo"] == "ID" and primera[-1]["fila"] == len(primera) - 1
+    fin = datetime.fromisoformat(primera[-1]["inicio"]) + timedelta(seconds=primera[-1]["duracion"])
+    segunda = p.extender(primera, fin, fin + timedelta(minutes=10), [], [])
+    assert segunda[0]["titulo"] != "ID"
+    assert segunda[0]["fila"] == (primera[-1]["fila"] + 1) % 6
+    # Plan vacío pero sonando la fila 2 de este reloj: sigue en la 3
+    rid = primera[0]["reloj_id"]
+    tercera = p.extender([], fin, fin + timedelta(minutes=5), [], [],
+                         ultimo={"inicio": fin.isoformat(), "reloj_id": rid, "fila": 2})
+    assert tercera[0]["fila"] == 3

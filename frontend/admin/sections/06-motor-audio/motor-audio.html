@@ -24,12 +24,14 @@
       <p class="ox-hint">
         <b>AIRE</b> es lo que va al transmisor o al codificador de streaming.
         <b>PREESCUCHA</b> es para escuchar en cabina sin salir al aire (botón 🎧 del Studio).
-        Usa tarjetas distintas: si comparten tarjeta, la preescucha se oye en el aire.
+        <b>CARTUCHERA</b> son los botones de jingles y efectos (normalmente, la misma tarjeta del aire).
+        Usa tarjetas distintas para aire y preescucha: si comparten tarjeta, la preescucha se oye en el aire.
         El cambio se aplica desde la próxima pista; lo que suena termina por la tarjeta anterior.
       </p>
       <div class="ox-row">
         <div class="ox-field"><label for="mDevAire">Aire</label><select class="ox-select" id="mDevAire"></select></div>
         <div class="ox-field"><label for="mDevPre">Preescucha</label><select class="ox-select" id="mDevPre"></select></div>
+        <div class="ox-field"><label for="mDevCart">Cartuchera</label><select class="ox-select" id="mDevCart"></select></div>
         <button class="ox-btn ox-btn--primary" id="mGuardarSalidas">Guardar</button>
       </div>
       <p class="ox-msg" id="mMsgSalidas"></p>
@@ -60,6 +62,23 @@
     <p class="ox-hint" style="margin-top:var(--s3)">
       En <b>automático</b> las tandas salen solas en el primer cambio de pista después de su minuto.
       En <b>manual</b> el Studio muestra un aviso y el operador decide cuándo lanzarlas.
+    </p>
+    <h3 style="margin-top:var(--s4)">🕐 Planificador (relojes)</h3>
+    <div class="ox-row">
+      <div class="ox-field"><label for="mHorasPlan">Horas planificadas</label>
+        <input type="number" class="ox-input" id="mHorasPlan" min="0.5" max="24" step="0.5"></div>
+      <div class="ox-field"><label for="mAleat">Aleatoriedad (0 = estricta)</label>
+        <input type="number" class="ox-input" id="mAleat" min="0" max="50"></div>
+      <div class="ox-field"><label for="mTol">Tolerancia de tanda (s)</label>
+        <input type="number" class="ox-input" id="mTol" min="0" max="600"></div>
+      <div class="ox-field"><label for="mSepDias">No repetir canción (días)</label>
+        <input type="number" class="ox-input" id="mSepDias" min="0" max="14"></div>
+      <div class="ox-field"><label for="mSepVent">…en la misma franja (± min)</label>
+        <input type="number" class="ox-input" id="mSepVent" min="0" max="720"></div>
+    </div>
+    <p class="ox-hint" style="margin-top:var(--s2)">
+      <b>Aleatoriedad 0</b>: siempre la canción que hace más tiempo no suena (todas rotan antes de repetir).
+      <b>N</b>: al azar entre las N que hace más tiempo no suenan.
     </p>
     <div class="ox-row"><button class="ox-btn ox-btn--primary" id="mGuardarParams">Guardar parámetros</button></div>
     <p class="ox-msg" id="mMsgParams"></p>
@@ -101,8 +120,10 @@
         .join("");
       $("mDevAire").innerHTML = opciones();
       $("mDevPre").innerHTML = opciones();
+      $("mDevCart").innerHTML = `<option value="-2">Igual que el aire</option>` + opciones();
       $("mDevAire").value = String(data.salidas?.aire ?? -1);
       $("mDevPre").value = String(data.salidas?.preescucha ?? -1);
+      $("mDevCart").value = String(data.salidas?.cartuchera ?? -2);
       if (!devs.length) msg("mMsgSalidas", "El motor no respondió: no se pudo leer la lista de tarjetas", false);
     } catch (err) {
       msg("mMsgSalidas", `Error: ${err.message}`, false);
@@ -113,7 +134,7 @@
     const aire = parseInt($("mDevAire").value), pre = parseInt($("mDevPre").value);
     const r = await fetch("/api/v1/audio/salidas", {
       method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aire, preescucha: pre }),
+      body: JSON.stringify({ aire, preescucha: pre, cartuchera: parseInt($("mDevCart").value) }),
     });
     if (!r.ok) { msg("mMsgSalidas", await errTxt(r), false); return; }
     msg("mMsgSalidas", aire === pre
@@ -127,6 +148,9 @@
     $("mCrossfade").value = c.crossfade_seg; $("mVentana").value = c.ventana_artista_min;
     $("mMaxGenero").value = c.max_mismo_genero; $("mDucking").value = c.ducking_db;
     $("mTandas").value = c.tandas_minutos;
+    $("mHorasPlan").value = c.horas_planificadas; $("mAleat").value = c.aleatoriedad;
+    $("mTol").value = c.tolerancia_tanda_seg; $("mSepDias").value = c.separacion_cancion_dias;
+    $("mSepVent").value = c.separacion_cancion_ventana_min;
     $("mNormActiva").value = c.normalizacion_activa ? "1" : "0"; $("mLufs").value = c.normalizacion_lufs;
   }
 
@@ -143,6 +167,9 @@
     crossfade_seg: parseFloat($("mCrossfade").value), ventana_artista_min: parseInt($("mVentana").value),
     max_mismo_genero: parseInt($("mMaxGenero").value), ducking_db: parseFloat($("mDucking").value),
     tandas_minutos: $("mTandas").value.trim(),
+    horas_planificadas: parseFloat($("mHorasPlan").value), aleatoriedad: parseInt($("mAleat").value),
+    tolerancia_tanda_seg: parseInt($("mTol").value), separacion_cancion_dias: parseInt($("mSepDias").value),
+    separacion_cancion_ventana_min: parseInt($("mSepVent").value),
   }, "mMsgParams"));
   $("mGuardarNorm").addEventListener("click", () => guardar({
     normalizacion_activa: $("mNormActiva").value === "1", normalizacion_lufs: parseFloat($("mLufs").value),
@@ -174,7 +201,8 @@
         fila("Backend", `${esc(st.backend)}${st.remoto ? " · proceso aparte" : " · dentro de la API"}`) +
         fila("Modo", esc(st.modo ?? "—")) +
         fila("Al aire", st.current_track ? `${esc(st.current_track.artista)} — ${esc(st.current_track.titulo)}` : "—") +
-        fila("Salidas", st.salidas ? `aire: ${nombreSalida(st.salidas.aire)} · preescucha: ${nombreSalida(st.salidas.preescucha)}` : "—") +
+        fila("Salidas", st.salidas ? `aire: ${nombreSalida(st.salidas.aire)} · preescucha: ${nombreSalida(st.salidas.preescucha)} · cartuchera: ${st.salidas.cartuchera === -2 ? "igual que el aire" : nombreSalida(st.salidas.cartuchera)}` : "—") +
+        fila("Programa", `${st.programa_items ?? 0} ítem(s) planificados`) +
         fila("Próxima tanda", st.proxima_tanda ? `:${String(st.proxima_tanda.minuto).padStart(2, "0")} (${st.proxima_tanda.pautas} cuñas)` : "—") +
         (st.tanda_en_espera ? fila("Tanda en espera", `<span style="color:var(--gold-1)">${st.tanda_en_espera} cuña(s) esperando al operador</span>`) : "") +
         fila("Último error", st.last_error ? `<span style="color:var(--red-live)">${esc(st.last_error)}</span>` : "—");

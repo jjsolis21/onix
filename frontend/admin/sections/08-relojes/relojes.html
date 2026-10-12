@@ -1,0 +1,391 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 08 — Relojes (modo automático estilo Jazler SoHo)
+     · Reloj  = patrón de la hora: filas en orden (categoría, jingle, audio fijo…).
+     · Grilla = qué reloj rige cada hora de cada día. Se pinta arrastrando.
+     API: /api/v1/relojes, /api/v1/relojes/grilla, /api/v1/relojes/{id}/vista,
+          /api/v1/config/biblioteca/schema, /api/v1/audios
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .rj-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s4); }
+  @media (max-width: 900px) { .rj-layout { grid-template-columns: 1fr; } }
+  .rj-lista { display: flex; flex-direction: column; gap: 4px; }
+  .rj-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 4px;
+    border: 1px solid var(--choc-4); background: var(--choc-1); cursor: pointer; color: var(--text-hi); font-size: .85rem; }
+  .rj-item:hover { border-color: var(--choc-6); }
+  .rj-item.active { border-color: var(--gold-0); background: var(--choc-3); }
+  .rj-item small { margin-left: auto; font-family: var(--font-data); font-size: .6rem; color: var(--text-lo); }
+  .rj-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .rj-filas td { vertical-align: middle; }
+  .rj-filas .ox-select, .rj-filas .ox-input { font-size: .72rem; padding: 4px 6px; }
+  .rj-filtros { display: flex; gap: 4px; flex-wrap: wrap; }
+  .rj-filtros .ox-select { max-width: 130px; }
+  .rj-filtros .ox-input[type=number] { width: 54px; }
+  .rj-cand { font-family: var(--font-data); font-size: .65rem; white-space: nowrap; }
+  .rj-cand.cero { color: var(--red-live); }
+  .rj-hora { display: flex; height: 26px; border-radius: 4px; overflow: hidden; border: 1px solid var(--choc-4); background: var(--choc-1); }
+  .rj-hora div { height: 100%; border-right: 1px solid var(--choc-0); font-family: var(--font-data); font-size: .55rem;
+    color: var(--choc-0); display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+  .rj-grilla { border-collapse: collapse; user-select: none; font-family: var(--font-data); font-size: .6rem; }
+  .rj-grilla th { color: var(--text-lo); font-weight: 400; padding: 2px 4px; }
+  .rj-grilla td { width: 30px; height: 24px; border: 1px solid var(--choc-3); text-align: center; cursor: crosshair;
+    color: var(--choc-0); font-weight: 600; overflow: hidden; }
+  .rj-grilla td.vacia { background: var(--choc-1); color: var(--text-lo); }
+  .rj-grilla td.sel { outline: 2px solid var(--gold-2); outline-offset: -2px; }
+  .rj-pincel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: .8rem; }
+</style>
+
+<div class="ox-root" id="rjRoot">
+  <header class="ox-head">
+    <div>
+      <h2>Relojes</h2>
+      <p>Cada hora se arma con su reloj: las filas se tocan en orden y se repiten hasta que termina la hora.
+        Lo que no tenga reloj suena solo con música.</p>
+    </div>
+  </header>
+
+  <div class="rj-layout">
+    <!-- ── Lista de relojes ── -->
+    <section class="ox-card">
+      <h3>Relojes</h3>
+      <div class="rj-lista" id="rjLista"></div>
+      <button class="ox-btn ox-btn--primary" id="rjNuevo" style="margin-top:var(--s3);width:100%">+ Nuevo reloj</button>
+    </section>
+
+    <!-- ── Editor ── -->
+    <section class="ox-card" id="rjEditor">
+      <h3 id="rjTituloEditor">Nuevo reloj</h3>
+      <div class="ox-row">
+        <div class="ox-field" style="flex:2 1 200px"><label for="rjNombre">Nombre</label>
+          <input class="ox-input" id="rjNombre" maxlength="80" placeholder="Ej.: Mañana · Éxitos"></div>
+        <div class="ox-field" style="flex:0 0 70px"><label for="rjColor">Color</label>
+          <input type="color" class="ox-input" id="rjColor" value="#0a9396" style="padding:2px;height:31px"></div>
+        <div class="ox-field" style="flex:3 1 240px"><label for="rjComentario">Comentario</label>
+          <input class="ox-input" id="rjComentario" maxlength="500"></div>
+      </div>
+
+      <div class="ox-table-wrap" style="margin-top:var(--s3)">
+        <table class="ox-table rj-filas">
+          <thead><tr><th>#</th><th>Tipo</th><th>Qué elegir (filtros o audio fijo)</th><th>Disponibles</th><th></th></tr></thead>
+          <tbody id="rjFilas"></tbody>
+        </table>
+      </div>
+      <div class="ox-row" style="margin-top:var(--s2)">
+        <button class="ox-btn" id="rjAddFila">+ Agregar fila</button>
+      </div>
+
+      <h3 style="margin-top:var(--s4)">Vista de la hora</h3>
+      <p class="ox-hint" id="rjHoraTxt">Guarda el reloj para ver cuánto dura un ciclo.</p>
+      <div class="rj-hora" id="rjHora"></div>
+
+      <h3 style="margin-top:var(--s4)">Compensación</h3>
+      <p class="ox-hint">Si una canción haría llegar tarde la tanda, el sistema busca otra que encaje en el tiempo
+        que queda. Elige de qué categoría (vacío = cualquier música).</p>
+      <div class="rj-filtros" id="rjComp"></div>
+
+      <div class="ox-row" style="margin-top:var(--s4)">
+        <button class="ox-btn ox-btn--primary" id="rjGuardar">Guardar reloj</button>
+        <button class="ox-btn" id="rjDuplicar">Duplicar</button>
+        <button class="ox-btn ox-btn--danger" id="rjBorrar">Borrar</button>
+      </div>
+      <p class="ox-msg" id="rjMsg"></p>
+    </section>
+  </div>
+
+  <!-- ── Grilla semanal ── -->
+  <section class="ox-card">
+    <h3>Grilla semanal</h3>
+    <div class="rj-pincel">
+      <span>Pincel:</span>
+      <select class="ox-select" id="rjPincel"></select>
+      <span class="ox-hint" style="margin:0">Haz clic o arrastra sobre las horas para asignarles el reloj del pincel.</span>
+    </div>
+    <div class="ox-table-wrap" style="margin-top:var(--s3)">
+      <table class="rj-grilla" id="rjGrilla"></table>
+    </div>
+    <p class="ox-msg" id="rjMsgGrilla"></p>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const msg = (id, t, ok = true) => { const el = $(id); el.textContent = t; el.className = `ox-msg ${ok ? "ok" : "err"}`; };
+  const errTxt = async r => { const b = await r.json().catch(() => ({}));
+    return Array.isArray(b.detail) ? b.detail.map(d => d.msg).join("; ") : (b.detail || `HTTP ${r.status}`); };
+  const fmt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+  const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const TIPOS = { Musica: "🎵 Música", Efecto: "⚡ Jingle / ID", Sweeper: "〰 Sweeper", Tips: "💡 Tips", Programa: "🎙 Programa" };
+  const FILTROS = [["cat1", "Género"], ["cat2", "Rotación"], ["cat3", "Subgénero"], ["voz", "Voz"], ["origen", "Origen"]];
+
+  let relojes = [], grilla = [], valores = {}, audios = [], actual = null, filas = [];
+
+  // ── Carga ────────────────────────────────────────────────
+  async function cargar(seleccionar) {
+    const [rel, gr, schema, lib] = await Promise.all([
+      fetch("/api/v1/relojes").then(r => r.json()),
+      fetch("/api/v1/relojes/grilla").then(r => r.json()),
+      fetch("/api/v1/config/biblioteca/schema").then(r => r.json()).catch(() => ({ categorias: [] })),
+      fetch("/api/v1/audios?limit=5000").then(r => r.json()),
+    ]);
+    relojes = rel; grilla = gr; audios = lib.data || [];
+    valores = { origen: ["NACIONAL", "INTERNACIONAL"] };
+    for (const c of schema.categorias || []) valores[c.nombre_interno] = (c.valores || []).map(v => v.valor);
+    pintarLista();
+    pintarPincel();
+    pintarGrilla();
+    const id = seleccionar ?? actual?.id;
+    const r = relojes.find(x => x.id === id) ?? (actual ? null : relojes[0]);
+    r ? abrir(r) : nuevo();
+  }
+
+  function pintarLista() {
+    $("rjLista").innerHTML = relojes.length ? relojes.map(r => `
+      <div class="rj-item ${actual?.id === r.id ? "active" : ""}" data-id="${r.id}">
+        <span class="rj-dot" style="background:${esc(r.color)}"></span>${esc(r.nombre)}
+        <small>${r.horas_asignadas} h</small></div>`).join("")
+      : `<p class="ox-hint">Aún no hay relojes. Crea el primero: por ejemplo "ID → Éxito → Nuevo → Éxito → Clásico".</p>`;
+  }
+
+  // ── Editor de filas ──────────────────────────────────────
+  function selectValores(campo, valor, extra = "") {
+    const vs = valores[campo] || [];
+    const actualEnLista = valor && !vs.some(v => v.toUpperCase() === valor.toUpperCase());
+    return `<select class="ox-select" data-filtro="${campo}" ${extra}>
+      <option value="">${FILTROS.find(f => f[0] === campo)?.[1] ?? campo}: todos</option>
+      ${vs.map(v => `<option ${v.toUpperCase() === (valor || "").toUpperCase() ? "selected" : ""}>${esc(v)}</option>`).join("")}
+      ${actualEnLista ? `<option selected>${esc(valor)}</option>` : ""}</select>`;
+  }
+
+  const audioLabel = a => `${a.titulo} — ${a.artista} #${a.id}`;
+
+  function pintarFilas(vista) {
+    const tb = $("rjFilas");
+    if (!filas.length) {
+      tb.innerHTML = `<tr><td colspan="5" class="ox-empty">Sin filas: agrega la primera</td></tr>`;
+      return;
+    }
+    tb.innerHTML = filas.map((f, i) => {
+      const v = vista?.filas?.[i];
+      const fijo = f.fijo;
+      const audio = fijo ? audios.find(a => a.id === f.audio_id) : null;
+      return `<tr data-i="${i}">
+        <td class="ox-mono">${i + 1}</td>
+        <td><select class="ox-select" data-campo="tipo_audio">
+          ${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${k === f.tipo_audio ? "selected" : ""}>${t}</option>`).join("")}
+        </select>
+        <label style="display:block;font-size:.65rem;margin-top:3px"><input type="checkbox" data-campo="fijo" ${fijo ? "checked" : ""}> audio fijo</label></td>
+        <td>${fijo
+          ? `<input class="ox-input" data-campo="audio" list="rjAudios" style="width:100%" placeholder="Buscar audio…"
+               value="${audio ? esc(audioLabel(audio)) : ""}">`
+          : `<div class="rj-filtros">${FILTROS.map(([k]) => selectValores(k, f.filtros[k])).join("")}
+               <input type="number" class="ox-input" data-filtro="energia_min" min="1" max="5" placeholder="E≥" value="${f.filtros.energia_min ?? ""}">
+               <input type="number" class="ox-input" data-filtro="energia_max" min="1" max="5" placeholder="E≤" value="${f.filtros.energia_max ?? ""}"></div>`}
+        </td>
+        <td>${v ? `<span class="rj-cand ${v.candidatos ? "" : "cero"}">${v.candidatos} audio(s)${v.duracion_media ? ` · ${fmt(v.duracion_media)}` : ""}</span>` : ""}</td>
+        <td style="white-space:nowrap">
+          <button class="ox-btn ox-btn--sm" data-acc="arriba" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="ox-btn ox-btn--sm" data-acc="abajo" ${i === filas.length - 1 ? "disabled" : ""}>▼</button>
+          <button class="ox-btn ox-btn--sm ox-btn--danger" data-acc="quitar">✕</button>
+        </td></tr>`;
+    }).join("");
+    if (!$("rjAudios")) {
+      const dl = document.createElement("datalist"); dl.id = "rjAudios"; $("rjRoot").appendChild(dl);
+    }
+    $("rjAudios").innerHTML = audios.map(a => `<option value="${esc(audioLabel(a))}">`).join("");
+  }
+
+  function pintarHora(vista) {
+    const cont = $("rjHora");
+    if (!vista || !vista.duracion_ciclo) { cont.innerHTML = ""; return; }
+    const ciclo = vista.duracion_ciclo;
+    $("rjHoraTxt").textContent = `Un ciclo dura ≈ ${fmt(ciclo)} → se repite ${(3600 / ciclo).toFixed(1)} veces por hora (sin contar las tandas).`;
+    const colores = { Musica: "var(--mint)", Efecto: "var(--gold-1)", Sweeper: "var(--blue-next)", Tips: "var(--amber)", Programa: "var(--red-live)" };
+    let html = "", t = 0;
+    while (t < 3600) {
+      for (const f of vista.filas) {
+        const d = f.duracion_media || 180;
+        if (t >= 3600) break;
+        const w = Math.min(d, 3600 - t) / 36;
+        html += `<div style="width:${w}%;background:${colores[f.tipo_audio]}" title="${esc(TIPOS[f.tipo_audio])} · ${fmt(d)}">${w > 4 ? (f.audio_titulo ? esc(f.audio_titulo) : Object.values(f.filtros).join(" ")) : ""}</div>`;
+        t += d;
+      }
+      if (!vista.filas.length) break;
+    }
+    cont.innerHTML = html;
+  }
+
+  function pintarCompensacion(comp) {
+    $("rjComp").innerHTML = FILTROS.map(([k]) => selectValores(k, comp[k], 'data-comp="1"')).join("");
+  }
+
+  function nuevo() {
+    actual = null;
+    filas = [{ tipo_audio: "Musica", filtros: {}, audio_id: null, fijo: false }];
+    $("rjTituloEditor").textContent = "Nuevo reloj";
+    $("rjNombre").value = ""; $("rjColor").value = "#0a9396"; $("rjComentario").value = "";
+    $("rjDuplicar").disabled = $("rjBorrar").disabled = true;
+    pintarCompensacion({}); pintarFilas(); pintarHora(); pintarLista();
+    $("rjHoraTxt").textContent = "Guarda el reloj para ver cuánto dura un ciclo.";
+  }
+
+  async function abrir(r) {
+    actual = r;
+    filas = r.filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: { ...f.filtros },
+                                audio_id: f.audio_id, fijo: f.audio_id != null }));
+    $("rjTituloEditor").textContent = `Reloj: ${r.nombre}`;
+    $("rjNombre").value = r.nombre; $("rjColor").value = r.color; $("rjComentario").value = r.comentario;
+    $("rjDuplicar").disabled = $("rjBorrar").disabled = false;
+    pintarCompensacion(r.compensacion || {}); pintarLista();
+    const vista = await fetch(`/api/v1/relojes/${r.id}/vista`).then(x => x.json());
+    pintarFilas(vista); pintarHora(vista);
+  }
+
+  // Lee del DOM lo que el usuario cambió en cada fila
+  function leerFilas() {
+    document.querySelectorAll("#rjFilas tr[data-i]").forEach(tr => {
+      const f = filas[+tr.dataset.i];
+      f.tipo_audio = tr.querySelector('[data-campo="tipo_audio"]').value;
+      const inp = tr.querySelector('[data-campo="audio"]');
+      if (inp) {
+        const id = parseInt((inp.value.match(/#(\d+)$/) || [])[1]);
+        f.audio_id = Number.isFinite(id) ? id : null;
+        f.fijo = true;
+        f.filtros = {};
+      } else {
+        f.filtros = {};
+        tr.querySelectorAll("[data-filtro]").forEach(el => { if (el.value !== "") f.filtros[el.dataset.filtro] = el.value; });
+      }
+    });
+  }
+
+  $("rjFilas").addEventListener("change", e => {
+    const tr = e.target.closest("tr[data-i]");
+    if (!tr) return;
+    if (e.target.dataset.campo === "fijo") {
+      leerFilas();
+      const f = filas[+tr.dataset.i];
+      f.fijo = e.target.checked;
+      if (f.fijo) f.filtros = {}; else f.audio_id = null;
+      pintarFilas();
+    }
+  });
+  $("rjFilas").addEventListener("click", e => {
+    const b = e.target.closest("button[data-acc]");
+    if (!b) return;
+    leerFilas();
+    const i = +b.closest("tr").dataset.i;
+    if (b.dataset.acc === "quitar") filas.splice(i, 1);
+    if (b.dataset.acc === "arriba") [filas[i - 1], filas[i]] = [filas[i], filas[i - 1]];
+    if (b.dataset.acc === "abajo") [filas[i + 1], filas[i]] = [filas[i], filas[i + 1]];
+    pintarFilas();
+  });
+  $("rjAddFila").addEventListener("click", () => {
+    leerFilas();
+    filas.push({ tipo_audio: "Musica", filtros: {}, audio_id: null, fijo: false });
+    pintarFilas();
+  });
+  $("rjNuevo").addEventListener("click", nuevo);
+  $("rjLista").addEventListener("click", e => {
+    const it = e.target.closest(".rj-item");
+    if (it) abrir(relojes.find(r => r.id === +it.dataset.id));
+  });
+
+  $("rjGuardar").addEventListener("click", async () => {
+    leerFilas();
+    const sinAudio = filas.findIndex(f => f.fijo && !f.audio_id);
+    const body = {
+      nombre: $("rjNombre").value.trim(), color: $("rjColor").value, comentario: $("rjComentario").value.trim(),
+      compensacion: Object.fromEntries([...document.querySelectorAll("#rjComp [data-filtro]")]
+        .filter(el => el.value).map(el => [el.dataset.filtro, el.value])),
+      filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros,
+                               audio_id: f.fijo ? f.audio_id : null })),
+    };
+    if (!body.nombre) { msg("rjMsg", "Ponle un nombre al reloj", false); return; }
+    if (sinAudio >= 0) { msg("rjMsg", `Fila ${sinAudio + 1}: elige el audio fijo`, false); return; }
+    const r = await fetch(actual ? `/api/v1/relojes/${actual.id}` : "/api/v1/relojes", {
+      method: actual ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { msg("rjMsg", await errTxt(r), false); return; }
+    const guardado = await r.json();
+    msg("rjMsg", "✓ Guardado. El programa del Studio se vuelve a planificar.");
+    cargar(guardado.id);
+  });
+  $("rjDuplicar").addEventListener("click", async () => {
+    const r = await fetch(`/api/v1/relojes/${actual.id}/duplicar`, { method: "POST" });
+    if (r.ok) { const c = await r.json(); msg("rjMsg", `✓ Creado "${c.nombre}"`); cargar(c.id); }
+  });
+  $("rjBorrar").addEventListener("click", async () => {
+    if (!actual) return;
+    if (!confirm(`¿Borrar el reloj "${actual.nombre}"? Sus ${actual.horas_asignadas} hora(s) en la grilla quedarán solo con música.`)) return;
+    await fetch(`/api/v1/relojes/${actual.id}`, { method: "DELETE" });
+    actual = null; msg("rjMsg", "Reloj borrado"); cargar();
+  });
+
+  // ── Grilla semanal ───────────────────────────────────────
+  function pintarPincel() {
+    const sel = $("rjPincel"), prev = sel.value;
+    sel.innerHTML = relojes.map(r => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("")
+      + `<option value="">✕ Quitar reloj (solo música)</option>`;
+    if (prev !== "" && relojes.some(r => String(r.id) === prev)) sel.value = prev;
+  }
+
+  function pintarGrilla() {
+    const mapa = Object.fromEntries(grilla.map(g => [`${g.dia}-${g.hora}`, relojes.find(r => r.id === g.reloj_id)]));
+    let html = `<tr><th></th>${Array.from({ length: 24 }, (_, h) => `<th>${String(h).padStart(2, "0")}</th>`).join("")}</tr>`;
+    for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+      html += `<tr><th>${DIAS[d]}</th>`;
+      for (let h = 0; h < 24; h++) {
+        const r = mapa[`${d}-${h}`];
+        html += r ? `<td data-d="${d}" data-h="${h}" style="background:${esc(r.color)}" title="${DIAS[d]} ${h}:00 · ${esc(r.nombre)}">${esc(r.nombre.slice(0, 2).toUpperCase())}</td>`
+                  : `<td class="vacia" data-d="${d}" data-h="${h}" title="${DIAS[d]} ${h}:00 · solo música">·</td>`;
+      }
+      html += `</tr>`;
+    }
+    $("rjGrilla").innerHTML = html;
+  }
+
+  // Selección rectangular (como en Jazler): de la celda donde se presionó
+  // a la celda actual, todos los días y horas intermedios.
+  const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
+  let arrastrando = false, seleccion = new Set(), inicio = null;
+  function rectangulo(td) {
+    if (!td?.dataset.d || !inicio) return;
+    const filas = [ORDEN_DIAS.indexOf(+inicio.dataset.d), ORDEN_DIAS.indexOf(+td.dataset.d)].sort((a, b) => a - b);
+    const horas = [+inicio.dataset.h, +td.dataset.h].sort((a, b) => a - b);
+    seleccion = new Set();
+    document.querySelectorAll("#rjGrilla td[data-d]").forEach(c => {
+      const f = ORDEN_DIAS.indexOf(+c.dataset.d), h = +c.dataset.h;
+      const dentro = f >= filas[0] && f <= filas[1] && h >= horas[0] && h <= horas[1];
+      c.classList.toggle("sel", dentro);
+      if (dentro) seleccion.add(`${c.dataset.d}-${c.dataset.h}`);
+    });
+  }
+  $("rjGrilla").addEventListener("mousedown", e => {
+    const td = e.target.closest("td[data-d]");
+    if (!td) return;
+    arrastrando = true; inicio = td; rectangulo(td); e.preventDefault();
+  });
+  $("rjGrilla").addEventListener("mouseover", e => { if (arrastrando) rectangulo(e.target.closest("td")); });
+  document.addEventListener("mouseup", async () => {
+    if (!arrastrando) return;
+    arrastrando = false;
+    if (!seleccion.size) return;
+    const reloj_id = $("rjPincel").value ? +$("rjPincel").value : null;
+    const celdas = [...seleccion].map(k => { const [dia, hora] = k.split("-").map(Number); return { dia, hora }; });
+    const r = await fetch("/api/v1/relojes/grilla", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reloj_id, celdas }),
+    });
+    if (!r.ok) { msg("rjMsgGrilla", await errTxt(r), false); return; }
+    grilla = await r.json();
+    const rel = await fetch("/api/v1/relojes").then(x => x.json());
+    relojes = rel; pintarLista(); pintarGrilla();
+    msg("rjMsgGrilla", `✓ ${celdas.length} hora(s) ${reloj_id ? "asignadas" : "liberadas"}. El programa se vuelve a planificar.`);
+  });
+
+  cargar().catch(err => msg("rjMsg", `No se pudo cargar: ${err.message}`, false));
+})();
+</script>

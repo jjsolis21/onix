@@ -127,22 +127,25 @@ class Planner:
 
     def extender(self, plan: list[dict], desde: datetime, hasta: datetime,
                  historial: list[dict], tandas_minutos: list[int],
-                 excluir: set = frozenset(), tandas_emitidas: set = frozenset()) -> list[dict]:
+                 excluir: set = frozenset(), tandas_emitidas: set = frozenset(),
+                 ultimo: Optional[dict] = None) -> list[dict]:
         """
         Devuelve los ítems nuevos que cubren [desde, hasta). `plan` es lo ya
         planificado (cuenta para las reglas), `historial` lo que ya sonó:
-        [{"audio_id", "artista", "genero_vocal", "ts"}].
+        [{"audio_id", "artista", "genero_vocal", "ts"}]. `ultimo` es lo que suena
+        ahora si el plan está vacío ({"inicio", "reloj_id", "fila"}): sirve para
+        seguir el reloj desde la fila siguiente en vez de reiniciarlo.
         """
         conn = self._conn()
         try:
             self._cargar(conn)
             return self._extender(conn, plan, desde, hasta, historial, tandas_minutos,
-                                  excluir, set(tandas_emitidas))
+                                  excluir, set(tandas_emitidas), ultimo)
         finally:
             conn.close()
 
     def _extender(self, conn, plan, desde, hasta, historial, tandas_minutos, excluir,
-                  tandas_emitidas):
+                  tandas_emitidas, ultimo=None):
         crossfade = self._icfg("crossfade_seg", 4)
         tol = self._icfg("tolerancia_tanda_seg", 90)
         nuevos: list[dict] = []
@@ -158,6 +161,15 @@ class Planner:
 
         t = desde
         hora_actual, fila_idx, vueltas_vacias = None, 0, 0
+        # Seguir el reloj donde iba (si lo último fue de la misma hora y reloj)
+        previo = next((p for p in reversed(plan) if p["tipo"] == "audio"), None) or ultimo
+        if previo and previo.get("fila") is not None and previo.get("inicio"):
+            ini = datetime.fromisoformat(previo["inicio"])
+            reloj_ahora = self.reloj_de(t)
+            if ((ini.date(), ini.hour) == (t.date(), t.hour) and reloj_ahora
+                    and reloj_ahora["id"] == previo.get("reloj_id")):
+                hora_actual, fila_idx = (t.date(), t.hour), int(previo["fila"]) + 1
+        sin_musica = 0       # ítems seguidos sin música (protección contra bucles)
         while t < hasta and len(nuevos) < 400:
             # ── Tanda pendiente en esta hora ───────────────────────────────
             tanda = self._proxima_tanda(conn, t, tandas_minutos, tandas_hechas)
@@ -203,6 +215,10 @@ class Planner:
                     continue
             vueltas_vacias = 0
 
+            sin_musica = 0 if audio["tipo_audio"] == "Musica" else sin_musica + 1
+            if sin_musica > max(4, len(filas)):
+                log.warning("[Planner] El reloj no consigue música: se corta el plan en %s", t.strftime("%H:%M"))
+                break
             dur = duracion_efectiva(audio, crossfade)
             nuevos.append(_item(
                 "audio", t, dur, audio_id=audio["id"], titulo=audio["titulo"],
@@ -211,7 +227,7 @@ class Planner:
                 reloj_id=reloj["id"] if reloj else None,
                 reloj=reloj["nombre"] if reloj else None,
                 color=reloj["color"] if reloj else None,
-                fila=fila.get("orden"), compensacion=compensado,
+                fila=(fila_idx - 1) % len(filas) if reloj else None, compensacion=compensado,
             ))
             if audio["tipo_audio"] == "Musica":
                 en_plan.add(audio["id"])
@@ -294,15 +310,19 @@ class Planner:
         fc, fp = self._where_filtros(fila.get("filtros") or {})
         base += fc
         params += fp
-        excl = [i for i in set(excluir) | (en_plan if tipo == "Musica" else set()) if isinstance(i, int)]
-        if excl:
-            base.append(f"a.id NOT IN ({','.join('?' * len(excl))})")
-            params += excl
+        excl_fallidos = [i for i in set(excluir) if isinstance(i, int)]
+        if excl_fallidos:
+            base.append(f"a.id NOT IN ({','.join('?' * len(excl_fallidos))})")
+            params += excl_fallidos
         if dur_objetivo:
             base.append("COALESCE(a.duracion, 0) BETWEEN ? AND ?")
             params += [dur_objetivo[0], dur_objetivo[1]]
 
         reglas = []
+        if tipo == "Musica" and en_plan:
+            # Última regla en relajarse: no repetir canciones dentro del plan
+            ids = [i for i in en_plan if isinstance(i, int)]
+            reglas.append((f"a.id NOT IN ({','.join('?' * len(ids))})", ids))
         if tipo == "Musica":
             ventana = self._icfg("ventana_artista_min", 60)
             limite = t - timedelta(minutes=ventana)
@@ -338,8 +358,12 @@ class Planner:
 
         n = max(1, int(self._icfg("aleatoriedad", 3)))
         orden = "a.ultima_reproduccion ASC NULLS FIRST, a.id ASC"
-        # Cascada: todas las reglas → sin la de días → sin ninguna
-        for k in (len(reglas), max(0, len(reglas) - 1), 0):
+        # Cascada: se sueltan las reglas de la última a la primera; la primera
+        # (no repetir dentro del plan) es la que más se sostiene.
+        # Con canciones ya planificadas, el paso "sin ninguna regla" lo cubre la
+        # vuelta de abajo (repite la más antigua del plan, no la recién puesta).
+        ultimo_k = 1 if (tipo == "Musica" and en_plan) else 0
+        for k in range(len(reglas), ultimo_k - 1, -1):
             clauses = base + [c for c, _ in reglas[:k]]
             prm = params + [v for _, ps in reglas[:k] for v in ps]
             rows = conn.execute(
@@ -347,6 +371,17 @@ class Planner:
                 prm + [n]).fetchall()
             if rows:
                 return dict(random.choice(rows))
+        if tipo == "Musica" and en_plan:
+            # Biblioteca chica: repetir la que hace más tiempo salió en el plan
+            ultima_vez = {}
+            for idx, p in enumerate(previos):
+                if p.get("audio_id") in en_plan:
+                    ultima_vez[p["audio_id"]] = idx
+            for aid in sorted(ultima_vez, key=ultima_vez.get):    # la que salió hace más
+                row = conn.execute(f"SELECT a.* FROM audios a WHERE {' AND '.join(base)} AND a.id = ?",
+                                   params + [aid]).fetchone()
+                if row:
+                    return dict(row)
         return None
 
     def _compensar(self, conn, reloj, restante, tol, crossfade, t, previos, en_plan, excluir):
