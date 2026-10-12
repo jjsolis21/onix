@@ -189,3 +189,27 @@ def test_certificado_imprimible_por_cliente(client, tmp_path):
     assert r.status_code == 200
     assert "Certificado de emisión" in r.text and "PANADERIA SOL" in r.text
     assert client.get("/api/v1/reportes/certificado", params={"cliente": "NADIE"}).status_code == 404
+
+
+def test_pautas_en_riesgo_cuando_no_alcanzan_las_horas(tmp_db):
+    import json, sqlite3
+    from datetime import datetime
+    from backend.api.reportes import pautas_en_riesgo
+    conn = sqlite3.connect(tmp_db)
+    conn.row_factory = sqlite3.Row
+    aid = conn.execute("INSERT INTO audios (titulo, artista, archivo_path) VALUES ('c','a','c.wav')").lastrowid
+    # Lunes 12/10/2026: marcada a las 8, 12 y 18, 3 por día
+    m = json.dumps({"1-8": True, "1-12": True, "1-18": True})
+    pid = conn.execute("INSERT INTO pautas (cliente, audio_id, matriz, menciones_diarias) VALUES ('X', ?, ?, 3)",
+                       (aid, m)).lastrowid
+    conn.commit()
+    # 13:00 sin ninguna salida: faltan 3 y solo queda la de las 18 → en riesgo
+    r = pautas_en_riesgo(conn, datetime(2026, 10, 12, 13, 0))
+    assert r and r[0]["pauta_id"] == pid and r[0]["perdidas"] == 2 and r[0]["estado"] == "en_riesgo"
+    # 7:00: quedan las 3 horas → bien
+    assert pautas_en_riesgo(conn, datetime(2026, 10, 12, 7, 0)) == []
+    # 19:00 con 1 salida: incumplida
+    conn.execute("INSERT INTO historial_emision (titulo, pauta_id, slot) VALUES ('c', ?, '2026-10-12-08')", (pid,))
+    conn.commit()
+    r = pautas_en_riesgo(conn, datetime(2026, 10, 12, 19, 0))
+    assert r[0]["estado"] == "incumplida" and r[0]["emitidas"] == 1

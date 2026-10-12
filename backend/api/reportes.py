@@ -444,3 +444,57 @@ def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = 
   el.addEventListener('input', () => {{ try {{ localStorage.setItem('onix_emisora', el.textContent.trim()); }} catch (e) {{}} }});
 </script></body></html>"""
     return HTMLResponse(html)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Cuñas de hoy que no alcanzan a salir (aviso antes del reporte de mañana)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def pautas_en_riesgo(conn, ahora: datetime = None) -> list[dict]:
+    """
+    Por cada comercial vigente que sale hoy: cuántas menciones le tocan hoy,
+    cuántas salieron y cuántas horas marcadas le quedan. Si lo que falta no
+    entra en las horas que quedan, está en riesgo (o ya incumplida).
+    La hora en curso cuenta como disponible si todavía no salió en ella y
+    quedan al menos 5 minutos.
+    """
+    ahora = ahora or datetime.now()
+    hoy = ahora.date()
+    dia = hoy.isoformat()
+    filas = conn.execute(
+        "SELECT p.* FROM pautas p LEFT JOIN tanda_secciones s ON s.numero = COALESCE(p.seccion, 3)"
+        " WHERE COALESCE(s.comercial, 1) = 1 AND p.activo = 1"
+        "   AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)"
+        "   AND (COALESCE(p.fecha_fin,'')    = '' OR p.fecha_fin    >= ?)", (dia, dia)).fetchall()
+    emit = {}
+    for pid, slot in conn.execute(
+            "SELECT pauta_id, slot FROM historial_emision WHERE pauta_id IS NOT NULL AND slot LIKE ?",
+            (dia + "-%",)):
+        emit.setdefault(pid, []).append(slot)
+    slot_actual = ahora.strftime("%Y-%m-%d-%H")
+    out = []
+    for p in filas:
+        try:
+            matriz = json.loads(p["matriz"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        horas = _horas_marcadas(matriz if isinstance(matriz, dict) else {}, hoy)
+        if not horas:
+            continue
+        objetivo = min(len(horas), p["menciones_diarias"] or len(horas))
+        salidas = emit.get(p["id"], [])
+        restantes = sum(1 for h in horas if h > ahora.hour)
+        if ahora.hour in horas and slot_actual not in salidas and ahora.minute < 55:
+            restantes += 1
+        faltan = max(0, objetivo - len(salidas))
+        if faltan > restantes:
+            out.append({"pauta_id": p["id"], "cliente": p["cliente"], "spot": p["audio_nombre"] or "",
+                        "objetivo": objetivo, "emitidas": len(salidas), "restantes": restantes,
+                        "perdidas": faltan - restantes,
+                        "estado": "incumplida" if restantes == 0 else "en_riesgo"})
+    return out
+
+
+@router.get("/api/v1/pautas-riesgo", summary="Cuñas de hoy que no alcanzan a salir")
+def riesgo(conn: sqlite3.Connection = Depends(get_db)):
+    return {"data": pautas_en_riesgo(conn)}

@@ -235,13 +235,30 @@ def _revisar_respaldos_bd() -> list:
     return out
 
 
+def _revisar_pautas_hoy(conn) -> list:
+    """Cuñas contratadas para hoy que ya no alcanzan sus menciones."""
+    from backend.api.reportes import pautas_en_riesgo
+    try:
+        riesgo = pautas_en_riesgo(conn)
+    except sqlite3.Error:
+        return []
+    if not riesgo:
+        return []
+    return [_p("pautas_hoy", "error", f"{len(riesgo)} cliente(s) no alcanzan sus menciones de hoy",
+               "Les quedan menos horas marcadas que menciones por salir. Revisa si el motor estuvo en "
+               "manual, si las tandas se llenaron o si conviene sumar horas en su pauta.",
+               [f"{r['cliente']} · salieron {r['emitidas']} de {r['objetivo']} · "
+                f"{'ya no salen ' + str(r['perdidas']) if r['estado'] == 'incumplida' else 'se perderán ' + str(r['perdidas'])}"
+                for r in riesgo[:MAX_EJEMPLOS]], "Admin › Pautas")]
+
+
 def revisar(forzar: bool = False) -> list:
     ahora = time.monotonic()
     if forzar or ahora - _cache["t"] >= REVISION_SEG:
         conn = sqlite3.connect(str(DB_PATH), timeout=10)
         conn.row_factory = sqlite3.Row
         try:
-            bd = _revisar_bd(conn)
+            bd = _revisar_bd(conn) + _revisar_pautas_hoy(conn)
         finally:
             conn.close()
         _cache.update(t=ahora, activos=bd + _revisar_respaldo() + _revisar_respaldos_bd())

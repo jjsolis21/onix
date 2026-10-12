@@ -257,7 +257,22 @@
       console.error('[PautasController] Error al cargar pautas:', err);
       _pautas = [];
     }
+    await _cargarRiesgo();
   }
+
+  /** Cuñas de hoy que ya no alcanzan sus menciones (se refresca cada minuto) */
+  let _riesgo = new Map();
+  async function _cargarRiesgo() {
+    try {
+      const r = await _apiFetch('/api/v1/pautas-riesgo');
+      _riesgo = new Map((r?.data || []).map(x => [x.pauta_id, x]));
+    } catch (_) { _riesgo = new Map(); }
+  }
+  setInterval(async () => {
+    if (!$('pautasRoot')?.offsetParent) return;
+    await _cargarRiesgo();
+    _renderTable();
+  }, 60000);
 
   async function _apiCreatePauta(payload) {
     return createPauta(await _apiFetch('/api/v1/pautas', {
@@ -467,6 +482,11 @@
               ? `<span class="badge badge--dot badge--activa">Al aire hoy</span>`
               : `<span class="badge badge--dot badge--activa">Activo</span>`;
 
+      const rg = _riesgo.get(p.id);
+      const aviso = rg ? `<span class="cm-riesgo ${rg.estado === 'incumplida' ? 'cm-riesgo--mal' : ''}"
+        title="Hoy: salieron ${rg.emitidas} de ${rg.objetivo}; quedan ${rg.restantes} hora(s) marcada(s)">
+        ⚠ ${rg.estado === 'incumplida' ? `${rg.perdidas} no salieron hoy` : `no alcanza: −${rg.perdidas} hoy`}</span>` : '';
+
       const tr = document.createElement('tr');
       tr.dataset.id = p.id;
       if (rowClass) tr.classList.add(rowClass);
@@ -485,7 +505,7 @@
         <td class="cm-fecha">${p.fecha_fin ? _fechaCorta(p.fecha_fin) : 'Nunca'}</td>
         <td class="cm-num">${menciones}</td>
         <td class="cm-pri cm-pri--${p.prioridad > 0 ? 'alta' : p.prioridad < 0 ? 'baja' : 'normal'}">${PRIORIDAD[String(p.prioridad)] || PRIORIDAD['0']}</td>
-        <td>${estado}</td>
+        <td>${estado}${aviso}</td>
         <td>
           <div class="row-actions">
             <button class="btn-row"

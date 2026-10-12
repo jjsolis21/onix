@@ -345,3 +345,20 @@ def test_tiempo_de_repeticion_por_cancion(base):
     from datetime import datetime as dt
     for x, y in zip(items, items[1:]):
         assert (dt.fromisoformat(y["inicio"]) - dt.fromisoformat(x["inicio"])).total_seconds() >= 7200
+
+
+def test_tanda_usa_la_duracion_de_la_version_que_toca(tmp_db):
+    a = audio(tmp_db, "spot_a", tipo="Cuña", dur=30)
+    b = audio(tmp_db, "spot_b", tipo="Cuña", dur=60)
+    conn = db(tmp_db)
+    pid = conn.execute("INSERT INTO pautas (cliente, audio_id, matriz) VALUES ('X', ?, ?)",
+                       (a, json.dumps({"1-10": True}))).lastrowid
+    conn.executemany("INSERT INTO pauta_audios (pauta_id, audio_id, orden) VALUES (?, ?, ?)",
+                     [(pid, a, 0), (pid, b, 1)])
+    conn.commit()
+    pl = Planner(tmp_db)
+    assert pl._cunas_tanda(conn, LUNES_10, 0, [0]) == (1, 30.0)      # toca la A
+    conn.execute("INSERT INTO historial_emision (titulo, pauta_id, slot) VALUES ('s', ?, '2026-10-11-10')", (pid,))
+    conn.commit()
+    assert pl._cunas_tanda(conn, LUNES_10, 0, [0]) == (1, 60.0)      # ahora la B
+    conn.close()

@@ -397,15 +397,30 @@ class Planner:
         que el motor: comerciales repartidas entre las tandas de la hora; ID y
         cortinas en cada tanda (las opcionales solo si hay comerciales).
         """
-        from backend.audio.audio_engine import planificar_tandas
+        from backend.audio.audio_engine import planificar_tandas, version_rotada
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
         secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
             "SELECT numero, opcional, comercial FROM tanda_secciones")}
+        # Versiones que rotan: la duración es la de la versión que toca ahora
+        # (la misma cuenta que usa el motor), no siempre la de la principal
+        versiones: dict[int, list[tuple[int, float]]] = {}
+        for pa in conn.execute(
+                "SELECT pa.pauta_id, a.id, a.duracion FROM pauta_audios pa"
+                " JOIN audios a ON a.id = pa.audio_id AND a.activo = 1 ORDER BY pa.pauta_id, pa.orden"):
+            versiones.setdefault(pa[0], []).append((pa[1], pa[2] or 30))
+        salidas = dict(conn.execute(
+            "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL GROUP BY pauta_id"
+        ).fetchall()) if versiones else {}
+        # Las que ya cumplieron sus menciones de hoy no van en la tanda
+        hoy = dict(conn.execute(
+            "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL"
+            " AND slot LIKE ? GROUP BY pauta_id", (dia + "-%",)).fetchall())
         pautas, fijas = [], []
         for r in conn.execute(
             """
-            SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion FROM pautas p
+            SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion,
+                   p.menciones_diarias FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
               AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
@@ -417,8 +432,15 @@ class Planner:
             except ValueError:
                 continue
             if isinstance(matriz, dict) and matriz.get(key):
+                if r["menciones_diarias"] and hoy.get(r["id"], 0) >= r["menciones_diarias"]:
+                    continue
                 opcional, comercial = secciones.get(r["seccion"], (False, True))
-                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": r["duracion"] or 30,
+                dur = r["duracion"] or 30
+                if r["id"] in versiones:
+                    ids = [v[0] for v in versiones[r["id"]]]
+                    toca = version_rotada(ids, salidas.get(r["id"], 0))
+                    dur = dict(versiones[r["id"]]).get(toca, dur)
+                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": dur,
                      "opcional": opcional}
                 (pautas if comercial else fijas).append(p)
         lista = planificar_tandas(pautas, sorted(minutos)).get(minuto, []) if pautas else []
