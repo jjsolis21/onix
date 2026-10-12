@@ -58,6 +58,7 @@ from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
 from backend.api import problemas as problemas_api
+from backend.api import respaldos as respaldos_api
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -143,6 +144,7 @@ async def lifespan(app: FastAPI):
     _normalize_media_paths()
     _backfill_durations()
     _normalizador.start()     # mide en segundo plano los audios sin LUFS
+    _respaldos.start()        # copia diaria de la base de datos
 
     # Puente EventBus (hilos del motor) -> WebSocket (event loop de Uvicorn).
     # Los callbacks del EventBus corren en hilos del motor, así que el
@@ -172,6 +174,7 @@ async def lifespan(app: FastAPI):
     logger.info("Apagando Ónix FM API.")
     engine.stop()
     _normalizador.stop()
+    _respaldos.stop()
     for ev in ENGINE_EVENTS:
         engine.bus.unsubscribe(ev, _on_engine_event)
 
@@ -189,6 +192,8 @@ relojes_api.engine = engine
 app.include_router(relojes_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
+app.include_router(respaldos_api.router)
+_respaldos = respaldos_api.RespaldoWorker()
 
 app.add_middleware(
     CORSMiddleware,

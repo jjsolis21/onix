@@ -203,6 +203,27 @@ def _revisar_respaldo() -> list:
                f"Copia algunas canciones a: {RESPALDO_DIR}")]
 
 
+def _revisar_respaldos_bd() -> list:
+    from backend.api import respaldos
+    out = []
+    a = respaldos.ajustes()
+    edad = respaldos.edad_ultimo_h()
+    if respaldos.estado["ultimo_error"]:
+        out.append(_p("respaldo_bd", "error", "El último respaldo de la base de datos falló",
+                      respaldos.estado["ultimo_error"], donde="Admin › Motor de audio"))
+    elif edad is None or edad > 48:
+        out.append(_p("respaldo_bd", "error", "No hay un respaldo reciente de la base de datos",
+                      "Relojes, pautas, marcas de los audios e historial se perderían si falla el disco. "
+                      "ONIX respalda solo una vez por día mientras esté encendido.",
+                      donde="Admin › Motor de audio"))
+    if respaldos.mismo_disco(a["carpeta"]):
+        out.append(_p("respaldo_disco", "aviso", "Los respaldos están en el mismo disco que ONIX",
+                      f"Si ese disco falla se pierden los dos. Elige una carpeta en otro disco, un USB "
+                      f"o una carpeta sincronizada con la nube (ahora: {a['carpeta']}).",
+                      donde="Admin › Motor de audio"))
+    return out
+
+
 def revisar(forzar: bool = False) -> list:
     ahora = time.monotonic()
     if forzar or ahora - _cache["t"] >= REVISION_SEG:
@@ -212,7 +233,7 @@ def revisar(forzar: bool = False) -> list:
             bd = _revisar_bd(conn)
         finally:
             conn.close()
-        _cache.update(t=ahora, activos=bd + _revisar_respaldo())
+        _cache.update(t=ahora, activos=bd + _revisar_respaldo() + _revisar_respaldos_bd())
     # El motor se revisa siempre (es barato y es lo más urgente)
     orden = {"critico": 0, "error": 1, "aviso": 2}
     return sorted(_revisar_motor() + _cache["activos"], key=lambda x: orden[x["nivel"]])

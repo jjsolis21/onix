@@ -27,7 +27,7 @@ onix/
 ├── media/                       ← Audios (no van a git)
 │   ├── library/  COMERCIALES/  staging/
 │   └── respaldo/                ← Lista de emergencia (ver abajo)
-├── frontend/                    ← Studio (index.html) y Admin (admin/)
+├── frontend/                    ← Studio (studio/) y Admin (admin/)
 └── tests/                       ← Pruebas automáticas (pytest)
 ```
 
@@ -53,6 +53,37 @@ $env:ONIX_PORT = "8001"; python backend\api\api_server.py
 ```
 
 La base de datos se crea y migra sola al arrancar.
+
+### Inicio automático con Windows
+
+Doble clic en **`Inicio automatico ONIX.bat`** (una vez). Crea la tarea «ONIX FM» del
+Programador de tareas: al iniciar sesión y luego **cada 5 minutos** arranca lo que falte
+(motor y/o API, minimizados). Si ONIX ya está en marcha no hace nada; si algo se cerró,
+vuelve solo y queda anotado en `logs\inicio.log`. El modo (manual/automático) se recuerda.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\inicio_automatico.ps1           # ver estado
+powershell -ExecutionPolicy Bypass -File scripts\inicio_automatico.ps1 -Quitar   # mantenimiento
+```
+
+La tarea corre al **iniciar sesión** (el audio de Windows solo existe dentro de una sesión).
+Para volver al aire sola tras un corte de luz hace falta: BIOS «Restore on AC power loss =
+Power On», inicio de sesión automático de Windows (`netplwiz`) y que la PC no se suspenda
+(`powercfg /change standby-timeout-ac 0`). El script lo recuerda al instalarse.
+
+### Respaldos de la base de datos
+
+Una copia por día de relojes, grilla, eventos, pautas, biblioteca (con marcas), cartuchera,
+historial y configuración, en `respaldos\` (se conservan 14). Carpeta, cantidad, «Respaldar
+ahora» y descarga en **Admin › Motor de audio**. Conviene elegir **otro disco, un USB o una
+carpeta sincronizada con la nube**: el panel de problemas avisa si están en el mismo disco.
+**Los audios (`media\`) no se copian**: respaldarlos aparte.
+
+Restaurar una copia (corta el aire unos segundos; guarda la base actual por si acaso):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\restaurar_respaldo.ps1
+```
 
 ### Docker (vista previa, sin sonido)
 

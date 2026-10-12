@@ -137,6 +137,32 @@
     <div class="ox-kpis" id="mNormKpis" style="margin-top:var(--s3)"></div>
     <p class="ox-msg" id="mMsgNorm"></p>
   </section>
+
+  <!-- ── Respaldos de la base de datos ── -->
+  <section class="ox-card">
+    <h3>💾 Respaldos de la base de datos</h3>
+    <p class="ox-hint">Una copia por día (y al arrancar si la última es de ayer) de relojes, grilla, eventos,
+      pautas, biblioteca con sus marcas, cartuchera, historial y configuración. <b>Los audios no se copian</b>:
+      copia la carpeta <code>media</code> aparte. Para que sirva si el disco falla, elige una carpeta en
+      <b>otro disco, un USB o una carpeta sincronizada con la nube</b> (Google Drive, OneDrive).</p>
+    <div class="ox-row">
+      <div class="ox-field" style="flex:3 1 320px"><label for="mRespCarpeta">Carpeta (vacío = la de ONIX)</label>
+        <input class="ox-input" id="mRespCarpeta" placeholder="D:\Respaldos ONIX"></div>
+      <div class="ox-field" style="flex:0 0 120px"><label for="mRespConservar">Copias a conservar</label>
+        <input type="number" class="ox-input" id="mRespConservar" min="1" max="365"></div>
+      <button class="ox-btn ox-btn--primary" id="mRespGuardar">Guardar</button>
+      <button class="ox-btn" id="mRespAhora">Respaldar ahora</button>
+    </div>
+    <p class="ox-msg" id="mMsgResp"></p>
+    <div class="ox-table-wrap" style="margin-top:var(--s3)">
+      <table class="ox-table">
+        <thead><tr><th>Copia</th><th>Fecha</th><th>Tamaño</th><th></th></tr></thead>
+        <tbody id="mRespLista"></tbody>
+      </table>
+    </div>
+    <p class="ox-hint">Restaurar una copia: cierra ONIX y en PowerShell, desde la carpeta de ONIX:
+      <code>powershell -ExecutionPolicy Bypass -File scripts\restaurar_respaldo.ps1</code></p>
+  </section>
 </div>
 
 <script>
@@ -305,8 +331,41 @@
     }
   }
 
+  // ── Respaldos ───────────────────────────────────────────
+  const tam = b => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
+  async function cargarRespaldos(avisar = true) {
+    const r = await fetch("/api/v1/respaldos").then(x => x.json());
+    $("mRespCarpeta").value = r.personalizada ? r.carpeta : "";
+    $("mRespCarpeta").placeholder = r.personalizada ? "" : `Por defecto: ${r.carpeta}`;
+    $("mRespConservar").value = r.conservar;
+    $("mRespLista").innerHTML = r.copias.length ? r.copias.map(c => `<tr>
+        <td class="ox-mono">${esc(c.archivo)}</td><td>${esc(c.fecha.replace("T", " "))}</td><td>${tam(c.tamano)}</td>
+        <td><a class="ox-btn ox-btn--sm" href="/api/v1/respaldos/${encodeURIComponent(c.archivo)}" download>Descargar</a></td></tr>`).join("")
+      : `<tr><td colspan="4" class="ox-empty">Aún no hay copias</td></tr>`;
+    if (!avisar) return;
+    if (r.ultimo_error) msg("mMsgResp", `El último respaldo falló: ${r.ultimo_error}`, false);
+    else if (r.mismo_disco) msg("mMsgResp", "⚠ La carpeta está en el mismo disco que ONIX: si ese disco falla se pierden los dos.", false);
+  }
+  $("mRespGuardar").addEventListener("click", async () => {
+    const r = await fetch("/api/v1/respaldos/config", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carpeta: $("mRespCarpeta").value.trim(), conservar: parseInt($("mRespConservar").value) || 14 }),
+    });
+    if (!r.ok) { msg("mMsgResp", await errTxt(r), false); return; }
+    msg("mMsgResp", "✓ Guardado"); cargarRespaldos(false);
+  });
+  $("mRespAhora").addEventListener("click", async () => {
+    $("mRespAhora").disabled = true;
+    const r = await fetch("/api/v1/respaldos", { method: "POST" });
+    $("mRespAhora").disabled = false;
+    if (!r.ok) { msg("mMsgResp", await errTxt(r), false); return; }
+    const c = await r.json();
+    msg("mMsgResp", `✓ Copia creada: ${c.archivo} (${tam(c.tamano)}) en ${c.carpeta}`);
+    cargarRespaldos(false);
+  });
+
   function recargarTodo() {
-    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado(); cargarSecciones();
+    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado(); cargarSecciones(); cargarRespaldos();
   }
   $("mRecargar").addEventListener("click", recargarTodo);
 

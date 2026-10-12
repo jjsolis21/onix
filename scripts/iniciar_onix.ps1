@@ -13,16 +13,32 @@
 #
 # Después de un "git pull" hay que reiniciar TAMBIÉN el motor (corta el aire):
 #   powershell -ExecutionPolicy Bypass -File scripts\iniciar_onix.ps1 -ReiniciarMotor
+#
+# -Fondo: arranca solo lo que falte (motor y/o API), los dos minimizados, y
+# termina. Lo usa el inicio automático con Windows (scripts\inicio_automatico.ps1)
+# cada 5 minutos: si ONIX ya está en marcha no hace nada; si algo se cerró, lo
+# vuelve a abrir y lo anota en logs\inicio.log.
 
 param(
     [int]$Puerto = 8001,
     [int]$PuertoMotor = 8766,
-    [switch]$ReiniciarMotor    # cierra el motor y el servidor anteriores para cargar el código nuevo
+    [switch]$ReiniciarMotor,   # cierra el motor y el servidor anteriores para cargar el código nuevo
+    [switch]$Fondo,            # arranca lo que falte, minimizado, y termina (inicio automático)
+    [string]$Python = "python" # ruta completa de python.exe (el inicio automático la fija)
 )
 
 $ErrorActionPreference = "Stop"
 $raiz = Split-Path -Parent $PSScriptRoot
 Set-Location $raiz
+
+function Anotar([string]$texto) {
+    # Registro del inicio automático: saber si ONIX se cerró y se volvió a abrir solo
+    $carpeta = Join-Path $raiz "logs"
+    New-Item -ItemType Directory -Force -Path $carpeta | Out-Null
+    $linea = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $texto
+    Add-Content -Path (Join-Path $carpeta "inicio.log") -Value $linea -Encoding UTF8
+    Write-Host $texto
+}
 
 $env:ONIX_PORT        = "$Puerto"
 $env:ONIX_ENGINE      = "remoto"
@@ -42,8 +58,9 @@ $motorActivo = Test-NetConnection -ComputerName 127.0.0.1 -Port $PuertoMotor `
 if ($motorActivo) {
     Write-Host "Motor de audio ya en marcha en el puerto $PuertoMotor."
 } else {
-    Write-Host "Arrancando motor de audio (puerto $PuertoMotor)..."
-    Start-Process -FilePath "python" -ArgumentList "-m", "backend.audio.engine_service" `
+    if ($Fondo) { Anotar "El motor de audio no estaba en marcha: se arranca." }
+    else { Write-Host "Arrancando motor de audio (puerto $PuertoMotor)..." }
+    Start-Process -FilePath $Python -ArgumentList "-m", "backend.audio.engine_service" `
         -WorkingDirectory $raiz -WindowStyle Minimized
     Start-Sleep -Seconds 2
 }
@@ -61,6 +78,9 @@ if ($ocupado -and $ReiniciarMotor) {
         $ocupado = $null
     }
 }
+if ($ocupado -and $Fondo) {
+    exit 0                     # la API ya está en marcha: nada que hacer
+}
 if ($ocupado) {
     $proc = Get-Process -Id $ocupado.OwningProcess -ErrorAction SilentlyContinue
     Write-Host "El puerto $Puerto ya lo usa '$($proc.ProcessName)' (PID $($ocupado.OwningProcess))." -ForegroundColor Red
@@ -69,5 +89,12 @@ if ($ocupado) {
     exit 1
 }
 
+if ($Fondo) {
+    Anotar "La API no estaba en marcha: se arranca (puerto $Puerto)."
+    Start-Process -FilePath $Python -ArgumentList "backend\api\api_server.py" `
+        -WorkingDirectory $raiz -WindowStyle Minimized
+    exit 0
+}
+
 Write-Host "Arrancando API en http://localhost:$Puerto  (Admin: http://localhost:$Puerto/admin/)"
-python backend\api\api_server.py
+& $Python backend\api\api_server.py

@@ -57,7 +57,7 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 | Cartuchera (instant jingles) por paletas | ✅ (2 bancos) |
 | Atajos de teclado configurables | 🟡 fijos (no configurables) |
 | Segunda pantalla | 🟡 (una segunda ventana del navegador sirve) |
-| Iniciar con Windows y arrancar en automático | ❌ (va con el instalador) |
+| Iniciar con Windows y arrancar en automático | ✅ tarea programada, se reabre si se cierra |
 | Normalización | ✅ |
 | Detector de silencio (aire muerto) | ✅ salta en automático, avisa en manual |
 | Panel de problemas (archivos que faltan, relojes vacíos, cuñas sin audio…) | ✅ |

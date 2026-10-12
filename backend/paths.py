@@ -24,6 +24,11 @@ MEDIA_ROOT = Path(os.getenv("RADIO_MEDIA_ROOT", str(ROOT_DIR / "media"))).resolv
 # Se leen directamente de la carpeta, sin pasar por la BD.
 RESPALDO_DIR = MEDIA_ROOT / "respaldo"
 
+# Copias diarias de la base de datos (relojes, pautas, biblioteca, historial).
+# Carpeta por defecto; se puede cambiar en Admin › Motor de audio (mejor en
+# otro disco o en una carpeta sincronizada con la nube).
+RESPALDOS_BD_DIR = Path(os.getenv("RADIO_BACKUP_DIR", str(ROOT_DIR / "respaldos"))).resolve()
+
 AUDIO_EXTS = (".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma")
 
 # Prefijo absoluto que usaban las versiones anteriores al guardar rutas

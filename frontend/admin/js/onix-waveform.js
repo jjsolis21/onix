@@ -117,7 +117,7 @@
         end: _cues.intro,
         color: '#00ff88',
         drag: true,
-        content: document.createTextNode('INTRO'),
+        content: 'INTRO',
       });
     }
 
@@ -129,7 +129,7 @@
         end: _cues.outro,
         color: '#ff4444',
         drag: true,
-        content: document.createTextNode('OUTRO'),
+        content: 'OUTRO',
       });
     }
 
@@ -141,7 +141,7 @@
         end: _cues.mezcla,
         color: '#ee9b00',
         drag: true,
-        content: document.createTextNode('MEZCLA'),
+        content: 'MEZCLA',
       });
     }
 
@@ -153,7 +153,7 @@
         end: _cues.inicio_coro,
         color: '#44aaff',
         drag: true,
-        content: document.createTextNode('CORO'),
+        content: 'CORO',
       });
     }
 

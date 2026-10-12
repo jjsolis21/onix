@@ -22,6 +22,7 @@ _TMP = Path(tempfile.mkdtemp(prefix="onix-tests-"))
 
 os.environ["RADIO_DB_PATH"]      = str(_TMP / "api.db")
 os.environ["RADIO_MEDIA_ROOT"]   = str(_TMP / "media")
+os.environ["RADIO_BACKUP_DIR"]   = str(_TMP / "respaldos")
 os.environ["ONIX_AUDIO_BACKEND"] = "mock"
 
 for p in (str(ROOT), str(ROOT / "scripts")):
