@@ -373,7 +373,10 @@ const Decks = (() => {
   function pintar(prog) {
     items = prog?.items ?? [];
     const cola = prog?.cola ?? [];
-    $("decksFin").textContent = prog?.fin ? `hasta ${prog.fin.slice(0, 5)}` : "";
+    // Duración total de lo que está en cola + programa (como "Duración del Playlist")
+    const total = [...cola, ...items].reduce((s, it) => s + (+(it.duracion ?? it.duracion_total) || 0), 0);
+    const hms = t => `${Math.floor(t / 3600)}:${String(Math.floor(t % 3600 / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+    $("decksFin").textContent = (prog?.fin ? `hasta ${prog.fin.slice(0, 5)}` : "") + (total ? ` · ${hms(total)}` : "");
     if (!cola.length && !items.length) {
       lista.innerHTML = `<div class="vacio">Nada programado.<br>Arrastra canciones aquí desde la biblioteca.</div>`;
       return;
@@ -689,7 +692,7 @@ const Biblioteca = (() => {
 
 /* ─────────────────────────── derecha ─────────────────────────── */
 const Derecha = (() => {
-  let proxima = null, bancos = {}, slots = {}, banco = "jingles";
+  let proxima = null, bancos = {}, slots = {}, nombres = {}, banco = "jingles";
 
   function tanda(prog, st) {
     const it = (prog?.items ?? []).find(i => i.tipo === "tanda");
@@ -697,15 +700,15 @@ const Derecha = (() => {
     $("tandaBox").classList.toggle("espera", espera > 0);
     if (espera) {
       proxima = null;
-      $("tandaHora").textContent = "EN ESPERA";
-      $("tandaCuenta").textContent = "LÁNZALA ↑";
+      $("tandaHora").textContent = "";
+      $("tandaCuenta").textContent = "EN ESPERA · LÁNZALA ↑";
       $("tandaDet").textContent = `${espera} cuña(s) esperando al operador`;
       return;
     }
     if (!it) {
       proxima = null;
-      $("tandaHora").textContent = "—";
-      $("tandaCuenta").textContent = "";
+      $("tandaHora").textContent = "";
+      $("tandaCuenta").textContent = "—";
       $("tandaDet").textContent = "Sin tandas en lo planificado";
       return;
     }
@@ -713,14 +716,16 @@ const Derecha = (() => {
     const d = new Date(); d.setHours(h, m, s || 0, 0);
     if (d.getTime() < Date.now() - 12 * 3600e3) d.setDate(d.getDate() + 1);
     proxima = d;
-    $("tandaHora").textContent = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}${it.inmediata ? " ⚡" : ""}`;
+    $("tandaHora").textContent = `· ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}${it.inmediata ? " ⚡" : ""}`;
     $("tandaDet").textContent = `${it.cunas} cuña(s) · ${fmt(it.duracion)}${it.excede ? " · ⚠ supera el máximo" : ""}${it.inmediata ? " · en punto" : ""}`;
   }
 
   function cuentaTanda() {
     if (!proxima) return;
     const falta = (proxima.getTime() - Date.now()) / 1000;
-    $("tandaCuenta").textContent = falta > 0 ? `en ${fmt(falta)}` : "ahora";
+    // Cuenta regresiva (como "Siguiente Break" de Jazler)
+    $("tandaCuenta").textContent = falta > 0 ? fmt(falta) : "AHORA";
+    $("tandaBox").classList.toggle("cerca", falta > 0 && falta <= 60);
   }
 
   function lineaHist(h) {
@@ -750,7 +755,10 @@ const Derecha = (() => {
   async function cartuchera() {
     try {
       const d = await api("/api/v1/cartuchera");
-      bancos = d.bancos ?? {}; slots = d.slots ?? {};
+      bancos = d.bancos ?? {}; slots = d.slots ?? {}; nombres = d.nombres ?? {};
+      if (!(banco in bancos)) banco = Object.keys(bancos)[0];
+      $("cartTabs").innerHTML = Object.keys(bancos).map((b, i) =>
+        `<button class="cart-tab ${b === banco ? "active" : ""}" data-banco="${b}" title="${esc(nombres[b] || b)}">${i + 1} ${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
       pintarCart();
     } catch { /* aviso de conexión */ }
   }
@@ -758,17 +766,20 @@ const Derecha = (() => {
     const n = bancos[banco] ?? 0;
     $("cartuchera").innerHTML = Array.from({ length: n }, (_, i) => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
-      const num = `${banco === "publicidad" ? "A" : ""}${i + 1}`;
+      const num = i + 1;
       return s
-        ? `<button class="cart-btn" data-audio="${s.audio_id}" data-slot="${i + 1}" title="${esc(s.titulo)}"><b>${num}</b><span>${esc(s.etiqueta || s.titulo)}</span></button>`
-        : `<button class="cart-btn vacio-btn" title="Vacío — se asigna en Admin → 04 Cartuchera"><b>${num}</b><span>vacío</span></button>`;
+        ? `<button class="cart-btn cart-${s.tipo_audio === "Cuña" ? "cuna" : (i % 2 ? "b" : "a")}" data-audio="${s.audio_id}" data-slot="${num}" title="${esc(s.titulo)}">
+             <span class="cart-n">${esc(s.etiqueta || s.titulo)}</span><small><b>${num}</b>${fmt(s.duracion)}</small></button>`
+        : `<button class="cart-btn vacio-btn" title="Vacío — se asigna en Admin → 04 Cartuchera"><span class="cart-n">·</span><small><b>${num}</b></small></button>`;
     }).join("");
   }
-  document.querySelectorAll(".cart-tab").forEach(t => t.addEventListener("click", () => {
+  $("cartTabs").addEventListener("click", e => {
+    const t = e.target.closest(".cart-tab");
+    if (!t) return;
     banco = t.dataset.banco;
     document.querySelectorAll(".cart-tab").forEach(x => x.classList.toggle("active", x === t));
     pintarCart();
-  }));
+  });
   function disparar(b) {
     WS.send({ cmd: "fire_effect", audio_id: +b.dataset.audio, canal_offset: +b.dataset.slot - 1 });
     b.classList.add("disparado");
@@ -853,7 +864,7 @@ const Atajos = (() => {
       const nada = !st?.current_track || st?.retenido;
       WS.send({ cmd: nada ? "play" : "skip" });
       toast(nada ? "▶ REPRODUCIR (Espacio)" : "⏭ SIGUIENTE (Espacio)", "info", 1500);
-    } else if (/^Digit[1-8]$/.test(e.code)) {
+    } else if (/^Digit[1-9]$/.test(e.code)) {
       e.preventDefault();
       Derecha.dispararSlot(+e.code.slice(5));
     } else if (e.key.toLowerCase() === "d") {

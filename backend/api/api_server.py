@@ -2039,7 +2039,11 @@ def player_command(cmd: str, body: Optional[PlayerCommand] = None):
 # SECCIÓN: CARTUCHERA — Botones de disparo del Studio
 # ===========================================================================
 
-BANCOS_CARTUCHERA = {"jingles": 8, "publicidad": 6}   # banco → nº de botones
+# Páginas de la cartuchera (como "Efectos" de Jazler): banco → nº de botones.
+# jingles y publicidad conservan sus asignaciones de antes.
+BANCOS_CARTUCHERA = {"jingles": 15, "efectos": 15, "voces": 15, "publicidad": 15, "especiales": 15}
+NOMBRES_CARTUCHERA = {"jingles": "Jingles", "efectos": "Efectos", "voces": "Voces",
+                      "publicidad": "Publicidad", "especiales": "Especiales"}
 
 
 class CartucheraSlotIn(BaseModel):
@@ -2067,7 +2071,7 @@ def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
     data = {banco: [] for banco in BANCOS_CARTUCHERA}
     for r in rows:
         data.setdefault(r["banco"], []).append(dict(r))
-    return {"bancos": BANCOS_CARTUCHERA, "slots": data}
+    return {"bancos": BANCOS_CARTUCHERA, "nombres": NOMBRES_CARTUCHERA, "slots": data}
 
 
 @app.put("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Asignar audio a un botón")

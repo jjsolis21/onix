@@ -41,15 +41,8 @@
     <p class="ox-msg" id="cartMsg"></p>
   </section>
 
-  <section class="ox-card">
-    <h3>⚡ Jingles y efectos</h3>
-    <div class="ox-cart-grid" id="cartGrid-jingles"></div>
-  </section>
-
-  <section class="ox-card">
-    <h3>📢 Publicidad</h3>
-    <div class="ox-cart-grid" id="cartGrid-publicidad"></div>
-  </section>
+  <!-- Una tarjeta por página de la cartuchera (se arman desde el servidor) -->
+  <div id="cartPaginas"></div>
 </div>
 
 <script>
@@ -58,7 +51,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmt = s => s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "—";
-  const NOMBRES = { jingles: "Jingles", publicidad: "Publicidad" };
+  let NOMBRES = { jingles: "Jingles", publicidad: "Publicidad" };
 
   let bancos = {}, slots = {}, audios = [];
 
@@ -82,6 +75,9 @@
         fetch("/api/v1/audios?limit=5000").then(r => r.json()),
       ]);
       bancos = cart.bancos || {};
+      NOMBRES = { ...NOMBRES, ...(cart.nombres || {}) };
+      $("cartPaginas").innerHTML = Object.keys(bancos).map((b, i) => `<section class="ox-card">
+        <h3>${i + 1} · ${esc(NOMBRES[b] || b)}</h3><div class="ox-cart-grid" id="cartGrid-${b}"></div></section>`).join("");
       slots = cart.slots || {};
       // Primero lo que suele ir en la cartuchera; la música al final
       const orden = { Efecto: 0, Sweeper: 1, Cuña: 2, Tips: 3, Programa: 4, Musica: 5 };

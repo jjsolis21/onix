@@ -159,6 +159,9 @@ button { font-family: inherit; }
   height: 60px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3);
   color: var(--txt-hi); font-size: 22px; cursor: pointer;
 }
+.ctl .ctl-ico { width: 30px; height: 30px; object-fit: contain; }
+.ctl:has(.ctl-ico) .glifo { display: none; }
+.ctl .glifo { font-style: normal; }
 .ctl small { font-family: var(--f-data); font-size: 9px; letter-spacing: .08em; color: var(--txt-mid); text-align: center; line-height: 1.1; }
 .ctl:hover { border-color: var(--ambar); }
 .ctl-play { color: var(--verde); }
@@ -284,7 +287,7 @@ button { font-family: inherit; }
 .lib-tabla th:nth-child(2), .lib-tabla th:nth-child(3) { width: 100px; }
 .lib-tabla th:nth-child(4), .lib-tabla th:nth-child(5) { width: 54px; }
 .lib-tabla th:last-child { width: 168px; }
-.lib-tabla td { padding: 5px 8px; border-bottom: 1px solid var(--bg-3); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-tabla td { padding: 3px 8px; border-bottom: 1px solid var(--bg-3); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lib-tabla tr { cursor: grab; }
 .lib-tabla tbody tr:hover td { background: var(--bg-2); }
 .lib-tabla tr.al-aire td { background: rgba(230, 57, 70, .14); }
@@ -304,8 +307,10 @@ button { font-family: inherit; }
 .derecha { overflow-y: auto; }
 .tanda-box { padding: 12px 14px; background: linear-gradient(180deg, rgba(174, 32, 18, .25), transparent); border-bottom: 1px solid var(--line); }
 .tanda-lbl { font-family: var(--f-data); font-size: 10px; letter-spacing: .16em; color: var(--rojo); }
-.tanda-hora { font-family: var(--f-display); font-size: 40px; line-height: 1; color: var(--txt-hi); }
-.tanda-cuenta { font-family: var(--f-display); font-size: 26px; color: var(--ambar-vivo); }
+.tanda-lbl span { color: var(--txt-mid); letter-spacing: .05em; }
+/* Cuenta regresiva de la tanda: protagonista, pero de tamaño medido */
+.tanda-cuenta { font-family: var(--f-display); font-size: 46px; line-height: 1.05; color: var(--txt-hi); text-align: right; font-variant-numeric: tabular-nums; }
+.tanda-box.cerca .tanda-cuenta { color: var(--ambar-vivo); }
 .tanda-det { font-family: var(--f-data); font-size: 11px; color: var(--txt-lo); }
 .tanda-box.espera .tanda-cuenta { color: var(--rojo); animation: parpadeo 1s steps(2) infinite; }
 .historial { max-height: 230px; overflow-y: auto; padding: 4px 0; }
@@ -314,20 +319,26 @@ button { font-family: inherit; }
 .hist-t { color: var(--txt-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hist.pauta { border-left-color: var(--t-cuna); }
 .hist.efecto { border-left-color: var(--t-efecto); }
-.cart-tabs { margin-left: auto; display: flex; gap: 2px; }
-.cart-tab { background: transparent; border: 1px solid var(--line); color: var(--txt-lo); font-family: var(--f-data); font-size: 9px; padding: 2px 6px; cursor: pointer; border-radius: 3px; }
+.cart-tabs { margin-left: auto; display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.cart-tab { background: transparent; border: 1px solid var(--line); color: var(--txt-lo); font-family: var(--f-data); font-size: 9px; padding: 2px 5px; cursor: pointer; border-radius: 3px; }
 .cart-tab.active { background: var(--ambar); color: var(--bg-0); border-color: var(--ambar); }
-.cartuchera { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 10px 12px; }
+/* Efectos por páginas (como Jazler): 3 columnas, nombre grande, nº y duración abajo */
+.cartuchera { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 6px 8px 10px; }
 .cart-btn {
-  height: 58px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3); color: var(--txt-hi);
-  cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px;
+  height: 54px; border-radius: 5px; border: 1px solid rgba(0, 0, 0, .4); background: var(--bg-3); color: var(--txt-hi);
+  cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; padding: 4px 6px; text-align: left;
 }
-.cart-btn b { font-family: var(--f-display); font-size: 18px; color: var(--ambar); font-weight: 400; line-height: 1; }
-.cart-btn span { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cart-btn.cart-a { background: #1d5c3a; }
+.cart-btn.cart-b { background: #17606b; }
+.cart-btn.cart-cuna { background: #6b4a12; }
+.cart-btn .cart-n { font-size: 12px; font-weight: 600; text-transform: uppercase; line-height: 1.15; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cart-btn small { display: flex; justify-content: space-between; font-family: var(--f-data); font-size: 10px; color: rgba(255, 255, 255, .75); }
+.cart-btn small b { color: var(--ambar-vivo); font-weight: 600; }
 .cart-btn:hover { border-color: var(--ambar); }
 .cart-btn.vacio-btn { opacity: .35; cursor: default; }
 .cart-btn.disparado { background: var(--ambar); color: var(--bg-0); }
-.cart-btn.disparado b { color: var(--bg-0); }
+.cart-btn.disparado b, .cart-btn.disparado small { color: var(--bg-0); }
 
 /* ── Avisos flotantes (solo lo importante) ── */
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column-reverse; gap: 8px; z-index: 50; }
@@ -441,3 +452,8 @@ kbd {
 .intro.outro.voz { background: rgba(82, 183, 136, .15); border-color: var(--verde); }
 .intro.outro.voz span, .intro.outro.voz b { color: var(--verde); }
 .marca-outro { background: #ffa94d; }
+/* Biblioteca compacta: título y artista en una línea → más filas a la vista */
+.lib-tabla td:first-child { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lib-tabla td:first-child .lib-tit { flex: 0 1 auto; white-space: nowrap; }
+.lib-tabla td:first-child .lib-art { flex: 1 1 0; white-space: nowrap; }
+.lib-acc button { padding-top: 2px !important; padding-bottom: 2px !important; }
