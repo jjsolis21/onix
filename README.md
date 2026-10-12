@@ -125,6 +125,10 @@ anterior sigue en `http://localhost:8001/`.
 - **Biblioteca** por tipo (música, jingles, sweepers, cuñas, programas, tips), con búsqueda
   y filtros. Doble clic = a la cola.
 - **Derecha**: próxima tanda con cuenta regresiva, historial y cartuchera.
+- **Vúmetro** de la salida del AIRE (picos en dBFS, verde/ámbar/rojo, retención de pico),
+  medido por el motor 10 veces por segundo; incluye fades y cartuchera.
+- **Atajos** (ayuda con `?` o el botón ⌨): Espacio siguiente · 1–8 cartuchera · D detener al
+  terminar · L lanzar tanda · Ctrl+F o / buscar · Esc cancelar. No funcionan mientras se escribe.
 - Solo avisa lo importante (errores, tandas, respaldo). Si se pierde la conexión aparece un
   aviso rojo fijo; lo que suena no se corta.
 

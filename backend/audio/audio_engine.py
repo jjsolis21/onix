@@ -175,6 +175,8 @@ BASS_UNICODE         = 0x80000000
 
 BASS_ERROR_ALREADY   = 14
 BASS_CONFIG_UNICODE  = 42      # nombres de dispositivos en UTF-8 (Windows)
+BASS_LEVEL_STEREO    = 2
+BASS_LEVEL_VOLPAN    = 8       # el nivel incluye el volumen del canal (fades, ducking)
 BASS_DEVICE_ENABLED  = 1
 BASS_DEVICE_DEFAULT  = 2
 
@@ -322,6 +324,21 @@ class BASSBackend:
         b.BASS_SetConfig.restype  = c_bool
         b.BASS_SetConfig.argtypes = [c_uint32, c_uint32]
 
+        b.BASS_ChannelGetAttribute.restype  = c_bool
+        b.BASS_ChannelGetAttribute.argtypes = [c_uint32, c_uint32, ctypes.POINTER(c_float)]
+
+        # Vúmetros: BASS_ChannelGetLevelEx (BASS 2.4.15+); si la DLL es más
+        # vieja se usa BASS_ChannelGetLevel y se aplica el volumen a mano.
+        try:
+            b.BASS_ChannelGetLevelEx.restype  = c_bool
+            b.BASS_ChannelGetLevelEx.argtypes = [c_uint32, ctypes.POINTER(c_float), c_float, c_uint32]
+            self._level_ex = True
+        except AttributeError:
+            self._level_ex = False
+        b.BASS_ChannelGetLevel.restype  = c_uint32
+        b.BASS_ChannelGetLevel.argtypes = [c_uint32]
+        self.ultimo_error = 0
+
         self._handles: dict[int, int] = {}  # canal_idx -> BASS handle
         self._inited:  set[int] = set()     # tarjetas inicializadas (indice real)
 
@@ -458,9 +475,29 @@ class BASSBackend:
         if not handle:
             return False
         pos_bytes = self._bass.BASS_ChannelSeconds2Bytes(handle, c_double(sec))
-        if pos_bytes < 0:
+        if pos_bytes < 0 or not self._bass.BASS_ChannelSetPosition(handle, pos_bytes, BASS_POS_BYTE):
+            self.ultimo_error = self._bass.BASS_ErrorGetCode()
+            log.error("[BASS] No se pudo mover a %.1fs (canal %d, error %d)", sec, channel_idx, self.ultimo_error)
             return False
-        return bool(self._bass.BASS_ChannelSetPosition(handle, pos_bytes, BASS_POS_BYTE))
+        return True
+
+    def nivel(self, channel_idx: int) -> tuple[float, float]:
+        """Pico (0..1) izquierdo y derecho de lo que suena ahora en el canal."""
+        handle = self._handles.get(channel_idx)
+        if not handle or self._bass.BASS_ChannelIsActive(handle) != BASS_ACTIVE_PLAYING:
+            return 0.0, 0.0
+        if self._level_ex:
+            lv = (c_float * 2)()
+            if self._bass.BASS_ChannelGetLevelEx(handle, lv, c_float(0.05),
+                                                 BASS_LEVEL_STEREO | BASS_LEVEL_VOLPAN):
+                return float(lv[0]), float(lv[1])
+            return 0.0, 0.0
+        raw = self._bass.BASS_ChannelGetLevel(handle)
+        if raw == 0xFFFFFFFF:
+            return 0.0, 0.0
+        vol = c_float(1.0)
+        self._bass.BASS_ChannelGetAttribute(handle, BASS_ATTRIB_VOL, ctypes.byref(vol))
+        return (raw & 0xFFFF) / 32768 * vol.value, (raw >> 16) / 32768 * vol.value
 
     def get_duration_sec(self, channel_idx: int) -> float:
         handle = self._handles.get(channel_idx)
@@ -567,6 +604,8 @@ class MockBackend:
         if not ch:
             return False
         ch["offset"] = max(0.0, min(float(sec), ch["dur"]))
+        if ch["started"] is not None:
+            ch["started"] = time.monotonic()     # sonando: la posición parte de aquí
         return True
 
     def is_playing(self, channel_idx: int) -> bool:
@@ -576,6 +615,13 @@ class MockBackend:
 
     def is_active(self, channel_idx: int) -> bool:
         return self.is_playing(channel_idx)
+
+    def nivel(self, channel_idx: int) -> tuple[float, float]:
+        """Simulado: nivel que se mueve como música mientras el canal suena."""
+        if not self.is_playing(channel_idx):
+            return 0.0, 0.0
+        base = 0.45 + 0.25 * abs(((time.monotonic() * 1.7) % 2) - 1)
+        return min(1.0, base + random.uniform(-0.1, 0.1)), min(1.0, base + random.uniform(-0.1, 0.1))
 
     def get_duration_sec(self, channel_idx: int) -> float:
         ch = self._ch.get(channel_idx)
@@ -942,9 +988,26 @@ class AudioEngine:
                 self._actualizar_programa()
                 self._tick()
                 self._process_deferred_moves()
+                self._emitir_niveles()
             except Exception as exc:
                 log.error("[Engine] Error en loop: %s", exc, exc_info=True)
             time.sleep(self.TICK)
+
+    VU_INTERVAL = 0.1     # 10 lecturas por segundo para los vúmetros
+
+    def _emitir_niveles(self):
+        """Nivel de la salida del AIRE (canales A/B y cartuchera; no la preescucha)."""
+        ahora = time.monotonic()
+        if ahora - getattr(self, "_ultimo_vu", 0.0) < self.VU_INTERVAL:
+            return
+        self._ultimo_vu = ahora
+        izq = der = 0.0
+        for canal in (CANAL_A, CANAL_B, *range(CANAL_EFX_BASE, CANAL_EFX_BASE + 6)):
+            l, r = self._audio.nivel(canal)
+            izq, der = max(izq, l), max(der, r)
+        if izq or der or getattr(self, "_vu_previo", (0.0, 0.0)) != (0.0, 0.0):
+            self._vu_previo = (izq, der)
+            self.bus.emit("vu", {"l": round(izq, 3), "r": round(der, 3)})
 
     def _tick(self):
         """
@@ -1273,6 +1336,10 @@ class AudioEngine:
             self._mix_fired = False
             log.info("[Engine] Operador salta a %.1fs", destino)
             self.bus.emit("seek", {"posicion": round(destino, 2)})
+        else:
+            codigo = getattr(self._audio, "ultimo_error", 0)
+            self._emit_error(self._current_track.get("id"), "seek_fallido",
+                             f"No se pudo adelantar este audio (error BASS {codigo})")
 
     def _plan_insertar(self, track: dict, posicion: int):
         from backend.audio.planner import _item

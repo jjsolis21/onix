@@ -104,6 +104,7 @@ ENGINE_EVENTS = (
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
     "programa_actualizado", "tanda_excedida", "tanda_inmediata", "detener_al_terminar", "seek",
+    "vu",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 

@@ -265,9 +265,18 @@ const Salto = (() => {
   });
   boton.addEventListener("click", e => {
     e.stopPropagation();
-    if (destino !== null) WS.send({ cmd: "seek", posicion: destino });
+    if (destino === null) return;
+    const objetivo = destino, pista = Estado.st?.current_track?.id;
+    WS.send({ cmd: "seek", posicion: objetivo });
     cancelar();
-    setTimeout(Estado.poll, 200);
+    // Comprobar que el motor de verdad saltó (si no, decirlo: nunca fallar callado)
+    setTimeout(async () => {
+      await Estado.poll();
+      const st = Estado.st;
+      if (st?.current_track?.id === pista && Math.abs((st.position_sec ?? 0) - objetivo) > 4) {
+        toast("⚠ El salto no se aplicó. Si acabas de actualizar ONIX, reinícialo con «Actualizar ONIX.bat» (el motor también debe reiniciarse).", "error", 10000);
+      }
+    }, 1200);
   });
   document.addEventListener("keydown", e => { if (e.key === "Escape" && destino !== null) cancelar(); });
   return { cancelar };
@@ -665,15 +674,107 @@ const Derecha = (() => {
     document.querySelectorAll(".cart-tab").forEach(x => x.classList.toggle("active", x === t));
     pintarCart();
   }));
-  $("cartuchera").addEventListener("click", e => {
-    const b = e.target.closest(".cart-btn[data-audio]");
-    if (!b) return;
+  function disparar(b) {
     WS.send({ cmd: "fire_effect", audio_id: +b.dataset.audio, canal_offset: +b.dataset.slot - 1 });
     b.classList.add("disparado");
     setTimeout(() => b.classList.remove("disparado"), 500);
+  }
+  $("cartuchera").addEventListener("click", e => {
+    const b = e.target.closest(".cart-btn[data-audio]");
+    if (b) disparar(b);
   });
+  /** Atajo 1–8: botón n del banco que se está viendo */
+  function dispararSlot(n) {
+    const b = $("cartuchera").querySelector(`.cart-btn[data-slot="${n}"]`);
+    if (b) disparar(b);
+    else toast(`El botón ${n} de la cartuchera está vacío`, "info", 2000);
+  }
 
-  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera };
+  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot };
+})();
+
+/* ─────────────────────────── vúmetro ───────────────────────────
+   El motor manda el pico de la salida del AIRE 10 veces por segundo.
+   Se dibuja en dBFS (-40..0) con caída suave y retención del pico. */
+const VU = (() => {
+  const lados = { l: { fill: $("vuL"), pico: $("vuPL") }, r: { fill: $("vuR"), pico: $("vuPR") } };
+  const estado = { l: { obj: 0, ver: 0, pico: 0, picoT: 0 }, r: { obj: 0, ver: 0, pico: 0, picoT: 0 } };
+  let ultimo = 0, antes = performance.now();
+  const aPct = v => v <= 0.01 ? 0 : Math.max(0, Math.min(100, ((20 * Math.log10(v)) + 40) / 40 * 100));
+
+  function recibir(d) {
+    ultimo = performance.now();
+    estado.l.obj = aPct(d.l); estado.r.obj = aPct(d.r);
+  }
+  function dibujar(t) {
+    const dt = (t - antes) / 1000; antes = t;
+    const sinSenal = t - ultimo > 1500;
+    $("vu").classList.toggle("sin-senal", sinSenal);
+    for (const k of ["l", "r"]) {
+      const e = estado[k];
+      if (sinSenal) e.obj = 0;
+      e.ver = Math.max(e.obj, e.ver - 60 * dt);            // cae ~60 %/s, sube al instante
+      if (e.ver >= e.pico || t - e.picoT > 1500) { e.pico = e.ver; e.picoT = t; }
+      lados[k].fill.style.clipPath = `inset(0 ${100 - e.ver}% 0 0)`;
+      lados[k].pico.style.left = `calc(${e.pico}% - 2px)`;
+      lados[k].pico.style.opacity = e.pico > 1 ? 1 : 0;
+    }
+    requestAnimationFrame(dibujar);
+  }
+  requestAnimationFrame(dibujar);
+  return { recibir };
+})();
+
+/* ─────────────────────────── atajos de teclado ───────────────────────────
+   Sin F1–F12: el navegador los usa (F5 recarga, F11 pantalla completa…). */
+const Atajos = (() => {
+  const ayuda = $("atajos");
+  const abrir = () => { ayuda.hidden = false; };
+  const cerrar = () => { ayuda.hidden = true; };
+  $("btnAtajos").addEventListener("click", abrir);
+  $("btnCerrarAtajos").addEventListener("click", cerrar);
+  ayuda.addEventListener("click", e => { if (e.target === ayuda) cerrar(); });
+
+  const escribiendo = el => el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !ayuda.hidden) { cerrar(); return; }
+    // Ctrl+F: buscar en la biblioteca (en vez del buscador del navegador)
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault(); $("libBuscar").focus(); $("libBuscar").select(); return;
+    }
+    if (escribiendo(e.target)) {
+      if (e.key === "Escape") e.target.blur();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const st = Estado.st;
+
+    if (e.code === "Space") {
+      e.preventDefault();
+      // Si el foco quedó en un botón, el navegador también lo "presionaría"
+      // al soltar Espacio: se quita el foco para que la acción no se repita.
+      if (e.target instanceof HTMLButtonElement) e.target.blur();
+      const nada = !st?.current_track || st?.retenido;
+      WS.send({ cmd: nada ? "play" : "skip" });
+      toast(nada ? "▶ REPRODUCIR (Espacio)" : "⏭ SIGUIENTE (Espacio)", "info", 1500);
+    } else if (/^Digit[1-8]$/.test(e.code)) {
+      e.preventDefault();
+      Derecha.dispararSlot(+e.code.slice(5));
+    } else if (e.key.toLowerCase() === "d") {
+      $("btnDetener").click();
+    } else if (e.key.toLowerCase() === "l") {
+      if (st?.tanda_en_espera) WS.send({ cmd: "lanzar_tanda", ahora: true });
+      else toast("No hay ninguna tanda en espera", "info", 2000);
+    } else if (e.key === "/") {
+      e.preventDefault(); $("libBuscar").focus();
+    } else if (e.key === "?") {
+      abrir();
+    } else if (e.key === "Escape" && st?.preescucha) {
+      WS.send({ cmd: "cue_stop" });
+    }
+  });
+  return { abrir };
 })();
 
 /* ─────────────────────────── eventos del motor ─────────────────────────── */
@@ -682,6 +783,7 @@ const programaPronto = () => { clearTimeout(_tProg); _tProg = setTimeout(Estado.
 
 WS.on("track_started", d => { Salto.cancelar(); Estado.poll(); programaPronto(); Derecha.agregarHistorial(d); });
 WS.on("seek", () => Estado.poll());
+WS.on("vu", d => VU.recibir(d));
 WS.on("playback_stopped", () => Estado.poll());
 WS.on("programa_actualizado", programaPronto);
 WS.on("queue_updated", programaPronto);

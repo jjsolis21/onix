@@ -350,3 +350,35 @@ button { font-family: inherit; }
   .lib-tabla th:nth-child(3), .lib-tabla td:nth-child(3) { display: none; }
 }
 .lib-tabla th.num { font-size: 10px !important; font-family: var(--f-data); }
+
+/* ═══════════ VÚMETRO (salida del aire) ═══════════ */
+.vu { width: 240px; display: flex; flex-direction: column; gap: 3px; padding-bottom: 10px; position: relative; }
+.vu-fila { display: flex; align-items: center; gap: 5px; }
+.vu-fila span { font-family: var(--f-data); font-size: 9px; color: var(--txt-lo); width: 8px; }
+.vu-barra { position: relative; flex: 1; height: 9px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.vu-fill {
+  position: absolute; inset: 0;
+  /* Escala -40..0 dBFS: verde hasta -6, ámbar hasta -3, rojo arriba */
+  background: linear-gradient(90deg, #2d8653 0%, var(--verde) 70%, var(--verde) 85%, var(--ambar-vivo) 85%,
+                              var(--ambar-vivo) 92.5%, var(--rojo) 92.5%);
+  clip-path: inset(0 100% 0 0);
+}
+.vu-pico { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--txt-hi); left: 0; opacity: 0; }
+.vu-escala { position: absolute; left: 13px; right: 0; bottom: 0; height: 9px; }
+.vu-escala i { position: absolute; transform: translateX(-50%); font-style: normal; font-family: var(--f-data); font-size: 8px; color: var(--txt-lo); }
+.vu.sin-senal .vu-barra { opacity: .5; }
+
+/* ═══════════ AYUDA DE ATAJOS ═══════════ */
+button.top-link { background: transparent; cursor: pointer; }
+.atajos-fondo { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: flex; align-items: center; justify-content: center; z-index: 60; }
+.atajos-caja { background: var(--bg-2); border: 1px solid var(--ambar); border-radius: 8px; padding: 20px 26px; max-width: 620px; color: var(--txt-mid); }
+.atajos-caja h2 { font-family: var(--f-display); font-size: 28px; letter-spacing: .06em; color: var(--txt-hi); margin: 0 0 10px; font-weight: 400; }
+.atajos-caja td { padding: 5px 10px 5px 0; vertical-align: top; }
+.atajos-caja p { font-size: 13px; color: var(--txt-lo); }
+.atajos-caja button { background: var(--ambar); color: var(--bg-0); border: none; border-radius: 4px; padding: 7px 18px; font-family: var(--f-data); cursor: pointer; }
+kbd {
+  display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 4px;
+  background: var(--bg-0); border: 1px solid var(--line); border-bottom-width: 3px;
+  font-family: var(--f-data); font-size: 12px; color: var(--txt-hi);
+}
+@media (max-width: 1500px) { .vu { width: 170px; } }

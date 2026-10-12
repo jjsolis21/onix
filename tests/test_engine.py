@@ -560,3 +560,29 @@ def test_no_se_adelanta_una_cuna(engine, media):
     assert engine._advance() and engine._current_item["origen"] == "pauta"
     with pytest.raises(ValueError):
         engine.seek(1)
+
+
+def test_vumetros_emiten_nivel_mientras_suena(engine, media):
+    vu = []
+    engine.bus.subscribe("vu", lambda e, d: vu.append(d))
+    engine._emitir_niveles()
+    assert vu == []                                   # en silencio no se inunda
+    aid = add_audio(engine, media, "CON NIVEL", seconds=10.0)
+    assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
+    engine._ultimo_vu = 0
+    engine._emitir_niveles()
+    assert vu and 0 < vu[-1]["l"] <= 1 and 0 < vu[-1]["r"] <= 1
+    engine._do_stop("prueba")
+    engine._ultimo_vu = 0
+    engine._emitir_niveles()                          # un último 0 para bajar las barras
+    assert vu[-1] == {"l": 0.0, "r": 0.0}
+
+
+def test_operador_retrocede_la_cancion(engine, media):
+    aid = add_audio(engine, media, "LARGA", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
+    engine.seek(40)
+    engine._drain_commands()
+    engine.seek(10)                                    # hacia atrás
+    engine._drain_commands()
+    assert 10 <= engine._audio.get_position_sec(engine._active_canal) < 12

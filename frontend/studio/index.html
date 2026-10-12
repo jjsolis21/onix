@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=2" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=3" />
 </head>
 <body>
 
@@ -21,6 +21,12 @@
       <span class="dot"></span><span class="txt">CONECTANDO…</span>
     </div>
     <div class="spacer"></div>
+    <div class="vu" id="vu" title="Nivel de la salida del AIRE (picos en dBFS)">
+      <div class="vu-fila"><span>L</span><div class="vu-barra"><div class="vu-fill" id="vuL"></div><div class="vu-pico" id="vuPL"></div></div></div>
+      <div class="vu-fila"><span>R</span><div class="vu-barra"><div class="vu-fill" id="vuR"></div><div class="vu-pico" id="vuPR"></div></div></div>
+      <div class="vu-escala"><i style="left:0">-40</i><i style="left:50%">-20</i><i style="left:75%">-10</i><i style="left:85%">-6</i><i style="left:92.5%">-3</i><i style="left:100%">0</i></div>
+    </div>
+    <button class="top-link" id="btnAtajos" title="Atajos de teclado (?)">⌨ ATAJOS</button>
     <a class="top-link" href="/admin/" target="_blank" rel="noopener">ADMIN</a>
     <div class="reloj">
       <div class="reloj-hora" id="relojHora">--:--:--</div>
@@ -152,7 +158,27 @@
     </section>
   </main>
 
+  <!-- Ayuda de atajos -->
+  <div class="atajos-fondo" id="atajos" hidden>
+    <div class="atajos-caja" role="dialog" aria-label="Atajos de teclado">
+      <h2>Atajos de teclado</h2>
+      <table>
+        <tr><td><kbd>Espacio</kbd></td><td>SIGUIENTE (si no suena nada: REPRODUCIR)</td></tr>
+        <tr><td><kbd>1</kbd> … <kbd>8</kbd></td><td>Disparar el botón de la cartuchera (banco visible)</td></tr>
+        <tr><td><kbd>D</kbd></td><td>DETENER AL TERMINAR (activar / quitar)</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Lanzar la tanda en espera (modo manual)</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd> o <kbd>/</kbd></td><td>Buscar en la biblioteca</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Supr</kbd></td><td>En el programa: elegir · mover · quitar</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancelar salto, soltar selección o detener la preescucha</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Esta ayuda</td></tr>
+      </table>
+      <p>Los atajos no funcionan mientras escribes en un campo de texto.
+        No se usan F1–F12 porque el navegador los ocupa (F5 recarga la página, F11 pantalla completa…).</p>
+      <button id="btnCerrarAtajos">CERRAR</button>
+    </div>
+  </div>
+
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=2"></script>
+  <script src="/static/studio/studio.js?v=3"></script>
 </body>
 </html>
