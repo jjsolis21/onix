@@ -498,3 +498,45 @@ def pautas_en_riesgo(conn, ahora: datetime = None) -> list[dict]:
 @router.get("/api/v1/pautas-riesgo", summary="Cuñas de hoy que no alcanzan a salir")
 def riesgo(conn: sqlite3.Connection = Depends(get_db)):
     return {"data": pautas_en_riesgo(conn)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Análisis: música por hora, artistas más sonados, pautas por mes
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/api/v1/stats/analisis", summary="Música por hora, artistas y cumplimiento de pautas")
+def analisis(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
+    dias = PERIODOS.get(period)
+    if dias is None:
+        raise HTTPException(status_code=422, detail="period debe ser day, week o month")
+    desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    horas = [0] * 24
+    for h, n in conn.execute(
+            "SELECT CAST(substr(iniciado_en, 12, 2) AS INTEGER), COUNT(*) FROM historial_emision"
+            " WHERE iniciado_en >= ? AND tipo = 'musica' GROUP BY 1", (desde,)):
+        if h is not None and 0 <= h < 24:
+            horas[h] = n
+    artistas = [{"artista": r[0], "toques": r[1], "canciones": r[2]} for r in conn.execute(
+        "SELECT artista, COUNT(*) AS n, COUNT(DISTINCT audio_id) FROM historial_emision"
+        " WHERE iniciado_en >= ? AND tipo = 'musica' AND COALESCE(artista, '') <> ''"
+        " GROUP BY UPPER(artista) ORDER BY n DESC LIMIT 10", (desde,))]
+
+    # Cumplimiento de pautas comerciales: últimos 6 meses (el actual hasta hoy)
+    hoy = date.today()
+    pautas = conn.execute(
+        "SELECT p.* FROM pautas p LEFT JOIN tanda_secciones s ON s.numero = COALESCE(p.seccion, 3)"
+        " WHERE COALESCE(s.comercial, 1) = 1").fetchall()
+    meses = []
+    y, m = hoy.year, hoy.month
+    for _ in range(6):
+        ini = date(y, m, 1)
+        fin = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
+        prog = emit = 0
+        for p in pautas:
+            r = _cumplimiento_pauta(conn, p, ini, min(fin, hoy))
+            prog += r["programadas"]
+            emit += min(r["emitidas"], r["programadas"]) if r["programadas"] else 0
+        meses.append({"mes": ini.strftime("%Y-%m"), "programadas": prog, "emitidas": emit,
+                      "pct": round(100 * emit / prog, 1) if prog else None})
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    return {"horas": horas, "artistas": artistas, "pautas_mes": list(reversed(meses))}

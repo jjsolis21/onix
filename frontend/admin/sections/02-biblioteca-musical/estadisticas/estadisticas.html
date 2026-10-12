@@ -156,6 +156,61 @@
 
   </div><!-- /stats-grid -->
 
+  <!-- ── ANÁLISIS: hora del día · artistas · pautas por mes ───────── -->
+  <div class="an-grid" id="anGrid">
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Música por hora del día</h3><span class="an-meta" id="anHorasMeta">—</span></header>
+      <div class="an-horas" id="anHoras" role="img" aria-label="Canciones emitidas por hora"></div>
+      <div class="an-eje"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+    </article>
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Artistas más sonados</h3><span class="an-meta" id="anArtMeta">—</span></header>
+      <ol class="an-artistas" id="anArtistas"></ol>
+    </article>
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Cumplimiento de pautas</h3><span class="an-meta">últimos 6 meses</span></header>
+      <div class="an-meses" id="anMeses" role="img" aria-label="Porcentaje de cuñas emitidas frente a contratadas por mes"></div>
+    </article>
+  </div>
+  <script>
+  (function () {
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const NOMBRE = { day: 'hoy', week: 'esta semana', month: 'este mes' };
+    const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    async function cargar(period) {
+      let d;
+      try { d = await fetch(`/api/v1/stats/analisis?period=${period}`).then(r => r.json()); } catch (_) { return; }
+      if (!d || !d.horas) return;
+      // Por hora: una sola serie, barras desde la base; la hora pico va resaltada
+      const max = Math.max(1, ...d.horas), total = d.horas.reduce((a, b) => a + b, 0);
+      const pico = d.horas.indexOf(Math.max(...d.horas));
+      $('anHoras').innerHTML = d.horas.map((n, h) => `<div class="an-col" title="${String(h).padStart(2, '0')}:00 · ${n} canciones">
+        <i class="${h === pico && n ? 'pico' : ''}" style="height:${n ? Math.max(3, n / max * 100) : 0}%"></i></div>`).join('');
+      $('anHorasMeta').textContent = total ? `${total} canciones ${NOMBRE[period]} · pico ${String(pico).padStart(2, '0')}:00` : `sin música ${NOMBRE[period]}`;
+      // Artistas: barras horizontales con el número al lado
+      const maxA = Math.max(1, ...d.artistas.map(a => a.toques));
+      $('anArtistas').innerHTML = d.artistas.length ? d.artistas.map(a => `<li title="${esc(a.artista)} · ${a.toques} veces · ${a.canciones} canción(es) distinta(s)">
+        <span class="an-nom">${esc(a.artista)}</span><span class="an-barra"><i style="width:${a.toques / maxA * 100}%"></i></span><b>${a.toques}</b></li>`).join('')
+        : '<li class="an-vacio">Sin datos en el período</li>';
+      $('anArtMeta').textContent = NOMBRE[period];
+      // Pautas por mes: % emitidas / contratadas (100 % = todo salió)
+      $('anMeses').innerHTML = d.pautas_mes.map(m => {
+        const [y, mm] = m.mes.split('-');
+        const pct = m.pct;
+        const nivel = pct == null ? 'nada' : pct >= 95 ? 'ok' : pct >= 80 ? 'medio' : 'mal';
+        return `<div class="an-mes" title="${MES[+mm - 1]} ${y}: ${m.emitidas} de ${m.programadas} cuñas salieron">
+          <span class="an-pct">${pct == null ? '—' : Math.round(pct) + '%'}</span>
+          <div class="an-mes-col"><i class="${nivel}" style="height:${pct ?? 0}%"></i></div>
+          <span class="an-mes-n">${MES[+mm - 1]}</span></div>`;
+      }).join('');
+    }
+    const actual = () => document.querySelector('.stats-period-btn--active')?.dataset.period || 'day';
+    document.querySelectorAll('.stats-period-btn').forEach(b => b.addEventListener('click', () => setTimeout(() => cargar(actual()), 0)));
+    cargar(actual());
+  })();
+  </script>
+
 
   <!-- ═══════════════════════════════════════════════════════════
        MODAL DE AUDITORÍA

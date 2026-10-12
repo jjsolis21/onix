@@ -213,3 +213,19 @@ def test_pautas_en_riesgo_cuando_no_alcanzan_las_horas(tmp_db):
     conn.commit()
     r = pautas_en_riesgo(conn, datetime(2026, 10, 12, 19, 0))
     assert r[0]["estado"] == "incumplida" and r[0]["emitidas"] == 1
+
+
+def test_analisis_por_hora_y_artistas(client):
+    import sqlite3
+    from datetime import datetime
+    from backend.paths import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    hora = datetime.now().replace(minute=1, second=0).strftime("%Y-%m-%d %H:%M:%S")
+    for _ in range(3):
+        conn.execute("INSERT INTO historial_emision (titulo, artista, tipo, iniciado_en) VALUES ('t', 'SOLIS', 'musica', ?)", (hora,))
+    conn.commit()
+    conn.close()
+    d = client.get("/api/v1/stats/analisis", params={"period": "day"}).json()
+    assert d["horas"][datetime.now().hour] >= 3
+    assert any(a["artista"] == "SOLIS" and a["toques"] >= 3 for a in d["artistas"])
+    assert len(d["pautas_mes"]) == 6

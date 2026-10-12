@@ -1383,3 +1383,34 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Análisis: hora del día · artistas · pautas por mes ── */
+.an-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 1200px) { .an-grid { grid-template-columns: 1fr 1fr; } .an-grid > :first-child { grid-column: 1 / -1; } }
+.an-panel { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.an-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.an-cab h3 { margin: 0; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-primary); }
+.an-meta { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.an-horas { height: 140px; display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; align-items: end;
+  border-bottom: 1px solid var(--onix-border); }
+.an-col { height: 100%; display: flex; align-items: flex-end; cursor: default; }
+.an-col:hover { background: rgba(255, 255, 255, .04); }
+.an-col i { display: block; width: 100%; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 4px 4px 0 0; }
+.an-col i.pico { background: var(--accent); }
+.an-eje { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
+.an-artistas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.an-artistas li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 32px; align-items: center; gap: 8px; font-size: 13px; }
+.an-nom { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-barra { height: 8px; background: var(--onix-bg-elevated); border-radius: 4px; overflow: hidden; }
+.an-barra i { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.an-artistas b { text-align: right; font-family: var(--font-mono); color: var(--text-primary); font-size: 12px; }
+.an-vacio { color: var(--text-secondary); display: block !important; }
+.an-meses { height: 170px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; align-items: end; }
+.an-mes { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.an-pct { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+.an-mes-col { flex: 1; width: 60%; display: flex; align-items: flex-end; background: var(--onix-bg-elevated); border-radius: 4px; }
+.an-mes-col i { display: block; width: 100%; border-radius: 4px 4px 0 0; }
+.an-mes-col i.ok { background: var(--color-ok); }
+.an-mes-col i.medio { background: var(--color-warn); }
+.an-mes-col i.mal { background: var(--color-danger); }
+.an-mes-n { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; }
