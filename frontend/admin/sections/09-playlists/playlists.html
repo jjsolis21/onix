@@ -52,7 +52,11 @@
   .pl-caja-cab h3 { margin: 0; color: var(--text-hi); font-size: 1.15rem; }
   .pl-x { background: transparent; border: 1px solid var(--choc-5); color: var(--text-mid); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; }
   .pl-x:hover { border-color: var(--red-live); color: var(--red-live); }
-  .pl-auto { width: min(680px, 100%); }
+  /* El contenido hace scroll y el pie (Crear / Cancelar) queda siempre visible */
+  .pl-auto { width: min(680px, 100%); max-height: calc(100vh - 20px); }
+  .pl-auto-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+  .pl-auto .sec { margin: 10px 16px 0; padding: 10px 12px; }
+  .pl-auto .pl-pie { border-top: 1px solid var(--choc-5); flex: none; }
   .pl-auto .sec { margin: 12px 16px 0; padding: 12px; background: var(--choc-2); border-radius: 6px; display: flex; flex-direction: column; gap: 8px; }
   .pl-auto .sec > b { color: var(--gold-1); }
   .pl-auto .fila { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .85rem; color: var(--text-mid); }
@@ -122,6 +126,7 @@
 <div class="pl-modal" id="plAutoModal" hidden>
   <div class="pl-caja pl-auto">
     <div class="pl-caja-cab"><h3>⚡ Auto Playlist</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <div class="pl-auto-cuerpo">
     <p class="ox-hint" style="margin:10px 16px 0">Crea una playlist automática con el patrón de un reloj y las mismas reglas del aire.</p>
     <div class="sec"><b>Nombre</b><input class="pl-in" id="paNombre" maxlength="80" placeholder="Ej.: Sábado de los 80"></div>
     <div class="sec"><b>Fecha y hora para esta playlist</b>
@@ -136,6 +141,7 @@
     <div class="sec">
       <label class="fila"><input type="checkbox" id="paProgramar"> Programarla: que entre sola al aire en esa fecha y hora</label>
       <label class="fila"><input type="checkbox" id="paInmediato"> ⚡ En punto (corta lo que suene)</label></div>
+    </div>
     <div class="pl-pie"><span class="msg ox-msg" id="paMsg"></span>
       <button class="pl-btn" data-cerrar>Cancelar</button><button class="pl-btn pl-btn--pri" id="paCrear">☰ Crear playlist</button></div>
   </div>
