@@ -699,6 +699,20 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE playlists ADD COLUMN horas REAL DEFAULT NULL")
     logger.info("  → playlist_items y playlists.reloj_id/horas: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 30 — Playlists programadas (Jazler "Horario de programación")
+    #   programada: 'YYYY-MM-DDTHH:MM' en que entra sola al aire ('' = no)
+    #   inmediato:  1 = corta lo que suena y entra en punto
+    #   autor:      quién la armó (usuario del Admin)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(playlists)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    for col, ddl in (("programada", "TEXT NOT NULL DEFAULT ''"), ("inmediato", "INTEGER NOT NULL DEFAULT 0"),
+                     ("autor", "TEXT NOT NULL DEFAULT ''")):
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE playlists ADD COLUMN {col} {ddl}")
+    logger.info("  → playlists.programada/inmediato/autor: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

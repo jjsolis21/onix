@@ -112,7 +112,7 @@ def usuario_de(request) -> Optional[dict]:
 
 # ── Permisos ────────────────────────────────────────────────────────────────
 
-_AIRE = re.compile(r"^/api/v1/(player/|programa/)")
+_AIRE = re.compile(r"^/api/v1/(player/|programa/|playlists/\d+/lanzar$)")
 _SISTEMA = re.compile(r"^/api/v1/(usuarios|respaldos|audio/|config/motor|tandas/secciones|normalizacion)")
 
 

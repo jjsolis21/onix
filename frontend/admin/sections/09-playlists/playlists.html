@@ -1,0 +1,382 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 09 — Playlists (como Jazler SoHo)
+     · Lista de playlists + detalle a la derecha (minuto, duración, intro).
+     · Auto Playlist: N horas desde un reloj o "según la grilla", para una
+       fecha y hora; se puede programar para que entre sola al aire.
+     · Editor manual: armar la lista canción por canción desde la biblioteca.
+     · En el Studio, pestaña PLAYLISTS: se busca y se lanza a la cola.
+     API: /api/v1/playlists[/generar|/{id}], /api/v1/relojes, /api/v1/audios
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .pl-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 10px; }
+  .pl-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 230px minmax(0, 1fr) 380px; gap: 10px; }
+  @media (max-width: 1200px) { .pl-cuerpo { grid-template-columns: 200px minmax(0, 1fr) 320px; } }
+  .pl-panel { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; padding: 10px; min-height: 0; display: flex; flex-direction: column; gap: 7px; }
+  .pl-panel h3 { margin: 6px 0 0; font-size: 1rem; color: var(--text-hi); }
+  .pl-lado { overflow-y: auto; }
+  .pl-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 9px 10px;
+    font-family: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; text-align: left; }
+  .pl-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .pl-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .pl-btn--pri { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .pl-btn--pri:hover:not(:disabled) { color: #000; filter: brightness(1.1); }
+  .pl-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .pl-lado input[type=search], .pl-in { width: 100%; background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px;
+    color: var(--text-hi); padding: 7px 9px; font-family: inherit; font-size: .85rem; color-scheme: dark; }
+  .pl-chk { display: flex; gap: 6px; align-items: center; font-size: .82rem; color: var(--text-mid); cursor: pointer; }
+  .pl-tabla-wrap { flex: 1; min-height: 0; overflow: auto; }
+  .pl-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .pl-tabla th { position: sticky; top: 0; background: var(--choc-0); color: var(--text-lo); font-weight: 500; text-align: left; padding: 8px; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+  .pl-tabla td { padding: 7px 8px; border-bottom: 1px solid var(--choc-3); color: var(--text-mid); white-space: nowrap; }
+  .pl-tabla td b { color: var(--text-hi); }
+  .pl-tabla tr { cursor: pointer; }
+  .pl-tabla tr:hover td { background: var(--choc-3); }
+  .pl-tabla tr.sel td { background: color-mix(in srgb, var(--gold-0) 22%, transparent); }
+  .pl-prog { color: var(--gold-1); font-family: var(--font-data); }
+  .pl-det-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .pl-det-cab b { color: var(--gold-1); font-size: 1rem; font-style: italic; }
+  .pl-items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .pl-it { padding: 5px 8px; background: var(--choc-1); border-radius: 4px; border-left: 3px solid transparent; }
+  .pl-it.no-musica { border-left-color: var(--blue-next); background: color-mix(in srgb, var(--blue-next) 10%, var(--choc-1)); }
+  .pl-it small { font-family: var(--font-data); font-size: .66rem; color: var(--text-lo); display: flex; gap: 10px; }
+  .pl-it small .d { color: #52b788; } .pl-it small .i { color: #ff6b6b; } .pl-it small .o { color: #ffa94d; }
+  .pl-it div { color: var(--text-hi); font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-vacio { color: var(--text-lo); font-size: .85rem; text-align: center; margin: 30px 0; }
+  .pl-total { font-family: var(--font-data); font-size: 1.6rem; color: var(--text-hi); text-align: center; }
+  /* Modales */
+  .pl-modal { position: fixed; inset: 0; z-index: 10030; background: rgba(0,0,0,.78); display: flex; align-items: center; justify-content: center; padding: 10px; }
+  .pl-modal[hidden] { display: none; }
+  .pl-caja { background: var(--choc-1); border: 1px solid var(--choc-5); border-radius: 10px; display: flex; flex-direction: column; max-height: 96vh; }
+  .pl-caja-cab { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--choc-5); background: var(--choc-0); }
+  .pl-caja-cab h3 { margin: 0; color: var(--text-hi); font-size: 1.15rem; }
+  .pl-x { background: transparent; border: 1px solid var(--choc-5); color: var(--text-mid); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; }
+  .pl-x:hover { border-color: var(--red-live); color: var(--red-live); }
+  .pl-auto { width: min(680px, 100%); }
+  .pl-auto .sec { margin: 12px 16px 0; padding: 12px; background: var(--choc-2); border-radius: 6px; display: flex; flex-direction: column; gap: 8px; }
+  .pl-auto .sec > b { color: var(--gold-1); }
+  .pl-auto .fila { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .85rem; color: var(--text-mid); }
+  .pl-auto select, .pl-auto input { background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 6px 8px; font-family: inherit; color-scheme: dark; }
+  .pl-pie { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; align-items: center; }
+  .pl-pie .msg { margin-right: auto; font-size: .82rem; }
+  /* Editor manual */
+  .pl-ed { width: min(1400px, 100%); height: 94vh; }
+  .pl-ed-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 10px; padding: 10px; }
+  .pl-ed-lista { display: flex; flex-direction: column; min-height: 0; gap: 6px; }
+  .pl-ed-items { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; background: var(--choc-0); border-radius: 6px; padding: 4px; }
+  .pl-ed-items .pl-it { cursor: grab; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+  .pl-ed-items .pl-it.sel { outline: 2px dashed var(--gold-0); }
+  .pl-ed-items .pl-it button { background: transparent; border: 0; color: var(--text-lo); cursor: pointer; font-size: .9rem; }
+  .pl-ed-items .pl-it button:hover { color: var(--red-live); }
+  .pl-ed-bib { display: flex; flex-direction: column; min-height: 0; gap: 6px; }
+  .pl-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+  .pl-tabs button { background: var(--choc-2); border: 1px solid var(--choc-4); color: var(--text-mid); padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: .78rem; font-weight: 600; }
+  .pl-tabs button.activo { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .pl-filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pl-filtros input, .pl-filtros select { background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 6px 8px; font-family: inherit; }
+  .pl-filtros input { flex: 1 1 220px; }
+  .pl-ed-info { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 6px 2px; font-size: .8rem; color: var(--text-mid); }
+  .pl-ed-info b { color: var(--text-hi); }
+  .pl-ed-info .rec { color: var(--red-live); }
+  .pl-mini { display: flex; gap: 6px; align-items: center; }
+  .pl-mini button { width: 34px; height: 30px; border-radius: 5px; border: 1px solid var(--choc-5); background: var(--choc-3); color: var(--text-hi); cursor: pointer; }
+  .pl-mini .barra { flex: 1; height: 6px; background: var(--choc-3); border-radius: 3px; cursor: pointer; overflow: hidden; }
+  .pl-mini .barra i { display: block; height: 100%; width: 0; background: var(--gold-0); }
+  .pl-ed-prog { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: .82rem; color: var(--text-mid); }
+  .pl-ed-prog input { background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 6px 8px; font-family: inherit; color-scheme: dark; }
+</style>
+
+<div class="pl-root" id="plRoot">
+  <div class="pl-cuerpo">
+    <!-- Izquierda: acciones y búsqueda -->
+    <aside class="pl-panel pl-lado">
+      <button class="pl-btn pl-btn--pri" id="plNueva">＋ Nueva playlist (a mano)</button>
+      <button class="pl-btn" id="plAuto">⚡ Auto Playlist (desde reloj)</button>
+      <button class="pl-btn" id="plEditar" disabled>✎ Editar la elegida</button>
+      <button class="pl-btn pl-btn--peligro" id="plEliminar" disabled>🗑 Eliminar</button>
+      <h3>Buscar</h3>
+      <input type="search" id="plBuscar" placeholder="Nombre de la playlist…">
+      <label class="pl-chk"><input type="checkbox" id="plSoloProg"> Solo programadas</label>
+      <p class="ox-hint" style="margin-top:auto">En el Studio, pestaña <b>PLAYLISTS</b>, se buscan y se lanzan a la cola.
+        Las programadas entran solas a su fecha y hora.</p>
+    </aside>
+
+    <!-- Centro: lista -->
+    <section class="pl-panel">
+      <div class="pl-tabla-wrap">
+        <table class="pl-tabla">
+          <thead><tr><th>Título</th><th>Duración</th><th>Audios</th><th>Origen</th><th>Programada</th><th>Autor</th><th>Creada</th></tr></thead>
+          <tbody id="plFilas"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Derecha: detalle -->
+    <aside class="pl-panel" id="plDet">
+      <p class="pl-vacio">Elige una playlist para ver sus audios.</p>
+    </aside>
+  </div>
+</div>
+
+<!-- ── Auto Playlist ── -->
+<div class="pl-modal" id="plAutoModal" hidden>
+  <div class="pl-caja pl-auto">
+    <div class="pl-caja-cab"><h3>⚡ Auto Playlist</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <p class="ox-hint" style="margin:10px 16px 0">Crea una playlist automática con el patrón de un reloj y las mismas reglas del aire.</p>
+    <div class="sec"><b>Nombre</b><input class="pl-in" id="paNombre" maxlength="80" placeholder="Ej.: Sábado de los 80"></div>
+    <div class="sec"><b>Fecha y hora para esta playlist</b>
+      <div class="fila"><input type="datetime-local" id="paInicio">
+        <span>Las reglas (no repetir a la misma hora, restricciones) se calculan para ese momento.</span></div></div>
+    <div class="sec"><b>Reloj para la playlist</b>
+      <label class="fila"><input type="radio" name="paModo" value="reloj" checked> Reloj específico
+        <select id="paReloj"></select></label>
+      <label class="fila"><input type="radio" name="paModo" value="grilla"> Cualquier reloj programado para la hora elegida (sigue la grilla)</label></div>
+    <div class="sec"><b>Horas de duración</b>
+      <div class="fila"><select id="paHoras"></select></div></div>
+    <div class="sec">
+      <label class="fila"><input type="checkbox" id="paProgramar"> Programarla: que entre sola al aire en esa fecha y hora</label>
+      <label class="fila"><input type="checkbox" id="paInmediato"> ⚡ En punto (corta lo que suene)</label></div>
+    <div class="pl-pie"><span class="msg ox-msg" id="paMsg"></span>
+      <button class="pl-btn" data-cerrar>Cancelar</button><button class="pl-btn pl-btn--pri" id="paCrear">☰ Crear playlist</button></div>
+  </div>
+</div>
+
+<!-- ── Editor manual ── -->
+<div class="pl-modal" id="plEdModal" hidden>
+  <div class="pl-caja pl-ed">
+    <div class="pl-caja-cab"><h3 id="edTitulo">Nueva playlist</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <div class="pl-ed-cuerpo">
+      <div class="pl-ed-lista">
+        <input class="pl-in" id="edNombre" maxlength="80" placeholder="Nombre de la playlist">
+        <div class="pl-ed-items" id="edItems"></div>
+        <div class="pl-total" id="edTotal">00:00:00</div>
+        <div class="pl-ed-prog">
+          <label>Programar: <input type="datetime-local" id="edProg"></label>
+          <label><input type="checkbox" id="edInm"> ⚡ En punto</label>
+          <button class="pl-btn" id="edSinProg" style="padding:5px 9px">Sin programar</button>
+        </div>
+      </div>
+      <div class="pl-ed-bib">
+        <div class="pl-tabs" id="edTabs"></div>
+        <div class="pl-filtros">
+          <input type="search" id="edBuscar" placeholder="Buscar título o artista…">
+          <select id="edCat1"></select><select id="edCat2"></select>
+        </div>
+        <div class="pl-tabla-wrap">
+          <table class="pl-tabla"><thead><tr><th>Artista</th><th>Título</th><th>Rotación</th><th>Dur.</th><th>Sonó</th><th></th></tr></thead>
+            <tbody id="edBib"></tbody></table>
+        </div>
+        <div class="pl-ed-info" id="edInfo">Doble clic = agregar al final · elige un audio de la lista de la izquierda para insertar después de él.</div>
+        <div class="pl-mini"><button id="edPlay" title="Escuchar">▶</button><button id="edStop" title="Detener">■</button>
+          <div class="barra" id="edBarra"><i id="edFill"></i></div><span id="edTxt" style="font-size:.78rem;color:var(--text-lo);min-width:200px"></span></div>
+      </div>
+    </div>
+    <div class="pl-pie"><span class="msg ox-msg" id="edMsg"></span>
+      <button class="pl-btn" data-cerrar>Cancelar</button>
+      <button class="pl-btn" id="edGuardar">✓ Guardar</button>
+      <button class="pl-btn pl-btn--pri" id="edGuardarSalir">✓ Guardar y salir</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const msg = (id, t, ok = true) => { const el = $(id); el.textContent = t; el.className = `msg ox-msg ${ok ? "ok" : "err"}`; };
+  const errTxt = async r => { const b = await r.json().catch(() => ({}));
+    return Array.isArray(b.detail) ? b.detail.map(d => d.msg).join("; ") : (b.detail || `HTTP ${r.status}`); };
+  const hms = s => { s = Math.round(s || 0); return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
+  const mmss = s => `${Math.floor((s || 0) / 60)}:${String(Math.round((s || 0) % 60)).padStart(2, "0")}`;
+  const fechaHora = v => v ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)} ${v.slice(11, 16)}` : "";
+  const TIPOS = [["Musica", "🎵 Música"], ["Efecto", "🔔 Jingles"], ["Cuña", "💲 Cuñas"], ["Tips", "🎙 Tips"], ["Sweeper", "〰 Sweepers"], ["Programa", "📼 Programas"]];
+
+  let lista = [], sel = null, relojes = [], audios = [];
+
+  // ── Lista ───────────────────────────────────────────────
+  async function cargar(elegir) {
+    lista = await fetch("/api/v1/playlists").then(r => r.ok ? r.json() : []);
+    pintarLista();
+    const id = elegir ?? sel?.id;
+    if (id && lista.some(p => p.id === id)) abrir(id); else { sel = null; pintarDetalle(null); }
+  }
+  function pintarLista() {
+    const q = $("plBuscar").value.trim().toUpperCase(), soloProg = $("plSoloProg").checked;
+    const vis = lista.filter(p => (!q || p.nombre.toUpperCase().includes(q)) && (!soloProg || p.programada));
+    $("plFilas").innerHTML = vis.length ? vis.map(p => `<tr data-id="${p.id}" class="${sel?.id === p.id ? "sel" : ""}">
+        <td><b>${esc(p.nombre)}</b></td><td class="ox-mono">${hms(p.duracion)}</td><td class="ox-mono">${p.audios}</td>
+        <td>${p.reloj ? `Reloj ${esc(p.reloj)}` : esc(p.descripcion || "")}</td>
+        <td class="pl-prog">${p.programada ? `⏰ ${fechaHora(p.programada)}${p.inmediato ? " ⚡" : ""}` : ""}</td>
+        <td>${esc(p.autor || "")}</td><td class="ox-mono">${esc((p.created_at || "").slice(0, 10).split("-").reverse().join("/"))}</td></tr>`).join("")
+      : `<tr><td colspan="7" class="pl-vacio">${lista.length ? "Sin resultados" : "Aún no hay playlists: crea una a mano o con Auto Playlist."}</td></tr>`;
+    $("plEditar").disabled = $("plEliminar").disabled = !sel;
+  }
+  async function abrir(id) {
+    sel = await fetch(`/api/v1/playlists/${id}`).then(r => r.json());
+    pintarLista(); pintarDetalle(sel);
+  }
+  function pintarDetalle(p) {
+    if (!p) { $("plDet").innerHTML = '<p class="pl-vacio">Elige una playlist para ver sus audios.</p>'; return; }
+    let t = 0;
+    $("plDet").innerHTML = `<div class="pl-det-cab"><b>${esc(p.nombre)} (${hms(p.duracion)})</b>
+        <button class="pl-x" id="plDetX" title="Cerrar el detalle">✕</button></div>
+      ${p.programada ? `<div class="pl-prog">⏰ Entra sola el ${fechaHora(p.programada)}${p.inmediato ? " · en punto" : ""}</div>` : ""}
+      <div class="pl-items">${p.items.map(it => { const a = t; t += it.duracion || 0;
+        return `<div class="pl-it ${it.tipo_audio !== "Musica" ? "no-musica" : ""}">
+          <small><span>${hms(a)}</span><span class="d">Dur: ${mmss(it.duracion)}</span>${it.cue_intro ? `<span class="i">INTRO: ${Number(it.cue_intro).toFixed(1)}s</span>` : ""}${it.cue_outro ? `<span class="o">OUTRO: ${Number(it.cue_outro).toFixed(1)}s</span>` : ""}</small>
+          <div>${esc(it.artista || "")} - ${esc(it.titulo)}</div></div>`; }).join("")}</div>
+      <button class="pl-btn" id="plDetEditar">✎ Editar esta playlist</button>`;
+    $("plDetX").onclick = () => { sel = null; pintarLista(); pintarDetalle(null); };
+    $("plDetEditar").onclick = () => editor(sel);
+  }
+  $("plFilas").addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) abrir(+tr.dataset.id); });
+  $("plFilas").addEventListener("dblclick", e => { const tr = e.target.closest("tr[data-id]"); if (tr && sel) editor(sel); });
+  $("plBuscar").addEventListener("input", pintarLista);
+  $("plSoloProg").addEventListener("change", pintarLista);
+  $("plEliminar").addEventListener("click", async () => {
+    if (!sel || !confirm(`¿Eliminar la playlist "${sel.nombre}"? (no borra las canciones)`)) return;
+    await fetch(`/api/v1/playlists/${sel.id}`, { method: "DELETE" });
+    sel = null; cargar();
+  });
+  $("plEditar").addEventListener("click", () => sel && editor(sel));
+  document.querySelectorAll("#plRoot ~ .pl-modal [data-cerrar], .pl-modal [data-cerrar]").forEach(b =>
+    b.addEventListener("click", () => { b.closest(".pl-modal").hidden = true; pararPrevia(); }));
+
+  // ── Auto Playlist ───────────────────────────────────────
+  $("paHoras").innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1} h</option>`).join("");
+  $("plAuto").addEventListener("click", async () => {
+    relojes = await fetch("/api/v1/relojes").then(r => r.json());
+    $("paReloj").innerHTML = relojes.map(r => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("");
+    const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+    $("paInicio").value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
+    $("paNombre").value = ""; $("paMsg").textContent = "";
+    $("plAutoModal").hidden = false; $("paNombre").focus();
+  });
+  $("paCrear").addEventListener("click", async () => {
+    const grilla = document.querySelector('input[name="paModo"]:checked').value === "grilla";
+    const body = { nombre: $("paNombre").value.trim(), reloj_id: grilla ? null : +$("paReloj").value || null,
+      horas: +$("paHoras").value, inicio: $("paInicio").value || "", programar: $("paProgramar").checked, inmediato: $("paInmediato").checked };
+    if (!body.nombre) { msg("paMsg", "Ponle un nombre", false); return; }
+    if (!grilla && !body.reloj_id) { msg("paMsg", "Elige un reloj (o crea uno en Relojes)", false); return; }
+    msg("paMsg", "Creando…");
+    const r = await fetch("/api/v1/playlists/generar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) { msg("paMsg", await errTxt(r), false); return; }
+    const p = await r.json();
+    $("plAutoModal").hidden = true;
+    cargar(p.id);
+  });
+
+  // ── Editor manual ───────────────────────────────────────
+  let ed = { id: null, items: [], cursor: -1 }, tab = "Musica", previa = null;
+  async function editor(p) {
+    if (!audios.length) {
+      audios = (await fetch("/api/v1/audios?limit=10000").then(r => r.json())).data || [];
+      const ops = (campo, nombre) => `<option value="">${nombre}</option>` + [...new Set(audios.filter(a => a.tipo_audio === "Musica").map(a => a[campo]).filter(Boolean))].sort().map(v => `<option>${esc(v)}</option>`).join("");
+      $("edCat1").innerHTML = ops("cat1", "Género (todos)"); $("edCat2").innerHTML = ops("cat2", "Rotación (todas)");
+    }
+    ed = { id: p?.id ?? null, items: (p?.items || []).map(it => audios.find(a => a.id === it.audio_id) || { id: it.audio_id, titulo: it.titulo, artista: it.artista, duracion: it.duracion, tipo_audio: it.tipo_audio }), cursor: -1 };
+    $("edTitulo").textContent = p ? `Editar playlist: ${p.nombre}` : "Nueva playlist";
+    $("edNombre").value = p?.nombre || ""; $("edProg").value = p?.programada || ""; $("edInm").checked = !!p?.inmediato;
+    $("edMsg").textContent = "";
+    pintarTabs(); pintarBib(); pintarItems();
+    $("plEdModal").hidden = false;
+  }
+  $("plNueva").addEventListener("click", () => editor(null));
+  function pintarTabs() {
+    $("edTabs").innerHTML = TIPOS.map(([k, n]) => `<button type="button" data-t="${k}" class="${k === tab ? "activo" : ""}">${n}</button>`).join("");
+    $("edCat1").hidden = $("edCat2").hidden = tab !== "Musica";
+  }
+  function pintarBib() {
+    const q = $("edBuscar").value.trim().toUpperCase(), c1 = $("edCat1").value, c2 = $("edCat2").value;
+    const vis = audios.filter(a => a.tipo_audio === tab && (!q || `${a.titulo} ${a.artista}`.toUpperCase().includes(q))
+      && (tab !== "Musica" || ((!c1 || a.cat1 === c1) && (!c2 || a.cat2 === c2)))).slice(0, 400);
+    $("edBib").innerHTML = vis.map(a => `<tr data-id="${a.id}"><td><b>${esc(a.artista)}</b></td><td>${esc(a.titulo)}</td>
+      <td>${esc(a.cat2 || "")}</td><td class="ox-mono">${mmss(a.duracion)}</td>
+      <td class="ox-mono">${a.ultima_reproduccion ? esc(String(a.ultima_reproduccion).slice(0, 16).replace("T", " ")) : "—"}</td>
+      <td><button class="pl-btn" data-add="${a.id}" style="padding:3px 9px">＋</button></td></tr>`).join("")
+      || '<tr><td colspan="6" class="pl-vacio">Sin audios</td></tr>';
+  }
+  function pintarItems() {
+    let t = 0;
+    $("edItems").innerHTML = ed.items.length ? ed.items.map((a, i) => { const ini = t; t += a.duracion || 0;
+      return `<div class="pl-it ${a.tipo_audio !== "Musica" ? "no-musica" : ""} ${i === ed.cursor ? "sel" : ""}" draggable="true" data-i="${i}">
+        <span style="min-width:0"><small><span>A: ${hms(ini)}</span><span class="d">Dur: ${mmss(a.duracion)}</span>${a.cue_intro ? `<span class="i">INTRO: ${Number(a.cue_intro).toFixed(1)}s</span>` : ""}</small>
+        <div>${esc(a.artista || "")} - ${esc(a.titulo)}</div></span><button data-quitar="${i}" title="Quitar">✕</button></div>`; }).join("")
+      : '<p class="pl-vacio">Agrega audios desde la biblioteca (doble clic o ＋).</p>';
+    $("edTotal").textContent = hms(t);
+  }
+  function agregar(id) {
+    const a = audios.find(x => x.id === id);
+    if (!a) return;
+    const pos = ed.cursor >= 0 ? ed.cursor + 1 : ed.items.length;
+    ed.items.splice(pos, 0, a);
+    if (ed.cursor >= 0) ed.cursor = pos;
+    pintarItems();
+    // ¿Sonó hace poco? (como "Última reproducción" de Jazler)
+    const ult = a.ultima_reproduccion ? new Date(String(a.ultima_reproduccion).replace(" ", "T")) : null;
+    $("edInfo").innerHTML = `Agregado: <b>${esc(a.artista)} - ${esc(a.titulo)}</b>` + (ult
+      ? ` · última vez al aire: <span class="${Date.now() - ult < 864e5 ? "rec" : ""}">${ult.toLocaleString("es")}</span>` : " · nunca sonó");
+  }
+  $("edTabs").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) { tab = b.dataset.t; pintarTabs(); pintarBib(); } });
+  $("edBuscar").addEventListener("input", pintarBib);
+  $("edCat1").addEventListener("change", pintarBib); $("edCat2").addEventListener("change", pintarBib);
+  $("edBib").addEventListener("click", e => {
+    const b = e.target.closest("[data-add]");
+    if (b) { agregar(+b.dataset.add); return; }
+    const tr = e.target.closest("tr[data-id]");
+    if (tr) escuchar(+tr.dataset.id);
+  });
+  $("edBib").addEventListener("dblclick", e => { const tr = e.target.closest("tr[data-id]"); if (tr && !e.target.closest("button")) agregar(+tr.dataset.id); });
+  $("edItems").addEventListener("click", e => {
+    const q = e.target.closest("[data-quitar]");
+    if (q) { ed.items.splice(+q.dataset.quitar, 1); ed.cursor = -1; pintarItems(); return; }
+    const it = e.target.closest(".pl-it");
+    if (it) { ed.cursor = ed.cursor === +it.dataset.i ? -1 : +it.dataset.i; pintarItems(); }
+  });
+  let arr = null;
+  $("edItems").addEventListener("dragstart", e => { arr = +e.target.closest(".pl-it")?.dataset.i; });
+  $("edItems").addEventListener("dragover", e => e.preventDefault());
+  $("edItems").addEventListener("drop", e => {
+    e.preventDefault();
+    const dest = e.target.closest(".pl-it");
+    if (arr == null || !dest) return;
+    const [x] = ed.items.splice(arr, 1);
+    ed.items.splice(+dest.dataset.i, 0, x);
+    arr = null; ed.cursor = -1; pintarItems();
+  });
+  $("edSinProg").addEventListener("click", () => { $("edProg").value = ""; $("edInm").checked = false; });
+
+  async function guardarEd(salir) {
+    const body = { nombre: $("edNombre").value.trim(), items: ed.items.map(a => a.id), programada: $("edProg").value || "", inmediato: $("edInm").checked };
+    if (!body.nombre) { msg("edMsg", "Ponle un nombre", false); return; }
+    if (!body.items.length) { msg("edMsg", "La playlist está vacía", false); return; }
+    const r = await fetch(ed.id ? `/api/v1/playlists/${ed.id}` : "/api/v1/playlists", {
+      method: ed.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) { msg("edMsg", await errTxt(r), false); return; }
+    const p = await r.json();
+    ed.id = p.id;
+    msg("edMsg", `✓ Guardada: ${p.audios} audios · ${hms(p.duracion)}${p.programada ? ` · entra el ${fechaHora(p.programada)}` : ""}`);
+    if (salir) { $("plEdModal").hidden = true; pararPrevia(); }
+    cargar(p.id);
+  }
+  $("edGuardar").addEventListener("click", () => guardarEd(false));
+  $("edGuardarSalir").addEventListener("click", () => guardarEd(true));
+
+  // Preescucha en el navegador
+  function escuchar(id) {
+    const a = audios.find(x => x.id === id);
+    if (!previa) {
+      previa = new Audio();
+      previa.addEventListener("timeupdate", () => { $("edFill").style.width = previa.duration ? `${previa.currentTime / previa.duration * 100}%` : "0"; });
+    }
+    previa.src = `/api/v1/audios/${id}/stream`;
+    $("edTxt").textContent = a ? `${a.artista} - ${a.titulo}` : "";
+  }
+  function pararPrevia() { if (previa) { previa.pause(); previa.currentTime = 0; } }
+  $("edPlay").addEventListener("click", () => { if (previa?.src) previa.paused ? previa.play().catch(() => {}) : previa.pause(); });
+  $("edStop").addEventListener("click", pararPrevia);
+  $("edBarra").addEventListener("click", e => { if (!previa?.duration) return; const r = e.currentTarget.getBoundingClientRect(); previa.currentTime = (e.clientX - r.left) / r.width * previa.duration; });
+
+  cargar();
+})();
+</script>

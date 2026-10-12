@@ -164,8 +164,21 @@ class Planner:
                 "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
         except sqlite3.OperationalError:       # BD sin la migración 16
             self.eventos = []
+        # Playlists programadas: entran a su fecha y hora como un evento cuyas
+        # filas son sus audios, en orden (una sola vez)
+        self.playlists_prog = []
+        try:
+            for p in conn.execute("SELECT id, nombre, programada, inmediato FROM playlists"
+                                  " WHERE activo = 1 AND COALESCE(programada, '') <> ''"):
+                filas = [{"tipo_audio": r[1], "filtros": {}, "audio_id": r[0]} for r in conn.execute(
+                    "SELECT a.id, a.tipo_audio FROM playlist_items i JOIN audios a ON a.id = i.audio_id"
+                    " WHERE i.playlist_id = ? ORDER BY i.posicion", (p["id"],))]
+                if filas:
+                    self.playlists_prog.append({**dict(p), "filas": filas})
+        except sqlite3.OperationalError:       # BD sin la migración 30
+            pass
 
-    def generar_lista(self, reloj_id: int, horas: float, inicio: Optional[datetime] = None) -> list[dict]:
+    def generar_lista(self, reloj_id: Optional[int], horas: float, inicio: Optional[datetime] = None) -> list[dict]:
         """
         Playlist (Jazler "crear playlist"): N horas de audios siguiendo el
         patrón del reloj, fila por fila y en vuelta, con las mismas reglas que
@@ -177,14 +190,26 @@ class Planner:
         conn = self._conn()
         try:
             self._cargar(conn)
-            reloj = self.relojes.get(reloj_id)
-            if not reloj or not reloj["filas"]:
+            # reloj_id None = "cualquier reloj programado": el de la grilla en cada hora
+            fijo = self.relojes.get(reloj_id) if reloj_id else None
+            if reloj_id and (not fijo or not fijo["filas"]):
                 return []
             crossfade = self._icfg("crossfade_seg", 4)
             fin = inicio + timedelta(hours=horas)
             t, previos, en_plan, out, vacias, i = inicio, [], set(), [], 0, 0
-            respaldo = reloj.get("respaldo") or {}
-            while t < fin and len(out) < 2000 and vacias < len(reloj["filas"]):
+            hora_actual = None
+            sin_reloj = {"id": None, "filas": [{"tipo_audio": "Musica", "filtros": {}, "audio_id": None}], "respaldo": {}}
+            while t < fin and len(out) < 2000:
+                reloj = fijo or self.reloj_de(t) or sin_reloj
+                if not reloj["filas"]:
+                    reloj = sin_reloj
+                if not fijo and (t.date(), t.hour) != hora_actual:
+                    hora_actual, i, vacias = (t.date(), t.hour), 0, 0     # cada hora empieza en su fila 1
+                if vacias >= len(reloj["filas"]):
+                    if fijo or reloj is sin_reloj:
+                        break
+                    reloj, vacias = sin_reloj, 0
+                respaldo = reloj.get("respaldo") or {}
                 fila = reloj["filas"][i % len(reloj["filas"])]
                 i += 1
                 audio = self._elegir(conn, fila, t, previos, en_plan, set())
@@ -411,6 +436,18 @@ class Planner:
                 if mejor is None or hora < mejor["hora"]:
                     mejor = {"hora": hora, "key": key, "id": e["id"], "nombre": e["nombre"],
                              "inmediato": bool(e["inmediato"]), "reloj": reloj, "fin": fin}
+        for p in getattr(self, "playlists_prog", []):
+            try:
+                hora = datetime.fromisoformat(p["programada"])
+            except ValueError:
+                continue
+            key = f"{p['programada']}#pl{p['id']}"
+            if key in hechos or hora < desde - self.ATRASO_EVENTO or hora.date() > t.date() + timedelta(days=1):
+                continue
+            if mejor is None or hora < mejor["hora"]:
+                mejor = {"hora": hora, "key": key, "id": None, "nombre": f"Playlist {p['nombre']}",
+                         "inmediato": bool(p["inmediato"]), "fin": None,
+                         "reloj": {"id": None, "nombre": p["nombre"], "color": "#9d4edd", "filas": p["filas"]}}
         return mejor
 
     def _poner_evento(self, conn, ev, t, nuevos, previos, en_plan, excluir, crossfade) -> datetime:

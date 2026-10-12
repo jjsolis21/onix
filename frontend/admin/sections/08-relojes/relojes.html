@@ -73,9 +73,6 @@
   .rj-fechas button.activo { border-color: var(--gold-0); color: var(--gold-1); }
   .rj-grilla td.semana { opacity: .35; }
   .rj-grilla td.exc { box-shadow: inset 0 -3px 0 var(--gold-2); }
-  .pl-ver { margin-top: var(--s3); max-height: 320px; overflow-y: auto; border: 1px solid var(--choc-4); border-radius: 6px; }
-  .pl-ver div { display: grid; grid-template-columns: 50px 1fr 90px 60px; gap: 8px; padding: 4px 10px; font-size: .78rem; border-bottom: 1px solid var(--choc-3); }
-  .pl-ver div span:first-child, .pl-ver div span:last-child { font-family: var(--font-data); color: var(--text-lo); }
   .rj-modal { position: fixed; inset: 0; z-index: 10030; background: rgba(0, 0, 0, .75); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .rj-modal[hidden] { display: none; }
   .rj-modal-caja { width: min(640px, 100%); max-height: 92vh; overflow-y: auto; background: var(--choc-1); border: 1px solid var(--choc-5); border-radius: 10px; padding: 18px 20px; }
@@ -177,30 +174,6 @@
     </div>
     <p class="ox-msg" id="rjMsgGrilla"></p>
     <p class="ox-hint">El punto rojo en una hora indica que ese día hay un evento a hora fija.</p>
-  </section>
-
-  <!-- ── Playlists desde un reloj (Jazler) ── -->
-  <section class="ox-card">
-    <h3>Playlists</h3>
-    <p class="ox-hint">Crea de 1 a 12 horas de música siguiendo el patrón de un reloj, con las mismas reglas del aire
-      (separación de artistas, no repetir…). En el Studio, pestaña <b>PLAYLISTS</b>, se busca y se lanza a la cola.</p>
-    <div class="ox-row">
-      <div class="ox-field" style="flex:2 1 200px"><label for="plNombre">Nombre</label>
-        <input class="ox-input" id="plNombre" maxlength="80" placeholder="Ej.: Noche romántica"></div>
-      <div class="ox-field" style="flex:1 1 160px"><label for="plReloj">Patrón (reloj)</label>
-        <select class="ox-select" id="plReloj"></select></div>
-      <div class="ox-field" style="flex:0 0 110px"><label for="plHoras">Horas</label>
-        <select class="ox-select" id="plHoras"></select></div>
-      <button class="ox-btn ox-btn--primary" id="plCrear" style="align-self:flex-end">Crear playlist</button>
-    </div>
-    <p class="ox-msg" id="plMsg"></p>
-    <div class="ox-table-wrap">
-      <table class="ox-table">
-        <thead><tr><th>Playlist</th><th>Reloj</th><th>Horas</th><th>Audios</th><th>Duración</th><th>Creada</th><th></th></tr></thead>
-        <tbody id="plLista"></tbody>
-      </table>
-    </div>
-    <div id="plVer" class="pl-ver" hidden></div>
   </section>
 
   <!-- ── Eventos a hora fija ── -->
@@ -309,7 +282,6 @@
     pintarPincel();
     pintarGrilla();
     pintarEventos();
-    cargarPlaylists();
     const id = seleccionar ?? actual?.id;
     const r = relojes.find(x => x.id === id) ?? (actual ? null : relojes[0]);
     r ? abrir(r) : nuevo();
@@ -655,51 +627,6 @@
     const rel = await fetch("/api/v1/relojes").then(x => x.json());
     relojes = rel; pintarLista(); pintarGrilla();
     msg("rjMsgGrilla", `✓ ${celdas.length} hora(s) ${reloj_id ? "asignadas" : "liberadas"}. El programa se vuelve a planificar.`);
-  });
-
-  // ── Playlists ────────────────────────────────────────────
-  $("plHoras").innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => `<option value="${h}" ${h === 3 ? "selected" : ""}>${h} h</option>`).join("");
-  async function cargarPlaylists() {
-    $("plReloj").innerHTML = relojes.map(r => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("");
-    if (actual) $("plReloj").value = actual.id;
-    const lista = await fetch("/api/v1/playlists").then(r => r.ok ? r.json() : []);
-    $("plLista").innerHTML = lista.length ? lista.map(p => `<tr data-pl="${p.id}">
-        <td><b>${esc(p.nombre)}</b></td>
-        <td>${p.reloj ? `<span class="rj-dot" style="display:inline-block;background:${esc(p.color)}"></span> ${esc(p.reloj)}` : "—"}</td>
-        <td class="ox-mono">${p.horas ?? ""}</td><td class="ox-mono">${p.audios}</td>
-        <td class="ox-mono">${fmt(p.duracion)}</td><td class="ox-mono">${esc((p.created_at || "").slice(0, 16))}</td>
-        <td style="white-space:nowrap"><button class="ox-btn ox-btn--sm" data-plver="${p.id}">Ver</button>
-          <button class="ox-btn ox-btn--sm ox-btn--danger" data-plborrar="${p.id}">✕</button></td></tr>`).join("")
-      : `<tr><td colspan="7" class="ox-empty">Aún no hay playlists.</td></tr>`;
-  }
-  $("plCrear").addEventListener("click", async () => {
-    const nombre = $("plNombre").value.trim();
-    if (!nombre) { msg("plMsg", "Ponle un nombre a la playlist", false); return; }
-    if (!$("plReloj").value) { msg("plMsg", "Primero crea un reloj", false); return; }
-    msg("plMsg", "Creando…");
-    const r = await fetch("/api/v1/playlists/generar", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, reloj_id: +$("plReloj").value, horas: +$("plHoras").value }) });
-    if (!r.ok) { msg("plMsg", await errTxt(r), false); return; }
-    const p = await r.json();
-    msg("plMsg", `✓ "${p.nombre}": ${p.audios} audios · ${fmt(p.duracion)}. Ya aparece en el Studio › PLAYLISTS.`);
-    $("plNombre").value = "";
-    cargarPlaylists();
-  });
-  $("plLista").addEventListener("click", async e => {
-    const b = e.target.closest("button");
-    if (!b) return;
-    if (b.dataset.plborrar) {
-      if (!confirm("¿Borrar esta playlist? (no borra las canciones)")) return;
-      await fetch(`/api/v1/playlists/${b.dataset.plborrar}`, { method: "DELETE" });
-      $("plVer").hidden = true; cargarPlaylists();
-    }
-    if (b.dataset.plver) {
-      const p = await fetch(`/api/v1/playlists/${b.dataset.plver}`).then(r => r.json());
-      let t = 0;
-      $("plVer").innerHTML = p.items.map(it => { const ini = t; t += it.duracion || 0;
-        return `<div><span>${fmt(ini)}</span><span>${esc(it.titulo)} — ${esc(it.artista || "")}</span><span>${esc(it.rotacion)}</span><span>${fmt(it.duracion || 0)}</span></div>`; }).join("");
-      $("plVer").hidden = false;
-    }
   });
 
   // ── Reglas de rotación (las del Motor, a mano desde Relojes) ──

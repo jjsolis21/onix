@@ -405,3 +405,21 @@ def test_evento_con_dura_hasta_repite_su_reloj_hasta_esa_hora(base):
     assert abs((fin_ev - datetime(2026, 10, 12, 10, 40)).total_seconds()) <= 90
     despues = items[items.index(ev[-1]) + 1]
     assert not despues.get("evento") and despues["titulo"].startswith("TEMA")     # vuelve la grilla
+
+
+def test_playlist_programada_entra_a_su_hora(base):
+    for i in range(10):
+        audio(base, f"TEMA {i}", artista=f"A{i}", dur=200)
+    x = audio(base, "PL UNO", dur=100)
+    y = audio(base, "PL DOS", dur=100)
+    conn = db(base)
+    pid = conn.execute("INSERT INTO playlists (nombre, programada, inmediato) VALUES ('Prog', '2026-10-12T10:20', 1)").lastrowid
+    conn.executemany("INSERT INTO playlist_items (playlist_id, posicion, audio_id) VALUES (?, ?, ?)",
+                     [(pid, 0, x), (pid, 1, y)])
+    conn.commit()
+    conn.close()
+    items = planear(base, minutos=60, tandas=())
+    k = next(i for i, it in enumerate(items) if it["titulo"] == "PL UNO")
+    assert items[k]["inicio"] == "2026-10-12T10:20:00" and items[k + 1]["titulo"] == "PL DOS"
+    # La playlist entra una sola vez (sus temas pueden volver luego por la rotación normal)
+    assert sum(1 for it in items if it.get("evento") == "Playlist Prog") == 2

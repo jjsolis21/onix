@@ -168,3 +168,28 @@ def test_playlist_desde_reloj_y_lanzar(client, tmp_path):
     assert r.status_code == 200 and r.json()["encoladas"] == p["audios"]
     client.post("/api/v1/player/clear_queue")
     assert client.delete(f"/api/v1/playlists/{p['id']}").status_code == 204
+
+
+def test_playlist_manual_programada_y_segun_grilla(client, tmp_path):
+    a = subir(client, tmp_path, "MAN A", cat2="MANUAL", seconds=30)
+    b = subir(client, tmp_path, "MAN B", cat2="MANUAL", seconds=30)
+    r = client.post("/api/v1/playlists", json={"nombre": "Armada", "items": [a, b, a]})
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert [i["audio_id"] for i in p["items"]] == [a, b, a]
+    r = client.put(f"/api/v1/playlists/{p['id']}", json={"nombre": "Armada", "items": [b, a],
+                                                          "programada": "2030-02-01T20:30", "inmediato": True})
+    assert r.json()["programada"] == "2030-02-01T20:30" and r.json()["inmediato"] == 1
+    assert [i["audio_id"] for i in r.json()["items"]] == [b, a]
+    r = client.post("/api/v1/playlists/generar", json={"nombre": "Grilla", "reloj_id": None, "horas": 0.25,
+                                                       "inicio": "2030-02-01T10:00"})
+    assert r.status_code == 201, r.text and r.json()["audios"] > 0
+    assert client.post("/api/v1/playlists/generar", json={"nombre": "Sin hora", "reloj_id": None, "horas": 1,
+                                                          "programar": True}).status_code == 422
+
+
+def test_operador_puede_lanzar_playlists():
+    from backend.api.auth import permiso
+    assert permiso("operador", "POST", "/api/v1/playlists/3/lanzar")
+    assert not permiso("operador", "POST", "/api/v1/playlists")
+    assert permiso("programacion", "POST", "/api/v1/playlists/generar")
