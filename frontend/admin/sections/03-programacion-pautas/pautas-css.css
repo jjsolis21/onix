@@ -1377,3 +1377,48 @@
 .cm-previa-play--grande:not(:disabled):hover { color: #000; filter: brightness(1.1); }
 .cm-previa-tit { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .cm-onda { height: 46px; background: #000; border: 1px solid var(--p-border); border-radius: 5px; cursor: pointer; overflow: hidden; }
+
+/* ══════════════════════════════════════════════════════════
+   AJUSTE A LA PANTALLA: la sección ocupa justo el alto disponible.
+   Cabecera y contadores compactos; lista con su propio scroll;
+   el reproductor siempre visible abajo. (El panel del shell no hace
+   scroll, por eso antes se cortaba lo de abajo en pantallas chicas.)
+   ══════════════════════════════════════════════════════════ */
+.pautas-root {
+  height: 100%; min-height: 0; display: flex; flex-direction: column;
+  padding: 12px 16px; overflow: hidden;
+}
+.pautas-header { margin-bottom: 8px; flex: none; }
+.pautas-header__icon { font-size: 1.3rem; }
+.pautas-header h2 { font-size: 1.1rem; }
+.pautas-header p { display: none; }
+.pautas-stats { flex: none; gap: 8px !important; margin-bottom: 6px !important; }
+.pautas-stats .stat-card { padding: 6px 12px !important; display: flex; align-items: baseline; gap: 8px; min-height: 0; }
+.pautas-stats .stat-card__num { font-size: 1.2rem !important; }
+.pautas-stats .stat-card__lbl { font-size: .68rem !important; }
+.cunas-tabs { flex: none; margin: 2px 0 8px; }
+.cunas-tab { padding-top: 4px; padding-bottom: 6px; }
+
+.cm-body { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.cm-lado { overflow-y: auto; min-height: 0; gap: 7px; padding: 10px; }
+.cm-f { gap: 2px; }
+.cm-f select { padding: 5px 8px; }
+.cm-reiniciar { padding: 6px; margin-top: 0; }
+.cm-centro { min-height: 0; }
+.cm-centro .table-wrap { max-height: none; min-height: 0; flex: 1; overflow: auto; }
+.cm-previa { flex: none; }
+.cm-tabla td, .cm-tabla th { white-space: nowrap; }
+.cm-tabla .cm-spot { display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.cm-tabla td:nth-child(4), .cm-tabla td:nth-child(5) { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Pestaña Biblioteca de cuñas: también con su propio scroll */
+.cunas-panel:not([hidden]) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cunas-panel .table-wrap { flex: 1; min-height: 0; overflow: auto; }
+
+@media (max-width: 1100px) {
+  .cm-body { grid-template-columns: 190px minmax(0, 1fr); }
+}
+.cm-tabla .row-actions { gap: 3px; flex-wrap: nowrap; }
+.cm-tabla .btn-row { width: 26px; height: 26px; padding: 0; font-size: 12px; }
+.cm-tabla td, .cm-tabla th { padding-left: 6px !important; padding-right: 6px !important; }
+.pautas-stats .stat-card { flex-direction: row !important; align-items: center !important; }

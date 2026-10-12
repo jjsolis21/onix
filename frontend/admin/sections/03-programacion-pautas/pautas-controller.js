@@ -394,6 +394,9 @@
   const PRIORIDAD = { '1': '▲ Alta', '0': '● Normal', '-1': '▼ Baja' };
   const POSICION  = { 1: 'Primero', 2: 'Último' };
 
+  /** "2026-10-12" → "12/10/26" (cabe en pantallas chicas) */
+  const _fechaCorta = f => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : '—');
+
   /** ¿Sale hoy? Vigente y con alguna hora marcada para el día de hoy. */
   function _alAireHoy(p) {
     if (!_isActiva(p)) return false;
@@ -478,8 +481,8 @@
         <td><strong>${_esc(p.cliente)}</strong></td>
         <td>${_esc(p.agencia || '—')}</td>
         <td>${_esc(_truncate(rubro, 22))}</td>
-        <td class="cm-fecha">${_fmt(p.fecha_inicio)}</td>
-        <td class="cm-fecha">${p.fecha_fin ? _fmt(p.fecha_fin) : 'Nunca'}</td>
+        <td class="cm-fecha">${_fechaCorta(p.fecha_inicio)}</td>
+        <td class="cm-fecha">${p.fecha_fin ? _fechaCorta(p.fecha_fin) : 'Nunca'}</td>
         <td class="cm-num">${menciones}</td>
         <td class="cm-pri cm-pri--${p.prioridad > 0 ? 'alta' : p.prioridad < 0 ? 'baja' : 'normal'}">${PRIORIDAD[String(p.prioridad)] || PRIORIDAD['0']}</td>
         <td>${estado}</td>
