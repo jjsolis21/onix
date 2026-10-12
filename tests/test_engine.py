@@ -604,3 +604,28 @@ def test_salto_que_el_archivo_no_respeta_se_avisa(engine, media):
 def test_status_informa_la_version_del_motor(engine):
     from backend.version import VERSION
     assert engine.status["version"] == VERSION
+
+
+def test_evento_inmediato_entra_en_punto(engine, media):
+    for i in range(6):
+        add_audio(engine, media, f"TEMA {i}", seconds=600.0, artista=f"ART {i}", duracion=600)
+    esp = add_audio(engine, media, "ESPECIAL", tipo="Programa", seconds=60.0, duracion=60)
+    conn = db(engine)
+    rid = conn.execute("INSERT INTO relojes (nombre) VALUES ('Especial')").lastrowid
+    conn.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, audio_id) VALUES (?, 0, 'Programa', ?)",
+                 (rid, esp))
+    conn.execute("INSERT INTO reloj_eventos (nombre, reloj_id, hora, inmediato) VALUES ('En punto', ?, '10:20', 1)",
+                 (rid,))
+    conn.commit()
+    conn.close()
+    engine._actualizar_programa(forzar=True)
+    assert engine._advance()
+    vista = engine.programa()["items"]
+    ev = next(i for i in vista if i.get("evento"))
+    assert ev["hora"] == "10:20:00"
+    engine._now.dt = datetime(2026, 10, 12, 10, 20, 1)
+    engine._check_evento_inmediato()
+    assert engine._current_track["id"] == esp
+    assert "2026-10-12 10:20#1" in engine._eventos_emitidos
+    engine._check_evento_inmediato()                       # no vuelve a cortar
+    assert engine._current_track["id"] == esp

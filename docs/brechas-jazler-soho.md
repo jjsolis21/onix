@@ -13,7 +13,7 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 | **Grilla de relojes 24 × 7** (un reloj por hora y día) | ✅ |
 | **Auto SOHO**: carga en el Studio lo que sonará las próximas 2 horas, con hora exacta de cada ítem | ✅ |
 | **Compensación**: rellena con un reloj o categoría de respaldo para que la tanda caiga a su hora | ✅ |
-| **Force clocks**: un reloj que suena una sola vez en una fecha y hora | ❌ |
+| **Force clocks**: un reloj que suena una sola vez en una fecha y hora | ✅ eventos a hora fija (HH:MM, días, vigencia, en punto) |
 | **Final Log**: genera el día completo, se revisa, se edita y se emite tal cual | ❌ |
 | Separación de artista (minutos) | ✅ |
 | Separación de la misma canción al día siguiente en la misma franja | ✅ |
@@ -38,7 +38,7 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 
 | Jazler SoHo | ONIX hoy |
 |---|---|
-| Programas pregrabados / playlists a hora fija, repetidos (con inicio inmediato) | ❌ |
+| Programas pregrabados / playlists a hora fija, repetidos (con inicio inmediato) | ✅ con eventos a hora fija (reloj con el audio fijo) |
 | Archivo de "largo variable": se reemplaza el MP3 con el mismo nombre cada semana | ❌ |
 | **Hora locutada** (Stitcher): apertura + hora + minutos pregrabados + cierre | ❌ |
 | Avance de próximas canciones con sus hooks | ❌ |
@@ -55,7 +55,7 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 | Salidas: principal, monitor y **cartuchera por salida propia** | ✅ |
 | Modos: automático, manual, retransmisión, fuera de línea | 🟡 automático y manual |
 | Cartuchera (instant jingles) por paletas | ✅ (2 bancos) |
-| Atajos de teclado configurables | ❌ |
+| Atajos de teclado configurables | 🟡 fijos (no configurables) |
 | Segunda pantalla | 🟡 (una segunda ventana del navegador sirve) |
 | Iniciar con Windows y arrancar en automático | ❌ (va con el instalador) |
 | Normalización | ✅ |

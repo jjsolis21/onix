@@ -2,7 +2,10 @@
      ÓNIX FM — Sección 08 — Relojes (modo automático estilo Jazler SoHo)
      · Reloj  = patrón de la hora: filas en orden (categoría, jingle, audio fijo…).
      · Grilla = qué reloj rige cada hora de cada día. Se pinta arrastrando.
+     · Eventos a hora fija (Jazler "Force Clocks"): un reloj que suena UNA vez
+       a una hora exacta (HH:MM) en los días y fechas elegidos.
      API: /api/v1/relojes, /api/v1/relojes/grilla, /api/v1/relojes/{id}/vista,
+          /api/v1/relojes/eventos,
           /api/v1/config/biblioteca/schema, /api/v1/audios
      ============================================================ -->
 <link rel="stylesheet" href="css/secciones-operacion.css">
@@ -33,6 +36,15 @@
   .rj-grilla td.vacia { background: var(--choc-1); color: var(--text-lo); }
   .rj-grilla td.sel { outline: 2px solid var(--gold-2); outline-offset: -2px; }
   .rj-pincel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: .8rem; }
+  .rj-grilla td.ev { position: relative; }
+  .rj-grilla td.ev::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--red-live); box-shadow: 0 0 0 1px var(--choc-0); }
+  .rj-dias { display: flex; gap: 4px; flex-wrap: wrap; }
+  .rj-dias label { display: flex; align-items: center; gap: 3px; font-size: .75rem; padding: 4px 7px;
+    border: 1px solid var(--choc-4); border-radius: 4px; background: var(--choc-1); cursor: pointer; color: var(--text-hi); }
+  .rj-ev-tabla tr { cursor: pointer; }
+  .rj-ev-tabla tr.active td { background: var(--choc-3); }
+  .rj-ev-tabla tr.off td { opacity: .5; }
 </style>
 
 <div class="ox-root" id="rjRoot">
@@ -104,6 +116,51 @@
       <table class="rj-grilla" id="rjGrilla"></table>
     </div>
     <p class="ox-msg" id="rjMsgGrilla"></p>
+    <p class="ox-hint">El punto rojo en una hora indica que ese día hay un evento a hora fija.</p>
+  </section>
+
+  <!-- ── Eventos a hora fija ── -->
+  <section class="ox-card">
+    <h3>Eventos a hora fija</h3>
+    <p class="ox-hint">Para lo que debe sonar a una hora exacta (noticiero 13:05, programa grabado 20:30, himno…).
+      El evento toca <b>una vez</b> las filas de su reloj y después sigue el reloj de la grilla.
+      <b>En punto</b>: corta con fade lo que suene y entra a la hora exacta (solo en automático).
+      Sin marcar: entra al terminar la canción que suene; el sistema elige canciones que encajen para llegar a tiempo.
+      Para un audio concreto, crea un reloj con ese audio fijo.</p>
+    <div class="ox-table-wrap">
+      <table class="ox-table rj-ev-tabla">
+        <thead><tr><th>Hora</th><th>Evento</th><th>Reloj</th><th>Días</th><th>Vigencia</th><th>Entrada</th></tr></thead>
+        <tbody id="rjEventos"></tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:var(--s4)" id="rjEvTitulo">Nuevo evento</h3>
+    <div class="ox-row">
+      <div class="ox-field" style="flex:2 1 180px"><label for="rjEvNombre">Nombre</label>
+        <input class="ox-input" id="rjEvNombre" maxlength="80" placeholder="Ej.: Noticiero del mediodía"></div>
+      <div class="ox-field" style="flex:0 0 110px"><label for="rjEvHora">Hora exacta</label>
+        <input type="time" class="ox-input" id="rjEvHora" value="13:00"></div>
+      <div class="ox-field" style="flex:1 1 180px"><label for="rjEvReloj">Reloj que suena</label>
+        <select class="ox-select" id="rjEvReloj"></select></div>
+    </div>
+    <div class="ox-row" style="margin-top:var(--s2)">
+      <div class="ox-field" style="flex:2 1 300px"><label>Días</label>
+        <div class="rj-dias" id="rjEvDias"></div></div>
+      <div class="ox-field" style="flex:0 0 150px"><label for="rjEvDesde">Desde (opcional)</label>
+        <input type="date" class="ox-input" id="rjEvDesde"></div>
+      <div class="ox-field" style="flex:0 0 150px"><label for="rjEvHasta">Hasta (opcional)</label>
+        <input type="date" class="ox-input" id="rjEvHasta"></div>
+    </div>
+    <div class="ox-row" style="margin-top:var(--s2);gap:var(--s4)">
+      <label><input type="checkbox" id="rjEvInmediato"> ⚡ En punto (corta lo que suene)</label>
+      <label><input type="checkbox" id="rjEvActivo" checked> Activo</label>
+    </div>
+    <div class="ox-row" style="margin-top:var(--s3)">
+      <button class="ox-btn ox-btn--primary" id="rjEvGuardar">Guardar evento</button>
+      <button class="ox-btn" id="rjEvNuevo">Nuevo</button>
+      <button class="ox-btn ox-btn--danger" id="rjEvBorrar" disabled>Borrar</button>
+    </div>
+    <p class="ox-msg" id="rjMsgEv"></p>
   </section>
 </div>
 
@@ -122,21 +179,24 @@
   const FILTROS = [["cat1", "Género"], ["cat2", "Rotación"], ["cat3", "Subgénero"], ["voz", "Voz"], ["origen", "Origen"]];
 
   let relojes = [], grilla = [], valores = {}, audios = [], actual = null, filas = [];
+  let eventos = [], evActual = null;
 
   // ── Carga ────────────────────────────────────────────────
   async function cargar(seleccionar) {
-    const [rel, gr, schema, lib] = await Promise.all([
+    const [rel, gr, schema, lib, evs] = await Promise.all([
       fetch("/api/v1/relojes").then(r => r.json()),
       fetch("/api/v1/relojes/grilla").then(r => r.json()),
       fetch("/api/v1/config/biblioteca/schema").then(r => r.json()).catch(() => ({ categorias: [] })),
       fetch("/api/v1/audios?limit=5000").then(r => r.json()),
+      fetch("/api/v1/relojes/eventos").then(r => r.ok ? r.json() : []),
     ]);
-    relojes = rel; grilla = gr; audios = lib.data || [];
+    relojes = rel; grilla = gr; audios = lib.data || []; eventos = evs;
     valores = { origen: ["NACIONAL", "INTERNACIONAL"] };
     for (const c of schema.categorias || []) valores[c.nombre_interno] = (c.valores || []).map(v => v.valor);
     pintarLista();
     pintarPincel();
     pintarGrilla();
+    pintarEventos();
     const id = seleccionar ?? actual?.id;
     const r = relojes.find(x => x.id === id) ?? (actual ? null : relojes[0]);
     r ? abrir(r) : nuevo();
@@ -340,8 +400,11 @@
       html += `<tr><th>${DIAS[d]}</th>`;
       for (let h = 0; h < 24; h++) {
         const r = mapa[`${d}-${h}`];
-        html += r ? `<td data-d="${d}" data-h="${h}" style="background:${esc(r.color)}" title="${DIAS[d]} ${h}:00 · ${esc(r.nombre)}">${esc(r.nombre.slice(0, 2).toUpperCase())}</td>`
-                  : `<td class="vacia" data-d="${d}" data-h="${h}" title="${DIAS[d]} ${h}:00 · solo música">·</td>`;
+        const evs = eventos.filter(e => e.activo && e.dias.includes(d) && +e.hora.slice(0, 2) === h);
+        const ev = evs.length ? ` class="ev${r ? "" : " vacia"}"` : (r ? "" : ` class="vacia"`);
+        const evTxt = evs.map(e => ` · ⏰ ${e.hora} ${e.nombre}`).join("");
+        html += r ? `<td${ev} data-d="${d}" data-h="${h}" style="background:${esc(r.color)}" title="${DIAS[d]} ${h}:00 · ${esc(r.nombre)}${esc(evTxt)}">${esc(r.nombre.slice(0, 2).toUpperCase())}</td>`
+                  : `<td${ev} data-d="${d}" data-h="${h}" title="${DIAS[d]} ${h}:00 · solo música${esc(evTxt)}">·</td>`;
       }
       html += `</tr>`;
     }
@@ -386,6 +449,90 @@
     msg("rjMsgGrilla", `✓ ${celdas.length} hora(s) ${reloj_id ? "asignadas" : "liberadas"}. El programa se vuelve a planificar.`);
   });
 
+  // ── Eventos a hora fija ──────────────────────────────────
+  const diasTxt = ds => ds.length === 7 ? "Todos" : (ds.join() === "1,2,3,4,5" ? "Lun–Vie"
+    : [1, 2, 3, 4, 5, 6, 0].filter(d => ds.includes(d)).map(d => DIAS[d]).join(" "));
+  const fecha = f => f ? f.split("-").reverse().join("/") : "";
+
+  function pintarEventos() {
+    $("rjEventos").innerHTML = eventos.length ? eventos.map(e => `
+      <tr data-id="${e.id}" class="${evActual?.id === e.id ? "active" : ""} ${e.activo ? "" : "off"}">
+        <td class="ox-mono"><b>${esc(e.hora)}</b></td><td>${esc(e.nombre)}</td>
+        <td><span class="rj-dot" style="display:inline-block;background:${esc(e.color)}"></span> ${esc(e.reloj)}</td>
+        <td>${diasTxt(e.dias)}</td>
+        <td class="ox-mono">${e.fecha_inicio || e.fecha_fin ? `${fecha(e.fecha_inicio) || "…"} → ${fecha(e.fecha_fin) || "…"}` : "Siempre"}</td>
+        <td>${e.inmediato ? "⚡ En punto" : "Al terminar la canción"}${e.activo ? "" : " · inactivo"}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="ox-empty">Sin eventos. Ejemplo: "Noticiero" a las 13:05, de lunes a viernes.</td></tr>`;
+    const sel = $("rjEvReloj"), prev = sel.value;
+    sel.innerHTML = relojes.length ? relojes.map(r => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("")
+      : `<option value="">Primero crea un reloj</option>`;
+    if (relojes.some(r => String(r.id) === prev)) sel.value = prev;
+  }
+
+  function pintarDias(ds) {
+    $("rjEvDias").innerHTML = [1, 2, 3, 4, 5, 6, 0].map(d =>
+      `<label><input type="checkbox" value="${d}" ${ds.includes(d) ? "checked" : ""}> ${DIAS[d]}</label>`).join("");
+  }
+
+  function evNuevo() {
+    evActual = null;
+    $("rjEvTitulo").textContent = "Nuevo evento";
+    $("rjEvNombre").value = ""; $("rjEvHora").value = "13:00";
+    $("rjEvDesde").value = ""; $("rjEvHasta").value = "";
+    $("rjEvInmediato").checked = false; $("rjEvActivo").checked = true;
+    $("rjEvBorrar").disabled = true;
+    pintarDias([0, 1, 2, 3, 4, 5, 6]); pintarEventos();
+  }
+
+  function evAbrir(e) {
+    evActual = e;
+    $("rjEvTitulo").textContent = `Evento: ${e.nombre}`;
+    $("rjEvNombre").value = e.nombre; $("rjEvHora").value = e.hora; $("rjEvReloj").value = e.reloj_id;
+    $("rjEvDesde").value = e.fecha_inicio; $("rjEvHasta").value = e.fecha_fin;
+    $("rjEvInmediato").checked = e.inmediato; $("rjEvActivo").checked = e.activo;
+    $("rjEvBorrar").disabled = false;
+    pintarDias(e.dias); pintarEventos();
+    $("rjEvReloj").value = e.reloj_id;
+  }
+
+  async function recargarEventos(msgTxt) {
+    eventos = await fetch("/api/v1/relojes/eventos").then(r => r.json());
+    pintarEventos(); pintarGrilla();
+    if (msgTxt) msg("rjMsgEv", msgTxt);
+  }
+
+  $("rjEventos").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-id]");
+    if (tr) evAbrir(eventos.find(x => x.id === +tr.dataset.id));
+  });
+  $("rjEvNuevo").addEventListener("click", evNuevo);
+  $("rjEvGuardar").addEventListener("click", async () => {
+    const body = {
+      nombre: $("rjEvNombre").value.trim(), reloj_id: +$("rjEvReloj").value, hora: $("rjEvHora").value,
+      dias: [...document.querySelectorAll("#rjEvDias input:checked")].map(i => +i.value),
+      fecha_inicio: $("rjEvDesde").value, fecha_fin: $("rjEvHasta").value,
+      inmediato: $("rjEvInmediato").checked, activo: $("rjEvActivo").checked,
+    };
+    if (!body.nombre) { msg("rjMsgEv", "Ponle un nombre al evento", false); return; }
+    if (!body.reloj_id) { msg("rjMsgEv", "Elige el reloj que suena (créalo arriba si no existe)", false); return; }
+    if (!body.hora) { msg("rjMsgEv", "Escribe la hora exacta", false); return; }
+    if (!body.dias.length) { msg("rjMsgEv", "Elige al menos un día", false); return; }
+    const r = await fetch(evActual ? `/api/v1/relojes/eventos/${evActual.id}` : "/api/v1/relojes/eventos", {
+      method: evActual ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { msg("rjMsgEv", await errTxt(r), false); return; }
+    evActual = await r.json();
+    await recargarEventos(`✓ Guardado: ${evActual.nombre} a las ${evActual.hora}. El programa se vuelve a planificar.`);
+    evAbrir(eventos.find(x => x.id === evActual.id));
+  });
+  $("rjEvBorrar").addEventListener("click", async () => {
+    if (!evActual || !confirm(`¿Borrar el evento "${evActual.nombre}" de las ${evActual.hora}?`)) return;
+    await fetch(`/api/v1/relojes/eventos/${evActual.id}`, { method: "DELETE" });
+    evNuevo();
+    await recargarEventos("Evento borrado");
+  });
+
+  pintarDias([0, 1, 2, 3, 4, 5, 6]);
   cargar().catch(err => msg("rjMsg", `No se pudo cargar: ${err.message}`, false));
 })();
 </script>

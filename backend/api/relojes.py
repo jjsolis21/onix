@@ -10,6 +10,10 @@ API de relojes, grilla semanal y programa (modo automático estilo Jazler SoHo).
     GET    /api/v1/relojes/{id}/vista      → cuántos audios cumple cada fila y duración media
     GET    /api/v1/relojes/grilla          → [{dia, hora, reloj_id}]
     PUT    /api/v1/relojes/grilla          → asignar un reloj (o ninguno) a varias celdas
+    GET    /api/v1/relojes/eventos         → eventos a hora fija (Jazler "Force Clocks")
+    POST   /api/v1/relojes/eventos         → crear: reloj + HH:MM + días + fechas
+    PUT    /api/v1/relojes/eventos/{id}
+    DELETE /api/v1/relojes/eventos/{id}
 
     GET    /api/v1/programa                → lo que sonará (cola + plan) con hora estimada
     POST   /api/v1/programa/{uid}/quitar
@@ -87,6 +91,25 @@ class RelojIn(BaseModel):
     filas:        list[FilaIn] = Field(default_factory=list)
 
 
+class EventoIn(BaseModel):
+    nombre:       str = Field(..., min_length=1, max_length=80)
+    reloj_id:     int
+    hora:         str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$")    # HH:MM
+    dias:         list[int] = Field(default_factory=lambda: list(range(7)))  # 0=Dom … 6=Sáb
+    fecha_inicio: str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    fecha_fin:    str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    inmediato:    bool = False
+    activo:       bool = True
+
+    @field_validator("dias")
+    @classmethod
+    def _dias(cls, v):
+        dias = sorted({int(d) for d in v})
+        if not dias or any(d < 0 or d > 6 for d in dias):
+            raise ValueError("Elige al menos un día (0=Dom … 6=Sáb)")
+        return dias
+
+
 class GrillaIn(BaseModel):
     celdas:   list[dict]              # [{"dia": 0-6, "hora": 0-23}]
     reloj_id: Optional[int] = None    # None = quitar el reloj de esas horas
@@ -143,6 +166,65 @@ def asignar_grilla(body: GrillaIn, conn: sqlite3.Connection = Depends(get_db)):
     conn.commit()
     _replanificar()
     return grilla(conn)
+
+
+# ── Eventos a hora fija ──────────────────────────────────────────────────────
+# También antes de /relojes/{reloj_id}.
+
+def _evento_out(r) -> dict:
+    return {"id": r["id"], "nombre": r["nombre"], "reloj_id": r["reloj_id"], "reloj": r["reloj"],
+            "color": r["color"], "hora": r["hora"],
+            "dias": [int(d) for d in str(r["dias"] or "").split(",") if d.strip().isdigit()],
+            "fecha_inicio": r["fecha_inicio"], "fecha_fin": r["fecha_fin"],
+            "inmediato": bool(r["inmediato"]), "activo": bool(r["activo"])}
+
+
+_SQL_EVENTOS = ("SELECT e.*, r.nombre AS reloj, r.color FROM reloj_eventos e"
+                " JOIN relojes r ON r.id = e.reloj_id")
+
+
+def _validar_evento(conn, body: EventoIn):
+    if not conn.execute("SELECT 1 FROM relojes WHERE id = ?", (body.reloj_id,)).fetchone():
+        raise HTTPException(status_code=404, detail="Reloj no encontrado")
+    if body.fecha_inicio and body.fecha_fin and body.fecha_fin < body.fecha_inicio:
+        raise HTTPException(status_code=422, detail="La fecha final es anterior a la inicial")
+    return (body.nombre.strip(), body.reloj_id, body.hora, ",".join(map(str, body.dias)),
+            body.fecha_inicio, body.fecha_fin, int(body.inmediato), int(body.activo))
+
+
+@router.get("/api/v1/relojes/eventos", summary="Eventos a hora fija")
+def eventos(conn: sqlite3.Connection = Depends(get_db)):
+    return [_evento_out(r) for r in conn.execute(_SQL_EVENTOS + " ORDER BY e.hora, e.nombre")]
+
+
+@router.post("/api/v1/relojes/eventos", status_code=201, summary="Crear evento a hora fija")
+def crear_evento(body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
+    eid = conn.execute(
+        "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)", _validar_evento(conn, body)).lastrowid
+    conn.commit()
+    _replanificar()
+    return _evento_out(conn.execute(_SQL_EVENTOS + " WHERE e.id = ?", (eid,)).fetchone())
+
+
+@router.put("/api/v1/relojes/eventos/{evento_id}", summary="Guardar evento a hora fija")
+def guardar_evento(evento_id: int, body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
+    valores = _validar_evento(conn, body)
+    if not conn.execute(
+            "UPDATE reloj_eventos SET nombre = ?, reloj_id = ?, hora = ?, dias = ?, fecha_inicio = ?,"
+            " fecha_fin = ?, inmediato = ?, activo = ? WHERE id = ?", (*valores, evento_id)).rowcount:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+    conn.commit()
+    _replanificar()
+    return _evento_out(conn.execute(_SQL_EVENTOS + " WHERE e.id = ?", (evento_id,)).fetchone())
+
+
+@router.delete("/api/v1/relojes/eventos/{evento_id}", status_code=204, summary="Borrar evento")
+def borrar_evento(evento_id: int, conn: sqlite3.Connection = Depends(get_db)):
+    if not conn.execute("DELETE FROM reloj_eventos WHERE id = ?", (evento_id,)).rowcount:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+    conn.commit()
+    _replanificar()
 
 
 @router.get("/api/v1/relojes", summary="Relojes con sus filas")

@@ -489,6 +489,29 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE historial_emision ADD COLUMN tanda INTEGER DEFAULT NULL")
     logger.info("  → tanda_secciones, pautas.seccion e historial_emision.tanda: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 16 — Eventos a hora fija (Jazler "Force Clocks")
+    #   Un reloj que suena UNA vez a una hora exacta (HH:MM) en los días
+    #   elegidos, entre dos fechas. Sus filas se ponen una sola vez y luego
+    #   sigue el reloj de la grilla. Ver backend/audio/planner.py
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reloj_eventos (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre       TEXT    NOT NULL,
+            reloj_id     INTEGER NOT NULL REFERENCES relojes(id) ON DELETE CASCADE,
+            hora         TEXT    NOT NULL,              -- 'HH:MM'
+            dias         TEXT    NOT NULL DEFAULT '0,1,2,3,4,5,6',  -- 0=Dom … 6=Sáb
+            fecha_inicio TEXT    NOT NULL DEFAULT '',   -- 'YYYY-MM-DD' ('' = desde siempre)
+            fecha_fin    TEXT    NOT NULL DEFAULT '',   -- 'YYYY-MM-DD' ('' = sin fin)
+            -- 1 = corta lo que suene y entra en punto (como la tanda inmediata)
+            inmediato    INTEGER NOT NULL DEFAULT 0,
+            activo       INTEGER NOT NULL DEFAULT 1,
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    logger.info("  → reloj_eventos: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -236,3 +236,60 @@ def test_estimacion_de_tanda_incluye_id_y_cortinas(base):
     t45 = next(t for t in tandas if t["minuto"] == 45)
     assert (t15["cunas"], t15["duracion"]) == (3, 42)       # comercial + ID + apertura
     assert (t45["cunas"], t45["duracion"]) == (1, 5)        # sin comercial: solo el ID
+
+
+# ── Eventos a hora fija (Jazler "Force Clocks") ─────────────────────────────
+
+def evento(path, nombre, reloj_id, hora, dias="0,1,2,3,4,5,6", inmediato=0, **cols):
+    conn = db(path)
+    campos = {"nombre": nombre, "reloj_id": reloj_id, "hora": hora, "dias": dias,
+              "inmediato": inmediato, **cols}
+    conn.execute(f"INSERT INTO reloj_eventos ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))})",
+                 list(campos.values()))
+    conn.commit()
+    conn.close()
+
+
+def _con_programa_especial(base):
+    for i in range(20):
+        audio(base, f"TEMA {i}", artista=f"A{i}", dur=200)
+    ap = audio(base, "APERTURA ESPECIAL", tipo="Efecto", dur=10)
+    prog = audio(base, "PROGRAMA GRABADO", tipo="Programa", dur=600)
+    return reloj(base, "Especial", [{"tipo": "Efecto", "audio_id": ap},
+                                    {"tipo": "Programa", "audio_id": prog}], horas=())
+
+
+def test_evento_suena_una_vez_a_su_hora_y_vuelve_la_grilla(base):
+    rid = _con_programa_especial(base)
+    evento(base, "Programa del lunes", rid, "10:20")
+    items = planear(base, minutos=60, tandas=())
+    titulos = [i["titulo"] for i in items]
+    assert titulos.count("APERTURA ESPECIAL") == 1 and titulos.count("PROGRAMA GRABADO") == 1
+    k = titulos.index("APERTURA ESPECIAL")
+    assert items[k + 1]["titulo"] == "PROGRAMA GRABADO" and items[k]["evento"] == "Programa del lunes"
+    # No inmediato: entra al terminar la canción, cerca de su hora (compensación)
+    ini = datetime.fromisoformat(items[k]["inicio"])
+    assert abs((ini - datetime(2026, 10, 12, 10, 20)).total_seconds()) <= 90
+    assert items[k + 2]["tipo_audio"] == "Musica"            # luego, la grilla
+
+
+def test_evento_inmediato_corta_la_cancion(base):
+    rid = _con_programa_especial(base)
+    evento(base, "En punto", rid, "10:21", inmediato=1)     # 6 × 200 s = 10:20 → la 7.ª se corta
+    items = planear(base, minutos=60, tandas=())
+    k = next(i for i, it in enumerate(items) if it.get("evento"))
+    assert items[k]["inicio"] == "2026-10-12T10:21:00" and items[k]["inmediato"] is True
+    assert items[k - 1]["cortada"] is True
+
+
+def test_evento_respeta_dias_fechas_y_lo_ya_emitido(base):
+    rid = _con_programa_especial(base)
+    evento(base, "Solo martes", rid, "10:20", dias="2")
+    evento(base, "Vencido", rid, "10:30", fecha_fin="2026-10-01")
+    evento(base, "Futuro", rid, "10:40", fecha_inicio="2026-11-01")
+    assert not [i for i in planear(base, tandas=()) if i.get("evento")]
+    evento(base, "Hoy", rid, "10:20")
+    from datetime import timedelta
+    ya = Planner(base).extender([], LUNES_10, LUNES_10 + timedelta(hours=1), [], [],
+                                eventos_emitidos={"2026-10-12 10:20#4"})
+    assert not [i for i in ya if i.get("evento")]

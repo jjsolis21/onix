@@ -372,9 +372,13 @@ const Decks = (() => {
     }
     let reloj;
     items.forEach((it, i) => {
-      if (it.tipo === "audio" && it.reloj !== reloj && !it.operador) {
-        reloj = it.reloj;
-        html += `<div class="deck-sep"><i style="background:${esc(it.color || "var(--txt-lo)")}"></i>${it.reloj ? esc(it.reloj) : "Solo música (sin reloj)"}</div>`;
+      // Separador al cambiar de reloj o al empezar/terminar un evento a hora fija
+      const grupo = it.evento_key || it.reloj;
+      if (it.tipo === "audio" && grupo !== reloj && !it.operador) {
+        reloj = grupo;
+        html += it.evento
+          ? `<div class="deck-sep evento"><i style="background:${esc(it.color || "var(--txt-lo)")}"></i>⏰ ${esc((it.evento_hora || "").slice(11, 16))} · ${esc(it.evento)}${it.inmediato ? " · ⚡ EN PUNTO" : ""}</div>`
+          : `<div class="deck-sep"><i style="background:${esc(it.color || "var(--txt-lo)")}"></i>${it.reloj ? esc(it.reloj) : "Solo música (sin reloj)"}</div>`;
       }
       if (it.tipo === "tanda") {
         const marcas = (it.inmediata ? " ⚡ EN PUNTO" : "") + (it.excede ? " ⚠ LARGA" : "");
@@ -387,7 +391,7 @@ const Decks = (() => {
       }
       const marcas = [it.compensacion ? "⚖" : "", it.cortada ? "✂" : "", it.operador ? "✋" : ""].join(" ").trim();
       html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="${esc(it.tipo_audio)}"
-          title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
+          title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda o el evento salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
         <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(it.titulo)}</div>
           <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div></div>
@@ -840,6 +844,7 @@ WS.on("tanda_scheduled", d => {
   Estado.poll(); programaPronto();
   if (d.requiere_operador) toast(`📢 Tanda :${String(d.minuto).padStart(2, "0")} lista. Lánzala cuando quieras.`, "aviso", 8000);
 });
+WS.on("evento_inmediato", d => toast(`⏰ ${d.hora} · ${d.evento ?? "Evento"} entra en punto: se cortó la canción`, "aviso", 5000));
 WS.on("tanda_inmediata", d => toast(`⚡ Tanda :${String(d.minuto).padStart(2, "0")} en punto: se cortó la canción`, "aviso", 5000));
 WS.on("tanda_excedida", d => toast(`⚠ La tanda :${String(d.minuto).padStart(2, "0")} dura ${fmt(d.duracion)} (máximo ${fmt(d.maximo)})`, "aviso", 8000));
 WS.on("watchdog_stall", () => toast("⚠ El motor se trabó y se está recuperando", "error", 8000));

@@ -13,6 +13,12 @@ QUÉ HACE
       grilla = qué reloj rige cada hora de cada día (7 × 24). Una hora sin
                reloj usa el "reloj implícito": solo música, sin filtros.
 
+    EVENTOS a hora fija (Jazler "Force Clocks"): un reloj que suena UNA vez
+    a una hora exacta (HH:MM) en los días elegidos. Sus filas se ponen en
+    orden y después sigue el reloj de la grilla donde iba. Si es "inmediato"
+    corta la canción anterior y entra en punto; si no, entra al terminar la
+    canción que suene (con compensación, igual que una tanda).
+
     Las TANDAS (tandas_minutos) se insertan como marcadores con su duración
     estimada. COMPENSACIÓN: si la canción elegida haría llegar la tanda
     tarde (más que tolerancia_tanda_seg), se busca otra cuya duración encaje
@@ -112,6 +118,11 @@ class Planner:
                 })
         self.grilla = {(g["dia"], g["hora"]): g["reloj_id"]
                        for g in conn.execute("SELECT dia, hora, reloj_id FROM reloj_grilla")}
+        try:
+            self.eventos = [dict(e) for e in conn.execute(
+                "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
+        except sqlite3.OperationalError:       # BD sin la migración 16
+            self.eventos = []
 
     def _icfg(self, clave: str, defecto: float) -> float:
         try:
@@ -128,24 +139,26 @@ class Planner:
     def extender(self, plan: list[dict], desde: datetime, hasta: datetime,
                  historial: list[dict], tandas_minutos: list[int],
                  excluir: set = frozenset(), tandas_emitidas: set = frozenset(),
-                 ultimo: Optional[dict] = None) -> list[dict]:
+                 ultimo: Optional[dict] = None,
+                 eventos_emitidos: set = frozenset()) -> list[dict]:
         """
         Devuelve los ítems nuevos que cubren [desde, hasta). `plan` es lo ya
         planificado (cuenta para las reglas), `historial` lo que ya sonó:
         [{"audio_id", "artista", "genero_vocal", "ts"}]. `ultimo` es lo que suena
         ahora si el plan está vacío ({"inicio", "reloj_id", "fila"}): sirve para
         seguir el reloj desde la fila siguiente en vez de reiniciarlo.
+        `eventos_emitidos` son las claves (evento_key) de eventos ya al aire.
         """
         conn = self._conn()
         try:
             self._cargar(conn)
             return self._extender(conn, plan, desde, hasta, historial, tandas_minutos,
-                                  excluir, set(tandas_emitidas), ultimo)
+                                  excluir, set(tandas_emitidas), ultimo, set(eventos_emitidos))
         finally:
             conn.close()
 
     def _extender(self, conn, plan, desde, hasta, historial, tandas_minutos, excluir,
-                  tandas_emitidas, ultimo=None):
+                  tandas_emitidas, ultimo=None, eventos_emitidos=frozenset()):
         crossfade = self._icfg("crossfade_seg", 4)
         tol = self._icfg("tolerancia_tanda_seg", 90)
         from backend.audio.audio_engine import parse_minutos
@@ -162,6 +175,7 @@ class Planner:
         ]
         en_plan = {p.get("audio_id") for p in plan if p["tipo"] == "audio"}
         tandas_hechas = {(p["slot"], p["minuto"]) for p in plan if p["tipo"] == "tanda"} | tandas_emitidas
+        eventos_hechos = {p["evento_key"] for p in plan if p.get("evento_key")} | set(eventos_emitidos)
 
         t = desde
         hora_actual, fila_idx, vueltas_vacias = None, 0, 0
@@ -189,6 +203,21 @@ class Planner:
                     t += timedelta(seconds=tanda["duracion"])
                 continue
 
+            # ── Evento a hora fija ─────────────────────────────────────────
+            evento = self._proximo_evento(t, desde, eventos_hechos)
+            if evento and (evento["hora"] <= t or (not evento["inmediato"]
+                                                   and evento["hora"] <= t + timedelta(seconds=tol))):
+                eventos_hechos.add(evento["key"])
+                t = self._poner_evento(conn, evento, t, nuevos, previos, en_plan, excluir, crossfade)
+                continue
+
+            # Próximo hito a hora fija (tanda o evento): a él apuntan la
+            # compensación y el corte de la canción si es inmediato
+            hitos = [(tanda["hora"], inmediata)] if tanda else []
+            if evento:
+                hitos.append((evento["hora"], evento["inmediato"]))
+            hito_hora, hito_inm = min(hitos, key=lambda h: h[0]) if hitos else (None, False)
+
             # ── Reloj de la hora (cada hora empieza en su primera fila) ────
             if (t.date(), t.hour) != hora_actual:
                 hora_actual, fila_idx = (t.date(), t.hour), 0
@@ -200,8 +229,8 @@ class Planner:
 
             audio = self._elegir(conn, fila, t, previos, en_plan, excluir)
             compensado = False
-            if audio and tanda and fila["tipo_audio"] == "Musica":
-                restante = (tanda["hora"] - t).total_seconds()
+            if audio and hito_hora and fila["tipo_audio"] == "Musica":
+                restante = (hito_hora - t).total_seconds()
                 dur = duracion_efectiva(audio, crossfade)
                 if dur > restante + tol:
                     alt = self._compensar(conn, reloj, restante, tol, crossfade, t,
@@ -228,9 +257,9 @@ class Planner:
                 break
             dur = duracion_efectiva(audio, crossfade)
             cortada = False
-            if inmediata and t + timedelta(seconds=dur) > tanda["hora"]:
-                # Tanda con inicio inmediato: esta canción se corta en su minuto
-                dur, cortada = max((tanda["hora"] - t).total_seconds(), 1.0), True
+            if hito_inm and t + timedelta(seconds=dur) > hito_hora:
+                # Tanda o evento con inicio inmediato: esta canción se corta en su minuto
+                dur, cortada = max((hito_hora - t).total_seconds(), 1.0), True
             nuevos.append(_item(
                 "audio", t, dur, audio_id=audio["id"], titulo=audio["titulo"],
                 artista=audio["artista"], tipo_audio=audio["tipo_audio"],
@@ -248,6 +277,66 @@ class Planner:
                             "tipo_audio": audio["tipo_audio"], "ts": t.isoformat()})
             t += timedelta(seconds=dur)
         return nuevos
+
+    # ── Eventos a hora fija ─────────────────────────────────────────────────
+
+    ATRASO_EVENTO = timedelta(minutes=15)    # un evento atrasado aún se pone
+
+    def _proximo_evento(self, t: datetime, desde: datetime, hechos: set) -> Optional[dict]:
+        """El evento más próximo (hoy o mañana) que aún no se planificó ni sonó."""
+        mejor = None
+        for d in (t.date(), t.date() + timedelta(days=1)):
+            dia, fecha = (d.weekday() + 1) % 7, d.isoformat()
+            for e in self.eventos:
+                if str(dia) not in str(e["dias"] or "").split(","):
+                    continue
+                if (e["fecha_inicio"] and fecha < e["fecha_inicio"]) or (e["fecha_fin"] and fecha > e["fecha_fin"]):
+                    continue
+                reloj = self.relojes.get(e["reloj_id"])
+                if not reloj or not reloj["filas"]:
+                    continue
+                try:
+                    hh, mm = (int(x) for x in str(e["hora"]).split(":")[:2])
+                except ValueError:
+                    continue
+                hora = datetime.combine(d, datetime.min.time()).replace(hour=hh, minute=mm)
+                key = f"{fecha} {hh:02d}:{mm:02d}#{e['id']}"
+                if key in hechos or hora < desde - self.ATRASO_EVENTO:
+                    continue
+                if mejor is None or hora < mejor["hora"]:
+                    mejor = {"hora": hora, "key": key, "id": e["id"], "nombre": e["nombre"],
+                             "inmediato": bool(e["inmediato"]), "reloj": reloj}
+        return mejor
+
+    def _poner_evento(self, conn, ev, t, nuevos, previos, en_plan, excluir, crossfade) -> datetime:
+        """Pone las filas del reloj del evento una sola vez, en orden."""
+        reloj, primero = ev["reloj"], True
+        for i, fila in enumerate(reloj["filas"]):
+            audio = self._elegir(conn, fila, t, previos, en_plan, excluir)
+            if not audio:
+                continue
+            dur = duracion_efectiva(audio, crossfade)
+            nuevos.append(_item(
+                "audio", t, dur, audio_id=audio["id"], titulo=audio["titulo"],
+                artista=audio["artista"], tipo_audio=audio["tipo_audio"],
+                genero_vocal=audio.get("genero_vocal"), duracion_total=audio.get("duracion") or 0,
+                reloj_id=reloj["id"], reloj=reloj["nombre"], color=reloj["color"],
+                fila=None, compensacion=False, cortada=False,
+                evento=ev["nombre"], evento_key=ev["key"],
+                # Solo el primero lleva la hora fija (el motor corta en punto si es inmediato)
+                evento_hora=ev["hora"].isoformat(timespec="seconds") if primero else None,
+                inmediato=ev["inmediato"] if primero else False,
+            ))
+            primero = False
+            if audio["tipo_audio"] == "Musica":
+                en_plan.add(audio["id"])
+            previos.append({"audio_id": audio["id"], "artista": audio["artista"],
+                            "genero_vocal": audio.get("genero_vocal"),
+                            "tipo_audio": audio["tipo_audio"], "ts": t.isoformat()})
+            t += timedelta(seconds=dur)
+        if primero:
+            log.warning("[Planner] Evento '%s': su reloj no tiene audios disponibles", ev["nombre"])
+        return t
 
     # ── Tandas ──────────────────────────────────────────────────────────────
 

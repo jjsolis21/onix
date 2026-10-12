@@ -895,6 +895,7 @@ class AudioEngine:
         self._tandas_lanzadas: set[int] = set()
         self._tandas_inmediatas: list[int] = []      # minutos cuya tanda corta la cancion
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
+        self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
         self._tanda_max_seg    = 240
         self._pautas_fallidas: set[tuple[str, int]] = set()   # (slot, pauta_id)
         self._respaldo_recent: deque = deque(maxlen=20)
@@ -986,6 +987,7 @@ class AudioEngine:
                 self._restore_ducking()
                 self._check_pautas()
                 self._check_tanda_inmediata()
+                self._check_evento_inmediato()
                 self._actualizar_programa()
                 self._tick()
                 self._process_deferred_moves()
@@ -1243,6 +1245,11 @@ class AudioEngine:
                 # segundos para su minuto (compensacion del planificador).
                 self._check_pautas(forzar=(it["slot"], it["minuto"]))
                 continue
+            if it.get("evento_key"):
+                hoy = self._now().date()
+                self._eventos_emitidos = {k for k in self._eventos_emitidos
+                                          if k[:10] >= (hoy - timedelta(days=1)).isoformat()}
+                self._eventos_emitidos.add(it["evento_key"])
             track = self._fetch_track(it["audio_id"])
             if track and it["audio_id"] not in self._failed_ids:
                 return {"track": track, "origen": "auto", "reloj": it.get("reloj"),
@@ -1308,6 +1315,7 @@ class AudioEngine:
                 excluir={i for i in self._failed_ids if isinstance(i, int)},
                 tandas_emitidas=lanzadas,
                 ultimo=self._ultimo_del_reloj(),
+                eventos_emitidos=set(self._eventos_emitidos),
             )
         except Exception as exc:
             log.error("[Engine] Planificador: %s", exc, exc_info=True)
@@ -1398,6 +1406,14 @@ class AudioEngine:
         with self._programa_lock:
             items = [dict(i) for i in self._programa]
         for it in items:
+            if it.get("inmediato") and it.get("evento_hora"):
+                # Evento inmediato: entra en punto, corte lo que corte
+                try:
+                    fija = datetime.fromisoformat(it["evento_hora"])
+                    if fija > t - timedelta(minutes=10):
+                        t = fija
+                except ValueError:
+                    pass
             if it["tipo"] == "tanda" and it.get("inmediata"):
                 # Sale en punto (corta lo que suene): su hora no es estimada
                 try:
@@ -1929,6 +1945,35 @@ class AudioEngine:
             log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", now.minute)
             self.bus.emit("tanda_inmediata", {"minuto": now.minute})
             self._advance()
+
+    def _check_evento_inmediato(self):
+        """
+        Evento a hora fija con inicio inmediato (Jazler Force Clock): en
+        automático, al llegar su hora se descarta lo que el plan tenía antes
+        y lo que suena sale con fade. Si el evento se atrasó más de 15 min
+        (p. ej. el sistema estuvo en manual) ya no corta nada.
+        """
+        if self._mode != "automatico":
+            return
+        now = self._now()
+        with self._programa_lock:
+            items = list(self._programa)
+            idx = next((i for i, it in enumerate(items)
+                        if it.get("inmediato") and it.get("evento_hora")
+                        and datetime.fromisoformat(it["evento_hora"]) <= now), None)
+            if idx is None:
+                return
+            ev = items[idx]
+            if datetime.fromisoformat(ev["evento_hora"]) < now - timedelta(minutes=15):
+                items[idx] = {**ev, "inmediato": False}
+                self._programa = deque(items)
+                return
+            # Ya no es "inmediato": si la cola del operador entra antes, no se vuelve a cortar
+            self._programa = deque([{**ev, "inmediato": False}] + items[idx + 1:])
+        log.info("[Engine] Evento '%s' a las %s: entra en punto", ev.get("evento"), ev["evento_hora"][11:16])
+        self.bus.emit("evento_inmediato", {"evento": ev.get("evento"), "hora": ev["evento_hora"][11:16]})
+        self._emit_programa()
+        self._advance()
 
     def _plan_hour(self, slot: str, minuto_actual: int, pautas: list[dict]):
         """Reparte las pautas de la hora en tandas (una vez por hora)."""

@@ -87,3 +87,20 @@ def test_config_planificador_y_salida_cartuchera(client):
     assert client.put("/api/v1/audio/salidas", json={"cartuchera": 2}).json()["salidas"]["cartuchera"] == 2
     client.put("/api/v1/audio/salidas", json={"cartuchera": -2})
     client.put("/api/v1/config/motor", json={"horas_planificadas": 2, "aleatoriedad": 3})
+
+
+def test_eventos_a_hora_fija_crud(client):
+    rid = client.post("/api/v1/relojes", json={"nombre": "Para evento", "filas": [{"tipo_audio": "Musica"}]}).json()["id"]
+    r = client.post("/api/v1/relojes/eventos", json={"nombre": "Noticias", "reloj_id": rid, "hora": "13:05",
+                                                     "dias": [1, 2, 3, 4, 5], "inmediato": True})
+    assert r.status_code == 201, r.text
+    ev = r.json()
+    assert ev["hora"] == "13:05" and ev["dias"] == [1, 2, 3, 4, 5] and ev["reloj"] == "Para evento"
+    assert client.post("/api/v1/relojes/eventos", json={"nombre": "X", "reloj_id": rid, "hora": "25:00"}).status_code == 422
+    assert client.post("/api/v1/relojes/eventos", json={"nombre": "X", "reloj_id": rid, "hora": "10:00",
+                                                        "dias": []}).status_code == 422
+    r = client.put(f"/api/v1/relojes/eventos/{ev['id']}", json={**ev, "hora": "13:10", "fecha_fin": "2026-12-31"})
+    assert r.json()["hora"] == "13:10"
+    assert any(e["id"] == ev["id"] for e in client.get("/api/v1/relojes/eventos").json())
+    assert client.delete(f"/api/v1/relojes/eventos/{ev['id']}").status_code == 204
+    assert client.delete(f"/api/v1/relojes/eventos/{ev['id']}").status_code == 404
