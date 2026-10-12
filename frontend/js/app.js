@@ -962,10 +962,6 @@ const MotorConfig = (() => {
     }
   }
 
-  // "Forzar nacional" necesita un campo Origen que la biblioteca aún no tiene
-  const nacional = $s("#cfgForzarNacional");
-  if (nacional) { nacional.disabled = true; nacional.title = "Pendiente: la biblioteca no tiene campo Origen"; }
-
   $s("#btnSaveConfig")?.addEventListener("click", async (e) => {
     e.preventDefault();
     const body = {};
