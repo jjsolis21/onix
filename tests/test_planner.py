@@ -293,3 +293,12 @@ def test_evento_respeta_dias_fechas_y_lo_ya_emitido(base):
     ya = Planner(base).extender([], LUNES_10, LUNES_10 + timedelta(hours=1), [], [],
                                 eventos_emitidos={"2026-10-12 10:20#4"})
     assert not [i for i in ya if i.get("evento")]
+
+
+def test_musica_sin_aprobar_no_sale_al_aire(base):
+    for i in range(6):
+        audio(base, f"APROBADA {i}", artista=f"A{i}")
+    for i in range(6):
+        audio(base, f"BANDEJA {i}", artista=f"B{i}", aprobada=0)
+    titulos = [i["titulo"] for i in planear(base, tandas=())]
+    assert titulos and not any(t.startswith("BANDEJA") for t in titulos)

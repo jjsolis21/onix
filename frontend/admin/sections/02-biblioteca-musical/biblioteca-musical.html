@@ -2457,277 +2457,68 @@
 <!-- ═══════════════════════════════════════════════════════════════
      HTML
      ═══════════════════════════════════════════════════════════════ -->
-<div id="jz-root">
+<!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
+     La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
+     categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=2">
+<div id="bv-root" class="bv-root">
+  <header class="bv-cab">
+    <div class="bv-titulo">
+      <h2>Biblioteca musical</h2>
+      <span id="bvResumen">Cargando…</span>
+    </div>
+    <div class="bv-buscar">
+      <input type="search" id="bvBuscar" placeholder="Buscar título, artista o álbum…  ( / )" autocomplete="off">
+    </div>
+    <div class="bv-acciones">
+      <button class="bv-btn bv-btn--pri" id="bvNueva">＋ Nueva canción</button>
+      <button class="bv-btn" id="bvLote">⬆ Cargar lote</button>
+      <button class="bv-btn" id="bvCategorias">🏷 Categorías</button>
+      <button class="bv-btn" id="bvColumnas" title="Elegir columnas">☰ Columnas</button>
+      <button class="bv-btn" id="bvExportar" title="Exportar lo que se ve a CSV (Excel)">⬇ CSV</button>
+    </div>
+  </header>
 
-  <!-- TOP BAR — ONIX FM Premium 2-row ────────────────────────── -->
-  <div class="jz-topbar">
+  <div class="bv-cuerpo">
+    <nav class="bv-arbol" id="bvArbol" aria-label="Navegar la biblioteca"></nav>
 
-    <!-- FILA 1: Brand + Buscador + Contador -->
-    <div class="jz-topbar__row1">
-
-      <div class="jz-topbar__brand">
-        <div class="brand-logo-wrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M9 18V5l12-2v13" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="16" r="3" />
-          </svg>
+    <section class="bv-centro">
+      <div class="bv-aviso" id="bvAviso" hidden></div>
+      <div class="bv-masiva" id="bvMasiva" hidden>
+        <b id="bvSelN">0</b> seleccionadas
+        <select data-campo="cat1" title="Género"></select>
+        <select data-campo="cat2" title="Rotación"></select>
+        <select data-campo="cat3" title="Subgénero"></select>
+        <select data-campo="voz" title="Voz"></select>
+        <select data-campo="origen" title="Origen">
+          <option value="">Origen…</option><option value="NACIONAL">Nacional</option><option value="INTERNACIONAL">Internacional</option></select>
+        <select data-campo="energia" title="Energía">
+          <option value="">Energía…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+        <button class="bv-btn bv-btn--ok" id="bvAprobar" title="Aprobar: pueden salir al aire (necesitan género y rotación)">✓ Aprobar</button>
+        <button class="bv-btn" id="bvBandeja" title="Devolver a la Bandeja: no suenan en automático">📥 A la Bandeja</button>
+        <button class="bv-btn" id="bvMarcas" title="Volver a detectar inicio y mezcla (no toca las marcadas a mano)">✂ Marcas</button>
+        <button class="bv-btn bv-btn--peligro" id="bvDesactivar">Desactivar</button>
+        <button class="bv-btn bv-btn--x" id="bvDeselect" title="Quitar selección (Esc)">✕</button>
+      </div>
+      <div class="bv-tabla" id="bvTabla" tabindex="0">
+        <div class="bv-thead" id="bvThead"></div>
+        <div class="bv-scroll" id="bvScroll"><div class="bv-alto" id="bvAlto"><div class="bv-filas" id="bvFilas"></div></div></div>
+      </div>
+      <footer class="bv-pie">
+        <span id="bvConteo"></span>
+        <div class="bv-player" id="bvPlayer">
+          <button id="bvPlay" title="Escuchar / parar">▶</button>
+          <span id="bvPlayTxt">Clic en ▶ de una canción para escucharla</span>
+          <div class="bv-prog" id="bvProg"><i id="bvProgFill"></i></div>
         </div>
-        <div class="brand-text">
-          <div class="brand-name">ONIX<span>&nbsp;FM</span></div>
-          <div class="brand-sub">Biblioteca Musical</div>
-        </div>
-      </div>
-
-      <div class="jz-search-wrap">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input id="jz-search" class="jz-input" type="text" placeholder="Buscar artista, título, código…" />
-      </div>
-
-      <div class="jz-topbar__right">
-        <div class="jz-stat"><span id="jz-count">0</span> pistas</div>
-      </div>
-
-    </div><!-- /.jz-topbar__row1 -->
-
-    <!-- FILA 2: Barra de filtros full-width -->
-    <div class="jz-topbar__row2">
-
-      <div class="jz-topbar__filters">
-        <span class="jz-filter-label">Filtros</span>
-
-        <label class="jz-filter-chip" title="Categoría 1">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3" />
-            <path
-              d="M12 2v4M12 18v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M2 12h4M18 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-          </svg>
-          <span>Cat 1</span>
-          <select id="jz-filter-sc">
-            <option value="">Todas</option>
-          </select>
-        </label>
-
-        <label class="jz-filter-chip" title="Categoría 2">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon
-              points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
-          <span>Cat 2</span>
-          <select id="jz-filter-pop">
-            <option value="">Todas</option>
-          </select>
-        </label>
-
-        <label class="jz-filter-chip" title="Categoría 3">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="7" height="7" rx="1" />
-            <rect x="15" y="3" width="7" height="7" rx="1" />
-            <rect x="2" y="14" width="7" height="7" rx="1" />
-            <rect x="15" y="14" width="7" height="7" rx="1" />
-          </svg>
-          <span>Cat 3</span>
-          <select id="jz-filter-cat3">
-            <option value="">Todas</option>
-          </select>
-        </label>
-
-        <label class="jz-filter-chip" title="Tipo de voz">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
-            <path d="M19 10v2a7 7 0 01-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          <span>Voz</span>
-          <select id="jz-filter-voz">
-            <option value="">Todas</option>
-            <option>Male</option>
-            <option>Female</option>
-            <option>Duo</option>
-            <option>Group</option>
-          </select>
-        </label>
-
-        <label class="jz-filter-chip" title="Año de lanzamiento">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <span>Año</span>
-          <select id="jz-filter-year">
-            <option value="">Todos</option>
-          </select>
-        </label>
-
-        <label class="jz-filter-chip" title="Prioridad">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="8" y1="6" x2="21" y2="6" />
-            <line x1="8" y1="12" x2="21" y2="12" />
-            <line x1="8" y1="18" x2="21" y2="18" />
-            <line x1="3" y1="6" x2="3.01" y2="6" />
-            <line x1="3" y1="12" x2="3.01" y2="12" />
-            <line x1="3" y1="18" x2="3.01" y2="18" />
-          </svg>
-          <span>Prioridad</span>
-          <select id="jz-filter-prioridad">
-            <option value="">Todas</option>
-            <option value="1">Prioritaria</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
-        </label>
-
-      </div><!-- /.jz-topbar__filters -->
-
-    </div><!-- /.jz-topbar__row2 -->
-
-  </div><!-- /.jz-topbar -->
-
-  <!-- STATUS BAR ──────────────────────────────────────────────── -->
-  <div class="jz-statusbar">
-    <span class="jz-dot"></span>
-    <span class="jz-statusbar__msg" id="jz-status-msg">Sistema listo</span>
-    <span style="margin-left:auto;color:#333">API v1 · /api/v1/audios</span>
+        <span class="bv-ayuda">Doble clic = editar · Mayús+clic = rango · Ctrl+A = todas</span>
+      </footer>
+    </section>
   </div>
 
-  <!-- BODY WRAP (grid + sidebar) ──────────────────────────────── -->
-  <div class="jz-body-wrap">
-
-    <!-- DATA GRID ───────────────────────────────────────────────── -->
-    <div class="jz-grid-wrap">
-      <table class="jz-table">
-        <thead>
-          <tr>
-            <th class="col-id" data-sort="id">#</th>
-            <th class="col-play"></th>
-            <th class="col-cod" data-sort="codigo">CÓDIGO</th>
-            <th class="col-title" data-sort="title">TÍTULO</th>
-            <th class="col-art" data-sort="artist">ARTISTA</th>
-            <th class="col-sc" data-sort="soundCode">CATEGORÍA 1</th>
-            <th class="col-pop" data-sort="popularity">CATEGORÍA 2</th>
-            <th class="col-voz" data-sort="voz">VOZ</th>
-            <th class="col-bpm" data-sort="bpm">BPM</th>
-            <th class="col-dur" data-sort="duration">DUR.</th>
-            <th class="col-ops">OPS</th>
-          </tr>
-        </thead>
-        <tbody id="jz-tbody"></tbody>
-      </table>
-      <div id="jz-empty" class="jz-empty" style="display:none">
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M9 18V5l12-2v13" />
-          <circle cx="6" cy="18" r="3" />
-          <circle cx="18" cy="16" r="3" />
-        </svg>
-        <strong>Sin resultados</strong>
-        <p>Ajusta los filtros o carga una nueva canción.</p>
-      </div>
-    </div>
-
-    <!-- SIDEBAR DERECHO — La Botonera Pro ───────────────────── -->
-    <aside class="jz-sidebar">
-      <div class="jz-pro-cards">
-
-        <button class="jz-pro-card jz-pro-card--primary" id="jz-sb-nueva" onclick="window.openModal()">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M9 18V5l12-2v13" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="16" r="3" />
-            <path d="M12 5v14M5 12h14" stroke-width="2.5" />
-          </svg>
-          Nueva Canción
-        </button>
-
-        <button class="jz-pro-card jz-pro-card--lote" id="jz-sb-lote">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-          </svg>
-          Carga por Lote
-        </button>
-
-        <div class="jz-pro-sep"></div>
-
-        <button class="jz-pro-card" id="jz-task-categorias">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-          Categorías
-        </button>
-
-        <button class="jz-pro-card" id="jz-task-artistas">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-            <circle cx="12" cy="7" r="4" />
-          </svg>
-          Editar Artistas
-        </button>
-
-        <button class="jz-pro-card" id="jz-task-estadisticas">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
-            <line x1="2" y1="20" x2="22" y2="20" />
-          </svg>
-          Estadísticas
-        </button>
-
-        <button class="jz-pro-card" id="jz-task-exportar">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <ellipse cx="12" cy="5" rx="9" ry="3" />
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-            <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
-          </svg>
-          Exportar BD
-        </button>
-
-        <div class="jz-pro-sep"></div>
-
-        <button class="jz-pro-card jz-pro-card--danger" id="jz-sb-eliminar">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-          </svg>
-          Eliminar
-        </button>
-
-      </div>
-    </aside><!-- /.jz-sidebar -->
-
-  </div><!-- /.jz-body-wrap -->
-
-  <!-- MINI PLAYER ─────────────────────────────────────────────── -->
-  <div class="jz-player" id="jz-player">
-    <button class="jz-play-btn" id="jz-player-toggle" title="Play/Pause">
-      <svg id="jz-player-icon" width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5,3 19,12 5,21" />
-      </svg>
-    </button>
-    <div class="jz-player__info">
-      <div class="jz-player__title" id="jz-player-title">—</div>
-      <div class="jz-player__artist" id="jz-player-artist">Sin pista cargada</div>
-    </div>
-    <div class="jz-timeline-wrap">
-      <span class="jz-ptime" id="jz-time-cur">0:00</span>
-      <div class="jz-timeline-track" id="jz-timeline">
-        <div class="jz-timeline-fill" id="jz-timeline-fill"></div>
-      </div>
-      <span class="jz-ptime" id="jz-time-total">0:00</span>
-    </div>
-    <span style="font-family:var(--font-mono);font-size:10px;color:var(--jz-text3)" id="jz-player-sc"></span>
-  </div>
-
-</div><!-- /#jz-root -->
+  <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
+</div>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=3"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)

@@ -178,3 +178,24 @@ def test_biblioteca_sin_cunas_artistas_y_renombrar_categoria(client, tmp_path):
     # Borrar y volver a agregar el mismo valor no choca
     assert client.delete(f"/api/v1/config/biblioteca/valores/{v['id']}").status_code in (200, 204)
     assert client.post("/api/v1/config/biblioteca/valores", json={"nombre_interno": "cat1", "valor": "NUEVO"}).status_code == 201
+
+
+def test_bandeja_de_entrada_y_edicion_masiva(client, tmp_path):
+    a = subir_cancion(client, tmp_path, "Nueva Uno")
+    b = subir_cancion(client, tmp_path, "Nueva Dos")
+    lista = {x["id"]: x for x in client.get("/api/v1/audios", params={"limit": 50000}).json()["data"]}
+    assert lista[a["id"]]["aprobada"] == 0                       # entra a la Bandeja
+    # Aprobar sin clasificar: no se aprueba
+    r = client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"], b["id"]], "cambios": {"aprobada": 1}}).json()
+    assert set(r["sin_clasificar"]) == {a["id"], b["id"]}
+    # Clasificar a las dos de una vez y aprobar
+    r = client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"], b["id"]],
+                                                     "cambios": {"cat1": "Pop", "cat2": "Recurrente", "energia": 4,
+                                                                 "origen": "NACIONAL", "aprobada": 1}})
+    assert r.status_code == 200 and r.json()["sin_clasificar"] == []
+    lista = {x["id"]: x for x in client.get("/api/v1/audios", params={"limit": 50000}).json()["data"]}
+    assert lista[a["id"]]["aprobada"] == 1 and lista[b["id"]]["cat1"] == "Pop" and lista[b["id"]]["energia"] == 4
+    assert client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "cambios": {"energia": 9}}).status_code == 422
+    r = client.post("/api/v1/biblioteca/lote", json={"ids": [b["id"]], "accion": "desactivar"})
+    assert r.json()["actualizados"] == 1
+    assert b["id"] not in {x["id"] for x in client.get("/api/v1/audios", params={"limit": 50000}).json()["data"]}

@@ -182,6 +182,17 @@ def _revisar_bd(conn) -> list:
                       "Esas cuñas no van a salir y el cliente las está pagando.",
                       cunas[:MAX_EJEMPLOS], "Admin › Pautas"))
 
+    # Bandeja de entrada: música cargada que aún no sale al aire
+    try:
+        pend = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = 'Musica'"
+                            " AND aprobada = 0").fetchone()[0]
+    except sqlite3.OperationalError:
+        pend = 0
+    if pend:
+        out.append(_p("bandeja", "aviso", f"{pend} canción(es) en la Bandeja de entrada",
+                      "No suenan en automático hasta asignarles género y rotación y aprobarlas.",
+                      donde="Admin › Biblioteca"))
+
     # Biblioteca chica para el automático
     musica = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = 'Musica'").fetchone()[0]
     if musica < MUSICA_MINIMA:

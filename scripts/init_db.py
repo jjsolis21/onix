@@ -559,6 +559,17 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE config_categorias_valores ADD COLUMN color TEXT DEFAULT NULL")
     logger.info("  → config_categorias_valores.color: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 20 — Bandeja de entrada de la Biblioteca
+    #   audios.aprobada: la música recién cargada entra con 0 y NO la elige el
+    #   automático hasta que se clasifica (género y rotación) y se aprueba.
+    #   Lo que ya estaba cargado queda aprobado (DEFAULT 1).
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "aprobada" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN aprobada INTEGER NOT NULL DEFAULT 1")
+    logger.info("  → audios.aprobada: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -416,6 +416,8 @@ class Planner:
         params: list = [tipo]
         if tipo == "Musica":
             base.append("a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)")
+            # Bandeja de entrada: la música sin aprobar no sale al aire sola
+            base.append("COALESCE(a.aprobada, 1) = 1")
         fc, fp = self._where_filtros(fila.get("filtros") or {})
         base += fc
         params += fp

@@ -1110,8 +1110,8 @@ async def create_audio(
                 subgenero, categoria, cat3, genero_vocal,
                 bpm, intro, outro, hook, fecha_lanzamiento,
                 cue_inicio, cue_intro, cue_inicio_coro, cue_final_coro,
-                cue_mezcla, fade_in, fade_out, tipo_audio, origen, energia
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cue_mezcla, fade_in, fade_out, tipo_audio, origen, energia, aprobada
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
@@ -1137,6 +1137,8 @@ async def create_audio(
             tipo_audio,
             origen,
             energia,
+            # La música nueva entra a la Bandeja: no suena en automático hasta aprobarla
+            0 if tipo_audio == "Musica" else 1,
         ))
         nuevo_id = cursor.lastrowid
 
@@ -1349,7 +1351,8 @@ def list_audios(
                cue_inicio, cue_intro, cue_inicio_coro,
                cue_final_coro, cue_mezcla, fade_in, fade_out,
                tipo_audio, veces_reproducido, ultima_reproduccion,
-               loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia
+               loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia,
+               marcas_auto, aprobada
         FROM audios
         WHERE activo = 1
     """
@@ -1410,6 +1413,93 @@ def listar_artistas(tipo: Optional[str] = None, conn: sqlite3.Connection = Depen
         params.append(_validate_tipo_audio(tipo))
     sql += " GROUP BY artista ORDER BY artista"
     return [{"artista": r["artista"], "audios": r["n"]} for r in conn.execute(sql, params)]
+
+
+class LoteAudiosRequest(BaseModel):
+    ids:     List[int] = Field(..., min_length=1, max_length=20000)
+    # Campos a cambiar en todas: cat1, cat2, cat3, voz, origen, energia, tipo_audio, aprobada
+    cambios: dict = Field(default_factory=dict)
+    # Acción extra: "redetectar_marcas" | "desactivar"
+    accion:  Optional[str] = None
+
+
+_LOTE_COLUMNAS = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal",
+                  "origen": "origen", "energia": "energia", "tipo_audio": "tipo_audio"}
+
+
+@app.post("/api/v1/biblioteca/lote", tags=["Audios"], summary="Edición masiva de la Biblioteca")
+def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Aplica los mismos cambios a muchas canciones (como "cambiar categoría a las
+    seleccionadas" de Jazler). Aprobar exige que tengan género y rotación: las
+    que no los tienen quedan en la Bandeja y se informan en `sin_clasificar`.
+    """
+    ids = sorted(set(body.ids))
+    ph = ",".join("?" * len(ids))
+    sets, valores = [], []
+    c = body.cambios or {}
+    for clave, col in _LOTE_COLUMNAS.items():
+        if clave not in c:
+            continue
+        v = c[clave]
+        if clave in ("cat1", "cat2", "cat3", "voz"):
+            v = (str(v).strip() or None) if v is not None else None
+            if v:
+                # Usar la escritura que ya existe ("Pop", no "POP"): si no, la
+                # misma categoría aparece dos veces
+                existe = conn.execute(
+                    "SELECT cv.valor FROM config_categorias_valores cv JOIN config_categorias_def cd"
+                    " ON cd.id = cv.cat_id WHERE cd.nombre_interno = ? AND UPPER(cv.valor) = UPPER(?)"
+                    " AND cv.activo = 1", (clave, v)).fetchone()
+                v = existe[0] if existe else v
+            _validate_categoria_valor(conn, clave, v, clave)
+        elif clave == "origen":
+            v = _validate_origen(v) if v else None
+        elif clave == "energia":
+            v = int(v) if v not in (None, "") else None
+            if v is not None and not 1 <= v <= 5:
+                raise HTTPException(status_code=422, detail="La energía va de 1 a 5")
+        elif clave == "tipo_audio":
+            v = _validate_tipo_audio(v)
+        sets.append(f"{col} = ?")
+        valores.append(v)
+    hechos = 0
+    if sets:
+        hechos = conn.execute(f"UPDATE audios SET {', '.join(sets)}, updated_at = datetime('now')"
+                              f" WHERE id IN ({ph}) AND activo = 1", valores + ids).rowcount
+    sin_clasificar = []
+    if "aprobada" in c:
+        if c["aprobada"]:
+            sin_clasificar = [r[0] for r in conn.execute(
+                f"SELECT id FROM audios WHERE id IN ({ph}) AND activo = 1 AND"
+                " (COALESCE(subgenero, '') = '' OR COALESCE(categoria, '') = '')", ids)]
+            ok = [i for i in ids if i not in set(sin_clasificar)]
+            if ok:
+                hechos = max(hechos, conn.execute(
+                    f"UPDATE audios SET aprobada = 1 WHERE id IN ({','.join('?' * len(ok))})", ok).rowcount)
+        else:
+            hechos = max(hechos, conn.execute(f"UPDATE audios SET aprobada = 0 WHERE id IN ({ph})", ids).rowcount)
+    if body.accion == "redetectar_marcas":
+        # Solo las automáticas o con error: las marcadas a mano no se pisan
+        hechos = conn.execute(
+            f"UPDATE audios SET cue_inicio = 0, cue_mezcla = 0, marcas_auto = NULL"
+            f" WHERE id IN ({ph}) AND COALESCE(marcas_auto, 1) != 0", ids).rowcount
+        _normalizador.avisar()
+    elif body.accion == "desactivar":
+        en_pauta = [r[0] for r in conn.execute(
+            f"SELECT DISTINCT audio_id FROM pautas WHERE activo = 1 AND audio_id IN ({ph})", ids)]
+        if en_pauta:
+            raise HTTPException(status_code=409, detail=f"{len(en_pauta)} audio(s) están en pautas activas")
+        hechos = conn.execute(f"UPDATE audios SET activo = 0 WHERE id IN ({ph})", ids).rowcount
+    elif body.accion:
+        raise HTTPException(status_code=422, detail=f"Acción desconocida: {body.accion}")
+    conn.commit()
+    if engine is not None:
+        try:
+            engine.plan_regenerar()          # el automático ya ve los cambios
+        except Exception:
+            pass
+    return {"actualizados": hechos, "sin_clasificar": sin_clasificar}
 
 
 # ---- DELETE (soft) /api/v1/audios/{audio_id} ----
