@@ -189,11 +189,16 @@
    * Cancela cualquier solicitud previa antes de lanzar la nueva.
    */
   async function apiFetch(endpoint) {
-    if (STATE.abortController) STATE.abortController.abort();
-    STATE.abortController = new AbortController();
+    // Un cancelador por TIPO de consulta: cambiar de período cancela el Top
+    // anterior, pero pedir el reporte de olvido no cancela el Top (antes
+    // compartían uno y el Top se quedaba "cargando" para siempre).
+    const clave = endpoint.split('?')[0];
+    STATE.abortPorTipo = STATE.abortPorTipo || {};
+    STATE.abortPorTipo[clave]?.abort();
+    const ctrl = STATE.abortPorTipo[clave] = new AbortController();
     const url = `${CONFIG.API_BASE}${endpoint}`;
     const res = await fetch(url, {
-      signal: STATE.abortController.signal,
+      signal: ctrl.signal,
       headers: { 'Accept': 'application/json' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} al acceder a ${url}`);
@@ -1103,7 +1108,7 @@
   /** Limpia los recursos del módulo (listeners, audio, timers). */
   function destroy() {
     if (STATE.clickTimer) clearTimeout(STATE.clickTimer);
-    if (STATE.abortController) STATE.abortController.abort();
+    Object.values(STATE.abortPorTipo || {}).forEach(c => c.abort());
     resetPlayer();
   }
 
