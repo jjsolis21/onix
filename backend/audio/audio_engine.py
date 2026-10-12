@@ -78,6 +78,7 @@ from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
 from backend.audio.loudness import ganancia_db
 from backend.audio.planner import Planner, duracion_efectiva
 from backend.audio.eventbus import EventBus  # noqa: F401  (re-export)
+from backend.version import VERSION
 
 _THIS_FILE = Path(__file__).resolve()
 
@@ -1326,6 +1327,7 @@ class AudioEngine:
 
     def _do_seek(self, segundos: float):
         if not self._current_track or (self._current_item or {}).get("origen") == "pauta":
+            log.warning("[Engine] Salto ignorado: nada sonando o es una cuña de pauta")
             return
         self._finish_crossfade(force=True)
         cue_in = self._cue_range(self._current_item)[0]
@@ -1334,6 +1336,14 @@ class AudioEngine:
         if self._audio.set_position_sec(self._active_canal, destino):
             # Si se salta mas alla del punto de mezcla, la siguiente entra enseguida
             self._mix_fired = False
+            # Comprobar: hay archivos (MP3 mal formados, VBR sin índice) en los
+            # que BASS acepta la orden pero el audio sigue donde estaba.
+            real = self._audio.get_position_sec(self._active_canal)
+            if abs(real - destino) > 3.0:
+                log.error("[Engine] Salto a %.1fs aceptado pero el audio quedó en %.1fs", destino, real)
+                self._emit_error(self._current_track.get("id"), "seek_fallido",
+                                 f"El archivo no permite adelantar: se pidió {destino:.0f}s y quedó en {real:.0f}s")
+                return
             log.info("[Engine] Operador salta a %.1fs", destino)
             self.bus.emit("seek", {"posicion": round(destino, 2)})
         else:
@@ -2144,6 +2154,7 @@ class AudioEngine:
         track = self._current_track
         item  = self._current_item or {}
         return {
+            "version":           VERSION,       # del proceso del motor (ver backend/version.py)
             "backend":           BACKEND,
             "running":           self._running,
             "modo":              self._mode,

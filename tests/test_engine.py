@@ -586,3 +586,21 @@ def test_operador_retrocede_la_cancion(engine, media):
     engine.seek(10)                                    # hacia atrás
     engine._drain_commands()
     assert 10 <= engine._audio.get_position_sec(engine._active_canal) < 12
+
+
+def test_salto_que_el_archivo_no_respeta_se_avisa(engine, media):
+    """BASS puede aceptar la orden y dejar el audio donde estaba: se avisa al operador."""
+    errores, saltos = [], []
+    engine.bus.subscribe("playback_error", lambda e, d: errores.append(d))
+    engine.bus.subscribe("seek", lambda e, d: saltos.append(d))
+    aid = add_audio(engine, media, "TERCO", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
+    engine._audio.set_position_sec = lambda canal, seg: True     # "acepta" sin mover
+    engine.seek(40)
+    engine._drain_commands()
+    assert not saltos and errores and "no permite adelantar" in errores[-1]["msg"]
+
+
+def test_status_informa_la_version_del_motor(engine):
+    from backend.version import VERSION
+    assert engine.status["version"] == VERSION

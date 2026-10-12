@@ -54,6 +54,7 @@ except ImportError:
     from backend.api.schemas_pautas import PautaIn, PautaOut
 
 from backend.audio.loudness import NormalizadorWorker
+from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
 
@@ -1605,8 +1606,15 @@ def health_check():
 
 @app.get("/api/v1/status", tags=["Sistema"])
 def get_status():
-    """Estado en vivo del motor de audio (backend, modo, pista al aire, cola)."""
-    return engine.status
+    """
+    Estado en vivo del motor de audio (backend, modo, pista al aire, cola).
+    `version` es la del motor y `version_api` la de este servidor: si no
+    coinciden, el motor sigue con código viejo y hay que reiniciarlo.
+    """
+    st = dict(engine.status)
+    st["version_api"] = VERSION
+    st.setdefault("version", None)       # un motor muy viejo no la informa
+    return st
 
 
 # ===========================================================================

@@ -17,7 +17,7 @@
 param(
     [int]$Puerto = 8001,
     [int]$PuertoMotor = 8766,
-    [switch]$ReiniciarMotor    # cierra el motor en marcha para cargar el código nuevo
+    [switch]$ReiniciarMotor    # cierra el motor y el servidor anteriores para cargar el código nuevo
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,6 +50,17 @@ if ($motorActivo) {
 
 # ¿El puerto de la API ya está ocupado? (típico: un ONIX anterior que sigue abierto)
 $ocupado = Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($ocupado -and $ReiniciarMotor) {
+    # Al actualizar hay que cerrar TAMBIÉN el servidor viejo: si sigue abierto,
+    # el Studio carga las páginas nuevas pero habla con el código anterior.
+    $proc = Get-Process -Id $ocupado.OwningProcess -ErrorAction SilentlyContinue
+    if ($proc -and $proc.ProcessName -like "python*") {
+        Write-Host "Cerrando el servidor ONIX anterior (PID $($ocupado.OwningProcess))..." -ForegroundColor Yellow
+        Stop-Process -Id $ocupado.OwningProcess -Force
+        Start-Sleep -Seconds 2
+        $ocupado = $null
+    }
+}
 if ($ocupado) {
     $proc = Get-Process -Id $ocupado.OwningProcess -ErrorAction SilentlyContinue
     Write-Host "El puerto $Puerto ya lo usa '$($proc.ProcessName)' (PID $($ocupado.OwningProcess))." -ForegroundColor Red

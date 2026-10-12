@@ -58,7 +58,11 @@ const WS = (() => {
   }
   setInterval(() => ws?.readyState === WebSocket.OPEN && ws.send('{"cmd":"ping"}'), 25000);
   conectar();
-  return { send, on: (ev, fn) => (handlers[ev] ??= []).push(fn) };
+  return {
+    send,
+    on: (ev, fn) => (handlers[ev] ??= []).push(fn),
+    off: (ev, fn) => { handlers[ev] = (handlers[ev] ?? []).filter(f => f !== fn); },
+  };
 })();
 
 /* ─────────────────────────── reloj ─────────────────────────── */
@@ -104,7 +108,18 @@ const Estado = (() => {
     return (st.position_sec ?? 0) + (performance.now() - recibido) / 1000;
   }
 
+  // La API y el motor (proceso aparte) informan su versión: si no coinciden,
+  // el motor siguió corriendo con código viejo tras una actualización.
+  // Sin version_api es el servidor el que quedó viejo (ventana anterior aún abierta).
+  const motorViejo = () => !!st && (st.version_api === undefined || st.version !== st.version_api);
+
   function pintarEstatico() {
+    $("avisoVersion").hidden = !motorViejo();
+    if (motorViejo()) {
+      $("avisoVersionTxt").textContent = st.version_api === undefined
+        ? "el servidor sigue con el código anterior"
+        : `motor ${st.version ?? "sin versión"} · servidor ${st.version_api}`;
+    }
     // Barra superior
     const me = $("motorEstado");
     me.className = `motor-estado ${st.running ? "ok" : "mal"}`;
@@ -209,7 +224,7 @@ const Estado = (() => {
     animar();
     refrescarTodo();
   }
-  return { poll, cargarPrograma, refrescarTodo, iniciar, get st() { return st; } };
+  return { poll, cargarPrograma, refrescarTodo, iniciar, motorViejo, get st() { return st; } };
 })();
 
 /* ─────────────────────── adelantar lo que suena ───────────────────────
@@ -267,17 +282,40 @@ const Salto = (() => {
     e.stopPropagation();
     if (destino === null) return;
     const objetivo = destino, pista = Estado.st?.current_track?.id;
-    WS.send({ cmd: "seek", posicion: objetivo });
     cancelar();
-    // Comprobar que el motor de verdad saltó (si no, decirlo: nunca fallar callado)
+    saltar(objetivo, pista);
+  });
+
+  // Por REST y no por WebSocket: así la respuesta (o el error exacto) vuelve aquí.
+  async function saltar(objetivo, pista) {
+    let confirmado = false;
+    const alConfirmar = () => { confirmado = true; };
+    WS.on("seek", alConfirmar);
+    try {
+      await api("/api/v1/player/seek", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posicion: objetivo }),
+      });
+    } catch (e) {
+      WS.off("seek", alConfirmar);
+      toast(`⚠ Salto rechazado: ${e.message}`, "error", 10000);
+      return;
+    }
+    // Comprobar que el audio de verdad saltó: nunca fallar callado
     setTimeout(async () => {
+      WS.off("seek", alConfirmar);
       await Estado.poll();
       const st = Estado.st;
-      if (st?.current_track?.id === pista && Math.abs((st.position_sec ?? 0) - objetivo) > 4) {
-        toast("⚠ El salto no se aplicó. Si acabas de actualizar ONIX, reinícialo con «Actualizar ONIX.bat» (el motor también debe reiniciarse).", "error", 10000);
+      if (st?.current_track?.id !== pista || Math.abs((st.position_sec ?? 0) - objetivo) <= 4) return;
+      if (Estado.motorViejo()) {
+        toast("⚠ El salto no se aplicó: ONIX sigue con código anterior. Cierra TODAS las ventanas de ONIX y ábrelo con «Actualizar ONIX.bat».", "error", 12000);
+      } else if (confirmado) {
+        toast("⚠ El motor dice que saltó pero la posición no cambió. Copia las últimas líneas de la ventana del motor y envíalas.", "error", 12000);
+      } else {
+        toast("⚠ El motor no confirmó el salto. Revisa la ventana minimizada del motor (líneas «[Engine]» o «[BASS]»).", "error", 12000);
       }
-    }, 1200);
-  });
+    }, 1500);
+  }
   document.addEventListener("keydown", e => { if (e.key === "Escape" && destino !== null) cancelar(); });
   return { cancelar };
 })();

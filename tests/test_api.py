@@ -142,3 +142,8 @@ def test_config_tandas_inmediatas(client):
     r = client.put("/api/v1/config/motor", json={"tandas_inmediatas": ""})
     assert r.json()["tandas_inmediatas"] == ""
     assert client.put("/api/v1/config/motor", json={"tandas_inmediatas": "61"}).status_code == 422
+
+
+def test_status_trae_version_de_motor_y_servidor(client):
+    st = client.get("/api/v1/status").json()
+    assert st["version"] == st["version_api"]

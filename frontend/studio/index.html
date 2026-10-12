@@ -80,6 +80,9 @@
 
   <!-- ═══════════ AVISOS FIJOS ═══════════ -->
   <div class="aviso aviso-rojo" id="avisoConexion" hidden>⚠ SIN CONEXIÓN CON ONIX — reintentando… (lo que suena no se corta)</div>
+  <div class="aviso aviso-rojo" id="avisoVersion" hidden>
+    ⚠ ONIX SIGUE CON CÓDIGO ANTERIOR (<span id="avisoVersionTxt"></span>) — cierra todas las ventanas de ONIX y ábrelo con «Actualizar ONIX.bat». Algunas funciones (adelantar, vúmetros) no responderán.
+  </div>
   <div class="aviso aviso-ambar" id="avisoRetenido" hidden>
     ⏹ AUTOMATIZACIÓN DETENIDA AL TERMINAR — el aire está libre. Presiona <b>REPRODUCIR</b> para seguir.
   </div>
@@ -179,6 +182,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=3"></script>
+  <script src="/static/studio/studio.js?v=4"></script>
 </body>
 </html>
