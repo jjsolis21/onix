@@ -629,3 +629,93 @@ def test_evento_inmediato_entra_en_punto(engine, media):
     assert "2026-10-12 10:20#1" in engine._eventos_emitidos
     engine._check_evento_inmediato()                       # no vuelve a cortar
     assert engine._current_track["id"] == esp
+
+
+# ── Aire muerto ──────────────────────────────────────────────────────────────
+
+def _escuchar(engine, evento):
+    lista = []
+    engine.bus.subscribe(evento, lambda e, d: lista.append(d))
+    return lista
+
+
+def test_aire_muerto_en_automatico_pasa_a_lo_siguiente(engine, media):
+    engine._running = True
+    alarmas = _escuchar(engine, "aire_muerto")
+    a = add_audio(engine, media, "MUDA", seconds=60.0)
+    b = add_audio(engine, media, "SIGUIENTE", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    engine.queue_track(b)
+    engine._vigilar_silencio(0.0, 100.0)
+    engine._vigilar_silencio(0.0, 105.0)
+    assert not alarmas                                   # aún no llega a 10 s
+    engine._vigilar_silencio(0.0, 111.0)
+    assert alarmas[-1]["accion"] == "siguiente" and alarmas[-1]["titulo"] == "MUDA"
+    assert engine._current_track["id"] == b
+
+
+def test_con_sonido_no_hay_alarma(engine, media):
+    engine._running = True
+    alarmas = _escuchar(engine, "aire_muerto")
+    a = add_audio(engine, media, "SUENA", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    for t in range(0, 30, 2):
+        engine._vigilar_silencio(0.0 if t % 4 else 0.5, float(t))   # silencios cortos
+    assert not alarmas
+
+
+def test_aire_muerto_en_manual_solo_avisa(engine, media):
+    engine._running = True
+    engine._mode = "manual"
+    alarmas = _escuchar(engine, "aire_muerto")
+    a = add_audio(engine, media, "MUDA", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    engine._vigilar_silencio(0.0, 0.0)
+    engine._vigilar_silencio(0.0, 11.0)
+    engine._vigilar_silencio(0.0, 20.0)                  # no repite la alarma
+    assert len(alarmas) == 1 and alarmas[0]["accion"] == "aviso"
+    assert engine._current_track["id"] == a
+
+
+def test_silencio_repetido_deja_de_saltar(engine, media):
+    """3 saltos en 10 min: probablemente falla el equipo, no los archivos."""
+    engine._running = True
+    alarmas = _escuchar(engine, "aire_muerto")
+    ids = [add_audio(engine, media, f"MUDA {i}", seconds=60.0) for i in range(5)]
+    assert engine._start({"track": engine._fetch_track(ids[0]), "origen": "manual"})
+    for i in ids[1:]:
+        engine.queue_track(i)
+    t = 0.0
+    for _ in range(4):
+        engine._vigilar_silencio(0.0, t)
+        engine._vigilar_silencio(0.0, t + 11)
+        engine._finish_crossfade(force=True)            # lo hace el loop del motor
+        t += 20
+    assert [a["accion"] for a in alarmas] == ["siguiente", "siguiente", "siguiente", "aviso"]
+
+
+def test_automatico_sin_nada_que_sonar_avisa(engine):
+    engine._running = True
+    alarmas = _escuchar(engine, "aire_muerto")
+    engine._vigilar_silencio(0.0, 0.0)
+    engine._vigilar_silencio(0.0, 11.0)
+    assert alarmas and alarmas[0]["motivo"] == "sin_audio"
+    engine._retenido = True                               # DETENER AL TERMINAR: silencio pedido
+    engine._silencio_avisado = None
+    engine._vigilar_silencio(0.0, 30.0)
+    engine._vigilar_silencio(0.0, 45.0)
+    assert len(alarmas) == 1
+
+
+def test_audio_mudo_queda_fuera_del_programa_un_rato(engine, media):
+    engine._running = True
+    a = add_audio(engine, media, "MUDA", seconds=60.0)
+    for i in range(3):
+        add_audio(engine, media, f"OTRA {i}", seconds=60.0, artista=f"A{i}")
+    engine._actualizar_programa(forzar=True)
+    assert any(i.get("audio_id") == a for i in engine.programa()["items"])
+    assert engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    engine._vigilar_silencio(0.0, 0.0)
+    engine._vigilar_silencio(0.0, 11.0)
+    assert a in engine._failed_ids
+    assert not any(i.get("audio_id") == a for i in engine.programa()["items"])

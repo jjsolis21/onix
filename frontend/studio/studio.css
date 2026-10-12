@@ -385,3 +385,43 @@ kbd {
 
 /* Evento a hora fija dentro del programa */
 .deck-sep.evento { color: var(--ambar-vivo); font-weight: 700; }
+
+/* ── Aire muerto ── */
+.aviso-muerto {
+  background: var(--rojo); color: #fff; justify-content: center; font-size: 16px; font-weight: 700;
+  letter-spacing: .08em; padding: 12px 16px; animation: pulsoMuerto 1s ease-in-out infinite;
+}
+.aviso-muerto button { color: #fff; border: 2px solid #fff; font-weight: 700; }
+@keyframes pulsoMuerto { 50% { background: var(--rojo-osc); } }
+
+/* ── Problemas (clases n-<nivel>: ".aviso" ya es la barra de avisos) ── */
+.problemas-btn b {
+  display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 9px;
+  background: var(--ambar); color: var(--bg-0); text-align: center;
+}
+.problemas-btn.hay-error { color: var(--ambar-vivo); border-color: var(--ambar); }
+.problemas-btn.hay-critico { color: #fff; border-color: var(--rojo); background: var(--rojo-osc); animation: parpadeo 1.2s infinite; }
+.problemas-btn.hay-critico b { background: #fff; color: var(--rojo-osc); }
+.problemas-caja { max-width: 760px; width: calc(100vw - 32px); max-height: calc(100vh - 60px); overflow-y: auto; }
+.problemas-caja h3 { font-family: var(--f-data); font-size: 11px; letter-spacing: .14em; color: var(--txt-lo); margin: 14px 0 6px; font-weight: 500; }
+.prob { border-left: 4px solid var(--line); background: var(--bg-1); border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; }
+.prob.n-critico { border-color: var(--rojo); }
+.prob.n-error { border-color: var(--ambar); }
+.prob.n-aviso { border-color: var(--cyan); }
+.prob-tit { color: var(--txt-hi); font-weight: 600; font-size: 15px; }
+.prob-tit i { font-style: normal; font-family: var(--f-data); font-size: 10px; letter-spacing: .1em; margin-right: 6px; padding: 1px 6px; border-radius: 3px; background: var(--bg-3); }
+.prob.n-critico .prob-tit i { background: var(--rojo); color: #fff; }
+.prob.n-error .prob-tit i { background: var(--ambar); color: var(--bg-0); }
+.prob-det { font-size: 13px; margin-top: 2px; }
+.prob-donde { font-family: var(--f-data); font-size: 11px; color: var(--txt-lo); margin-top: 3px; }
+.prob details { margin-top: 4px; font-size: 12px; }
+.prob summary { cursor: pointer; color: var(--txt-lo); font-family: var(--f-data); font-size: 11px; }
+.prob ul { margin: 4px 0 0; padding-left: 18px; font-family: var(--f-data); font-size: 11px; }
+.prob-ok { color: var(--verde); font-size: 14px; padding: 6px 0; }
+.rec { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 5px 4px; border-bottom: 1px solid var(--bg-3); font-size: 13px; }
+.rec time { font-family: var(--f-data); font-size: 11px; color: var(--txt-lo); }
+.rec.n-critico { color: #ffb3b8; }
+.rec.n-error { color: var(--ambar-vivo); }
+.rec.visto { opacity: .55; }
+.problemas-pie { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.atajos-caja button.sec { background: transparent; color: var(--txt-mid); border: 1px solid var(--line); }

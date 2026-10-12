@@ -812,11 +812,95 @@ const Atajos = (() => {
       e.preventDefault(); $("libBuscar").focus();
     } else if (e.key === "?") {
       abrir();
+    } else if (e.key.toLowerCase() === "p") {
+      Problemas.abrir();
     } else if (e.key === "Escape" && st?.preescucha) {
       WS.send({ cmd: "cue_stop" });
     }
   });
   return { abrir };
+})();
+
+/* ─────────────────────── problemas y aire muerto ───────────────────────
+   El motor avisa "aire_muerto" si lo que suena queda en silencio (o si en
+   automático no hay nada que poner). El aviso rojo se queda hasta que vuelve
+   el sonido unos segundos o el operador presiona ENTENDIDO. El botón
+   PROBLEMAS junta lo que está mal ahora y lo que pasó (GET /api/v1/problemas). */
+const Problemas = (() => {
+  const panel = $("problemas"), boton = $("btnProblemas"), aviso = $("avisoMuerto");
+  const UMBRAL = 0.003, VUELVE_MS = 3000;
+  let sonandoDesde = null, datos = null;
+  const NIVEL = { critico: "CRÍTICO", error: "ERROR", aviso: "AVISO" };
+
+  // ── Aire muerto ──
+  function aireMuerto(d) {
+    $("avisoMuertoTxt").textContent = `⛔ AIRE MUERTO · ${d.msg ?? ""}`;
+    aviso.hidden = false;
+    sonandoDesde = null;
+    cargar();
+  }
+  function nivel(d) {
+    if (aviso.hidden) return;
+    if (Math.max(d.l ?? 0, d.r ?? 0) < UMBRAL) { sonandoDesde = null; return; }
+    sonandoDesde ??= performance.now();
+    if (performance.now() - sonandoDesde > VUELVE_MS) aviso.hidden = true;   // volvió el sonido
+  }
+  $("btnMuertoOk").addEventListener("click", () => { aviso.hidden = true; });
+
+  // ── Panel ──
+  function pintarBoton() {
+    if (!datos) return;
+    const graves = datos.activos.filter(p => p.nivel !== "aviso").length;
+    const n = graves + datos.no_vistos;
+    const critico = datos.activos.some(p => p.nivel === "critico")
+      || datos.recientes.some(r => !r.visto && r.nivel === "critico");
+    $("problemasN").hidden = !n && !datos.activos.length;
+    $("problemasN").textContent = n || datos.activos.length;
+    boton.classList.toggle("hay-critico", critico);
+    boton.classList.toggle("hay-error", !critico && n > 0);
+    boton.title = `Problemas (P): ${datos.activos.length} ahora · ${datos.no_vistos} sin ver`;
+  }
+  function pintarPanel() {
+    if (!datos) return;
+    $("problemasActivos").innerHTML = datos.activos.length ? datos.activos.map(p => `
+      <div class="prob n-${p.nivel}">
+        <div class="prob-tit"><i>${NIVEL[p.nivel]}</i>${esc(p.titulo)}</div>
+        ${p.detalle ? `<div class="prob-det">${esc(p.detalle)}</div>` : ""}
+        ${p.ejemplos.length ? `<details><summary>Ver ${p.ejemplos.length === 15 ? "los primeros 15" : p.ejemplos.length}</summary>
+          <ul>${p.ejemplos.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}
+        ${p.donde ? `<div class="prob-donde">→ ${esc(p.donde)}</div>` : ""}
+      </div>`).join("")
+      : `<div class="prob-ok">✓ No hay nada pendiente.</div>`;
+    $("problemasRecTxt").textContent = datos.recientes.length ? `(${datos.no_vistos} sin ver)` : "";
+    $("problemasRecientes").innerHTML = datos.recientes.length ? datos.recientes.slice(0, 60).map(r => `
+      <div class="rec n-${r.nivel}${r.visto ? " visto" : ""}"><time>${esc(r.ts.slice(11, 19))}</time><span>${esc(r.msg)}</span></div>`).join("")
+      : `<div class="prob-ok">✓ Nada desde que arrancó ONIX.</div>`;
+  }
+  async function cargar(forzar = false) {
+    try {
+      datos = await api(`/api/v1/problemas${forzar ? "?forzar=true" : ""}`);
+      pintarBoton();
+      if (!panel.hidden) pintarPanel();
+    } catch { /* sin conexión: ya lo dice el aviso de conexión */ }
+  }
+  let _t;
+  const pronto = () => { clearTimeout(_t); _t = setTimeout(cargar, 800); };
+
+  const abrir = () => { panel.hidden = false; pintarPanel(); cargar(); };
+  const cerrar = () => { panel.hidden = true; };
+  boton.addEventListener("click", abrir);
+  $("btnCerrarProblemas").addEventListener("click", cerrar);
+  panel.addEventListener("click", e => { if (e.target === panel) cerrar(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !panel.hidden) cerrar(); });
+  $("btnProblemasVistos").addEventListener("click", async () => {
+    await api("/api/v1/problemas/vistos", { method: "POST" }).catch(() => {});
+    cargar();
+  });
+  $("btnProblemasRevisar").addEventListener("click", () => cargar(true));
+
+  cargar();
+  setInterval(cargar, 30000);
+  return { abrir, aireMuerto, nivel, pronto };
 })();
 
 /* ─────────────────────────── eventos del motor ─────────────────────────── */
@@ -825,7 +909,10 @@ const programaPronto = () => { clearTimeout(_tProg); _tProg = setTimeout(Estado.
 
 WS.on("track_started", d => { Salto.cancelar(); Estado.poll(); programaPronto(); Derecha.agregarHistorial(d); });
 WS.on("seek", () => Estado.poll());
-WS.on("vu", d => VU.recibir(d));
+WS.on("vu", d => { VU.recibir(d); Problemas.nivel(d); });
+WS.on("aire_muerto", d => Problemas.aireMuerto(d));
+["playback_error", "pauta_missed", "respaldo_activado", "tanda_excedida", "watchdog_stall", "engine_stopped"]
+  .forEach(ev => WS.on(ev, Problemas.pronto));
 WS.on("playback_stopped", () => Estado.poll());
 WS.on("programa_actualizado", programaPronto);
 WS.on("queue_updated", programaPronto);

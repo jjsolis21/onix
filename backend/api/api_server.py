@@ -57,6 +57,7 @@ from backend.audio.loudness import NormalizadorWorker
 from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
+from backend.api import problemas as problemas_api
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -105,6 +106,7 @@ ENGINE_EVENTS = (
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
     "programa_actualizado", "tanda_excedida", "tanda_inmediata", "evento_inmediato", "detener_al_terminar", "seek",
+    "aire_muerto",
     "vu",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
@@ -148,6 +150,7 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
 
     def _on_engine_event(event: str, data: dict):
+        problemas_api.registrar(event, data)     # panel de problemas del Studio
         asyncio.run_coroutine_threadsafe(
             _manager.broadcast(_ws_message(event, data, module="engine")), loop
         )
@@ -184,6 +187,8 @@ app.include_router(reportes_router)
 # La grilla (/relojes/grilla) se declara antes que /relojes/{id} dentro del router
 relojes_api.engine = engine
 app.include_router(relojes_api.router)
+problemas_api.engine = engine
+app.include_router(problemas_api.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1817,6 +1822,8 @@ class MotorConfig(BaseModel):
     tandas_inmediatas:   Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos cuya tanda corta la canción, p. ej. '0' (vacío = ninguna)")
     tanda_max_seg:       Optional[int]   = Field(None, ge=0, le=1800)
+    silencio_seg:        Optional[int]   = Field(None, ge=0, le=120,
+                                                 description="Aire muerto: segundos de silencio antes de actuar (0 = apagado)")
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos de las tandas, p. ej. '15,45'")
 
@@ -1852,6 +1859,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
         "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
         "tanda_max_seg":       int(float(valores.get("tanda_max_seg", 240) or 0)),
+        "silencio_seg":        int(float(valores.get("silencio_seg", 10) or 0)),
         "normalizacion_activa": valores.get("normalizacion_activa", "1") not in ("0", "false", ""),
         "normalizacion_lufs":  float(valores.get("normalizacion_lufs", -16)),
         "horas_planificadas":  float(valores.get("horas_planificadas", 2)),

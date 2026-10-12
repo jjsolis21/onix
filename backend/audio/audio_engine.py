@@ -570,13 +570,26 @@ class MockBackend:
             pass
         return 10.0
 
+    @staticmethod
+    def _mudo(path: str) -> bool:
+        """Un WAV que es todo silencio (sirve para probar el detector de aire muerto)."""
+        if not str(path).lower().endswith(".wav"):
+            return False
+        try:
+            import wave
+            with wave.open(str(path), "rb") as w:
+                datos = w.readframes(w.getframerate() * 30)
+            return not any(datos)
+        except Exception:
+            return False
+
     def load_stream(self, path: str, channel_idx: int, device: int = -1) -> bool:
         try:
             real = self.ensure_device(device)
         except RuntimeError:
             return False
         self._ch[channel_idx] = {"dur": self._probe(path), "started": None,
-                                 "offset": 0.0, "device": real}
+                                 "offset": 0.0, "device": real, "mudo": self._mudo(path)}
         return True
 
     def play(self, channel_idx: int, restart: bool = False) -> bool:
@@ -619,7 +632,7 @@ class MockBackend:
 
     def nivel(self, channel_idx: int) -> tuple[float, float]:
         """Simulado: nivel que se mueve como música mientras el canal suena."""
-        if not self.is_playing(channel_idx):
+        if not self.is_playing(channel_idx) or self._ch[channel_idx].get("mudo"):
             return 0.0, 0.0
         base = 0.45 + 0.25 * abs(((time.monotonic() * 1.7) % 2) - 1)
         return min(1.0, base + random.uniform(-0.1, 0.1)), min(1.0, base + random.uniform(-0.1, 0.1))
@@ -896,6 +909,11 @@ class AudioEngine:
         self._tandas_inmediatas: list[int] = []      # minutos cuya tanda corta la cancion
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
         self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
+        # Detector de aire muerto (ver _vigilar_silencio)
+        self._silencio_seg: float = 10.0
+        self._silencio_desde: Optional[float] = None
+        self._silencio_avisado = None                 # pista (o "vacio") ya avisada
+        self._silencios: deque = deque(maxlen=10)     # momentos de los últimos saltos
         self._tanda_max_seg    = 240
         self._pautas_fallidas: set[tuple[str, int]] = set()   # (slot, pauta_id)
         self._respaldo_recent: deque = deque(maxlen=20)
@@ -963,6 +981,7 @@ class AudioEngine:
                 defecto = str(IGUAL_QUE_AIRE) if rol == "cartuchera" else "-1"
                 self._devices[rol] = int(float(self._cfg(f"dispositivo_{rol}", defecto)))
             self._horas_plan = max(0.5, min(24.0, float(self._cfg("horas_planificadas", "2"))))
+            self._silencio_seg = max(0.0, float(self._cfg("silencio_seg", "10") or 0))
             self._replanificar = True
             # Compatibilidad: ONIX_AUDIO_DEVICE fuerza la tarjeta del aire
             if os.getenv("ONIX_AUDIO_DEVICE") not in (None, ""):
@@ -1011,6 +1030,79 @@ class AudioEngine:
         if izq or der or getattr(self, "_vu_previo", (0.0, 0.0)) != (0.0, 0.0):
             self._vu_previo = (izq, der)
             self.bus.emit("vu", {"l": round(izq, 3), "r": round(der, 3)})
+        self._vigilar_silencio(max(izq, der), ahora)
+
+    # ── Detector de aire muerto ───────────────────────────────────────────────
+
+    SILENCIO_UMBRAL = 0.003      # ≈ -50 dBFS: por debajo, el aire está en silencio
+    SILENCIO_RAFAGA = 3          # saltos seguidos en 10 min = falla del equipo, no del archivo
+
+    def _vigilar_silencio(self, nivel: float, ahora: float):
+        """
+        Aire muerto: lo que suena lleva `silencio_seg` segundos en silencio
+        (archivo dañado, silencio al final de un tema, canal trabado), o en
+        automático no hay nada sonando y nadie lo pidió (DETENER AL TERMINAR).
+
+        En automático pasa a lo siguiente; en manual solo avisa (el operador
+        está en cabina). Si salta 3 veces en 10 min deja de saltar: lo más
+        probable es que falle la tarjeta o el medidor, no los archivos, y
+        saltar sin parar empeoraría el aire.
+        """
+        if not self._silencio_seg or not self._running:
+            self._silencio_desde = None
+            return
+        sonando = self._current_track is not None
+        vacio_inesperado = (not sonando and self._mode == "automatico" and not self._retenido)
+        # En un crossfade suenan dos canales: no hay silencio que vigilar
+        if (sonando and nivel >= self.SILENCIO_UMBRAL) or (not sonando and not vacio_inesperado) or self._xfade:
+            self._silencio_desde = None
+            if sonando and nivel >= self.SILENCIO_UMBRAL:
+                self._silencio_avisado = None
+            return
+        if self._silencio_desde is None:
+            self._silencio_desde = ahora
+            return
+        if ahora - self._silencio_desde < self._silencio_seg:
+            return
+        # La pista misma (no su id(): Python reutiliza direcciones de objetos liberados)
+        clave = self._current_item if sonando else "vacio"
+        if self._silencio_avisado is clave:
+            return
+        self._silencio_avisado = clave
+        seg = round(ahora - self._silencio_desde)
+        track = self._current_track or {}
+        if not sonando:
+            log.error("[Engine] AIRE MUERTO: %ss sin nada que reproducir en automático", seg)
+            self.bus.emit("aire_muerto", {"motivo": "sin_audio", "accion": "aviso", "segundos": seg,
+                                          "msg": "Automático sin nada que reproducir: revisa relojes, biblioteca o la lista de respaldo"})
+            return
+        recientes = [t for t in self._silencios if ahora - t < 600]
+        datos = {"motivo": "silencio", "segundos": seg, "audio_id": track.get("id"),
+                 "titulo": track.get("titulo"), "artista": track.get("artista")}
+        if len(recientes) >= self.SILENCIO_RAFAGA:
+            log.error("[Engine] AIRE MUERTO otra vez (%d en 10 min): no se salta más", len(recientes) + 1)
+            self.bus.emit("aire_muerto", {**datos, "accion": "aviso", "msg":
+                "Silencio repetido en varios audios: revisa la tarjeta de sonido, los cables o el medidor"})
+            return
+        if self._mode == "automatico":
+            self._silencios.append(ahora)
+            # Como un archivo que falla: el programa lo evita durante FAILED_TTL
+            if track.get("id") is not None:
+                self._failed_ids[track["id"]] = time.monotonic()
+                with self._programa_lock:
+                    self._programa = deque(i for i in self._programa if i.get("audio_id") != track["id"])
+                self._replanificar = True
+            log.error("[Engine] AIRE MUERTO: '%s' lleva %ss en silencio. Se pasa a lo siguiente",
+                      track.get("titulo"), seg)
+            self.bus.emit("aire_muerto", {**datos, "accion": "siguiente",
+                                          "msg": f"«{track.get('titulo')}» llevaba {seg}s en silencio: se pasó a lo siguiente"})
+            self._silencio_desde = None
+            self._advance()
+        else:
+            log.error("[Engine] AIRE MUERTO: '%s' lleva %ss en silencio (manual: solo aviso)",
+                      track.get("titulo"), seg)
+            self.bus.emit("aire_muerto", {**datos, "accion": "aviso",
+                                          "msg": f"«{track.get('titulo')}» lleva {seg}s en silencio"})
 
     def _tick(self):
         """

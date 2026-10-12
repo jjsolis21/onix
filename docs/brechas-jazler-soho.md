@@ -59,6 +59,8 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 | Segunda pantalla | 🟡 (una segunda ventana del navegador sirve) |
 | Iniciar con Windows y arrancar en automático | ❌ (va con el instalador) |
 | Normalización | ✅ |
+| Detector de silencio (aire muerto) | ✅ salta en automático, avisa en manual |
+| Panel de problemas (archivos que faltan, relojes vacíos, cuñas sin audio…) | ✅ |
 | Procesamiento VST/DSP | ❌ (bajo prioridad: lo hace el procesador externo) |
 
 ## 5. Salida al mundo (cap. 6.5, 8.1, 8.2)

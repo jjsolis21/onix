@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=4" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=5" />
 </head>
 <body>
 
@@ -26,6 +26,7 @@
       <div class="vu-fila"><span>R</span><div class="vu-barra"><div class="vu-fill" id="vuR"></div><div class="vu-pico" id="vuPR"></div></div></div>
       <div class="vu-escala"><i style="left:0">-40</i><i style="left:50%">-20</i><i style="left:75%">-10</i><i style="left:85%">-6</i><i style="left:92.5%">-3</i><i style="left:100%">0</i></div>
     </div>
+    <button class="top-link problemas-btn" id="btnProblemas" title="Problemas (P)">⚠ PROBLEMAS <b id="problemasN" hidden>0</b></button>
     <button class="top-link" id="btnAtajos" title="Atajos de teclado (?)">⌨ ATAJOS</button>
     <a class="top-link" href="/admin/" target="_blank" rel="noopener">ADMIN</a>
     <div class="reloj">
@@ -80,6 +81,10 @@
 
   <!-- ═══════════ AVISOS FIJOS ═══════════ -->
   <div class="aviso aviso-rojo" id="avisoConexion" hidden>⚠ SIN CONEXIÓN CON ONIX — reintentando… (lo que suena no se corta)</div>
+  <div class="aviso aviso-muerto" id="avisoMuerto" hidden role="alert">
+    <span id="avisoMuertoTxt">⛔ AIRE MUERTO</span>
+    <button id="btnMuertoOk">ENTENDIDO</button>
+  </div>
   <div class="aviso aviso-rojo" id="avisoVersion" hidden>
     ⚠ ONIX SIGUE CON CÓDIGO ANTERIOR (<span id="avisoVersionTxt"></span>) — cierra todas las ventanas de ONIX y ábrelo con «Actualizar ONIX.bat». Algunas funciones (adelantar, vúmetros) no responderán.
   </div>
@@ -161,6 +166,22 @@
     </section>
   </main>
 
+  <!-- Panel de problemas -->
+  <div class="atajos-fondo" id="problemas" hidden>
+    <div class="atajos-caja problemas-caja" role="dialog" aria-label="Problemas">
+      <h2>Problemas</h2>
+      <h3>Ahora</h3>
+      <div id="problemasActivos"></div>
+      <h3>Lo que pasó <small id="problemasRecTxt"></small></h3>
+      <div id="problemasRecientes"></div>
+      <div class="problemas-pie">
+        <button id="btnProblemasVistos">MARCAR COMO VISTOS</button>
+        <button id="btnProblemasRevisar" class="sec">REVISAR AHORA</button>
+        <button id="btnCerrarProblemas" class="sec">CERRAR</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Ayuda de atajos -->
   <div class="atajos-fondo" id="atajos" hidden>
     <div class="atajos-caja" role="dialog" aria-label="Atajos de teclado">
@@ -173,6 +194,7 @@
         <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd> o <kbd>/</kbd></td><td>Buscar en la biblioteca</td></tr>
         <tr><td><kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Supr</kbd></td><td>En el programa: elegir · mover · quitar</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>Cancelar salto, soltar selección o detener la preescucha</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Panel de problemas</td></tr>
         <tr><td><kbd>?</kbd></td><td>Esta ayuda</td></tr>
       </table>
       <p>Los atajos no funcionan mientras escribes en un campo de texto.
@@ -182,6 +204,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=4"></script>
+  <script src="/static/studio/studio.js?v=5"></script>
 </body>
 </html>

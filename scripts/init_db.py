@@ -69,6 +69,8 @@ SEED_CONFIG = [
     # Tandas al estilo Jazler
     ("tandas_inmediatas",    ""),       # minutos cuya tanda corta la canción (p. ej. "0")
     ("tanda_max_seg",        "240"),    # aviso si una tanda dura más
+    # Detector de aire muerto: segundos de silencio antes de actuar (0 = apagado)
+    ("silencio_seg",         "10"),
 ]
 
 # Secciones de la tanda (orden dentro del corte). Como las "priorities" de Jazler.
