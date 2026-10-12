@@ -33,11 +33,13 @@ def media(tmp_path):
 def engine(tmp_db, media):
     eng = AudioEngine(db_path=tmp_db, respaldo_dir=media / "respaldo")
     eng._load_config()
+    eng._mode = "automatico"      # las pruebas de modo manual lo cambian
     eng.PAUTAS_INTERVAL = 0
     eng._now = Reloj(datetime(2026, 10, 12, 10, 0))
     eng.events = []
     for ev in ("pauta_scheduled", "pauta_missed", "tanda_scheduled",
-               "respaldo_activado", "track_started", "playback_error"):
+               "respaldo_activado", "track_started", "playback_error",
+               "cue_started", "cue_stopped"):
         eng.bus.subscribe(ev, lambda e, d: eng.events.append((e, d)))
     return eng
 
@@ -239,5 +241,96 @@ def test_rotacion_tiene_prioridad_sobre_respaldo(engine, media):
 
 
 def test_respaldo_en_manual_no_suena(engine, media):
+    engine._mode = "manual"
     make_wav(media / "respaldo" / "emergencia.wav")
     assert engine._advance() is False
+
+
+# ── Modo manual: el operador lanza la tanda ──────────────────────────────────
+
+def test_manual_la_tanda_espera_al_operador(engine, media):
+    engine._mode = "manual"
+    add_pauta(engine, media, "ESPERA")
+    cancion = add_audio(engine, media, "CANCION", seconds=10.0)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "manual"})
+
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    tanda = [d for e, d in engine.events if e == "tanda_scheduled"][0]
+    assert tanda["requiere_operador"] is True
+    assert engine.status["tanda_en_espera"] == 1
+    assert engine._advance() is False                  # el cambio de pista NO la saca
+
+    assert engine.lanzar_tanda(ahora=True) == 1
+    engine._drain_commands()
+    assert engine._current_item["origen"] == "pauta"
+    assert engine.status["tanda_en_espera"] == 0
+
+
+def test_manual_tanda_liberada_sale_en_el_proximo_cambio(engine, media):
+    engine._mode = "manual"
+    add_pauta(engine, media, "PROXIMA")
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    cancion = add_audio(engine, media, "CANCION", seconds=10.0)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "manual"})
+    engine.lanzar_tanda(ahora=False)
+    engine._drain_commands()
+    assert engine._current_item["origen"] == "manual"   # sigue la canción
+    assert engine._advance()
+    assert engine._current_item["origen"] == "pauta"
+
+
+def test_automatico_no_espera_al_operador(engine, media):
+    add_pauta(engine, media, "SOLA")
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert engine.status["tanda_en_espera"] == 0
+    assert engine._advance() and engine._current_item["origen"] == "pauta"
+
+
+# ── Varias salidas de audio ─────────────────────────────────────────────────
+
+def test_preescucha_sale_por_su_tarjeta(engine, media):
+    from backend.audio.audio_engine import CANAL_CUE
+    conn = db(engine)
+    conn.execute("INSERT OR REPLACE INTO config VALUES ('dispositivo_aire', '1')")
+    conn.execute("INSERT OR REPLACE INTO config VALUES ('dispositivo_preescucha', '2')")
+    conn.commit()
+    conn.close()
+    engine.reload_config()
+
+    aire = add_audio(engine, media, "AL AIRE", seconds=10.0)
+    pre = add_audio(engine, media, "PREVIA", seconds=10.0)
+    assert engine._start({"track": engine._fetch_track(aire), "origen": "manual"})
+    assert engine.cue_play(pre, desde=2.0)
+    engine._drain_commands()
+
+    assert engine._audio.device_of(engine._active_canal) == 1
+    assert engine._audio.device_of(CANAL_CUE) == 2
+    st = engine.status
+    assert st["current_track"]["id"] == aire           # el aire no se toca
+    assert st["preescucha"]["audio_id"] == pre and st["preescucha"]["posicion"] >= 2.0
+
+    engine.cue_stop()
+    engine._drain_commands()
+    assert engine.status["preescucha"] is None
+    assert [e for e, _ in engine.events if e.startswith("cue_")] == ["cue_started", "cue_stopped"]
+
+
+def test_lista_de_tarjetas_con_roles(engine):
+    engine._devices = {"aire": -1, "preescucha": 2}
+    devs = {d["index"]: d for d in engine.list_devices()}
+    assert devs[1]["roles"] == ["aire"]               # -1 = la predeterminada
+    assert devs[2]["roles"] == ["preescucha"]
+
+
+def test_tarjeta_inexistente_no_rompe_el_aire(engine, media):
+    engine._devices["preescucha"] = 9
+    aire = add_audio(engine, media, "AL AIRE", seconds=10.0)
+    assert engine._start({"track": engine._fetch_track(aire), "origen": "manual"})
+    engine.cue_play(aire)
+    engine._drain_commands()
+    assert engine.status["preescucha"] is None
+    assert any(d.get("reason") == "error_preescucha" for e, d in engine.events if e == "playback_error")
+    assert engine.status["current_track"]["id"] == aire

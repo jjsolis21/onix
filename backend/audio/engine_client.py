@@ -170,7 +170,8 @@ class RemoteEngine:
                 "backend": "remoto", "remoto": True, "running": False, "modo": None,
                 "current_track": None, "position_sec": 0, "duration_sec": 0,
                 "queue": [], "queue_length": 0, "pautas_pendientes": 0,
-                "tandas_minutos": [], "proxima_tanda": None,
+                "tandas_minutos": [], "proxima_tanda": None, "tanda_en_espera": 0,
+                "salidas": {}, "preescucha": None,
                 "crossfade_active": False, "crossfade_seg": 0,
                 "should_be_playing": False, "is_playing": False,
                 "last_error": str(exc),
@@ -199,6 +200,18 @@ class RemoteEngine:
 
     def set_mode(self, mode: str):
         self._call("set_mode", mode)
+
+    def lanzar_tanda(self, ahora: bool = False) -> int:
+        return int(self._call("lanzar_tanda", ahora) or 0)
+
+    def cue_play(self, audio_id: int, desde: float = 0.0) -> bool:
+        return bool(self._call("cue_play", audio_id, desde))
+
+    def cue_stop(self):
+        self._call("cue_stop")
+
+    def list_devices(self) -> list:
+        return self._call("list_devices") or []
 
     def reload_config(self):
         try:

@@ -172,6 +172,26 @@ BASS_SAMPLE_FLOAT    = 0x100
 # tildes o eñes; sin este flag BASS interpreta la ruta en la pagina ANSI).
 BASS_UNICODE         = 0x80000000
 
+BASS_ERROR_ALREADY   = 14
+BASS_CONFIG_UNICODE  = 42      # nombres de dispositivos en UTF-8 (Windows)
+BASS_DEVICE_ENABLED  = 1
+BASS_DEVICE_DEFAULT  = 2
+
+
+class BASS_DEVICEINFO(ctypes.Structure):
+    _fields_ = [("name", c_char_p), ("driver", c_char_p), ("flags", c_uint32)]
+
+
+def _decode_name(raw: Optional[bytes]) -> str:
+    if not raw:
+        return ""
+    for enc in ("utf-8", "mbcs", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("latin-1", errors="replace")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Deteccion del backend de audio disponible
@@ -222,9 +242,14 @@ class BASSBackend:
     """
     Wrapper sobre bass.dll via ctypes.
 
-    Cada 'canal logico' (0=A, 1=B, 2-7=efx) corresponde a un stream
-    handle de BASS. Los streams se crean al cargar un archivo y se liberan
-    al detener el canal o al cargar uno nuevo.
+    Cada 'canal logico' (0=A, 1=B, 2-7=efx, 8=preescucha) corresponde a un
+    stream handle de BASS. Los streams se crean al cargar un archivo y se
+    liberan al detener el canal o al cargar uno nuevo.
+
+    VARIAS SALIDAS: cada stream se crea en la tarjeta que se pida
+    (BASS_SetDevice antes de crearlo). Las tarjetas se inicializan la
+    primera vez que se usan, asi el AIRE y la PREESCUCHA pueden ir por
+    salidas distintas de la PC.
     """
 
     def __init__(self):
@@ -287,32 +312,78 @@ class BASSBackend:
 
         b.BASS_ErrorGetCode.restype = c_int
 
+        b.BASS_SetDevice.restype  = c_bool
+        b.BASS_SetDevice.argtypes = [c_uint32]
+
+        b.BASS_GetDeviceInfo.restype  = c_bool
+        b.BASS_GetDeviceInfo.argtypes = [c_uint32, ctypes.POINTER(BASS_DEVICEINFO)]
+
+        b.BASS_SetConfig.restype  = c_bool
+        b.BASS_SetConfig.argtypes = [c_uint32, c_uint32]
+
         self._handles: dict[int, int] = {}  # canal_idx -> BASS handle
-        self._initialized = False
+        self._inited:  set[int] = set()     # tarjetas inicializadas (indice real)
 
-    def init(self):
+    def init(self, device: int = -1):
         """
-        Inicializa BASS. ONIX_AUDIO_DEVICE elige el dispositivo:
-        -1 = predeterminado del sistema (default), 0 = "sin sonido"
-        (los streams corren en tiempo real pero no salen por ninguna tarjeta).
+        Inicializa BASS en la tarjeta del AIRE (debe funcionar o el motor no
+        arranca). -1 = predeterminada del sistema, 0 = "sin sonido" (los
+        streams corren en tiempo real pero no salen por ninguna tarjeta).
         """
-        device = int(os.getenv("ONIX_AUDIO_DEVICE", "-1"))
-        ok = self._bass.BASS_Init(device, 44100, 0, None, None)
-        if not ok:
+        self._bass.BASS_SetConfig(BASS_CONFIG_UNICODE, 1)
+        real = self.ensure_device(device)
+        log.info("[BASS] Motor inicializado -- 44100 Hz, dispositivo %d", real)
+
+    def list_devices(self) -> list[dict]:
+        """Tarjetas de sonido que ve BASS (indice 0 = sin sonido)."""
+        out, info = [], BASS_DEVICEINFO()
+        for i in range(64):
+            if not self._bass.BASS_GetDeviceInfo(i, ctypes.byref(info)):
+                break
+            out.append({
+                "index":           i,
+                "nombre":          _decode_name(info.name) or f"Dispositivo {i}",
+                "habilitado":      bool(info.flags & BASS_DEVICE_ENABLED),
+                "predeterminado":  bool(info.flags & BASS_DEVICE_DEFAULT),
+            })
+        return out
+
+    def _resolve(self, device: int) -> int:
+        """-1 -> indice real de la tarjeta predeterminada del sistema."""
+        if device != -1:
+            return device
+        for d in self.list_devices():
+            if d["predeterminado"] and d["index"] > 0:
+                return d["index"]
+        return 1
+
+    def ensure_device(self, device: int) -> int:
+        """Inicializa la tarjeta si hace falta. Devuelve su indice real."""
+        real = self._resolve(int(device))
+        if real in self._inited:
+            return real
+        if not self._bass.BASS_Init(real, 44100, 0, None, None):
             err = self._bass.BASS_ErrorGetCode()
-            raise RuntimeError(
-                f"BASS_Init fallo (codigo de error: {err}, dispositivo {device}). "
-                f"Verifica que haya un dispositivo de audio disponible en el sistema."
-            )
-        self._initialized = True
-        log.info("[BASS] Motor inicializado -- 44100 Hz, dispositivo %d", device)
+            if err != BASS_ERROR_ALREADY:
+                raise RuntimeError(
+                    f"BASS_Init fallo (codigo de error: {err}, dispositivo {real}). "
+                    f"Verifica que la tarjeta de audio exista y no este ocupada."
+                )
+        self._inited.add(real)
+        return real
 
-    def load_stream(self, path: str, channel_idx: int) -> bool:
+    def load_stream(self, path: str, channel_idx: int, device: int = -1) -> bool:
         """
-        Crea un stream BASS desde un archivo de audio en disco.
-        Libera automaticamente el stream anterior en ese canal si existe.
+        Crea un stream BASS desde un archivo de audio en disco, en la
+        tarjeta `device`. Libera el stream anterior en ese canal si existe.
         """
         self._free_channel(channel_idx)
+        try:
+            real = self.ensure_device(device)
+        except RuntimeError as exc:
+            log.error("[BASS] %s", exc)
+            return False
+        self._bass.BASS_SetDevice(real)
 
         flags = BASS_STREAM_PRESCAN | BASS_SAMPLE_FLOAT
         if self._windows:
@@ -407,8 +478,10 @@ class BASSBackend:
     def teardown(self):
         for idx in list(self._handles.keys()):
             self._free_channel(idx)
-        if self._initialized:
-            self._bass.BASS_Free()
+        for real in self._inited:
+            if self._bass.BASS_SetDevice(real):
+                self._bass.BASS_Free()
+        self._inited.clear()
         log.info("[BASS] Motor liberado.")
 
 
@@ -422,10 +495,30 @@ class MockBackend:
     (leida con mutagen; 10 s si no se puede leer). No emite sonido.
     """
 
+    DEVICES = [
+        {"index": 0, "nombre": "Sin sonido", "habilitado": True, "predeterminado": False},
+        {"index": 1, "nombre": "Simulada 1 (predeterminada)", "habilitado": True, "predeterminado": True},
+        {"index": 2, "nombre": "Simulada 2", "habilitado": True, "predeterminado": False},
+    ]
+
     def __init__(self):
         self._ch: dict[int, dict] = {}
 
-    def init(self): pass
+    def init(self, device: int = -1):
+        self.ensure_device(device)
+
+    def list_devices(self) -> list[dict]:
+        return [dict(d) for d in self.DEVICES]
+
+    def ensure_device(self, device: int) -> int:
+        real = 1 if int(device) == -1 else int(device)
+        if not any(d["index"] == real for d in self.DEVICES):
+            raise RuntimeError(f"Dispositivo {real} inexistente")
+        return real
+
+    def device_of(self, channel_idx: int) -> Optional[int]:
+        ch = self._ch.get(channel_idx)
+        return ch["device"] if ch else None
 
     @staticmethod
     def _probe(path: str) -> float:
@@ -438,8 +531,13 @@ class MockBackend:
             pass
         return 10.0
 
-    def load_stream(self, path: str, channel_idx: int) -> bool:
-        self._ch[channel_idx] = {"dur": self._probe(path), "started": None, "offset": 0.0}
+    def load_stream(self, path: str, channel_idx: int, device: int = -1) -> bool:
+        try:
+            real = self.ensure_device(device)
+        except RuntimeError:
+            return False
+        self._ch[channel_idx] = {"dur": self._probe(path), "started": None,
+                                 "offset": 0.0, "device": real}
         return True
 
     def play(self, channel_idx: int, restart: bool = False) -> bool:
@@ -735,6 +833,11 @@ class Watchdog:
 CANAL_A        = 0
 CANAL_B        = 1
 CANAL_EFX_BASE = 2  # canales 2-7 para cartuchera (6 slots disponibles)
+CANAL_CUE      = 8  # preescucha (sale por la tarjeta de preescucha, nunca al aire)
+
+# Salidas de audio (roles). Cada una apunta a una tarjeta de la PC
+# (config dispositivo_<rol>; -1 = predeterminada del sistema).
+ROLES_SALIDA = ("aire", "preescucha")
 
 
 class AudioEngine:
@@ -749,7 +852,14 @@ class AudioEngine:
 
     API publica (segura desde cualquier hilo, nunca bloquea):
         play_track, play_next, queue_track, clear_queue, skip, stop_playback,
-        fire_effect, set_mode, status
+        fire_effect, set_mode, lanzar_tanda, cue_play, cue_stop,
+        list_devices, status
+
+    PAUTAS SEGUN EL MODO:
+        automatico → las tandas salen solas en el siguiente cambio de pista.
+        manual     → las tandas quedan EN ESPERA y el operador las lanza
+                     (lanzar_tanda). Si no las lanza en su hora, se pierden
+                     y quedan registradas como no emitidas (pauta_missed).
     """
 
     TICK               = 0.05   # segundos entre ciclos del loop
@@ -790,6 +900,13 @@ class AudioEngine:
         self._norm_lufs        = -16.0
         self._duck_until       = 0.0
 
+        # Salidas: rol -> dispositivo BASS (-1 = predeterminado del sistema)
+        self._devices: dict[str, int] = {rol: -1 for rol in ROLES_SALIDA}
+        self._cue_track:       Optional[dict] = None
+
+        # Modo manual: el operador libera la tanda pendiente
+        self._tanda_liberada   = False
+
         self._duration         = 0.0
         self._mix_point        = float("inf")
         self._hard_end         = float("inf")   # corte duro (cue_outro de la pauta)
@@ -820,8 +937,8 @@ class AudioEngine:
     def start(self):
         if self._running:
             return
-        self._audio.init()
         self._load_config()
+        self._audio.init(self._devices["aire"])
         self._running = True
 
         self._thread = threading.Thread(
@@ -862,6 +979,11 @@ class AudioEngine:
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
+            for rol in ROLES_SALIDA:
+                self._devices[rol] = int(float(self._cfg(f"dispositivo_{rol}", "-1")))
+            # Compatibilidad: ONIX_AUDIO_DEVICE fuerza la tarjeta del aire
+            if os.getenv("ONIX_AUDIO_DEVICE") not in (None, ""):
+                self._devices["aire"] = int(os.environ["ONIX_AUDIO_DEVICE"])
             minutos = parse_minutos(self._cfg("tandas_minutos", "15,45"))
             if minutos != self._tandas_minutos:
                 self._tandas_minutos = minutos
@@ -889,6 +1011,9 @@ class AudioEngine:
         Vigila el canal activo: dispara la mezcla al llegar al punto de mezcla
         y releva la pista cuando termina. En modo automatico arranca solo.
         """
+        if self._cue_track and not self._audio.is_active(CANAL_CUE):
+            self._do_cue_stop()
+
         if self._xfade:
             return
 
@@ -959,6 +1084,36 @@ class AudioEngine:
         self._cmds.put(("effect", track, canal_offset))
         return True
 
+    def lanzar_tanda(self, ahora: bool = False) -> int:
+        """
+        Modo manual: el operador libera las cuñas en espera. Con ahora=True
+        entran ya (la musica sale con el empalme corto); si no, en el
+        proximo cambio de pista. Devuelve cuantas cuñas habia en espera.
+        """
+        pendientes = len(self._priority_queue)
+        if pendientes:
+            self._cmds.put(("lanzar_tanda", bool(ahora)))
+        return pendientes
+
+    def cue_play(self, audio_id: int, desde: float = 0.0) -> bool:
+        """Preescucha: suena por la salida de preescucha, nunca al aire."""
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        self._cmds.put(("cue", track, float(desde or 0)))
+        return True
+
+    def cue_stop(self):
+        self._cmds.put(("cue_stop",))
+
+    def list_devices(self) -> list[dict]:
+        """Tarjetas de sonido de la PC y que rol tiene asignado cada una."""
+        devs = self._audio.list_devices()
+        for d in devs:
+            d["roles"] = [rol for rol, idx in self._devices.items()
+                          if idx == d["index"] or (idx == -1 and d["predeterminado"])]
+        return devs
+
     def set_mode(self, mode: str):
         if mode not in ("manual", "automatico"):
             raise ValueError(f"Modo invalido: {mode!r}")
@@ -990,6 +1145,14 @@ class AudioEngine:
                 self._do_recover()
             elif name == "restart":
                 self._do_restart()
+            elif name == "lanzar_tanda":
+                self._tanda_liberada = True
+                if cmd[1] or not self._current_track:
+                    self._advance()
+            elif name == "cue":
+                self._do_cue(cmd[1], cmd[2])
+            elif name == "cue_stop":
+                self._do_cue_stop()
 
     # ── Seleccion y arranque de pistas ────────────────────────────────────────
 
@@ -1005,8 +1168,13 @@ class AudioEngine:
 
     def _pick_next(self) -> Optional[dict]:
         """Prioridad: pautas de la hora > cola manual > rotacion automatica."""
-        while self._priority_queue:
+        tanda_permitida = self._mode == "automatico" or self._tanda_liberada
+        if not self._priority_queue:
+            self._tanda_liberada = False
+        while tanda_permitida and self._priority_queue:
             pauta = self._priority_queue.popleft()
+            if not self._priority_queue:
+                self._tanda_liberada = False   # la proxima tanda vuelve a esperar al operador
             track = self._fetch_track(pauta["audio_id"])
             if track:
                 return {"track": track, "origen": "pauta", **pauta}
@@ -1088,7 +1256,7 @@ class AudioEngine:
             self._audio.stop(CANAL_A)
             self._audio.stop(CANAL_B)
 
-        if not self._audio.load_stream(path, canal):
+        if not self._audio.load_stream(path, canal, self._devices["aire"]):
             self._mark_failed(item, path)
             self._emit_error(track.get("id"), "error_carga_backend",
                              f"No se pudo abrir el audio: {track.get('titulo', '')}")
@@ -1269,7 +1437,7 @@ class AudioEngine:
             self._emit_error(track.get("id"), "archivo_no_encontrado",
                              f"Efecto no encontrado: {track.get('titulo', '')}", path=str(path))
             return
-        if not self._audio.load_stream(path, canal):
+        if not self._audio.load_stream(path, canal, self._devices["aire"]):
             self._emit_error(track.get("id"), "error_carga_backend",
                              f"No se pudo abrir el efecto: {track.get('titulo', '')}")
             return
@@ -1289,6 +1457,37 @@ class AudioEngine:
             "audio_id": track["id"], "titulo": track.get("titulo", ""), "canal": canal,
         })
         log.info("[Engine] Efecto: %s (canal %d)", track.get("titulo"), canal)
+
+    # ── Preescucha (salida interna, nunca al aire) ───────────────────────────
+
+    def _do_cue(self, track: dict, desde: float):
+        path = self._path_of(track)
+        if not path or not Path(path).exists():
+            self._emit_error(track.get("id"), "archivo_no_encontrado",
+                             f"Preescucha: archivo no encontrado: {track.get('titulo', '')}",
+                             path=str(path))
+            return
+        if not self._audio.load_stream(path, CANAL_CUE, self._devices["preescucha"]):
+            self._cue_track = None
+            self._emit_error(track.get("id"), "error_preescucha",
+                             "No se pudo abrir la preescucha (revisa la tarjeta de preescucha)")
+            return
+        if desde > 0:
+            self._audio.set_position_sec(CANAL_CUE, desde)
+        self._audio.set_volume(CANAL_CUE, self._gain_of(track))
+        self._audio.play(CANAL_CUE)
+        self._cue_track = track
+        self.bus.emit("cue_started", {
+            "audio_id": track.get("id"), "titulo": track.get("titulo", ""),
+            "artista": track.get("artista", ""),
+            "duracion": self._audio.get_duration_sec(CANAL_CUE), "desde": desde,
+        })
+
+    def _do_cue_stop(self):
+        track, self._cue_track = self._cue_track, None
+        self._audio.stop(CANAL_CUE)
+        if track:
+            self.bus.emit("cue_stopped", {"audio_id": track.get("id")})
 
     def _restore_ducking(self):
         if self._effect_ducking and time.monotonic() >= self._duck_until:
@@ -1402,6 +1601,7 @@ class AudioEngine:
                     self._tandas_lanzadas.add(minuto)
                     self.bus.emit("tanda_scheduled", {
                         "minuto": minuto, "slot": slot,
+                        "requiere_operador": self._mode == "manual",
                         "pautas": [{"pauta_id": p["pauta_id"], "cliente": p["cliente"]}
                                    for p in lanzadas],
                     })
@@ -1644,6 +1844,16 @@ class AudioEngine:
             "queue_length":      len(self._playlist_queue),
             "pautas_pendientes": len(self._priority_queue),
             "tandas_minutos":    list(self._tandas_minutos),
+            # Modo manual: cuñas esperando a que el operador lance la tanda
+            "tanda_en_espera":   (len(self._priority_queue)
+                                  if self._mode == "manual" and not self._tanda_liberada else 0),
+            "salidas":           dict(self._devices),
+            "preescucha":        {
+                "audio_id": self._cue_track.get("id"),
+                "titulo":   self._cue_track.get("titulo", ""),
+                "posicion": round(self._audio.get_position_sec(CANAL_CUE), 2),
+                "duracion": round(self._audio.get_duration_sec(CANAL_CUE), 2),
+            } if self._cue_track else None,
             "proxima_tanda":     self._proxima_tanda(),
             "crossfade_active":  self._xfade is not None,
             "crossfade_seg":     self._crossfade_secs,

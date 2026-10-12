@@ -56,6 +56,9 @@ SEED_CONFIG = [
     # Normalización de volumen (EBU R128)
     ("normalizacion_activa", "1"),
     ("normalizacion_lufs",   "-16"),
+    # Salidas de audio: índice de tarjeta BASS (-1 = predeterminada del sistema)
+    ("dispositivo_aire",       "-1"),
+    ("dispositivo_preescucha", "-1"),
 ]
 
 

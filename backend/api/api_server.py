@@ -54,6 +54,7 @@ except ImportError:
     from backend.api.schemas_pautas import PautaIn, PautaOut
 
 from backend.audio.loudness import NormalizadorWorker
+from backend.api.reportes import router as reportes_router
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -100,7 +101,7 @@ ENGINE_EVENTS = (
     "track_started", "track_ended", "crossfade_start", "playback_stopped",
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
-    "engine_stopped", "engine_connected",
+    "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -174,6 +175,8 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,          # FIX: patrón lifespan moderno
 )
+
+app.include_router(reportes_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1583,7 +1586,8 @@ def get_status():
 # Los mismos comandos están disponibles por WebSocket (ver /ws).
 # ===========================================================================
 
-PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue"}
+PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue",
+                   "lanzar_tanda", "cue", "cue_stop"}
 
 
 def _player_command(cmd: str, msg: dict) -> dict:
@@ -1627,6 +1631,16 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
         engine.stop_playback()
     elif cmd == "clear_queue":
         engine.clear_queue()
+    elif cmd == "lanzar_tanda":
+        n = engine.lanzar_tanda(bool(msg.get("ahora")))
+        if not n:
+            raise ValueError("No hay ninguna tanda en espera")
+        return {"ok": True, "cmd": cmd, "cuñas": n}
+    elif cmd == "cue":
+        if not engine.cue_play(_audio_id(), float(msg.get("desde") or 0)):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "cue_stop":
+        engine.cue_stop()
     else:
         raise ValueError(f"Comando desconocido: {cmd}")
     return {"ok": True, "cmd": cmd}
@@ -1636,13 +1650,17 @@ class PlayerCommand(BaseModel):
     audio_id:     Optional[int] = None
     canal_offset: Optional[int] = 0
     mode:         Optional[str] = None
+    ahora:        Optional[bool] = False    # lanzar_tanda: ya, sin esperar el cambio de pista
+    desde:        Optional[float] = 0.0     # cue: segundo desde el que se preescucha
 
 
 @app.post("/api/v1/player/{cmd}", tags=["Player"], summary="Enviar comando al motor de audio")
 def player_command(cmd: str, body: Optional[PlayerCommand] = None):
     """
     Comandos: play (con audio_id = al aire ya; sin audio_id = siguiente de la cola),
-    queue, fire_effect, set_mode (mode: manual|automatico), skip, stop, clear_queue.
+    queue, fire_effect, set_mode (mode: manual|automatico), skip, stop, clear_queue,
+    lanzar_tanda (ahora: bool; modo manual), cue (audio_id, desde) y cue_stop
+    (preescucha por la salida interna).
     """
     if cmd not in PLAYER_COMMANDS:
         raise HTTPException(status_code=404, detail=f"Comando desconocido: {cmd}")
@@ -1794,6 +1812,61 @@ def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
     if not path or not path.is_file():
         raise HTTPException(status_code=404, detail=f"Archivo del audio id={audio_id} no encontrado")
     return FileResponse(path)
+
+
+# ===========================================================================
+# SECCIÓN: SALIDAS DE AUDIO — Tarjetas de sonido y roles (aire / preescucha)
+# ===========================================================================
+
+ROLES_SALIDA = ("aire", "preescucha")
+
+
+class SalidasIn(BaseModel):
+    aire:       Optional[int] = Field(None, ge=-1, description="-1 = predeterminada del sistema")
+    preescucha: Optional[int] = Field(None, ge=-1)
+
+
+def _read_salidas(conn: sqlite3.Connection) -> dict:
+    valores = {r["clave"]: r["valor"] for r in conn.execute(
+        "SELECT clave, valor FROM config WHERE clave LIKE 'dispositivo_%'")}
+    return {rol: int(float(valores.get(f"dispositivo_{rol}", -1))) for rol in ROLES_SALIDA}
+
+
+def _listar_dispositivos() -> list:
+    try:
+        return engine.list_devices()
+    except Exception as exc:          # motor remoto caído
+        logger.warning(f"No se pudieron listar las tarjetas: {exc}")
+        return []
+
+
+@app.get("/api/v1/audio/dispositivos", tags=["Config"], summary="Tarjetas de sonido y salidas")
+def get_dispositivos(conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Tarjetas que ve el motor (índice 0 = sin sonido) y qué tarjeta usa cada
+    salida: `aire` (lo que sale a la emisora) y `preescucha` (escucha interna).
+    """
+    return {"dispositivos": _listar_dispositivos(), "salidas": _read_salidas(conn)}
+
+
+@app.put("/api/v1/audio/salidas", tags=["Config"], summary="Asignar tarjetas a las salidas")
+def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Se aplica en caliente: la próxima pista (o preescucha) ya sale por la
+    tarjeta nueva; lo que está sonando termina en la anterior.
+    """
+    disponibles = {d["index"] for d in _listar_dispositivos()}
+    for rol, idx in body.model_dump(exclude_none=True).items():
+        if idx != -1 and disponibles and idx not in disponibles:
+            raise HTTPException(status_code=422, detail=f"La tarjeta {idx} no existe en esta PC")
+        conn.execute(
+            "INSERT INTO config (clave, valor) VALUES (?, ?)"
+            " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+            (f"dispositivo_{rol}", str(idx)),
+        )
+    conn.commit()
+    engine.reload_config()
+    return {"dispositivos": _listar_dispositivos(), "salidas": _read_salidas(conn)}
 
 
 @app.get("/api/v1/normalizacion", tags=["Config"], summary="Estado de la normalización de volumen")
