@@ -159,7 +159,11 @@ const StudioWS = (() => {
 
     ws.onmessage = ({ data }) => {
       try {
-        const { event, data: payload } = JSON.parse(data);
+        const msg = JSON.parse(data);
+        // El servidor envía { event, data }; los mensajes reemitidos por
+        // otros módulos del Admin solo traen { cmd, data }.
+        const event = msg.event ?? msg.cmd;
+        const payload = msg.data;
         // Disparar handlers específicos del evento
         (handlers[event] ?? []).forEach(fn => fn(payload));
         // Disparar handlers "catch-all" registrados con onEvent("*", fn)
@@ -244,10 +248,15 @@ const NowPlaying = (() => {
   function setTrack(data) {
     _audioId  = data.audio_id;
     _duration = data.duracion_seg ?? 0;
-    _startedAt = Date.now();
+    // La pista puede arrancar adelantada (cue_inicio): el reloj parte de ahí
+    _startedAt = Date.now() - (data.posicion_seg ?? 0) * 1000;
 
     // Campos de texto en la UI
-    _setText("#studioNowTitle",  `${escHtml(data.artista)} — ${escHtml(data.titulo)}`);
+    _setText("#studioNowTitle",  escHtml(data.titulo));
+    _setText("#studioNowArtist", escHtml(data.cliente ?? data.artista));
+    _setText("#badgeGenero",     escHtml(data.genero_vocal || "—"));
+    _setText("#timeRemaining",   fmtSec(_duration));
+    _setOnAir(true);
     _setText("#studioNowGenre",  data.genero_vocal ?? "");
     _setText("#studioNowType",   data.tipo_audio ?? "");
     _setText("#studioNowDur",    fmtSec(_duration));
@@ -269,6 +278,12 @@ const NowPlaying = (() => {
     _stopProgress();
     _audioId = null;
     _setText("#studioNowTitle", "Sin reproducción activa");
+    _setText("#studioNowArtist", "—");
+    _setText("#badgeGenero", "—");
+    ["#timeElapsed", "#timeRemaining", "#timeRemainingBar"].forEach(s => _setText(s, "0:00"));
+    const fill = $s("#progressFill");
+    if (fill) fill.style.width = "0%";
+    _setOnAir(false);
     _setText("#studioNowGenre", "");
     _setText("#studioNowType",  "");
     _setText("#studioNowDur",   "");
@@ -285,10 +300,14 @@ const NowPlaying = (() => {
     _progressTimer = setInterval(() => {
       const elapsed = (Date.now() - _startedAt) / 1000;
       const pct = Math.min((elapsed / _duration) * 100, 100);
-      const bar = $s("#studioProgressBar");
+      const bar = $s("#progressFill") ?? $s("#studioProgressBar");
       if (bar) bar.style.width = `${pct.toFixed(1)}%`;
-      // Actualizar tiempo transcurrido
+      // Actualizar tiempo transcurrido / restante
+      const remaining = Math.max(_duration - elapsed, 0);
       _setText("#studioNowElapsed", fmtSec(elapsed));
+      _setText("#timeElapsed",      fmtSec(elapsed));
+      _setText("#timeRemaining",    fmtSec(remaining));
+      _setText("#timeRemainingBar", fmtSec(remaining));
       if (pct >= 100) _stopProgress();
     }, 1000);
   }
@@ -302,7 +321,25 @@ const NowPlaying = (() => {
     if (el) el.innerHTML = html;
   }
 
-  return { setTrack, clearTrack };
+  function _setOnAir(on) {
+    const badge = $s("#onAirBadge");
+    if (!badge) return;
+    badge.classList.toggle("active", on);
+    const txt = badge.querySelector(".on-air-text");
+    if (txt) txt.textContent = on ? "ON AIR" : "OFF AIR";
+  }
+
+  /** Sincroniza el strip con /api/v1/status (al cargar la página a mitad de pista) */
+  function syncFromStatus(st) {
+    const t = st?.current_track;
+    if (!t) { clearTrack(); return; }
+    setTrack({
+      audio_id: t.id, titulo: t.titulo, artista: t.artista, cliente: t.cliente,
+      duracion_seg: st.duration_sec, posicion_seg: st.position_sec,
+    });
+  }
+
+  return { setTrack, clearTrack, syncFromStatus };
 })();
 
 
@@ -323,7 +360,12 @@ const StudioLibrary = (() => {
       const params = new URLSearchParams({ limit: "3000" });
       const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/audios?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      _tracks = await res.json();
+      const body = await res.json();
+      // La API responde { total, limit, offset, data: [...] } con los nombres
+      // de la Biblioteca (duracion, voz); se adaptan a los que usa esta tabla.
+      _tracks = (body.data ?? []).map(a => ({
+        ...a, duracion_seg: a.duracion, genero_vocal: a.voz,
+      }));
       // Aplicar filtros actuales al nuevo set
       applyFilters();
     } catch (err) {
@@ -332,27 +374,32 @@ const StudioLibrary = (() => {
     }
   }
 
-  /** Filtra en memoria según el texto del buscador */
+  /** Filtra por el texto del buscador y reparte los audios por pestaña */
   function applyFilters() {
-    const q = ($s("#studioLibSearch")?.value ?? "").toLowerCase().trim();
-    const tipo = $s("#studioLibFilterTipo")?.value ?? "";
+    const q = (($s("#studioLibSearch") ?? $s("#searchInput"))?.value ?? "").toLowerCase().trim();
+    const match = t => !q ||
+      t.titulo.toLowerCase().includes(q)  ||
+      t.artista.toLowerCase().includes(q) ||
+      (t.genero_vocal ?? "").toLowerCase().includes(q);
 
-    _filtered = _tracks.filter(t => {
-      if (tipo && t.tipo_audio !== tipo) return false;
-      if (q && !(
-        t.titulo.toLowerCase().includes(q)  ||
-        t.artista.toLowerCase().includes(q) ||
-        (t.genero_vocal ?? "").toLowerCase().includes(q)
-      )) return false;
-      return true;
-    });
+    // MÚSICA muestra todo lo que no es cuña ni efecto (música, sweepers, programas…)
+    _filtered     = _tracks.filter(t => !["Cuña", "Efecto"].includes(t.tipo_audio) && match(t));
+    const ads     = _tracks.filter(t => t.tipo_audio === "Cuña"   && match(t));
+    const jingles = _tracks.filter(t => t.tipo_audio === "Efecto" && match(t));
 
     render();
-    const counter = $s("#studioLibCount");
-    if (counter) counter.textContent = `${_filtered.length} / ${_tracks.length}`;
+    renderSimple("#adList", ads, "publicidad", "Sin cuñas en la biblioteca");
+    renderSimple("#jingleList", jingles, "jingles", "Sin jingles en la biblioteca");
+
+    const counter = $s("#studioLibCount") ?? $s("#searchCount");
+    if (counter) counter.textContent = `${_filtered.length + ads.length + jingles.length} / ${_tracks.length}`;
   }
 
-  /** Renderiza la tabla de la biblioteca en el Studio */
+  const _actions = t => `
+          <button class="lib-btn-play"  data-play-id="${t.id}"  title="Reproducir ahora">▶ AIRE</button>
+          <button class="lib-btn-queue" data-queue-id="${t.id}" title="Añadir a cola">+ COLA</button>`;
+
+  /** Renderiza la tabla de la pestaña MÚSICA */
   function render() {
     const tbody = $s("#studioLibTableBody");
     if (!tbody) return;
@@ -368,42 +415,66 @@ const StudioLibrary = (() => {
           <div class="lib-title">${escHtml(t.titulo)}</div>
           <div class="lib-artist">${escHtml(t.artista)}</div>
         </td>
-        <td class="lib-col-meta">${escHtml(t.genero_vocal ?? "")}</td>
         <td class="lib-col-dur">${fmtSec(t.duracion_seg)}</td>
-        <td class="lib-col-energy">${"★".repeat(t.energia ?? 0)}</td>
+        <td class="lib-col-meta">${escHtml(t.genero_vocal ?? "")}</td>
+        <td class="lib-col-meta">${escHtml(t.cat1 ?? "")}</td>
         <td class="lib-col-prev">
           <button class="lib-btn-prev" data-prev-id="${t.id}" title="Preescuchar">▶</button>
         </td>
+        <td class="lib-col-actions">${_actions(t)}</td>
+      </tr>
+    `).join("");
+  }
+
+  /** Renderiza las pestañas PUBLICIDAD y JINGLES (3 columnas) */
+  function renderSimple(sel, list, banco, emptyMsg) {
+    const tbody = $s(sel);
+    if (!tbody) return;
+
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;opacity:.5;padding:20px">${emptyMsg}</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = list.map(t => `
+      <tr data-audio-id="${t.id}">
+        <td class="lib-col-title">
+          <div class="lib-title">${escHtml(t.titulo)}</div>
+          <div class="lib-artist">${escHtml(t.artista)}</div>
+        </td>
+        <td class="lib-col-dur">${fmtSec(t.duracion_seg)}</td>
         <td class="lib-col-actions">
-          <button class="lib-btn-play"  data-play-id="${t.id}"  title="Reproducir ahora">▶ AIRE</button>
-          <button class="lib-btn-queue" data-queue-id="${t.id}" title="Añadir a cola">+ COLA</button>
+          <button class="lib-btn-prev" data-prev-id="${t.id}" title="Preescuchar">▶</button>${_actions(t)}
+          <button class="lib-btn-queue" data-cart-id="${t.id}" data-cart-banco="${banco}" title="Asignar al primer botón libre de la cartuchera">→ CART</button>
         </td>
       </tr>
     `).join("");
-
-    // Botones de reproducción
-    tbody.querySelectorAll("[data-play-id]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.playId);
-        StudioWS.send({ cmd: "play", audio_id: id });
-      });
-    });
-
-    // Botones de cola
-    tbody.querySelectorAll("[data-queue-id]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.queueId);
-        StudioWS.send({ cmd: "queue", audio_id: id });
-        const t = _tracks.find(x => x.id === id);
-        studioToast(`+ Cola: ${t?.titulo ?? id}`, "info");
-      });
-    });
-
-    // Botones de preescucha
-    tbody.querySelectorAll("[data-prev-id]").forEach(btn => {
-      btn.addEventListener("click", () => togglePreview(parseInt(btn.dataset.prevId), btn));
-    });
   }
+
+  // Un solo listener para las tres tablas (delegación de eventos)
+  $s(".hub-content")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    if (btn.dataset.playId) {
+      StudioWS.send({ cmd: "play", audio_id: parseInt(btn.dataset.playId) });
+    } else if (btn.dataset.queueId) {
+      const id = parseInt(btn.dataset.queueId);
+      StudioWS.send({ cmd: "queue", audio_id: id });
+      studioToast(`+ Cola: ${_tracks.find(x => x.id === id)?.titulo ?? id}`, "info");
+    } else if (btn.dataset.prevId) {
+      togglePreview(parseInt(btn.dataset.prevId), btn);
+    } else if (btn.dataset.cartId) {
+      Cartuchera.assign(btn.dataset.cartBanco, parseInt(btn.dataset.cartId));
+    }
+  });
+
+  // Pestañas MÚSICA / PUBLICIDAD / JINGLES / INGESTA
+  $$s(".hub-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      $$s(".hub-tab").forEach(t => t.classList.toggle("active", t === tab));
+      $$s(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${tab.dataset.tab}`));
+    });
+  });
 
   /** Obtiene el ID del track actualmente al aire (desde el strip) */
   function _getNowId() {
@@ -449,8 +520,7 @@ const StudioLibrary = (() => {
   }
 
   // ── Filtros en tiempo real ─────────────────────────────────
-  $s("#studioLibSearch")?.addEventListener("input", debounce(applyFilters, 150));
-  $s("#studioLibFilterTipo")?.addEventListener("change", applyFilters);
+  ($s("#studioLibSearch") ?? $s("#searchInput"))?.addEventListener("input", debounce(applyFilters, 150));
 
   return { load, applyFilters, render };
 })();
@@ -489,6 +559,8 @@ const ModeToggle = (() => {
 
   function setMode(mode) {
     _currentMode = mode;
+    const chk = $s("#modeToggle");
+    if (chk) chk.checked = mode === "automatico";
     const btn = $s("#btnModeToggle") ?? $s(".btn-mode-toggle");
     if (!btn) return;
     btn.textContent = mode === "automatico" ? "⏸ MODO AUTO" : "▶ MODO MANUAL";
@@ -502,7 +574,199 @@ const ModeToggle = (() => {
     StudioWS.send({ cmd: "set_mode", mode: newMode });
   });
 
+  // Interruptor MAN/AUTO del encabezado
+  $s("#modeToggle")?.addEventListener("change", (e) => {
+    StudioWS.send({ cmd: "set_mode", mode: e.target.checked ? "automatico" : "manual" });
+  });
+
   return { setMode };
+})();
+
+
+/* ============================================================
+   MÓDULO: TRANSPORTE Y COLA
+   Botones Play / Stop / Skip y lista de la cola manual.
+   ============================================================ */
+const Transport = (() => {
+  $s("#btnPlayPause")?.addEventListener("click", () => StudioWS.send({ cmd: "play" }));
+  $s("#btnStop")?.addEventListener("click", () => StudioWS.send({ cmd: "stop" }));
+  $s("#btnSkip")?.addEventListener("click", () => StudioWS.send({ cmd: "skip" }));
+  $s("#btnFadeNext")?.addEventListener("click", () => StudioWS.send({ cmd: "skip" }));
+  $s("#btnClearQueue")?.addEventListener("click", () => StudioWS.send({ cmd: "clear_queue" }));
+
+  function renderQueue(queue = []) {
+    const list = $s("#playlistList");
+    if (!list) return;
+    list.innerHTML = queue.length
+      ? queue.map((t, i) => `
+          <div class="pl-item">
+            <span class="pl-pos">${i + 1}</span>
+            <div class="pl-info">
+              <div class="pl-title">${escHtml(t.titulo)}</div>
+              <div class="pl-artist">${escHtml(t.artista)}</div>
+            </div>
+          </div>`).join("")
+      : `<div class="empty-state"><span class="empty-icon">♪</span><span>Cola vacía</span></div>`;
+  }
+
+  /** Estado inicial desde la API (modo, pista al aire, cola) */
+  async function sync() {
+    try {
+      const st = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/status`).then(r => r.json());
+      ModeToggle.setMode(st.modo ?? "manual");
+      NowPlaying.syncFromStatus(st);
+      renderQueue(st.queue ?? []);
+    } catch (err) {
+      console.warn("[Transport] No se pudo leer /api/v1/status:", err);
+    }
+  }
+
+  return { renderQueue, sync };
+})();
+
+
+/* ============================================================
+   MÓDULO: CARTUCHERA
+   Botones de disparo. La asignación vive en la BD (/api/v1/cartuchera):
+   clic = disparar · clic derecho = vaciar el botón.
+   Se asignan con el botón "→ CART" de las pestañas PUBLICIDAD y JINGLES.
+   ============================================================ */
+const Cartuchera = (() => {
+  const GRIDS = { jingles: "#effectsGrid", publicidad: "#adsGrid" };
+  let _slots = { jingles: [], publicidad: [] };
+
+  async function load() {
+    try {
+      const data = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/cartuchera`).then(r => r.json());
+      _slots = data.slots ?? _slots;
+      render();
+    } catch (err) {
+      console.warn("[Cartuchera] No se pudo cargar:", err);
+    }
+  }
+
+  function render() {
+    for (const [banco, sel] of Object.entries(GRIDS)) {
+      $$s(`${sel} .effect-btn`).forEach(btn => {
+        const asignado = (_slots[banco] ?? []).find(x => x.slot === parseInt(btn.dataset.slot));
+        btn.classList.toggle("empty", !asignado);
+        btn.dataset.audioId = asignado ? asignado.audio_id : "";
+        btn.title = asignado
+          ? `${asignado.titulo} — clic: disparar · clic derecho: vaciar`
+          : "Vacío — asígnalo con «→ CART» en la biblioteca";
+        const name = btn.querySelector(".eff-name");
+        if (name) name.textContent = asignado ? (asignado.etiqueta || asignado.titulo) : "vacío";
+      });
+    }
+  }
+
+  /** Asigna el audio al primer botón libre del banco */
+  async function assign(banco, audioId) {
+    const total = $$s(`${GRIDS[banco]} .effect-btn`).length;
+    const usados = new Set((_slots[banco] ?? []).map(x => x.slot));
+    let slot = 1;
+    while (usados.has(slot)) slot++;
+    if (slot > total) {
+      studioToast("No quedan botones libres: vacía uno con clic derecho", "warning");
+      return;
+    }
+    const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/cartuchera/${banco}/${slot}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audio_id: audioId }),
+    });
+    if (!res.ok) { studioToast("No se pudo asignar a la cartuchera", "error"); return; }
+    studioToast(`Asignado al botón ${slot} (${banco})`, "success", 2000);
+    load();
+  }
+
+  for (const [banco, sel] of Object.entries(GRIDS)) {
+    const grid = $s(sel);
+    grid?.addEventListener("click", (e) => {
+      const btn = e.target.closest(".effect-btn");
+      if (!btn?.dataset.audioId) return;
+      StudioWS.send({
+        cmd: "fire_effect",
+        audio_id: parseInt(btn.dataset.audioId),
+        canal_offset: parseInt(btn.dataset.slot) - 1,
+      });
+      btn.classList.add("firing");
+      setTimeout(() => btn.classList.remove("firing"), 400);
+    });
+    grid?.addEventListener("contextmenu", async (e) => {
+      const btn = e.target.closest(".effect-btn");
+      if (!btn?.dataset.audioId) return;
+      e.preventDefault();
+      await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/cartuchera/${banco}/${btn.dataset.slot}`, { method: "DELETE" });
+      load();
+    });
+  }
+
+  // Conmutador JINGLES / PUBLICIDAD de la cartuchera
+  $$s(".cart-mode-btn").forEach(modeBtn => {
+    modeBtn.addEventListener("click", () => {
+      $$s(".cart-mode-btn").forEach(b => b.classList.toggle("active", b === modeBtn));
+      $s("#cartPanelJingles")?.classList.toggle("active", modeBtn.dataset.mode === "jingles");
+      $s("#cartPanelAds")?.classList.toggle("active", modeBtn.dataset.mode === "publicidad");
+    });
+  });
+
+  /** Añade una línea al registro "Disparos recientes" */
+  function logFired(titulo) {
+    const list = $s("#effectsLogList");
+    if (!list) return;
+    list.querySelector(".log-empty")?.remove();
+    const li = document.createElement("li");
+    li.textContent = `${new Date().toLocaleTimeString()} · ${titulo}`;
+    list.prepend(li);
+    while (list.children.length > 8) list.lastChild.remove();
+  }
+
+  return { load, assign, logFired };
+})();
+
+
+/* ============================================================
+   MÓDULO: CONFIGURACIÓN DEL MOTOR
+   Panel de la pestaña INGESTA ↔ /api/v1/config/motor
+   ============================================================ */
+const MotorConfig = (() => {
+  const FIELDS = {
+    crossfade_seg:       "#cfgCrossfade",
+    ventana_artista_min: "#cfgVentana",
+    max_mismo_genero:    "#cfgMaxGenero",
+  };
+
+  async function load() {
+    try {
+      const cfg = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/config/motor`).then(r => r.json());
+      for (const [clave, sel] of Object.entries(FIELDS)) {
+        const el = $s(sel);
+        if (el && cfg[clave] != null) el.value = cfg[clave];
+      }
+    } catch (err) {
+      console.warn("[MotorConfig] No se pudo cargar:", err);
+    }
+  }
+
+  // "Forzar nacional" necesita un campo Origen que la biblioteca aún no tiene
+  const nacional = $s("#cfgForzarNacional");
+  if (nacional) { nacional.disabled = true; nacional.title = "Pendiente: la biblioteca no tiene campo Origen"; }
+
+  $s("#btnSaveConfig")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const body = {};
+    for (const [clave, sel] of Object.entries(FIELDS)) {
+      const v = parseFloat($s(sel)?.value);
+      if (!isNaN(v)) body[clave] = v;
+    }
+    const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/config/motor`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    studioToast(res.ok ? "✓ Configuración del motor guardada" : "No se pudo guardar la configuración",
+                res.ok ? "success" : "error");
+  });
+
+  return { load };
 })();
 
 
@@ -558,6 +822,26 @@ StudioWS.onEvent("crossfade_start", (data) => {
   }
 });
 
+// ── Reproducción detenida (stop manual o cola agotada) ────────
+StudioWS.onEvent("playback_stopped", () => {
+  NowPlaying.clearTrack();
+});
+
+// ── Cartuchera modificada (desde este u otro puesto) ──────────
+StudioWS.onEvent("cartuchera_updated", () => {
+  Cartuchera.load();
+});
+
+// ── Cola manual actualizada ───────────────────────────────────
+StudioWS.onEvent("queue_updated", (data) => {
+  Transport.renderQueue(data?.queue ?? []);
+});
+
+// ── Pauta programada para esta hora ───────────────────────────
+StudioWS.onEvent("pauta_scheduled", (data) => {
+  studioToast(`📢 Pauta en cola: ${data?.cliente ?? ""}`, "info", 3000);
+});
+
 // ── Motor detenido ────────────────────────────────────────────
 StudioWS.onEvent("engine_stopped", () => {
   NowPlaying.clearTrack();
@@ -573,6 +857,7 @@ StudioWS.onEvent("mode_changed", (data) => {
 // ── Efecto disparado ─────────────────────────────────────────
 StudioWS.onEvent("effect_fired", (data) => {
   studioToast(`🎵 Efecto: ${data?.titulo ?? data?.audio_id}`, "info", 1800);
+  Cartuchera.logFired(data?.titulo ?? `ID ${data?.audio_id}`);
 });
 
 // ── Error de reproducción ─────────────────────────────────────
@@ -637,6 +922,9 @@ StudioWS.onEvent("bloques_updated", (data) => {
   await Promise.allSettled([
     StudioLibrary.load(),
     StudioStats.load(),
+    Transport.sync(),
+    Cartuchera.load(),
+    MotorConfig.load(),
   ]);
 
   // Inicializar panel de efectos (si existe en el HTML)

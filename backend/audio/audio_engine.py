@@ -1,47 +1,61 @@
 """
-audio_engine.py — Onix FM Digital  v3.0  (BASS Edition)
+audio_engine.py — Onix FM Digital  v4.0  (BASS Edition)
 ================================================================================
 
 Motor de audio profesional para emision 24/7.
 
 BACKENDS DISPONIBLES (en orden de preferencia):
-    1. BASS.dll  -- Motor profesional, gapless real, SYNC_END callback.
-                   Descarga GRATUITA para uso no comercial:
+    1. BASS.dll  -- Motor profesional. Gratis solo para uso NO comercial;
+                   para emision comercial se requiere licencia:
                    https://www.un4seen.com/bass.html
                    · Windows: bass.dll      (en la carpeta del proyecto)
                    · Linux:   libbass.so    (misma carpeta o /usr/lib)
                    · macOS:   libbass.dylib (misma carpeta)
-    2. pygame    -- Fallback robusto. Sin gapless real, pero funcional.
-    3. mock      -- Simulacion sin hardware. Solo para desarrollo/pruebas.
+    2. mock      -- Simulacion sin hardware (reloj de pared, sin sonido).
+                   Solo para desarrollo/pruebas y para el contenedor Docker.
+
+ARQUITECTURA DE HILOS:
+    Un unico hilo (AudioEngineLoop) es dueño de todo el estado de reproduccion.
+    La API nunca toca los canales directamente: encola comandos (play, skip,
+    stop, efecto) que el loop ejecuta en su siguiente tick (50 ms). Asi no hay
+    carreras entre la API, el watchdog y el propio motor.
+
+MEZCLA (CROSSFADE):
+    El loop vigila la posicion del canal activo. Al llegar al punto de mezcla
+    (cue_mezcla > outro > duracion - crossfade_seg) arranca la siguiente pista
+    en el otro canal y desliza los volumenes con BASS_ChannelSlideAttribute
+    (rampa nativa dentro del mixer, sin time.sleep en Python).
+
+PAUTAS:
+    Cada pocos segundos se consulta la tabla `pautas`. Las que tienen marcada
+    la celda dia-hora actual en su matriz entran a una cola prioritaria y salen
+    al aire en el siguiente cambio de pista, una sola vez por hora
+    (se registra en historial_emision.slot).
 
 WATCHDOG:
-    Hilo independiente que verifica cada 2 segundos si el canal activo
-    sigue sonando. Si detecta silencio inesperado durante mas de
-    SILENCE_TOLERANCE segundos, emite 'watchdog_recovery' y el motor
-    principal reintenta reproducir.
+    Hilo independiente que verifica cada 2 segundos si el canal activo sigue
+    sonando y avanzando. Solo detecta y emite eventos; la recuperacion la
+    ejecuta el loop del motor.
 
-GAPLESS PLAYBACK (solo BASS):
-    BASS permite registrar BASS_SYNC_END que se ejecuta en el momento
-    exacto en que el stream esta por terminar (dentro del mixer, sin
-    latencia extra de threading). El motor carga el siguiente archivo
-    en memoria antes de que el actual termine -> cero silencio entre pistas.
-
-COLUMNAS BD (fuente de verdad: init_db.py):
-    id, titulo, artista, genero_vocal, energia, origen,
-    tipo_audio, ruta_archivo, puntos_audio, duracion_seg,
-    ultima_reproduccion, veces_reproducido, activo, notas
+COLUMNAS BD (fuente de verdad: scripts/init_db.py):
+    audios: id, titulo, artista, archivo_path, duracion, subgenero (cat1),
+            categoria (cat2), cat3, genero_vocal (voz), cue_inicio, cue_mezcla,
+            outro, ultima_reproduccion, veces_reproducido, activo ...
 """
 
 import ctypes
 import json
 import logging
+import os
 import platform
+import queue
+import random
 import sqlite3
 import threading
 import time
 from collections import deque
-from ctypes import POINTER, c_bool, c_char_p, c_double, c_float
-from ctypes import c_int, c_longlong, c_ulong, c_void_p
+from ctypes import c_bool, c_char_p, c_double, c_float
+from ctypes import c_int, c_int64, c_uint32, c_void_p, c_wchar_p
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
@@ -50,11 +64,15 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("AudioEngine")
 
-# ── Ruta canonica de la BD ────────────────────────────────────────────────────
-# Path(__file__).resolve() es robusto en Windows, Linux y macOS sin importar
-# desde donde se lance el servidor.
+# Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
+from backend.paths import DB_PATH, resolve_media
+
 _THIS_FILE = Path(__file__).resolve()
-DB_PATH    = _THIS_FILE.parent.parent.parent / "radio_core.db"
+
+# Tipos de audio (audios.tipo_audio). Solo 'Musica' entra en la rotacion
+# automatica; las cuñas salen unicamente por la programacion de pautas.
+TIPO_MUSICA = "Musica"
+TIPO_CUNA   = "Cuña"
 
 
 def _db_conn(db_path: Path = None) -> sqlite3.Connection:
@@ -64,14 +82,9 @@ def _db_conn(db_path: Path = None) -> sqlite3.Connection:
       - row_factory       → acceso por nombre de columna
       - foreign keys      → integridad referencial
       - check_same_thread → False para uso con threading del motor
-
-    WAL (Write-Ahead Logging) elimina los errores 'database is locked'
-    cuando el motor esta sonando y el administrador guarda cambios en
-    paralelo desde la API. Ambas conexiones operan sobre el mismo
-    archivo .db sin bloquearse mutuamente.
     """
     path = db_path or DB_PATH
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -89,20 +102,12 @@ BASS_ACTIVE_PAUSED   = 3
 BASS_ATTRIB_VOL      = 2
 BASS_POS_BYTE        = 0
 
-# SYNC_END dispara el callback cuando el stream llega al final del buffer.
-# SYNC_MIXTIME = ejecuta el callback dentro del mismo hilo del mixer,
-# eliminando la latencia de un thread adicional.
-BASS_SYNC_END        = 2
-BASS_SYNC_MIXTIME    = 0x40000000
-BASS_SYNC_ONETIME    = 0x80000000
-
 # PRESCAN = escanea el archivo completo al cargar para obtener duracion exacta.
 BASS_STREAM_PRESCAN  = 0x20000
 BASS_SAMPLE_FLOAT    = 0x100
-
-# Tipo del callback de sincronizacion:
-# void CALLBACK SyncProc(HSYNC handle, DWORD channel, DWORD data, void *user)
-SYNCPROC = ctypes.CFUNCTYPE(None, c_ulong, c_ulong, c_ulong, c_void_p)
+# UNICODE = la ruta se pasa como UTF-16 (obligatorio en Windows para rutas con
+# tildes o eñes; sin este flag BASS interpreta la ruta en la pagina ANSI).
+BASS_UNICODE         = 0x80000000
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -129,8 +134,7 @@ def _detect_bass_lib() -> Optional[str]:
 
     for path in candidates:
         try:
-            lib = (ctypes.WinDLL(path) if system == "Windows"
-                   else ctypes.CDLL(path))
+            (ctypes.WinDLL(path) if system == "Windows" else ctypes.CDLL(path))
             log.info("[BASS] Libreria encontrada: %s", path)
             return path
         except OSError:
@@ -138,20 +142,14 @@ def _detect_bass_lib() -> Optional[str]:
     return None
 
 
-BASS_LIB_PATH = _detect_bass_lib()
+# ONIX_AUDIO_BACKEND=mock fuerza el simulador aunque BASS este disponible.
+BASS_LIB_PATH = None if os.getenv("ONIX_AUDIO_BACKEND") == "mock" else _detect_bass_lib()
 
 if BASS_LIB_PATH:
     BACKEND = "bass"
 else:
-    try:
-        import pygame
-        BACKEND = "pygame"
-        log.warning("[ENGINE] BASS no encontrado -> fallback a pygame.")
-        log.warning("[ENGINE] Para audio profesional descarga BASS en:")
-        log.warning("[ENGINE] https://www.un4seen.com/bass.html")
-    except ImportError:
-        BACKEND = "mock"
-        log.warning("[ENGINE] Sin backend de audio. Modo mock (sin sonido).")
+    BACKEND = "mock"
+    log.warning("[ENGINE] BASS no disponible -> modo mock (sin sonido).")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -199,99 +197,88 @@ class BASSBackend:
 
     Cada 'canal logico' (0=A, 1=B, 2-7=efx) corresponde a un stream
     handle de BASS. Los streams se crean al cargar un archivo y se liberan
-    al terminar la reproduccion o al cargar uno nuevo.
+    al detener el canal o al cargar uno nuevo.
     """
 
     def __init__(self):
-        if platform.system() == "Windows":
-            self._bass = ctypes.WinDLL(BASS_LIB_PATH)
-        else:
-            self._bass = ctypes.CDLL(BASS_LIB_PATH)
+        self._windows = platform.system() == "Windows"
+        self._bass = (ctypes.WinDLL(BASS_LIB_PATH) if self._windows
+                      else ctypes.CDLL(BASS_LIB_PATH))
 
         # Definir tipos de argumentos y retorno para cada funcion BASS.
-        # Sin esto, ctypes puede truncar valores de 64-bit en sistemas modernos.
+        # HSTREAM/DWORD = 32 bits, QWORD = 64 bits. Sin esto ctypes trunca.
         b = self._bass
 
         b.BASS_Init.restype  = c_bool
-        b.BASS_Init.argtypes = [c_int, c_ulong, c_ulong, c_void_p, c_void_p]
+        b.BASS_Init.argtypes = [c_int, c_uint32, c_uint32, c_void_p, c_void_p]
 
         b.BASS_Free.restype = c_bool
 
-        b.BASS_StreamCreateFile.restype  = c_ulong
+        b.BASS_StreamCreateFile.restype  = c_uint32
         b.BASS_StreamCreateFile.argtypes = [
-            c_bool,     # mem: False = archivo en disco
-            c_char_p,   # file: ruta codificada como bytes
-            c_longlong, # offset en el archivo
-            c_longlong, # longitud (0 = todo el archivo)
-            c_ulong,    # flags
+            c_bool,                                   # mem: False = archivo en disco
+            c_wchar_p if self._windows else c_char_p, # ruta
+            c_int64,                                  # offset en el archivo
+            c_int64,                                  # longitud (0 = todo)
+            c_uint32,                                 # flags
         ]
 
         b.BASS_StreamFree.restype  = c_bool
-        b.BASS_StreamFree.argtypes = [c_ulong]
+        b.BASS_StreamFree.argtypes = [c_uint32]
 
         b.BASS_ChannelPlay.restype  = c_bool
-        b.BASS_ChannelPlay.argtypes = [c_ulong, c_bool]
+        b.BASS_ChannelPlay.argtypes = [c_uint32, c_bool]
 
         b.BASS_ChannelStop.restype  = c_bool
-        b.BASS_ChannelStop.argtypes = [c_ulong]
+        b.BASS_ChannelStop.argtypes = [c_uint32]
 
-        b.BASS_ChannelIsActive.restype  = c_ulong
-        b.BASS_ChannelIsActive.argtypes = [c_ulong]
+        b.BASS_ChannelIsActive.restype  = c_uint32
+        b.BASS_ChannelIsActive.argtypes = [c_uint32]
 
         b.BASS_ChannelSetAttribute.restype  = c_bool
-        b.BASS_ChannelSetAttribute.argtypes = [c_ulong, c_ulong, c_float]
+        b.BASS_ChannelSetAttribute.argtypes = [c_uint32, c_uint32, c_float]
 
-        b.BASS_ChannelGetAttribute.restype  = c_bool
-        b.BASS_ChannelGetAttribute.argtypes = [c_ulong, c_ulong, POINTER(c_float)]
+        # Rampa de volumen nativa: (handle, atributo, valor final, milisegundos)
+        b.BASS_ChannelSlideAttribute.restype  = c_bool
+        b.BASS_ChannelSlideAttribute.argtypes = [c_uint32, c_uint32, c_float, c_uint32]
 
-        # GetLength / GetPosition retornan QWORD (64-bit)
-        b.BASS_ChannelGetLength.restype  = c_longlong
-        b.BASS_ChannelGetLength.argtypes = [c_ulong, c_ulong]
+        # GetLength / GetPosition retornan QWORD (64-bit); -1 = error
+        b.BASS_ChannelGetLength.restype  = c_int64
+        b.BASS_ChannelGetLength.argtypes = [c_uint32, c_uint32]
 
-        b.BASS_ChannelGetPosition.restype  = c_longlong
-        b.BASS_ChannelGetPosition.argtypes = [c_ulong, c_ulong]
+        b.BASS_ChannelGetPosition.restype  = c_int64
+        b.BASS_ChannelGetPosition.argtypes = [c_uint32, c_uint32]
+
+        b.BASS_ChannelSetPosition.restype  = c_bool
+        b.BASS_ChannelSetPosition.argtypes = [c_uint32, c_int64, c_uint32]
 
         b.BASS_ChannelBytes2Seconds.restype  = c_double
-        b.BASS_ChannelBytes2Seconds.argtypes = [c_ulong, c_longlong]
+        b.BASS_ChannelBytes2Seconds.argtypes = [c_uint32, c_int64]
 
-        # SetSync: registra callback para sincronizacion de fin de pista
-        b.BASS_ChannelSetSync.restype  = c_ulong
-        b.BASS_ChannelSetSync.argtypes = [
-            c_ulong,    # handle del canal
-            c_ulong,    # tipo de sync
-            c_longlong, # parametro (0 para SYNC_END)
-            SYNCPROC,   # funcion callback
-            c_void_p,   # datos de usuario (puede ser None)
-        ]
-
-        b.BASS_ChannelRemoveSync.restype  = c_bool
-        b.BASS_ChannelRemoveSync.argtypes = [c_ulong, c_ulong]
+        b.BASS_ChannelSeconds2Bytes.restype  = c_int64
+        b.BASS_ChannelSeconds2Bytes.argtypes = [c_uint32, c_double]
 
         b.BASS_ErrorGetCode.restype = c_int
 
-        # Diccionarios internos indexados por canal logico
-        self._handles:   dict[int, int]      = {}  # canal_idx -> BASS handle
-        self._syncs:     dict[int, int]      = {}  # canal_idx -> HSYNC handle
-        # CRITICO: guardar referencia al SYNCPROC para que ctypes no lo libere
-        self._sync_refs: dict[int, SYNCPROC] = {}
-
+        self._handles: dict[int, int] = {}  # canal_idx -> BASS handle
         self._initialized = False
 
     def init(self):
         """
-        Inicializa BASS con el dispositivo de audio predeterminado del sistema.
-        El -1 como primer argumento significa "usar el dispositivo por defecto".
+        Inicializa BASS. ONIX_AUDIO_DEVICE elige el dispositivo:
+        -1 = predeterminado del sistema (default), 0 = "sin sonido"
+        (los streams corren en tiempo real pero no salen por ninguna tarjeta).
         """
-        ok = self._bass.BASS_Init(-1, 44100, 0, None, None)
+        device = int(os.getenv("ONIX_AUDIO_DEVICE", "-1"))
+        ok = self._bass.BASS_Init(device, 44100, 0, None, None)
         if not ok:
             err = self._bass.BASS_ErrorGetCode()
             raise RuntimeError(
-                f"BASS_Init fallo (codigo de error: {err}).\n"
-                f"Verifica que bass.dll este en la raiz del proyecto\n"
-                f"y que haya un dispositivo de audio disponible en el sistema."
+                f"BASS_Init fallo (codigo de error: {err}, dispositivo {device}). "
+                f"Verifica que haya un dispositivo de audio disponible en el sistema."
             )
         self._initialized = True
-        log.info("[BASS] Motor inicializado correctamente -- 44100 Hz")
+        log.info("[BASS] Motor inicializado -- 44100 Hz, dispositivo %d", device)
 
     def load_stream(self, path: str, channel_idx: int) -> bool:
         """
@@ -300,10 +287,15 @@ class BASSBackend:
         """
         self._free_channel(channel_idx)
 
-        flags  = BASS_STREAM_PRESCAN | BASS_SAMPLE_FLOAT
-        handle = self._bass.BASS_StreamCreateFile(
-            False, str(path).encode("utf-8"), 0, 0, flags
-        )
+        flags = BASS_STREAM_PRESCAN | BASS_SAMPLE_FLOAT
+        if self._windows:
+            handle = self._bass.BASS_StreamCreateFile(
+                False, str(path), 0, 0, flags | BASS_UNICODE
+            )
+        else:
+            handle = self._bass.BASS_StreamCreateFile(
+                False, str(path).encode("utf-8"), 0, 0, flags
+            )
 
         if not handle:
             err = self._bass.BASS_ErrorGetCode()
@@ -332,6 +324,14 @@ class BASSBackend:
                 handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(1.0, vol)))
             )
 
+    def slide_volume(self, channel_idx: int, vol: float, ms: int):
+        """Rampa de volumen dentro del mixer de BASS (no bloquea)."""
+        handle = self._handles.get(channel_idx)
+        if handle:
+            self._bass.BASS_ChannelSlideAttribute(
+                handle, BASS_ATTRIB_VOL, c_float(max(0.0, min(1.0, vol))), max(0, int(ms))
+            )
+
     def is_playing(self, channel_idx: int) -> bool:
         handle = self._handles.get(channel_idx)
         if not handle:
@@ -354,6 +354,15 @@ class BASSBackend:
             return 0.0
         return float(self._bass.BASS_ChannelBytes2Seconds(handle, pos_bytes))
 
+    def set_position_sec(self, channel_idx: int, sec: float) -> bool:
+        handle = self._handles.get(channel_idx)
+        if not handle:
+            return False
+        pos_bytes = self._bass.BASS_ChannelSeconds2Bytes(handle, c_double(sec))
+        if pos_bytes < 0:
+            return False
+        return bool(self._bass.BASS_ChannelSetPosition(handle, pos_bytes, BASS_POS_BYTE))
+
     def get_duration_sec(self, channel_idx: int) -> float:
         handle = self._handles.get(channel_idx)
         if not handle:
@@ -363,42 +372,10 @@ class BASSBackend:
             return 0.0
         return float(self._bass.BASS_ChannelBytes2Seconds(handle, len_bytes))
 
-    def set_sync_end(self, channel_idx: int, callback: Callable):
-        """
-        Registra el callback de fin de pista en el mixer de BASS.
-        Este mecanismo es la base del gapless playback: el callback
-        se ejecuta milisegundos antes de que haya silencio, dando
-        tiempo al motor de cargar el siguiente stream sin bache.
-        """
-        handle = self._handles.get(channel_idx)
-        if not handle:
-            return
-
-        if channel_idx in self._syncs:
-            self._bass.BASS_ChannelRemoveSync(handle, self._syncs[channel_idx])
-
-        def _cb(hsync: int, hchannel: int, data: int, user) -> None:
-            try:
-                callback(channel_idx)
-            except Exception as exc:
-                log.error("[BASS] Error en sync callback canal %d: %s", channel_idx, exc)
-
-        sync_fn = SYNCPROC(_cb)
-        self._sync_refs[channel_idx] = sync_fn  # mantener viva la referencia
-
-        sync_handle = self._bass.BASS_ChannelSetSync(
-            handle,
-            BASS_SYNC_END | BASS_SYNC_MIXTIME,
-            0, sync_fn, None
-        )
-        self._syncs[channel_idx] = sync_handle
-
     def _free_channel(self, channel_idx: int):
         handle = self._handles.pop(channel_idx, None)
         if handle:
             self._bass.BASS_StreamFree(handle)
-        self._syncs.pop(channel_idx, None)
-        self._sync_refs.pop(channel_idx, None)
 
     def teardown(self):
         for idx in list(self._handles.keys()):
@@ -409,108 +386,74 @@ class BASSBackend:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Pygame Backend -- Fallback robusto
+# Mock Backend -- Solo para desarrollo sin hardware de audio
 # ══════════════════════════════════════════════════════════════════════════════
-class PygameBackend:
-    CHANNELS = 8
+class MockBackend:
+    """
+    Simula los canales con el reloj de pared: la posicion avanza en tiempo
+    real y el canal 'termina' al llegar a la duracion real del archivo
+    (leida con mutagen; 10 s si no se puede leer). No emite sonido.
+    """
 
-    def init(self):
-        import pygame as _pg
-        self._pg = _pg
-        _pg.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=2048)
-        _pg.mixer.init()
-        _pg.mixer.set_num_channels(self.CHANNELS)
-        self._sounds: dict[int, object] = {}
-        log.info("[pygame] Mixer OK -- 44100 Hz, %d canales", self.CHANNELS)
+    def __init__(self):
+        self._ch: dict[int, dict] = {}
+
+    def init(self): pass
+
+    @staticmethod
+    def _probe(path: str) -> float:
+        try:
+            from mutagen import File as MutagenFile
+            info = MutagenFile(path)
+            if info is not None and info.info.length > 0:
+                return float(info.info.length)
+        except Exception:
+            pass
+        return 10.0
 
     def load_stream(self, path: str, channel_idx: int) -> bool:
-        try:
-            self._sounds[channel_idx] = self._pg.mixer.Sound(str(path))
-            return True
-        except Exception as exc:
-            log.error("[pygame] load_stream error '%s': %s", path, exc)
-            return False
+        self._ch[channel_idx] = {"dur": self._probe(path), "started": None, "offset": 0.0}
+        return True
 
     def play(self, channel_idx: int, restart: bool = False) -> bool:
-        sound = self._sounds.get(channel_idx)
-        if not sound:
+        ch = self._ch.get(channel_idx)
+        if not ch:
             return False
-        ch = self._pg.mixer.Channel(channel_idx)
-        ch.play(sound)
+        if ch["started"] is None or restart:
+            ch["started"] = time.monotonic()
+        log.info("[Mock] Canal %d activo por %.1fs", channel_idx, ch["dur"] - ch["offset"])
         return True
 
     def stop(self, channel_idx: int):
-        self._pg.mixer.Channel(channel_idx).stop()
-        self._sounds.pop(channel_idx, None)
+        self._ch.pop(channel_idx, None)
 
-    def set_volume(self, channel_idx: int, vol: float):
-        self._pg.mixer.Channel(channel_idx).set_volume(max(0.0, min(1.0, vol)))
+    def set_volume(self, channel_idx: int, vol: float): pass
+    def slide_volume(self, channel_idx: int, vol: float, ms: int): pass
+
+    def get_position_sec(self, channel_idx: int) -> float:
+        ch = self._ch.get(channel_idx)
+        if not ch or ch["started"] is None:
+            return 0.0
+        return min(ch["dur"], ch["offset"] + time.monotonic() - ch["started"])
+
+    def set_position_sec(self, channel_idx: int, sec: float) -> bool:
+        ch = self._ch.get(channel_idx)
+        if not ch:
+            return False
+        ch["offset"] = max(0.0, min(float(sec), ch["dur"]))
+        return True
 
     def is_playing(self, channel_idx: int) -> bool:
-        return bool(self._pg.mixer.Channel(channel_idx).get_busy())
+        ch = self._ch.get(channel_idx)
+        return bool(ch and ch["started"] is not None
+                    and self.get_position_sec(channel_idx) < ch["dur"])
 
     def is_active(self, channel_idx: int) -> bool:
         return self.is_playing(channel_idx)
 
-    def get_position_sec(self, channel_idx: int) -> float:
-        return 0.0  # pygame no expone posicion en segundos directamente
-
     def get_duration_sec(self, channel_idx: int) -> float:
-        sound = self._sounds.get(channel_idx)
-        return sound.get_length() if sound else 0.0
-
-    def set_sync_end(self, channel_idx: int, callback: Callable):
-        pass  # pygame no tiene sync nativo -- se usa polling en _tick()
-
-    def teardown(self):
-        self._pg.mixer.quit()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Mock Backend -- Solo para desarrollo sin hardware de audio
-# ══════════════════════════════════════════════════════════════════════════════
-class MockBackend:
-    def __init__(self):
-        self._timers:   dict[int, threading.Timer] = {}
-        self._playing:  dict[int, bool]            = {}
-        self._end_cbs:  dict[int, Callable]        = {}
-        self._durations: dict[int, float]          = {}
-
-    def init(self): pass
-
-    def load_stream(self, path: str, channel_idx: int) -> bool:
-        self._durations[channel_idx] = 10.0
-        return True
-
-    def play(self, channel_idx: int, restart: bool = False) -> bool:
-        self._playing[channel_idx] = True
-        dur = self._durations.get(channel_idx, 10.0)
-        def _done():
-            self._playing[channel_idx] = False
-            cb = self._end_cbs.get(channel_idx)
-            if cb:
-                cb(channel_idx)
-        t = threading.Timer(dur, _done)
-        t.daemon = True
-        t.start()
-        self._timers[channel_idx] = t
-        log.info("[Mock] Canal %d activo por %.1fs", channel_idx, dur)
-        return True
-
-    def stop(self, channel_idx: int):
-        t = self._timers.pop(channel_idx, None)
-        if t:
-            t.cancel()
-        self._playing[channel_idx] = False
-
-    def set_volume(self, channel_idx: int, vol: float): pass
-    def is_playing(self, channel_idx: int) -> bool: return self._playing.get(channel_idx, False)
-    def is_active(self, channel_idx: int) -> bool:  return self.is_playing(channel_idx)
-    def get_position_sec(self, channel_idx: int) -> float: return 0.0
-    def get_duration_sec(self, channel_idx: int) -> float: return self._durations.get(channel_idx, 0.0)
-
-    def set_sync_end(self, channel_idx: int, callback: Callable):
-        self._end_cbs[channel_idx] = callback
+        ch = self._ch.get(channel_idx)
+        return ch["dur"] if ch else 0.0
 
     def teardown(self): pass
 
@@ -520,87 +463,91 @@ class MockBackend:
 # ══════════════════════════════════════════════════════════════════════════════
 class RotationAlgorithm:
     """
-    Selecciona la siguiente pista aplicando reglas en cascada.
+    Selecciona la siguiente pista musical aplicando reglas en cascada.
+    0. Solo audios de tipo 'Musica' que no esten ligados a una pauta: las
+       cuñas, jingles y demas tipos nunca salen por rotacion.
     1. Excluir artistas reproducidos en los ultimos N minutos.
-    2. Bloquear genero vocal si se repite mas de M veces consecutivas.
-    3. Opcionalmente forzar origen Nacional.
-    4. Ordenar por ultima_reproduccion ASC (menos escuchadas primero).
+    2. Bloquear la voz (genero_vocal) si se repite mas de M veces seguidas.
+    3. Ordenar por ultima_reproduccion ASC (las menos escuchadas primero).
     """
+
+    _BASE = (
+        "a.activo=1"
+        " AND a.tipo_audio = ?"
+        " AND a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)"
+    )
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-
-    def _conn(self):
-        """Usa el helper centralizado con WAL para evitar locks concurrentes."""
-        return _db_conn(self.db_path)
 
     def _cfg(self, conn, clave: str, default: str) -> str:
         row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
         return row["valor"] if row else default
 
-    def select_next(
-        self,
-        recent_history: deque,
-        forzar_nacional: bool = False,
-        energia_target: Optional[int] = None,
-    ) -> Optional[dict]:
-        conn = self._conn()
+    def select_next(self, recent_history: deque, exclude_ids=()) -> Optional[dict]:
+        conn = _db_conn(self.db_path)
         try:
             ventana_min = int(self._cfg(conn, "ventana_artista_min", "60"))
             max_genero  = int(self._cfg(conn, "max_mismo_genero",     "2"))
             ventana_ini = datetime.now() - timedelta(minutes=ventana_min)
+            history     = list(recent_history)
 
             artistas_bloq = {
-                h["artista"] for h in recent_history
+                h["artista"] for h in history
                 if datetime.fromisoformat(h["ts"]) >= ventana_ini
             }
 
             genero_bloq = None
-            if len(recent_history) >= max_genero:
-                ultimos = list(recent_history)[-max_genero:]
-                generos = [h["genero_vocal"] for h in ultimos]
-                if len(set(generos)) == 1:
-                    genero_bloq = generos[0]
+            if max_genero > 0 and len(history) >= max_genero:
+                generos = {h["genero_vocal"] for h in history[-max_genero:]}
+                if len(generos) == 1:
+                    genero_bloq = generos.pop()   # None si no estan clasificadas
 
-            clauses: list[str] = ["a.activo=1", "a.tipo_audio='Musica'"]
-            params:  list      = []
+            base_clauses = [self._BASE]
+            base_params  = [TIPO_MUSICA]
+            if exclude_ids:
+                ph = ",".join("?" * len(exclude_ids))
+                base_clauses.append(f"a.id NOT IN ({ph})")
+                base_params.extend(exclude_ids)
 
+            clauses, params = list(base_clauses), list(base_params)
             if artistas_bloq:
                 ph = ",".join("?" * len(artistas_bloq))
                 clauses.append(f"a.artista NOT IN ({ph})")
                 params.extend(artistas_bloq)
             if genero_bloq:
-                clauses.append("a.genero_vocal != ?")
+                clauses.append("COALESCE(a.genero_vocal,'') != ?")
                 params.append(genero_bloq)
-            if forzar_nacional:
-                clauses.append("a.origen='Nacional'")
 
-            where = " AND ".join(clauses)
             order = "a.ultima_reproduccion ASC NULLS FIRST"
-            if energia_target:
-                order = f"ABS(a.energia - {int(energia_target)}) ASC, {order}"
-
             rows = conn.execute(
-                f"SELECT a.* FROM audios a WHERE {where} ORDER BY {order} LIMIT 10",
+                f"SELECT a.* FROM audios a WHERE {' AND '.join(clauses)}"
+                f" ORDER BY {order} LIMIT 10",
                 params
             ).fetchall()
 
             if not rows:
-                log.warning("[Rotation] Sin candidatos con reglas completas -- relajando.")
-                ult = list(recent_history)[-1]["artista"] if recent_history else None
+                # Biblioteca pequeña: relajar reglas, solo evitar repetir artista seguido.
+                ult = history[-1]["artista"] if history else None
                 rows = conn.execute(
-                    "SELECT * FROM audios WHERE activo=1 AND tipo_audio='Musica'"
-                    " AND (? IS NULL OR artista!=?)"
-                    " ORDER BY ultima_reproduccion ASC NULLS FIRST LIMIT 1",
-                    (ult, ult)
+                    f"SELECT a.* FROM audios a WHERE {' AND '.join(base_clauses)}"
+                    f" AND (? IS NULL OR a.artista != ?)"
+                    f" ORDER BY {order} LIMIT 3",
+                    base_params + [ult, ult]
                 ).fetchall()
 
             if not rows:
-                log.error("[Rotation] Biblioteca completamente vacia.")
+                # Ultimo recurso: cualquier pista musical disponible.
+                rows = conn.execute(
+                    f"SELECT a.* FROM audios a WHERE {' AND '.join(base_clauses)}"
+                    f" ORDER BY {order} LIMIT 1",
+                    base_params
+                ).fetchall()
+
+            if not rows:
                 return None
 
-            import random
-            return dict(random.choice(rows[:5] if len(rows) >= 5 else rows))
+            return dict(random.choice(rows[:5]))
         finally:
             conn.close()
 
@@ -724,8 +671,9 @@ class Watchdog:
         delta = current_position - self._last_position
         self._last_position = current_position  # actualizar para el proximo ciclo
 
-        if delta >= self.MIN_POSITION_DELTA:
-            # Posicion avanzando con normalidad → reiniciar contador de stall
+        if delta >= self.MIN_POSITION_DELTA or delta < 0:
+            # Posicion avanzando con normalidad (o retrocedio porque cambio la
+            # pista entre dos verificaciones) → reiniciar contador de stall
             self._stall_since = None
             return
 
@@ -771,17 +719,23 @@ class AudioEngine:
         engine.start()
         # ... operacion 24/7 ...
         engine.stop()
+
+    API publica (segura desde cualquier hilo, nunca bloquea):
+        play_track, play_next, queue_track, clear_queue, skip, stop_playback,
+        fire_effect, set_mode, status
     """
+
+    TICK               = 0.05   # segundos entre ciclos del loop
+    PAUTAS_INTERVAL    = 5.0    # segundos entre consultas a la tabla pautas
+    IDLE_RETRY         = 10.0   # espera antes de reintentar si no hay nada que sonar
+    FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
+    SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
+    SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
 
     def __init__(self):
         self.bus = EventBus()
 
-        if BACKEND == "bass":
-            self._audio = BASSBackend()
-        elif BACKEND == "pygame":
-            self._audio = PygameBackend()
-        else:
-            self._audio = MockBackend()
+        self._audio = BASSBackend() if BACKEND == "bass" else MockBackend()
 
         self._db       = DB_PATH
         self._rotation = RotationAlgorithm(self._db)
@@ -790,20 +744,31 @@ class AudioEngine:
         self._mode             = "manual"
         self._active_canal     = CANAL_A
         self._current_track:   Optional[dict] = None
-        self._playlist_queue:  deque = deque()
+        self._current_item:    Optional[dict] = None
+        self._playlist_queue:  deque = deque()   # resumenes {id, titulo, artista}
+        self._priority_queue:  deque = deque()   # pautas pendientes de esta hora
         self._recent_history:  deque = deque(maxlen=50)
+        self._failed_ids:      dict[int, float] = {}
 
-        self._crossfade_active   = False
-        self._crossfade_secs     = 4.0
-        self._crossfade_step_ms  = 80   # pasos mas finos que en pygame
-        self._master_volume      = 1.0
-        self._effect_ducking     = False
-        self._ducking_vol        = 0.3
+        self._cmds: "queue.Queue[tuple]" = queue.Queue()
+
+        self._xfade:           Optional[dict] = None  # {canal, until, track}
+        self._crossfade_secs   = 4.0
+        self._master_volume    = 1.0
+        self._effect_ducking   = False
+        self._ducking_vol      = 0.25
+        self._duck_until       = 0.0
+
+        self._duration         = 0.0
+        self._mix_point        = float("inf")
+        self._mix_fired        = False
 
         self._running            = False
         self._thread:            Optional[threading.Thread] = None
-        self._lock               = threading.Lock()
         self._should_be_playing  = False
+        self._last_pautas_check  = 0.0
+        self._idle_retry_at      = 0.0
+        self.last_error:         Optional[str] = None
 
         # Cola de movimientos fisicos de archivos diferidos hasta fin de pista
         self._deferred_moves: list[dict] = []
@@ -813,6 +778,8 @@ class AudioEngine:
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def start(self):
+        if self._running:
+            return
         self._audio.init()
         self._load_config()
         self._running = True
@@ -826,31 +793,33 @@ class AudioEngine:
         self.bus.subscribe("watchdog_stall",    self._on_watchdog_stall)
         self._watchdog.start()
 
-        log.info("[Engine] Motor de audio iniciado.")
+        log.info("[Engine] Motor de audio iniciado (BD: %s).", self._db)
 
     def stop(self):
+        if not self._running:
+            return
         self._running = False
         self._watchdog.stop()
         if self._thread:
             self._thread.join(timeout=5)
         self._audio.teardown()
+        self._current_track     = None
+        self._should_be_playing = False
         self.bus.emit("engine_stopped", {})
         log.info("[Engine] Motor detenido.")
 
+    def reload_config(self):
+        """Relee la tabla config (la API lo llama al guardar la configuracion)."""
+        modo_actual = self._mode
+        self._load_config()
+        self._mode = modo_actual   # el modo solo se cambia con set_mode()
+
     def _load_config(self):
         try:
-            conn = _db_conn(self._db)
-            for clave, attr, cast in (
-                ("crossfade_seg", "_crossfade_secs", float),
-                ("modo",          "_mode",           str),
-            ):
-                row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
-                if row:
-                    setattr(self, attr, cast(row[0]))
-            row = conn.execute("SELECT valor FROM config WHERE clave='ducking_db'").fetchone()
-            if row:
-                self._ducking_vol = 10 ** (float(row[0]) / 20)
-            conn.close()
+            self._crossfade_secs = max(0.0, float(self._cfg("crossfade_seg", "4")))
+            modo = self._cfg("modo", "manual")
+            self._mode = modo if modo in ("manual", "automatico") else "manual"
+            self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
         except Exception as exc:
             log.warning("[Engine] Config no cargada: %s", exc)
 
@@ -859,214 +828,398 @@ class AudioEngine:
     def _run_loop(self):
         while self._running:
             try:
+                self._drain_commands()
+                self._finish_crossfade()
+                self._restore_ducking()
+                self._check_pautas()
                 self._tick()
                 self._process_deferred_moves()
             except Exception as exc:
                 log.error("[Engine] Error en loop: %s", exc, exc_info=True)
-            time.sleep(0.25)
+            time.sleep(self.TICK)
 
     def _tick(self):
         """
-        Con BASS: el gapless lo maneja SYNC_END. El tick solo maneja casos
-        de recuperacion que BASS no cubra.
-        Con pygame/mock: polling de posicion para detectar el punto de crossfade.
-        Usa cue_mezcla (o outro como fallback) en lugar del obsoleto JSON puntos_audio.
+        Vigila el canal activo: dispara la mezcla al llegar al punto de mezcla
+        y releva la pista cuando termina. En modo automatico arranca solo.
         """
-        if not self._current_track or self._crossfade_active:
+        if self._xfade:
             return
 
-        if BACKEND in ("pygame", "mock"):
-            track    = self._current_track
-            duracion = track.get("duracion_seg") or track.get("duracion") or 0
+        track = self._current_track
+        if track:
+            if self._audio.is_active(self._active_canal):
+                if (not self._mix_fired
+                        and self._audio.get_position_sec(self._active_canal) >= self._mix_point):
+                    # Si no hay siguiente, la pista simplemente termina completa.
+                    self._mix_fired = True
+                    self._advance()
+                return
 
-            # Prioridad: cue_mezcla > outro > (duracion - crossfade_secs)
-            mix_point = (
-                track.get("cue_mezcla")
-                or track.get("outro")
-                or (duracion - self._crossfade_secs if duracion > 0 else 0)
-            )
-            pos_s = self._audio.get_position_sec(self._active_canal)
+            # La pista termino sin relevo previo.
+            self._audio.stop(self._active_canal)
+            self._current_track = None
+            self._current_item  = None
+            self.bus.emit("track_ended", {"audio_id": track.get("id"), "completada": True})
+            if not self._advance():
+                self._should_be_playing = False
+                self.bus.emit("playback_stopped", {"reason": "sin_siguiente"})
+            return
 
-            if duracion > 0 and pos_s > 0 and pos_s >= mix_point:
-                self._prepare_and_crossfade()
+        if self._mode == "automatico" and time.monotonic() >= self._idle_retry_at:
+            if not self._advance():
+                self._idle_retry_at = time.monotonic() + self.IDLE_RETRY
 
-    # ── Reproduccion ─────────────────────────────────────────────────────────
+    # ── Comandos (API publica → loop) ─────────────────────────────────────────
 
     def play_track(self, audio_id: int) -> bool:
+        """Pone una pista al aire ya (con crossfade si hay otra sonando)."""
         track = self._fetch_track(audio_id)
         if not track:
             return False
-        with self._lock:
-            if self._current_track and self._audio.is_active(self._active_canal):
-                self._crossfade_to(track)
-            else:
-                self._play_direct(track, CANAL_A)
+        self._cmds.put(("play", {"track": track, "origen": "manual"}))
         return True
 
-    def _play_direct(self, track: dict, canal: int) -> bool:
+    def play_next(self):
+        """Arranca lo siguiente de la cola (o de la rotacion en modo automatico)."""
+        self._cmds.put(("play_next",))
+
+    def queue_track(self, audio_id: int) -> bool:
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        self._playlist_queue.append({
+            "id": track["id"], "titulo": track["titulo"], "artista": track["artista"],
+        })
+        self._emit_queue()
+        return True
+
+    def clear_queue(self):
+        self._playlist_queue.clear()
+        self._emit_queue()
+
+    def skip(self):
+        self._cmds.put(("skip",))
+
+    def stop_playback(self):
+        self._cmds.put(("stop",))
+
+    def fire_effect(self, audio_id: int, canal_offset: int = 0) -> bool:
+        """Dispara un jingle o cuña en canal paralelo con auto-ducking."""
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        self._cmds.put(("effect", track, canal_offset))
+        return True
+
+    def set_mode(self, mode: str):
+        if mode not in ("manual", "automatico"):
+            raise ValueError(f"Modo invalido: {mode!r}")
+        self._mode = mode
+        self._idle_retry_at = 0.0
+        self._update_cfg_db("modo", mode)
+        self.bus.emit("mode_changed", {"modo": mode, "mode": mode})
+
+    def _drain_commands(self):
+        while True:
+            try:
+                cmd = self._cmds.get_nowait()
+            except queue.Empty:
+                return
+            name = cmd[0]
+            if name == "play":
+                self._start(cmd[1])
+            elif name == "play_next":
+                if not self._current_track and not self._advance():
+                    self._emit_error(None, "cola_vacia", "No hay nada en cola para reproducir")
+            elif name == "skip":
+                if not self._advance():
+                    self._do_stop("skip_sin_siguiente")
+            elif name == "stop":
+                self._do_stop("manual")
+            elif name == "effect":
+                self._do_effect(cmd[1], cmd[2])
+            elif name == "recover":
+                self._do_recover()
+            elif name == "restart":
+                self._do_restart()
+
+    # ── Seleccion y arranque de pistas ────────────────────────────────────────
+
+    def _advance(self) -> bool:
+        """Arranca el siguiente elemento disponible. False si no hay ninguno."""
+        for _ in range(5):
+            item = self._pick_next()
+            if not item:
+                return False
+            if self._start(item):
+                return True
+        return False
+
+    def _pick_next(self) -> Optional[dict]:
+        """Prioridad: pautas de la hora > cola manual > rotacion automatica."""
+        while self._priority_queue:
+            pauta = self._priority_queue.popleft()
+            track = self._fetch_track(pauta["audio_id"])
+            if track:
+                return {"track": track, "origen": "pauta", **pauta}
+
+        while self._playlist_queue:
+            queued = self._playlist_queue.popleft()
+            self._emit_queue()
+            track = self._fetch_track(queued["id"])
+            if track:
+                return {"track": track, "origen": "cola"}
+
+        if self._mode == "automatico":
+            now = time.monotonic()
+            self._failed_ids = {i: t for i, t in self._failed_ids.items()
+                                if now - t < self.FAILED_TTL}
+            track = self._rotation.select_next(
+                self._recent_history, exclude_ids=tuple(self._failed_ids)
+            )
+            if track:
+                return {"track": track, "origen": "auto"}
+        return None
+
+    def _start(self, item: dict) -> bool:
         """
-        Verifica existencia fisica del archivo antes de intentar cargarlo.
-        Acepta tanto 'ruta_archivo' (columna legada) como 'archivo_path'
-        (columna nueva de la Biblioteca Musical) para compatibilidad total.
+        Pone `item` al aire. Si hay una pista sonando hace crossfade hacia la
+        nueva en el otro canal; si no, arranca directo en el canal A.
         """
-        # Compatibilidad: tabla nueva usa archivo_path, tabla legada usa ruta_archivo
-        path = track.get("ruta_archivo") or track.get("archivo_path") or ""
+        track = item["track"]
+        path  = self._path_of(track)
 
         if not path or not Path(path).exists():
             log.error("[Engine] Archivo no encontrado: '%s' (id=%s)", path, track.get("id"))
-            self.bus.emit("playback_error", {
-                "audio_id": track.get("id"),
-                "reason":   "archivo_no_encontrado",
-                "path":     str(path),
-            })
+            self._failed_ids[track.get("id")] = time.monotonic()
+            self._emit_error(track.get("id"), "archivo_no_encontrado",
+                             f"Archivo no encontrado: {track.get('titulo', '')}", path=str(path))
             return False
 
-        ok = self._audio.load_stream(path, canal)
-        if not ok:
-            self.bus.emit("playback_error", {
-                "audio_id": track.get("id"),
-                "reason":   "error_carga_backend",
-            })
+        self._finish_crossfade(force=True)
+
+        outgoing_active = (self._current_track is not None
+                           and self._audio.is_active(self._active_canal))
+        outgoing = self._active_canal
+        canal    = (CANAL_B if outgoing == CANAL_A else CANAL_A) if outgoing_active else CANAL_A
+
+        if not outgoing_active:
+            self._audio.stop(CANAL_A)
+            self._audio.stop(CANAL_B)
+
+        if not self._audio.load_stream(path, canal):
+            self._failed_ids[track.get("id")] = time.monotonic()
+            self._emit_error(track.get("id"), "error_carga_backend",
+                             f"No se pudo abrir el audio: {track.get('titulo', '')}")
             return False
 
-        if BACKEND == "bass":
-            self._audio.set_sync_end(canal, self._on_bass_track_ended)
+        cue_in = float(track.get("cue_inicio") or 0)
+        if cue_in > 0:
+            self._audio.set_position_sec(canal, cue_in)
 
-        self._audio.play(canal)
-        self._audio.set_volume(canal, self._master_volume)
+        dur     = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 0)
+        is_spot  = self._is_spot(item)
+        was_spot = bool(self._current_item and self._is_spot(self._current_item))
+        target  = self._target_volume()
+
+        if outgoing_active:
+            if is_spot:
+                fade = self.SPOT_FADE_IN
+            elif was_spot:
+                fade = self.SPOT_FADE_OUT
+            else:
+                fade = self._crossfade_secs
+            prev = self._current_track
+            self._audio.set_volume(canal, 0.0)
+            if not self._audio.play(canal):
+                self._audio.stop(canal)
+                self._emit_error(track.get("id"), "error_play_backend",
+                                 f"No se pudo reproducir: {track.get('titulo', '')}")
+                return False
+            self._audio.slide_volume(canal, target, int(fade * 1000))
+            self._audio.slide_volume(outgoing, 0.0, int(fade * 1000))
+            self._xfade = {"canal": outgoing, "until": time.monotonic() + fade, "track": prev}
+            self.bus.emit("crossfade_start", {
+                "from_id": prev.get("id"),
+                "to_id":   track.get("id"),
+                "duracion_crossfade": fade,
+                "duracion_seg":       fade,
+            })
+        else:
+            self._audio.set_volume(canal, target)
+            if not self._audio.play(canal):
+                self._audio.stop(canal)
+                self._emit_error(track.get("id"), "error_play_backend",
+                                 f"No se pudo reproducir: {track.get('titulo', '')}")
+                return False
+
+        # Punto de mezcla: cue_mezcla > outro > (duracion - crossfade).
+        # Las cuñas suenan completas: se empalman justo al final.
+        if dur <= 0:
+            mix = float("inf")
+        elif is_spot:
+            mix = max(dur - self.SPOT_FADE_OUT, 0.0)
+        else:
+            mix = float(track.get("cue_mezcla") or track.get("outro") or 0)
+            if not (cue_in < mix < dur):
+                mix = max(dur - min(self._crossfade_secs, dur / 4), 0.0)
 
         self._active_canal      = canal
         self._current_track     = track
+        self._current_item      = item
+        self._duration          = dur
+        self._mix_point         = mix
+        self._mix_fired         = False
         self._should_be_playing = True
 
-        self._on_track_started(track)
+        if not item.get("_restart"):
+            self._on_track_started(track, item, dur)
         return True
 
-    def _on_bass_track_ended(self, canal: int):
-        """
-        Callback de SYNC_END. Se ejecuta dentro del mixer de BASS, sin
-        latencia de threading. Desencadena el crossfade al siguiente track.
-        """
-        if self._running and not self._crossfade_active:
-            log.debug("[BASS] SYNC_END en canal %d", canal)
-            self._prepare_and_crossfade()
-
-    def _crossfade_to(self, next_track: dict):
-        outgoing = self._active_canal
-        incoming = CANAL_B if outgoing == CANAL_A else CANAL_A
-        from_id  = self._current_track.get("id") if self._current_track else None
-
-        self.bus.emit("crossfade_start", {
-            "from_id": from_id,
-            "to_id":   next_track.get("id"),
-            "duracion_crossfade": self._crossfade_secs,
-        })
-        self._crossfade_active = True
-
-        def _do():
-            next_path = next_track.get("ruta_archivo", "")
-            if not next_path or not Path(next_path).exists():
-                log.error("[Engine] Crossfade: destino no encontrado '%s'", next_path)
-                self._crossfade_active = False
-                self.bus.emit("playback_error", {
-                    "audio_id": next_track.get("id"),
-                    "reason":   "archivo_no_encontrado_crossfade",
-                })
-                return
-
-            ok = self._audio.load_stream(next_path, incoming)
-            if not ok:
-                self._crossfade_active = False
-                self.bus.emit("playback_error", {
-                    "audio_id": next_track.get("id"),
-                    "reason":   "error_carga_crossfade",
-                })
-                return
-
-            self._audio.set_volume(incoming, 0.0)
-            self._audio.play(incoming)
-
-            if BACKEND == "bass":
-                self._audio.set_sync_end(incoming, self._on_bass_track_ended)
-
-            steps    = max(1, int(self._crossfade_secs * 1000 / self._crossfade_step_ms))
-            step_vol = 1.0 / steps
-
-            for i in range(steps + 1):
-                if not self._running:
-                    break
-                fi = i * step_vol
-                self._audio.set_volume(incoming, fi * self._master_volume)
-                self._audio.set_volume(outgoing, (1.0 - fi) * self._master_volume)
-                time.sleep(self._crossfade_step_ms / 1000.0)
-
-            self._audio.stop(outgoing)
-
-            if from_id:
-                self.bus.emit("track_ended", {"audio_id": from_id, "completada": True})
-                self._update_last_played(from_id)
-
-            self._active_canal      = incoming
-            self._current_track     = next_track
-            self._crossfade_active  = False
-            self._should_be_playing = True
-            self._on_track_started(next_track)
-            self._process_deferred_moves()
-
-        threading.Thread(target=_do, name="Crossfade", daemon=True).start()
-
-    def _prepare_and_crossfade(self):
-        if self._crossfade_active:
+    def _finish_crossfade(self, force: bool = False):
+        xf = self._xfade
+        if not xf or (not force and time.monotonic() < xf["until"]):
             return
-        nxt = None
-        if self._playlist_queue and self._mode == "manual":
-            nxt = self._fetch_track(self._playlist_queue.popleft())
-        elif self._mode == "automatico":
-            nxt = self._rotation.select_next(
-                self._recent_history,
-                forzar_nacional=self._get_cfg_bool("forzar_nacional"),
-            )
-        if nxt:
-            self._crossfade_to(nxt)
-        else:
-            self._should_be_playing = False
+        self._xfade = None
+        self._audio.stop(xf["canal"])
+        self.bus.emit("track_ended", {"audio_id": xf["track"].get("id"), "completada": True})
+
+    def _do_stop(self, reason: str):
+        self._finish_crossfade(force=True)
+        track = self._current_track
+        self._audio.stop(CANAL_A)
+        self._audio.stop(CANAL_B)
+        self._current_track     = None
+        self._current_item      = None
+        self._should_be_playing = False
+        self._idle_retry_at     = time.monotonic() + self.IDLE_RETRY
+        if track:
+            self.bus.emit("track_ended", {"audio_id": track.get("id"), "completada": False})
+        self.bus.emit("playback_stopped", {"reason": reason})
+
+    @staticmethod
+    def _path_of(track: dict) -> str:
+        """Ruta real en disco del audio (archivo_path se guarda relativo a MEDIA_ROOT)."""
+        stored = track.get("archivo_path") or ""
+        return str(resolve_media(stored)) if stored else ""
+
+    @staticmethod
+    def _is_spot(item: dict) -> bool:
+        """Las cuñas suenan completas: no se les aplica el crossfade musical."""
+        return item.get("origen") == "pauta" or item["track"].get("tipo_audio") == TIPO_CUNA
+
+    def _target_volume(self) -> float:
+        return self._master_volume * (self._ducking_vol if self._effect_ducking else 1.0)
 
     # ── Cartuchera ────────────────────────────────────────────────────────────
 
-    def fire_effect(self, audio_id: int, canal_offset: int = 0) -> bool:
-        """
-        Dispara un jingle o cuña en canal paralelo con auto-ducking.
-        Usa ruta_archivo (NO archivo_path) para localizar el archivo.
-        """
-        track = self._fetch_track(audio_id)
-        if not track:
-            return False
-
-        path  = track.get("ruta_archivo", "")
-        canal = CANAL_EFX_BASE + (canal_offset % 6)
+    def _do_effect(self, track: dict, canal_offset: int):
+        path  = self._path_of(track)
+        canal = CANAL_EFX_BASE + (int(canal_offset) % 6)
 
         if not path or not Path(path).exists():
-            log.error("[Engine] fire_effect: no existe '%s'", path)
-            return False
+            self._emit_error(track.get("id"), "archivo_no_encontrado",
+                             f"Efecto no encontrado: {track.get('titulo', '')}", path=str(path))
+            return
+        if not self._audio.load_stream(path, canal):
+            self._emit_error(track.get("id"), "error_carga_backend",
+                             f"No se pudo abrir el efecto: {track.get('titulo', '')}")
+            return
 
-        ok = self._audio.load_stream(path, canal)
-        if not ok:
-            return False
+        self._audio.set_volume(canal, self._master_volume)
+        self._audio.play(canal)
 
+        dur = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 5)
+        self._duck_until = max(self._duck_until, time.monotonic() + dur + 0.3)
         if not self._effect_ducking:
             self._effect_ducking = True
-            self._audio.set_volume(self._active_canal, self._ducking_vol)
-            dur = track.get("duracion_seg", 5)
-            def _restore():
-                time.sleep(dur + 0.5)
-                self._effect_ducking = False
-                self._audio.set_volume(self._active_canal, self._master_volume)
-            threading.Thread(target=_restore, daemon=True).start()
+            if self._current_track:
+                self._audio.slide_volume(self._active_canal, self._target_volume(), 200)
 
-        self._audio.play(canal)
-        self.bus.emit("effect_fired", {"audio_id": audio_id, "canal": canal})
-        log.info("[Engine] Efecto: %s (canal %d)", track["titulo"], canal)
-        return True
+        self._log_emision(track, {"origen": "manual"}, tipo="efecto")
+        self.bus.emit("effect_fired", {
+            "audio_id": track["id"], "titulo": track.get("titulo", ""), "canal": canal,
+        })
+        log.info("[Engine] Efecto: %s (canal %d)", track.get("titulo"), canal)
+
+    def _restore_ducking(self):
+        if self._effect_ducking and time.monotonic() >= self._duck_until:
+            self._effect_ducking = False
+            if self._current_track and not self._xfade:
+                self._audio.slide_volume(self._active_canal, self._target_volume(), 400)
+
+    # ── Programacion de pautas ────────────────────────────────────────────────
+
+    def _check_pautas(self):
+        """
+        Encola las pautas activas cuya matriz marca la celda dia-hora actual
+        y que aun no han salido en esta hora. Salen en el proximo cambio de
+        pista (o de inmediato si el motor esta en automatico y sin sonar).
+        Clave de matriz: "dia-hora", dia 0=Dom…6=Sab, hora 0–23.
+        """
+        if time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
+            return
+        self._last_pautas_check = time.monotonic()
+
+        now  = datetime.now()
+        slot = now.strftime("%Y-%m-%d-%H")
+        key  = f"{(now.weekday() + 1) % 7}-{now.hour}"
+        hoy  = now.date().isoformat()
+
+        # Lo que no alcanzo a salir en su hora se descarta (no se acumula).
+        perdidas = [p for p in self._priority_queue if p["slot"] != slot]
+        if perdidas:
+            self._priority_queue = deque(p for p in self._priority_queue if p["slot"] == slot)
+            for p in perdidas:
+                log.warning("[Pautas] No salio en su hora: %s (%s)", p["cliente"], p["slot"])
+                self.bus.emit("pauta_missed", p)
+
+        try:
+            conn = _db_conn(self._db)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT p.id, p.cliente, p.audio_id, p.matriz
+                    FROM pautas p
+                    JOIN audios a ON a.id = p.audio_id AND a.activo = 1
+                    WHERE p.activo = 1
+                      AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
+                      AND (COALESCE(p.fecha_fin,'')    = '' OR p.fecha_fin    >= ?)
+                    ORDER BY COALESCE(p.prioridad, 0) DESC, p.id ASC
+                    """,
+                    (hoy, hoy),
+                ).fetchall()
+                emitidas = {
+                    r[0] for r in conn.execute(
+                        "SELECT pauta_id FROM historial_emision"
+                        " WHERE slot = ? AND pauta_id IS NOT NULL", (slot,)
+                    )
+                }
+            finally:
+                conn.close()
+        except Exception as exc:
+            log.error("[Pautas] Error consultando pautas: %s", exc)
+            return
+
+        en_cola = {p["pauta_id"] for p in self._priority_queue}
+        for row in rows:
+            if row["id"] in emitidas or row["id"] in en_cola:
+                continue
+            try:
+                matriz = json.loads(row["matriz"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(matriz, dict) or not matriz.get(key):
+                continue
+            pauta = {
+                "pauta_id": row["id"], "cliente": row["cliente"],
+                "audio_id": row["audio_id"], "slot": slot,
+            }
+            self._priority_queue.append(pauta)
+            self._idle_retry_at = 0.0
+            log.info("[Pautas] Programada para esta hora: %s (pauta %d)", row["cliente"], row["id"])
+            self.bus.emit("pauta_scheduled", pauta)
 
     # ── Gestion de archivos diferida (segura durante reproduccion) ────────────
 
@@ -1096,201 +1249,193 @@ class AudioEngine:
         self._deferred_moves = still_pending
 
     # ── Watchdog ─────────────────────────────────────────────────────────────
+    # El watchdog corre en su propio hilo: aqui solo se encola la recuperacion
+    # para que la ejecute el loop del motor.
 
     def _on_watchdog_recovery(self, event: str, data: dict):
-        """
-        Responde a FALLO 1 (silencio total):
-        Intenta reanudar el stream actual, y si no puede, salta a la siguiente pista.
-        """
-        log.warning("[Engine] Watchdog recovery (silencio): intentando reanudar...")
-        with self._lock:
-            if self._current_track and BACKEND == "bass":
-                if self._audio.play(self._active_canal):
-                    self._should_be_playing = True
-                    self.bus.emit("watchdog_recovered", {"method": "resume"})
-                    log.info("[Engine] Reanudacion exitosa por watchdog.")
-                    return
-            self._prepare_and_crossfade()
-            self.bus.emit("watchdog_recovered", {"method": "next_track"})
+        self._cmds.put(("recover",))
 
     def _on_watchdog_stall(self, event: str, data: dict):
-        """
-        Responde a FALLO 2 (stall de posicion):
-        El stream esta 'reproduciendo' pero la posicion esta congelada.
-        La unica solucion fiable es recargar el stream desde cero.
-        Si el track actual existe, lo vuelve a cargar desde el principio;
-        si no, salta a la siguiente pista.
-        """
+        self._cmds.put(("restart",))
+
+    def _do_recover(self):
+        """Canal pausado o atascado: intenta reanudar; si no puede, salta."""
+        log.warning("[Engine] Watchdog recovery (silencio): intentando reanudar...")
+        if self._current_track and self._audio.play(self._active_canal):
+            self.bus.emit("watchdog_recovered", {"method": "resume"})
+            return
+        if not self._advance():
+            self._do_stop("watchdog_sin_siguiente")
+        self.bus.emit("watchdog_recovered", {"method": "next_track"})
+
+    def _do_restart(self):
+        """Posicion congelada: recarga la pista actual desde cero o salta."""
         log.error("[Engine] Watchdog stall: reiniciando stream desde cero...")
-        with self._lock:
-            track = self._current_track
-            if not track:
-                self._prepare_and_crossfade()
-                self.bus.emit("watchdog_recovered", {"method": "stall_next_track"})
-                return
-
-            # Detener el canal sin crossfade (el stream esta colgado)
-            self._audio.stop(self._active_canal)
-
-            # Recargar el stream desde el principio del archivo
-            path = track.get("ruta_archivo", "")
-            if path and Path(path).exists():
-                ok = self._audio.load_stream(path, self._active_canal)
-                if ok:
-                    if BACKEND == "bass":
-                        self._audio.set_sync_end(self._active_canal, self._on_bass_track_ended)
-                    self._audio.play(self._active_canal)
-                    self._audio.set_volume(self._active_canal, self._master_volume)
-                    self._should_be_playing = True
-                    log.info("[Engine] Stream reiniciado por stall: %s", track.get("titulo"))
-                    self.bus.emit("watchdog_recovered", {"method": "stall_restart"})
-                    return
-
-            # Si no se pudo recargar, saltar a la siguiente pista
-            self._prepare_and_crossfade()
-            self.bus.emit("watchdog_recovered", {"method": "stall_skip"})
+        item = self._current_item
+        self._finish_crossfade(force=True)
+        self._audio.stop(self._active_canal)
+        self._current_track = None
+        if item and self._start({**item, "_restart": True}):
+            self.bus.emit("watchdog_recovered", {"method": "stall_restart"})
+            return
+        if not self._advance():
+            self._do_stop("watchdog_sin_siguiente")
+        self.bus.emit("watchdog_recovered", {"method": "stall_skip"})
 
     def _watchdog_state(self) -> dict:
-        """
-        Expone el estado que el Watchdog necesita para sus dos verificaciones.
-        current_position_sec es critico para la deteccion de stall:
-        si el backend no soporta posicion (mock), devuelve None y el
-        Watchdog desactiva la verificacion de stall automaticamente.
-        """
+        """Estado que el Watchdog necesita para sus dos verificaciones."""
         return {
-            "should_be_playing":   self._should_be_playing,
-            "is_playing":          self._audio.is_playing(self._active_canal),
-            "current_track":       self._current_track,
-            "mode":                self._mode,
+            "should_be_playing":    self._should_be_playing,
+            "is_playing":           self._audio.is_playing(self._active_canal),
+            "current_track":        self._current_track,
+            "mode":                 self._mode,
             "current_position_sec": self._audio.get_position_sec(self._active_canal),
         }
 
-    # ── Control publico ───────────────────────────────────────────────────────
-
-    def set_mode(self, mode: str):
-        assert mode in ("manual", "automatico")
-        self._mode = mode
-        self._update_cfg_db("modo", mode)
-        self.bus.emit("mode_changed", {"modo": mode})
-
-    def queue_track(self, audio_id: int):
-        self._playlist_queue.append(audio_id)
-
-    def stop_playback(self):
-        self._audio.stop(self._active_canal)
-        self._should_be_playing = False
-        self._current_track     = None
-
     # ── Helpers internos ─────────────────────────────────────────────────────
 
-    def _on_track_started(self, track: dict):
-        self._recent_history.append({
-            "audio_id":    track["id"],
-            "artista":     track["artista"],
-            "genero_vocal":track.get("genero_vocal", "Instrumental"),
-            "ts":          datetime.now().isoformat(),
-        })
-        # Duracion: puede venir como duracion_seg (legado) o duracion (nueva BD)
-        duracion = track.get("duracion_seg") or track.get("duracion") or 0
+    def _on_track_started(self, track: dict, item: dict, duracion: float):
+        origen     = item.get("origen", "manual")
+        tipo_audio = track.get("tipo_audio") or TIPO_MUSICA
+        tipo       = "pauta" if origen == "pauta" else "musica"
+
+        if tipo_audio == TIPO_MUSICA and tipo == "musica":
+            self._recent_history.append({
+                "audio_id":     track["id"],
+                "artista":      track["artista"],
+                "genero_vocal": track.get("genero_vocal"),
+                "ts":           datetime.now().isoformat(),
+            })
+        self._log_emision(track, item, tipo=tipo)
 
         self.bus.emit("track_started", {
-            "id":          track["id"],
-            "audio_id":    track["id"],
-            "titulo":      track.get("titulo", ""),
-            "artista":     track.get("artista", ""),
-            "duracion":    duracion,
-            "duracion_seg":duracion,
-            "genero_vocal":track.get("genero_vocal", "Instrumental"),
-            "energia":     track.get("energia", 3),
-            "origen":      track.get("origen", "Nacional"),
-            "tipo_audio":  track.get("tipo_audio", "Musica"),
+            "id":           track["id"],
+            "audio_id":     track["id"],
+            "titulo":       track.get("titulo", ""),
+            "artista":      track.get("artista", ""),
+            "duracion":     duracion,
+            "duracion_seg": duracion,
+            "posicion_seg": float(track.get("cue_inicio") or 0),  # arranca en cue_inicio
+            "genero_vocal": track.get("genero_vocal") or "",
+            "cat1":         track.get("subgenero") or "",
+            "cat2":         track.get("categoria") or "",
+            "tipo_audio":   tipo_audio,
+            "origen":       origen,
+            "pauta_id":     item.get("pauta_id"),
+            "cliente":      item.get("cliente"),
             # ─ Cue points (6 marcadores Jazler) ───────────────────────────
-            "cue_inicio":      track.get("cue_inicio")      or track.get("intro")  or 0,
-            "cue_intro":       track.get("cue_intro")       or track.get("intro")  or 0,
+            "cue_inicio":      track.get("cue_inicio")      or 0,
+            "cue_intro":       track.get("cue_intro")       or track.get("intro") or 0,
             "cue_inicio_coro": track.get("cue_inicio_coro") or 0,
             "cue_final_coro":  track.get("cue_final_coro")  or 0,
-            "cue_mezcla":      track.get("cue_mezcla")      or track.get("outro") or 0,
+            "cue_mezcla":      self._mix_point if self._mix_point != float("inf") else 0,
             "fade_in":         track.get("fade_in")         or 0,
             "fade_out":        track.get("fade_out")        or 0,
         })
         log.info(
-            "[Engine] ▶ %s — %s  [intro=%.1fs  mezcla=%.1fs]",
+            "[Engine] ▶ %s — %s  [%s, dur=%.1fs, mezcla=%.1fs]",
             track.get("artista", "?"), track.get("titulo", "?"),
-            track.get("cue_intro") or track.get("intro") or 0,
-            track.get("cue_mezcla") or track.get("outro") or 0,
+            origen, duracion, self._mix_point if self._mix_point != float("inf") else 0,
         )
 
-    def _fetch_track(self, audio_id: int) -> Optional[dict]:
-        """
-        Obtiene el track completo de la DB incluyendo todos los cue points.
-        Usa columnas de ambas tablas (ruta_archivo legada + archivo_path nueva)
-        para que el motor funcione con cualquier registro.
-        """
+    def _log_emision(self, track: dict, item: dict, tipo: str):
+        """Registra la emision en historial_emision y actualiza la rotacion."""
         try:
             conn = _db_conn(self._db)
-            row = conn.execute(
-                """
-                SELECT id, titulo, artista, album, duracion, archivo_path,
-                       COALESCE(ruta_archivo, archivo_path) AS ruta_archivo,
-                       subgenero AS cat1, categoria AS cat2, cat3,
-                       genero_vocal, bpm, activo,
-                       intro, outro, hook,
-                       cue_inicio, cue_intro, cue_inicio_coro,
-                       cue_final_coro, cue_mezcla, fade_in, fade_out
-                FROM audios WHERE id = ? AND activo = 1
-                """,
-                (audio_id,)
-            ).fetchone()
-            conn.close()
+            try:
+                conn.execute(
+                    "INSERT INTO historial_emision"
+                    " (audio_id, titulo, artista, tipo, origen, pauta_id, slot)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (track["id"], track.get("titulo", ""), track.get("artista", ""),
+                     tipo, item.get("origen", "manual"),
+                     item.get("pauta_id"), item.get("slot")),
+                )
+                conn.execute(
+                    "UPDATE audios SET"
+                    " ultima_reproduccion = datetime('now','localtime'),"
+                    " veces_reproducido = COALESCE(veces_reproducido,0) + 1"
+                    " WHERE id = ?",
+                    (track["id"],),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:
+            log.error("[Engine] _log_emision: %s", exc)
+
+    def _emit_error(self, audio_id, reason: str, msg: str, **extra):
+        self.last_error = msg
+        self.bus.emit("playback_error", {
+            "audio_id": audio_id, "reason": reason, "msg": msg, **extra,
+        })
+
+    def _emit_queue(self):
+        self.bus.emit("queue_updated", {"queue": list(self._playlist_queue)})
+
+    def _fetch_track(self, audio_id: int) -> Optional[dict]:
+        """Obtiene el registro completo del audio (solo si esta activo)."""
+        try:
+            conn = _db_conn(self._db)
+            try:
+                row = conn.execute(
+                    "SELECT * FROM audios WHERE id = ? AND activo = 1", (audio_id,)
+                ).fetchone()
+            finally:
+                conn.close()
             return dict(row) if row else None
         except Exception as exc:
-            log.error("[Engine] _fetch_track(%d): %s", audio_id, exc)
+            log.error("[Engine] _fetch_track(%s): %s", audio_id, exc)
             return None
 
-    def _update_last_played(self, audio_id: Optional[int]):
-        if not audio_id:
-            return
+    def _cfg(self, clave: str, default: str) -> str:
+        conn = _db_conn(self._db)
         try:
-            conn = _db_conn(self._db)
-            conn.execute(
-                "UPDATE audios SET "
-                "ultima_reproduccion=datetime('now','localtime'), "
-                "veces_reproducido=COALESCE(veces_reproducido,0)+1 WHERE id=?",
-                (audio_id,)
-            )
-            conn.commit()
+            row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
+            return row[0] if row else default
+        finally:
             conn.close()
-        except Exception as exc:
-            log.error("[Engine] _update_last_played: %s", exc)
-
-    def _get_cfg_bool(self, clave: str) -> bool:
-        try:
-            conn = _db_conn(self._db)
-            row  = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()
-            conn.close()
-            return bool(row and row[0].lower() in ("true", "1", "yes", "si"))
-        except Exception:
-            return False
 
     def _update_cfg_db(self, clave: str, valor: str):
         try:
             conn = _db_conn(self._db)
-            conn.execute("UPDATE config SET valor=? WHERE clave=?", (valor, clave))
-            conn.commit()
-            conn.close()
+            try:
+                conn.execute(
+                    "INSERT INTO config (clave, valor) VALUES (?, ?)"
+                    " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                    (clave, valor),
+                )
+                conn.commit()
+            finally:
+                conn.close()
         except Exception as exc:
             log.error("[Engine] _update_cfg_db: %s", exc)
 
     @property
     def status(self) -> dict:
+        track = self._current_track
+        item  = self._current_item or {}
         return {
             "backend":           BACKEND,
+            "running":           self._running,
             "modo":              self._mode,
-            "current_track":     self._current_track,
+            "current_track":     {
+                "id":      track["id"],
+                "titulo":  track.get("titulo", ""),
+                "artista": track.get("artista", ""),
+                "origen":  item.get("origen", "manual"),
+                "cliente": item.get("cliente"),
+            } if track else None,
+            "position_sec":      round(self._audio.get_position_sec(self._active_canal), 2) if track else 0,
+            "duration_sec":      round(self._duration, 2) if track else 0,
+            "queue":             list(self._playlist_queue),
             "queue_length":      len(self._playlist_queue),
-            "crossfade_active":  self._crossfade_active,
+            "pautas_pendientes": len(self._priority_queue),
+            "crossfade_active":  self._xfade is not None,
+            "crossfade_seg":     self._crossfade_secs,
             "should_be_playing": self._should_be_playing,
-            "is_playing":        self._audio.is_playing(self._active_canal),
+            "is_playing":        bool(track) and self._audio.is_playing(self._active_canal),
+            "last_error":        self.last_error,
         }
 
 

@@ -1,0 +1,1144 @@
+/* ============================================================
+   PAUTAS-ALERTAS.CSS — Ónix FM · Sección 03 Redesign
+   Estilos suplementarios al pautas-css.css existente.
+   Incluye: Semáforo de filas · Campana · WaveSurfer ·
+            Cue Points · Filtro Avanzado · Nuevos campos ·
+            Advertencia de Menciones
+   ============================================================ */
+
+/* ── TOKENS ADICIONALES ─────────────────────────────────── */
+:root {
+  --p-orange-dim:   rgba(255, 102, 0, .10);
+  --p-yellow-dim:   rgba(255, 193, 7, .12);
+  --p-yellow-border:rgba(255, 193, 7, .28);
+  --p-red-row:      rgba(255, 61, 90, .06);
+  --p-red-row-bdr:  rgba(255, 61, 90, .30);
+  --p-yellow-row:   rgba(255, 193, 7, .06);
+  --p-yellow-row-bdr:rgba(255, 193, 7, .30);
+  --p-urgente:      #ff3d5a;
+  --p-urgente-dim:  rgba(255, 61, 90, .14);
+  --p-intro-color:  #00d97e;
+  --p-outro-color:  #ff3d5a;
+  --p-mezcla-color: #ffc107;
+}
+
+/* ══════════════════════════════════════════════════════════
+   CABECERA — ACCIONES
+   ══════════════════════════════════════════════════════════ */
+.pautas-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Ajuste de la stats-bar a 5 columnas */
+.pautas-stats {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.stat-card--warn .stat-card__num  { color: var(--p-yellow); text-shadow: 0 0 10px rgba(255,193,7,.4); }
+.stat-card--danger .stat-card__num { color: var(--p-red);   text-shadow: 0 0 10px rgba(255,61,90,.4); }
+
+/* ══════════════════════════════════════════════════════════
+   CAMPANA DE NOTIFICACIONES
+   ══════════════════════════════════════════════════════════ */
+.notif-wrap {
+  position: relative;
+}
+
+.notif-bell {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  color: var(--p-text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all var(--p-transition);
+}
+
+.notif-bell:hover,
+.notif-bell[aria-expanded="true"] {
+  border-color: var(--p-accent);
+  color: var(--p-accent);
+  box-shadow: 0 0 8px var(--p-accent-glow);
+}
+
+/* Badge rojo de conteo */
+.notif-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  background: var(--p-red);
+  color: #fff;
+  font-size: .64rem;
+  font-weight: 800;
+  border-radius: 9px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--p-bg);
+  animation: badgePop .2s cubic-bezier(.34,1.56,.64,1);
+}
+
+@keyframes badgePop {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+/* Dropdown del panel de notificaciones */
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 310px;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius-lg);
+  box-shadow: 0 16px 40px rgba(0,0,0,.6);
+  z-index: 500;
+  overflow: hidden;
+  animation: dropDown .15s ease;
+}
+
+@keyframes dropDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.notif-dropdown__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--p-border-subtle);
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--p-text-muted);
+}
+
+.notif-dropdown__close {
+  background: transparent;
+  border: none;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  font-size: .8rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color var(--p-transition);
+}
+
+.notif-dropdown__close:hover { color: var(--p-text); }
+
+.notif-dropdown__body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+/* Grupos dentro del dropdown */
+.notif-group__title {
+  padding: 6px 15px 3px;
+  font-size: .67rem;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  font-weight: 700;
+}
+
+.notif-group__title--vencida { color: var(--p-red); }
+.notif-group__title--porvencer { color: var(--p-yellow); }
+
+.notif-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 15px;
+  font-size: .8rem;
+  transition: background var(--p-transition);
+  cursor: pointer;
+}
+
+.notif-item:hover { background: var(--p-surface-3); }
+
+.notif-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.notif-item__dot--vencida  { background: var(--p-red); box-shadow: 0 0 5px var(--p-red); }
+.notif-item__dot--porvencer{ background: var(--p-yellow); box-shadow: 0 0 5px var(--p-yellow); }
+
+.notif-item__name {
+  flex: 1;
+  color: var(--p-text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notif-item__date {
+  color: var(--p-text-muted);
+  font-size: .72rem;
+  white-space: nowrap;
+}
+
+.notif-empty {
+  padding: 22px;
+  text-align: center;
+  color: var(--p-text-muted);
+  font-size: .82rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SEMÁFORO DE FILAS EN LA TABLA
+   ══════════════════════════════════════════════════════════ */
+
+/* Rojo: vencida */
+.pautas-table tbody tr.row--vencida {
+  background: var(--p-red-row) !important;
+}
+
+.pautas-table tbody tr.row--vencida::before {
+  background: var(--p-red) !important;
+  opacity: 1 !important;
+}
+
+.pautas-table tbody tr.row--vencida:hover {
+  background: rgba(255, 61, 90, .11) !important;
+}
+
+/* Amarillo: por vencer (≤3 días) */
+.pautas-table tbody tr.row--por-vencer {
+  background: var(--p-yellow-row) !important;
+}
+
+.pautas-table tbody tr.row--por-vencer::before {
+  background: var(--p-yellow) !important;
+  opacity: 1 !important;
+}
+
+.pautas-table tbody tr.row--por-vencer:hover {
+  background: rgba(255, 193, 7, .11) !important;
+}
+
+/* Urgente: borde izquierdo rojo pulsante */
+.pautas-table tbody tr.row--urgente::before {
+  background: var(--p-urgente) !important;
+  opacity: 1 !important;
+  box-shadow: 0 0 6px var(--p-urgente);
+  animation: urgentePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes urgentePulse {
+  0%, 100% { box-shadow: 0 0 4px var(--p-urgente); }
+  50%       { box-shadow: 0 0 12px var(--p-urgente); }
+}
+
+/* Badge URGENTE en la tabla */
+.badge-urgente-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--p-urgente-dim);
+  color: var(--p-urgente);
+  border: 1px solid rgba(255,61,90,.28);
+  font-size: .63rem;
+  font-weight: 800;
+  letter-spacing: .5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Badge "Por Vencer" en la tabla */
+.badge--por-vencer {
+  background: var(--p-yellow-dim);
+  color: var(--p-yellow);
+  border: 1px solid var(--p-yellow-border);
+}
+
+/* ══════════════════════════════════════════════════════════
+   FILTRO AVANZADO
+   ══════════════════════════════════════════════════════════ */
+.filter-advanced-wrap {
+  position: relative;
+}
+
+/* Reemplaza el .filter-group original */
+.btn-filter-advanced {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  color: var(--p-text-muted);
+  font-size: .82rem;
+  cursor: pointer;
+  position: relative;
+  transition: all var(--p-transition);
+}
+
+.btn-filter-advanced:hover,
+.btn-filter-advanced[aria-expanded="true"] {
+  border-color: var(--p-accent);
+  color: var(--p-accent);
+}
+
+/* Punto naranja cuando hay filtros activos */
+.filter-dot-active {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--p-accent);
+  border: 2px solid var(--p-bg);
+}
+
+/* Panel desplegable de filtros */
+.filter-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 240px;
+  background: var(--p-surface-2);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius-lg);
+  padding: 14px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.55);
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: dropDown .14s ease;
+}
+
+.filter-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-panel__label {
+  font-size: .67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--p-text-muted);
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--p-border-subtle);
+}
+
+.filter-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .81rem;
+  color: var(--p-text);
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background var(--p-transition);
+}
+
+.filter-radio:hover { background: var(--p-surface-3); }
+
+.filter-radio input[type="radio"] {
+  accent-color: var(--p-accent);
+  cursor: pointer;
+}
+
+.filter-select {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  color: var(--p-text);
+  font-size: .81rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus { border-color: var(--p-accent); }
+
+.filter-panel__clear {
+  padding: 6px;
+  background: transparent;
+  border: 1px dashed var(--p-border);
+  border-radius: var(--p-radius);
+  color: var(--p-text-muted);
+  font-size: .78rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--p-transition);
+  margin-top: 4px;
+}
+
+.filter-panel__clear:hover {
+  border-color: var(--p-red);
+  color: var(--p-red);
+}
+
+/* Icono de búsqueda (svg en lugar de emoji) */
+.search-svg-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--p-text-muted);
+  pointer-events: none;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL PRO — Modal más ancho para el editor de cues
+   ══════════════════════════════════════════════════════════ */
+.modal-box--pro {
+  max-width: 1100px;
+  max-height: 94vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cabecera del modal con badge urgente */
+.modal-header__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Badge URGENTE en la cabecera del modal */
+.badge-urgente {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  background: var(--p-urgente-dim);
+  color: var(--p-urgente);
+  border: 1px solid rgba(255,61,90,.35);
+  border-radius: 4px;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  animation: urgentePulse 1.4s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SECCIÓN DE AUDIO (picker + wf-panel)
+   ══════════════════════════════════════════════════════════ */
+.modal-audio-section {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--p-border-subtle);
+  background: var(--p-surface-2);
+}
+
+.audio-picker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 18px;
+}
+
+.audio-picker-icon {
+  color: var(--p-accent);
+  flex-shrink: 0;
+}
+
+.audio-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 280px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  padding: 0 6px 0 10px;
+  transition: border-color var(--p-transition);
+}
+
+.audio-selector:focus-within { border-color: var(--p-accent); }
+
+.audio-selector input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--p-text);
+  font-size: .84rem;
+  padding: 8px 0;
+  outline: none;
+  cursor: pointer;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .78rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   WAVESURFER PANEL
+   ══════════════════════════════════════════════════════════ */
+.wf-panel-wrap {
+  padding: 0 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Barra superior: filename + info + spinner */
+.wf-topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 8px;
+}
+
+.wf-filename {
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--p-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.wf-info-bar {
+  flex: 1;
+  font-size: .75rem;
+  color: var(--p-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wf-info__item { color: var(--p-text-muted); }
+.wf-info__item strong { color: var(--p-text); font-weight: 600; }
+.wf-info__sep { color: var(--p-border); }
+
+.wf-loading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .76rem;
+  color: var(--p-text-muted);
+}
+
+/* Spinner CSS */
+.wf-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--p-border);
+  border-top-color: var(--p-accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Canvas de WaveSurfer */
+#waveform {
+  width: 100%;
+  height: 88px;
+  border-radius: var(--p-radius);
+  overflow: hidden;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border-subtle);
+  cursor: crosshair;
+}
+
+/* Transport: tiempo + controles + volumen */
+.wf-transport {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.wf-time-display {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
+.wf-time-cur  { font-size: 1rem; font-weight: 700; color: var(--p-accent); }
+.wf-time-sep  { font-size: .8rem; color: var(--p-text-muted); }
+.wf-time-total{ font-size: .82rem; color: var(--p-text-muted); }
+
+.wf-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: var(--p-surface-3);
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-radius);
+  color: var(--p-text-muted);
+  font-size: .78rem;
+  cursor: pointer;
+  transition: all var(--p-transition);
+}
+
+.wf-btn:hover { border-color: var(--p-accent); color: var(--p-accent); }
+
+.wf-btn--play {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--p-accent);
+  border-color: var(--p-accent);
+  color: #fff;
+  padding: 0;
+}
+
+.wf-btn--play:hover {
+  background: #ff8533;
+  box-shadow: var(--p-accent-neon);
+  color: #fff;
+  border-color: #ff8533;
+}
+
+.wf-btn--util {
+  font-size: .72rem;
+  padding: 5px 10px;
+}
+
+.wf-btn--reset { border-color: var(--p-border-subtle); color: var(--p-text-muted); }
+
+.wf-vol-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--p-text-muted);
+}
+
+.wf-vol-group input[type="range"] {
+  width: 70px;
+  height: 3px;
+  appearance: none;
+  background: var(--p-border);
+  border-radius: 2px;
+  accent-color: var(--p-accent);
+  cursor: pointer;
+}
+
+.wf-vol-label {
+  font-size: .72rem;
+  color: var(--p-text-muted);
+  min-width: 30px;
+}
+
+.wf-util-group {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUE GRID (INTRO / OUTRO / MEZCLA)
+   ══════════════════════════════════════════════════════════ */
+.cue-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border-subtle);
+  border-radius: var(--p-radius);
+  padding: 8px 10px;
+}
+
+.cue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.cue-label {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  width: 56px;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 3px;
+  text-align: center;
+}
+
+.cue-label--intro  { background: rgba(0,217,126,.14); color: var(--p-intro-color); border: 1px solid rgba(0,217,126,.3); }
+.cue-label--outro  { background: rgba(255,61,90,.14);  color: var(--p-outro-color); border: 1px solid rgba(255,61,90,.3); }
+.cue-label--mezcla { background: rgba(255,193,7,.12);  color: var(--p-mezcla-color); border: 1px solid rgba(255,193,7,.3); }
+
+.cue-micro-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Botones de micro-ajuste (<< / >>) */
+.cue-nudge {
+  width: 26px;
+  height: 26px;
+  background: var(--p-surface-3);
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all var(--p-transition);
+}
+
+.cue-nudge:hover { border-color: var(--p-accent); color: var(--p-accent); }
+.cue-nudge:active { transform: scale(.92); }
+
+/* Botón marcar */
+.cue-mark {
+  padding: 4px 10px;
+  background: var(--p-surface-3);
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-text);
+  font-size: .75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--p-transition);
+}
+
+.cue-mark:hover {
+  background: var(--p-accent-dim);
+  border-color: var(--p-accent);
+  color: var(--p-accent);
+}
+
+/* Input de segundos del cue */
+.cue-input {
+  width: 60px;
+  padding: 4px 6px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-text);
+  font-size: .8rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  outline: none;
+  transition: border-color var(--p-transition);
+}
+
+.cue-input:focus { border-color: var(--p-accent); }
+
+.cue-unit {
+  font-size: .72rem;
+  color: var(--p-text-muted);
+}
+
+/* Botón escuchar */
+.cue-escuchar {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-text-muted);
+  font-size: .74rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--p-transition);
+}
+
+.cue-escuchar:hover {
+  border-color: var(--p-intro-color);
+  color: var(--p-intro-color);
+  background: rgba(0,217,126,.08);
+}
+
+/* Botón reset individual */
+.cue-reset-btn {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--p-border-subtle);
+  border-radius: 4px;
+  color: var(--p-text-muted);
+  font-size: .85rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all var(--p-transition);
+}
+
+.cue-reset-btn:hover { border-color: var(--p-text-muted); color: var(--p-text); }
+
+/* ══════════════════════════════════════════════════════════
+   NUEVOS CAMPOS DEL FORMULARIO
+   ══════════════════════════════════════════════════════════ */
+
+/* Control de menciones con botones +/- */
+.menciones-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.menciones-btn {
+  width: 28px;
+  height: 28px;
+  background: var(--p-surface-3);
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all var(--p-transition);
+  line-height: 1;
+}
+
+.menciones-btn:hover {
+  border-color: var(--p-accent);
+  color: var(--p-accent);
+  background: var(--p-accent-dim);
+}
+
+.menciones-input {
+  width: 54px;
+  padding: 5px;
+  background: var(--p-bg);
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  color: var(--p-accent);
+  font-size: .95rem;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+  transition: border-color var(--p-transition);
+}
+
+.menciones-input:focus { border-color: var(--p-accent); }
+.menciones-input::-webkit-inner-spin-button,
+.menciones-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+/* Urgente checkbox */
+.urgente-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.urgente-checkbox {
+  display: none;
+}
+
+.urgente-label__text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .85rem;
+  color: var(--p-text);
+}
+
+/* Pill preview (siempre visible como muestra) */
+.urgente-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: transparent;
+  color: var(--p-text-muted);
+  border: 1px dashed var(--p-border);
+  border-radius: 3px;
+  font-size: .63rem;
+  font-weight: 800;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  transition: all .2s ease;
+}
+
+/* Cuando el checkbox está marcado, el pill se activa */
+.urgente-checkbox:checked + .urgente-label__text .urgente-pill {
+  background: var(--p-urgente-dim);
+  color: var(--p-urgente);
+  border-color: rgba(255,61,90,.4);
+  border-style: solid;
+  box-shadow: 0 0 6px rgba(255,61,90,.2);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ADVERTENCIA DE MENCIONES VS. MATRIZ
+   ══════════════════════════════════════════════════════════ */
+.mentions-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255,193,7,.08);
+  border: 1px solid rgba(255,193,7,.30);
+  border-radius: var(--p-radius);
+  color: var(--p-yellow);
+  font-size: .8rem;
+  line-height: 1.4;
+  animation: warnSlide .2s ease;
+}
+
+@keyframes warnSlide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mentions-warning__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--p-yellow);
+}
+
+/* ══════════════════════════════════════════════════════════
+   MATRIX SUMMARY — mejorado para mostrar menciones
+   ══════════════════════════════════════════════════════════ */
+.matrix-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: var(--p-accent-dim);
+  border: 1px solid var(--p-orange-dim);
+  border-radius: var(--p-radius);
+  font-size: .8rem;
+  color: var(--p-accent);
+  font-weight: 500;
+  border-left: 2px solid var(--p-accent);
+}
+
+.matrix-summary svg { color: var(--p-accent); flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════════════════
+   SCROLLBAR PERSONALIZADO PARA EL FORM SECTION
+   ══════════════════════════════════════════════════════════ */
+.form-section::-webkit-scrollbar { width: 4px; }
+.form-section::-webkit-scrollbar-track { background: transparent; }
+.form-section::-webkit-scrollbar-thumb {
+  background: var(--p-border);
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   DASHBOARD LAYOUT v3.1 — Full-Height Two-Column Modal
+   ══════════════════════════════════════════════════════════
+
+   Arquitectura del modal rediseñado:
+
+     modal-box--pro                   (flex column, height 90vh)
+     ├── modal-header                 (flex-shrink: 0, ~53px)
+     ├── modal-dashboard              (flex: 1, grid 2 cols, overflow hidden)
+     │   ├── modal-col-a (360px)      (flex column)
+     │   │   ├── audio-picker-row    (flex-shrink: 0, ~70px)
+     │   │   ├── form-section        (flex: 1, overflow-y auto — scrollable)
+     │   │   └── wf-panel-wrap       (flex-shrink: 0, height: 260px fijo)
+     │   └── modal-col-b (1fr)       (flex column)
+     │       ├── matrix-section      (flex: 1, overflow hidden)
+     │       └── mentions-warning    (flex-shrink: 0, pie de col-b)
+     └── modal-footer                (flex-shrink: 0, ~54px)
+
+   El objetivo es que TODO sea visible sin scroll externo al modal:
+   el operador ve datos, onda y horario en una sola pantalla.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Modal: altura fija al 90% de la pantalla ── */
+.modal-box--pro {
+  height: 90vh;
+  max-height: 90vh;
+  max-width: 1180px;
+  overflow: hidden;   /* el scroll lo gestiona cada sub-región */
+}
+
+/* ── Contenedor dashboard: sustituye .modal-body y .modal-audio-section ── */
+.modal-dashboard {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  flex: 1;            /* ocupa todo el espacio entre header y footer */
+  overflow: hidden;
+  min-height: 0;      /* imprescindible para que flex-children colapsen bien */
+}
+
+/* ══════════════════════════════════════════════════════════
+   COLUMNA A — Audio Picker + Formulario + Waveform
+   ══════════════════════════════════════════════════════════ */
+.modal-col-a {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  border-right: 1px solid var(--p-border-subtle);
+  background: var(--p-surface);
+}
+
+/* Picker de audio: anclado arriba, nunca se desplaza */
+.modal-col-a .audio-picker-row {
+  flex-shrink: 0;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--p-border-subtle);
+  background: var(--p-surface-2);
+}
+
+/* Formulario: ocupa el espacio que queda entre picker y waveform;
+   tiene su propio scroll vertical para pantallas más bajas */
+.modal-col-a .form-section {
+  flex: 1;
+  min-height: 0;       /* permite que el flex-item colapse y ceda espacio al waveform */
+  overflow-y: auto;
+  border-right: none;  /* la col-a ya tiene borde */
+  padding: 18px 20px;
+  gap: 13px;
+}
+
+/* ── Waveform: fijo al pie de la col-A, nunca desplaza el formulario ──
+   Alto de 260px cubre topbar (30px) + canvas (72px) + transport (36px)
+   + cue-grid 3 filas (96px) + gaps (~26px). */
+.wf-panel-wrap {
+  flex-shrink: 0;       /* NO encoge aunque el formulario sea largo */
+  height: 260px;
+  overflow: hidden;
+  border-top: 1px solid var(--p-border-subtle);
+  background: var(--p-surface-2);
+  padding: 0 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Canvas del waveform: más compacto dentro del panel fijo */
+#waveform {
+  height: 68px !important;  /* sobreescribe el 88px del CSS base */
+  flex-shrink: 0;
+}
+
+/* Scrollbar fino para el cue-grid dentro del panel */
+.wf-panel-wrap::-webkit-scrollbar { width: 3px; height: 3px; }
+.wf-panel-wrap::-webkit-scrollbar-thumb { background: var(--p-border); border-radius: 2px; }
+
+/* ══════════════════════════════════════════════════════════
+   COLUMNA B — Matriz horaria + Aviso menciones
+   ══════════════════════════════════════════════════════════ */
+.modal-col-b {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* La sección matriz ocupa todo el espacio disponible en col-b */
+.modal-col-b .matrix-section {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 4px;   /* deja un pequeño respiro antes del aviso */
+}
+
+/* El scroll-wrap de la matriz ocupa TODO lo que la sección le dé */
+.modal-col-b .matrix-scroll-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Aviso de menciones: anclado al pie de col-b, SIEMPRE visible cuando aparece.
+   Borde radio 0 y sin margen porque abarca todo el ancho de la columna. */
+.modal-col-b .mentions-warning {
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 0;
+  border-top: 1px solid rgba(255, 180, 0, .25);
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  padding: 9px 18px;
+  font-size: .8rem;
+}
+
+/* ── Suprime el espacio donde estaba mentions-warning en form-section ──
+   (por si algún selector del CSS base lo fuerza a mostrarse allí) */
+.modal-col-a .mentions-warning {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE — pantallas menores a 860px
+   Colapsa a una sola columna con scroll vertical global
+   ══════════════════════════════════════════════════════════ */
+@media (max-width: 860px) {
+  .modal-box--pro {
+    height: 95vh;
+    max-height: 95vh;
+  }
+
+  .modal-dashboard {
+    grid-template-columns: 1fr;  /* una columna */
+    overflow-y: auto;            /* el dashboard entero hace scroll */
+  }
+
+  .modal-col-a {
+    overflow: visible;           /* en móvil no recortamos col-a */
+    border-right: none;
+    border-bottom: 1px solid var(--p-border-subtle);
+  }
+
+  .modal-col-a .form-section {
+    overflow: visible;           /* el scroll lo gestiona .modal-dashboard */
+    min-height: auto;
+  }
+
+  .wf-panel-wrap {
+    height: auto;                /* en móvil, el panel crece naturalmente */
+    flex-shrink: 1;
+  }
+
+  .modal-col-b {
+    overflow: visible;
+    min-height: 420px;           /* garantiza que la matriz tenga espacio mínimo */
+  }
+
+  .modal-col-b .matrix-section {
+    overflow: visible;
+    flex: none;
+  }
+
+  .modal-col-b .matrix-scroll-wrap {
+    flex: none;
+    min-height: 360px;
+  }
+
+  .pautas-stats { grid-template-columns: repeat(3, 1fr); }
+  .notif-dropdown { width: 260px; }
+}

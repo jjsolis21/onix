@@ -1396,6 +1396,10 @@
   });
 
   // Modo cambiado
+  document.addEventListener("ws:playback_stopped", () => {
+    loadStatus();
+  });
+
   document.addEventListener("ws:mode_changed", ({ detail: d }) => {
     appendLog("mode", `Modo → ${d?.mode?.toUpperCase() ?? "?"}`);
     updateModeBadge(d?.mode);
@@ -1521,7 +1525,11 @@
   /* ════════════════════════════════════════════════════════
      INICIALIZACIÓN DE LA SECCIÓN
   ════════════════════════════════════════════════════════ */
+  let initDone = false;
   async function init() {
+    // El panel activo llama a init directo y además recibe "section:init"
+    if (initDone) return;
+    initDone = true;
     appendLog("system", "Sección Estado Global iniciada");
     startUptimeCounter();
     await loadStatus();

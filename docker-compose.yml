@@ -1,0 +1,17 @@
+services:
+  onix:
+    build: .
+    container_name: onix-fm
+    ports:
+      - "8765:8000"   # 8000 y 8010 del host los usa el Icecast de pruebas
+    environment:
+      TZ: America/Caracas   # las pautas se programan por hora local
+    volumes:
+      - onix_data:/data          # BD SQLite (copia, no toca backend/api/radio_core.db)
+      - onix_media:/media/onix   # audios subidos (staging / library)
+      - ./frontend:/app/frontend # cambios de HTML/CSS/JS se ven al recargar
+    restart: unless-stopped
+
+volumes:
+  onix_data:
+  onix_media:

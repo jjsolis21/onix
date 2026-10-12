@@ -14,6 +14,7 @@ import sqlite3
 import time
 import unicodedata
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -32,6 +33,11 @@ from pathlib import Path
 # Añadimos la carpeta scripts al sistema para que encuentre init_db
 root_path = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root_path / "scripts"))
+if str(root_path) not in sys.path:
+    sys.path.append(str(root_path))   # para "from backend.… import" al ejecutar como script
+
+# Rutas compartidas con el motor (misma BD, misma carpeta de medios)
+from backend.paths import DB_PATH as _DB_PATH, MEDIA_ROOT, resolve_media, to_stored, normalize_stored
 
 try:
     from init_db import initialize_database
@@ -72,13 +78,35 @@ def get_connection(db_path: str = None) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("onix.api")
 
-# DB path: resuelto relativo a este archivo → backend/api/radio_core.db
-_DB_DEFAULT  = str(Path(__file__).resolve().parent / "radio_core.db")
-DB_PATH      = os.getenv("RADIO_DB_PATH", _DB_DEFAULT)
-MEDIA_ROOT   = Path(os.getenv("RADIO_MEDIA_ROOT", "/media/onix"))
+# DB_PATH y MEDIA_ROOT vienen de backend/paths.py (RADIO_DB_PATH / RADIO_MEDIA_ROOT).
+# En la BD, audios.archivo_path se guarda relativo a MEDIA_ROOT.
+DB_PATH      = str(_DB_PATH)
 STAGING_DIR  = MEDIA_ROOT / "staging"
 LIBRARY_DIR  = MEDIA_ROOT / "library"
 MUSICA_DIR   = LIBRARY_DIR / "musica"   # destino para archivos subidos via /upload
+
+# Eventos del motor que se retransmiten a los clientes WebSocket
+ENGINE_EVENTS = (
+    "track_started", "track_ended", "crossfade_start", "playback_stopped",
+    "playback_error", "mode_changed", "effect_fired", "queue_updated",
+    "pauta_scheduled", "pauta_missed", "engine_stopped",
+    "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
+)
+
+
+def _ws_message(event: str, data: dict = None, module: str = "api") -> str:
+    """
+    Sobre único para todo lo que el servidor envía por WebSocket.
+    Studio y Shell leen `event`; `cmd` se mantiene por compatibilidad.
+    """
+    return json.dumps({
+        "event":  event,
+        "module": module,
+        "cmd":    event,
+        "ts":     int(time.time() * 1000),
+        "data":   data or {},
+    }, default=str)
+
 
 # ---------------------------------------------------------------------------
 # Lifespan — sustituto moderno de @app.on_event("startup") / "shutdown"
@@ -94,30 +122,37 @@ async def lifespan(app: FastAPI):
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     MUSICA_DIR.mkdir(parents=True, exist_ok=True)
+    _normalize_media_paths()
+    _backfill_durations()
 
-    # Suscribir la API a los eventos del motor de audio (EventBus -> WebSocket)
+    # Puente EventBus (hilos del motor) -> WebSocket (event loop de Uvicorn).
+    # Los callbacks del EventBus corren en hilos del motor, así que el
+    # broadcast se programa en el loop con run_coroutine_threadsafe.
+    loop = asyncio.get_running_loop()
+
     def _on_engine_event(event: str, data: dict):
-        """Puente síncrono (EventBus) -> asíncrono (WebSocket Broadcast)"""
-        # track_started ya viene con los cue points desde audio_engine.py
-        payload = json.dumps({
-            "module": "engine",
-            "cmd":    event,
-            "ts":     int(time.time() * 1000),
-            "data":   data
-        })
-        # Como el EventBus corre en hilos del motor, usamos call_soon_threadsafe
-        # para programar el broadcast en el event loop de FastAPI/Uvicorn.
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(_manager.broadcast(payload))
+        asyncio.run_coroutine_threadsafe(
+            _manager.broadcast(_ws_message(event, data, module="engine")), loop
+        )
 
-    engine.bus.subscribe("track_started", _on_engine_event)
-    engine.bus.subscribe("playback_error", _on_engine_event)
+    for ev in ENGINE_EVENTS:
+        engine.bus.subscribe(ev, _on_engine_event)
+
+    # Arrancar el motor. Si el audio falla (sin tarjeta, DLL ausente) la API
+    # sigue viva para administrar la biblioteca; /api/v1/status reporta el error.
+    try:
+        engine.start()
+    except Exception as exc:
+        engine.last_error = str(exc)
+        logger.error(f"El motor de audio NO arrancó: {exc}")
 
     logger.info("API lista.")
     yield
-    # ── SHUTDOWN (cleanup si fuera necesario) ────────────────────────────
+    # ── SHUTDOWN ─────────────────────────────────────────────────────────
     logger.info("Apagando Ónix FM API.")
+    engine.stop()
+    for ev in ENGINE_EVENTS:
+        engine.bus.unsubscribe(ev, _on_engine_event)
 
 
 app = FastAPI(
@@ -135,7 +170,9 @@ app.add_middleware(
 )
 
 
-# Montar la carpeta de biblioteca interactiva para streaming
+# Montar la carpeta de biblioteca interactiva para streaming.
+# StaticFiles exige que el directorio exista al importar el módulo.
+LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/stream", StaticFiles(directory=LIBRARY_DIR), name="stream")
 
 
@@ -551,6 +588,7 @@ class AudioUpdateRequest(BaseModel):
     cat2:  Optional[str] = Field(default=None)
     cat3:  Optional[str] = Field(default=None)
     voz:   Optional[str] = Field(default=None)
+    tipo_audio: Optional[str] = Field(default=None, description="Musica | Cuña | Efecto | Sweeper | Programa | Tips")
     # Cue points retrocompatibles
     intro: Optional[float] = Field(default=None)
     outro: Optional[float] = Field(default=None)
@@ -563,6 +601,23 @@ class AudioUpdateRequest(BaseModel):
     cue_mezcla:      Optional[float] = Field(default=None)
     fade_in:         Optional[float] = Field(default=None)
     fade_out:        Optional[float] = Field(default=None)
+
+
+# Tipos de audio válidos (audios.tipo_audio). Solo 'Musica' entra en rotación.
+TIPOS_AUDIO = ("Musica", "Cuña", "Efecto", "Sweeper", "Programa", "Tips")
+
+
+def _validate_tipo_audio(valor: Optional[str]) -> Optional[str]:
+    """Devuelve el tipo con su escritura canónica; 422 si no existe."""
+    if valor is None or not valor.strip():
+        return None
+    for tipo in TIPOS_AUDIO:
+        if tipo.lower() == valor.strip().lower():
+            return tipo
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"tipo_audio inválido: '{valor}'. Valores: {', '.join(TIPOS_AUDIO)}",
+    )
 
 
 # ===========================================================================
@@ -609,15 +664,19 @@ def _normalize_filename(name: str) -> str:
 @app.post(
     "/api/v1/upload",
     status_code=status.HTTP_201_CREATED,
-    summary="Subir archivo de audio a la Biblioteca",
+    summary="Subir archivo de audio a la Biblioteca o Comercial",
     tags=["Audios"],
 )
 async def upload_audio_file(
     file: UploadFile = File(...),
+    tipo: Optional[str] = Form(None),
+    subdir: Optional[str] = Form(None),
+    conn: sqlite3.Connection = Depends(get_db),
 ):
     """
-    Recibe un archivo de audio, normaliza su nombre (sin tildes ni espacios)
-    y lo guarda en MUSICA_DIR (library/musica/).
+    Recibe un archivo de audio, normaliza su nombre (sin tildes ni espacios).
+    Si tipo == 'pauta', lo guarda en MEDIA_ROOT/COMERCIALES/YYYY/.
+    De lo contrario, lo guarda en MUSICA_DIR (library/musica/).
 
     Retorna la ruta del archivo lista para guardar en el campo `archivo_path`
     de la tabla `audios` al crear/actualizar un registro vía POST /api/v1/audios.
@@ -643,14 +702,28 @@ async def upload_audio_file(
 
     # Normalizar nombre
     filename_normalizado = _normalize_filename(file.filename)
-    dest = MUSICA_DIR / filename_normalizado
+
+    # pautas-controller.js marca los comerciales con subdir=MEDIA/COMERCIALES/{año}
+    if subdir and "COMERCIALES" in subdir.upper():
+        tipo = "pauta"
+
+    if tipo == "pauta":
+        year = str(datetime.now().year)
+        base_dest_dir = MEDIA_ROOT / "COMERCIALES" / year
+        base_dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = base_dest_dir / filename_normalizado
+    else:
+        dest = MUSICA_DIR / filename_normalizado
 
     # Evitar colisiones: si existe, añadir sufijo numérico
     if dest.exists():
         stem, suffix = dest.stem, dest.suffix
         counter = 1
         while dest.exists():
-            dest = MUSICA_DIR / f"{stem}_{counter}{suffix}"
+            if tipo == "pauta":
+                dest = base_dest_dir / f"{stem}_{counter}{suffix}"
+            else:
+                dest = MUSICA_DIR / f"{stem}_{counter}{suffix}"
             counter += 1
 
     # Guardar en disco
@@ -666,12 +739,73 @@ async def upload_audio_file(
 
     logger.info(f"[Upload] Archivo guardado: {dest} (original: {file.filename!r})")
 
+    # Un comercial se registra de una vez en la Biblioteca como 'Cuña', para
+    # que la pauta pueda referenciarlo por audio_id sin pasos manuales.
+    audio_id = None
+    if tipo == "pauta":
+        titulo = Path(file.filename).stem.strip().upper() or dest.stem.upper()
+        _validate_categoria_valor(conn, "cat1", "COMERCIAL", "cat1 (Género)")
+        cursor = conn.execute(
+            "INSERT INTO audios (titulo, artista, duracion, archivo_path, subgenero, tipo_audio)"
+            " VALUES (?, 'PUBLICIDAD', ?, ?, 'COMERCIAL', 'Cuña')",
+            (titulo, _probe_duration(dest), to_stored(dest)),
+        )
+        audio_id = cursor.lastrowid
+        conn.commit()
+        await _manager.broadcast(_ws_message(
+            "library_updated", {"action": "create", "id": audio_id, "titulo": titulo},
+        ))
+
     return {
         "mensaje":    "Archivo subido correctamente",
         "filename":   filename_normalizado,
-        "archivo_path": str(dest),
+        "archivo_path": to_stored(dest),
+        "audio_id":   audio_id,
         "size_bytes": dest.stat().st_size,
     }
+
+
+def _probe_duration(path: Path) -> int:
+    """Duración en segundos leída de las cabeceras del audio (0 si no se puede)."""
+    try:
+        from mutagen import File as MutagenFile
+        info = MutagenFile(str(path))
+        if info is not None and info.info.length > 0:
+            return int(round(info.info.length))
+    except Exception as exc:
+        logger.warning(f"  → No se pudo leer la duración de {path}: {exc}")
+    return 0
+
+
+def _normalize_media_paths() -> None:
+    """
+    Convierte al formato actual (relativo a MEDIA_ROOT, con "/") las rutas
+    guardadas por versiones anteriores, p. ej. "\\media\\onix\\library\\X\\a.mp3".
+    """
+    with db_session() as conn:
+        rows = conn.execute("SELECT id, archivo_path FROM audios").fetchall()
+        for row in rows:
+            nuevo = normalize_stored(row["archivo_path"])
+            if nuevo != row["archivo_path"]:
+                try:
+                    conn.execute("UPDATE audios SET archivo_path = ? WHERE id = ?", (nuevo, row["id"]))
+                    logger.info(f"  → Ruta normalizada: audio id={row['id']} → {nuevo}")
+                except sqlite3.IntegrityError:
+                    logger.warning(f"  → Ruta duplicada, no se normaliza: audio id={row['id']}")
+
+
+def _backfill_durations() -> None:
+    """Completa la duración de audios registrados con 0 cuyo archivo existe."""
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT id, archivo_path FROM audios WHERE COALESCE(duracion, 0) = 0 AND activo = 1"
+        ).fetchall()
+        for row in rows:
+            path = resolve_media(row["archivo_path"])
+            duracion = _probe_duration(path) if path.is_file() else 0
+            if duracion:
+                conn.execute("UPDATE audios SET duracion = ? WHERE id = ?", (duracion, row["id"]))
+                logger.info(f"  → Duración completada: audio id={row['id']} = {duracion}s")
 
 
 # ---- Helpers de archivos (Copy-and-Delete) ----
@@ -750,6 +884,7 @@ async def create_audio(
     cat2: Optional[str] = Form(None),
     cat3: Optional[str] = Form(None),
     voz: Optional[str] = Form(None),
+    tipo_audio: Optional[str] = Form(None),
     intro: Optional[float] = Form(None),
     outro: Optional[float] = Form(None),
     hook: Optional[float] = Form(None),
@@ -783,6 +918,7 @@ async def create_audio(
 
     # PASO 1: Validación dinámica de categorías
     _validate_all_categorias(conn, cat1, cat2, cat3, voz)
+    tipo_audio = _validate_tipo_audio(tipo_audio) or "Musica"
     logger.info("  → Validación de categorías: PASS")
 
     # PASO 2: Guardar el archivo subido en LIBRARY_DIR directamente
@@ -814,6 +950,10 @@ async def create_audio(
             detail=f"Fallo al guardar el archivo: {e}"
         )
 
+    # Duración real leída del archivo (el frontend suele enviar 0)
+    if not duracion:
+        duracion = _probe_duration(dest)
+
     # PASO 3: Insertar en DB
     try:
         cursor = conn.execute("""
@@ -822,14 +962,14 @@ async def create_audio(
                 subgenero, categoria, cat3, genero_vocal,
                 bpm, intro, outro, hook, fecha_lanzamiento,
                 cue_inicio, cue_intro, cue_inicio_coro, cue_final_coro,
-                cue_mezcla, fade_in, fade_out
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cue_mezcla, fade_in, fade_out, tipo_audio
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
             album,
             duracion or 0,
-            str(dest),
+            to_stored(dest),
             cat1,             # subgenero
             cat2,             # categoria
             cat3,             # cat3
@@ -846,6 +986,7 @@ async def create_audio(
             cue_mezcla,
             fade_in,
             fade_out,
+            tipo_audio,
         ))
         nuevo_id = cursor.lastrowid
 
@@ -860,12 +1001,15 @@ async def create_audio(
 
     logger.info(f"  → Audio creado con id={nuevo_id}")
 
+    # Confirmar ANTES de avisar: los clientes recargan la biblioteca al recibir
+    # el evento y la dependencia get_db hace commit después de responder.
+    conn.commit()
+
     # Broadcast WebSocket — notificar a todos los módulos
-    await _manager.broadcast(json.dumps({
-        "module": "api", "cmd": "library_updated",
-        "ts": int(time.time() * 1000),
-        "data": {"action": "create", "id": nuevo_id, "titulo": titulo, "artista": artista}
-    }))
+    await _manager.broadcast(_ws_message(
+        "library_updated",
+        {"action": "create", "id": nuevo_id, "titulo": titulo, "artista": artista},
+    ))
 
     return {
         "mensaje": "Audio creado exitosamente",
@@ -873,7 +1017,8 @@ async def create_audio(
             "id": nuevo_id,
             "titulo": titulo,
             "artista": artista,
-            "archivo_path": str(dest),
+            "archivo_path": to_stored(dest),
+            "tipo_audio": tipo_audio,
             "cat1": cat1,
             "cat2": cat2,
             "cat3": cat3,
@@ -951,6 +1096,8 @@ async def update_audio(
     if body.cat2 is not None: campos_update["categoria"]    = body.cat2.upper()
     if body.cat3 is not None: campos_update["cat3"]         = body.cat3.upper()
     if body.voz  is not None: campos_update["genero_vocal"] = body.voz.upper()
+    tipo_final = _validate_tipo_audio(body.tipo_audio)
+    if tipo_final is not None: campos_update["tipo_audio"] = tipo_final
     # Cue points extendidos (6 marcadores Jazler)
     if body.cue_inicio      is not None: campos_update["cue_inicio"]      = body.cue_inicio
     if body.cue_intro       is not None: campos_update["cue_intro"]       = body.cue_intro
@@ -983,12 +1130,15 @@ async def update_audio(
         f"  → Audio id={audio_id} actualizado. Campos: {list(campos_update.keys())}"
     )
 
+    # Confirmar ANTES de avisar: los clientes recargan la biblioteca al recibir
+    # el evento y la dependencia get_db hace commit después de responder.
+    conn.commit()
+
     # Broadcast WebSocket — notificar a todos los módulos
-    await _manager.broadcast(json.dumps({
-        "module": "api", "cmd": "library_updated",
-        "ts": int(__import__('time').time() * 1000),
-        "data": {"action": "update", "id": audio_id, "campos": list(campos_update.keys())}
-    }))
+    await _manager.broadcast(_ws_message(
+        "library_updated",
+        {"action": "update", "id": audio_id, "campos": list(campos_update.keys())},
+    ))
 
     return {
         "mensaje": "Audio actualizado exitosamente",
@@ -1020,6 +1170,7 @@ def list_audios(
     cat2: Optional[str] = None,
     cat3: Optional[str] = None,
     voz: Optional[str]  = None,
+    tipo: Optional[str] = None,   # Musica | Cuña | Efecto | Sweeper | Programa | Tips
     busqueda: Optional[str] = None,
     limit: int = 500,   # subido de 50 → 500 para el selector de pautas
     offset: int = 0,
@@ -1035,7 +1186,8 @@ def list_audios(
                bpm, fecha_lanzamiento, activo, created_at, updated_at,
                intro, outro, hook,
                cue_inicio, cue_intro, cue_inicio_coro,
-               cue_final_coro, cue_mezcla, fade_in, fade_out
+               cue_final_coro, cue_mezcla, fade_in, fade_out,
+               tipo_audio, veces_reproducido, ultima_reproduccion
         FROM audios
         WHERE activo = 1
     """
@@ -1059,6 +1211,9 @@ def list_audios(
     if voz:
         query += " AND genero_vocal = ?"
         params.append(voz)
+    if tipo:
+        query += " AND tipo_audio = ?"
+        params.append(_validate_tipo_audio(tipo))
     if busqueda:
         query += " AND (titulo LIKE ? OR artista LIKE ?)"
         params.extend([f"%{busqueda}%", f"%{busqueda}%"])
@@ -1127,6 +1282,42 @@ def delete_audio(
 
 
 @app.get(
+    "/api/v1/pautas/notificaciones",
+    summary="Obtener notificaciones de pautas",
+    tags=["Pautas"],
+)
+def get_pautas_notificaciones(
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """
+    Retorna pautas vencidas (fecha_fin < hoy) y pautas que vencen pronto
+    (fecha_fin <= hoy + 3 días). Útil para la campana de notificaciones.
+    """
+    from datetime import date, timedelta
+    
+    hoy = date.today().isoformat()
+    pronto = (date.today() + timedelta(days=3)).isoformat()
+
+    # Vencidas: fecha_fin < hoy
+    sql_vencilas = "SELECT * FROM pautas WHERE fecha_fin < ? AND fecha_fin != '' AND activo = 1 ORDER BY fecha_fin ASC"
+    rows_vencidas = conn.execute(sql_vencilas, (hoy,)).fetchall()
+    vencidas = [PautaOut.from_row(r).model_dump() for r in rows_vencidas]
+
+    # Vencen pronto: hoy <= fecha_fin <= pronto
+    sql_pronto = "SELECT * FROM pautas WHERE fecha_fin >= ? AND fecha_fin <= ? AND fecha_fin != '' AND activo = 1 ORDER BY fecha_fin ASC"
+    rows_pronto = conn.execute(sql_pronto, (hoy, pronto)).fetchall()
+    vencen_pronto = [PautaOut.from_row(r).model_dump() for r in rows_pronto]
+
+    campana_count = len(vencidas) + len(vencen_pronto)
+
+    return {
+        "vencidas": vencidas,
+        "vencen_pronto": vencen_pronto,
+        "campana_count": campana_count
+    }
+
+
+@app.get(
     "/api/v1/pautas",
     summary="Listar pautas",
     tags=["Pautas"],
@@ -1192,10 +1383,14 @@ def create_pauta(
             """
             INSERT INTO pautas
                 (cliente, audio_id, audio_nombre, matriz,
-                 fecha_inicio, fecha_fin, notas, activo, created_at, updated_at)
+                 fecha_inicio, fecha_fin, notas,
+                 cue_intro, cue_outro, menciones_diarias, rubro, prioridad, contrato_id,
+                 activo, created_at, updated_at)
             VALUES
                 (:cliente, :audio_id, :audio_nombre, :matriz,
-                 :fecha_inicio, :fecha_fin, :notas, 1, datetime('now'), datetime('now'))
+                 :fecha_inicio, :fecha_fin, :notas,
+                 :cue_intro, :cue_outro, :menciones_diarias, :rubro, :prioridad, :contrato_id,
+                 1, datetime('now'), datetime('now'))
             """,
             db_data,
         )
@@ -1255,6 +1450,12 @@ def update_pauta(
             fecha_inicio = :fecha_inicio,
             fecha_fin    = :fecha_fin,
             notas        = :notas,
+            cue_intro    = :cue_intro,
+            cue_outro    = :cue_outro,
+            menciones_diarias = :menciones_diarias,
+            rubro        = :rubro,
+            prioridad    = :prioridad,
+            contrato_id  = :contrato_id,
             updated_at   = datetime('now')
         WHERE id = :id
         """,
@@ -1274,18 +1475,21 @@ def update_pauta(
 )
 def delete_pauta(
     pauta_id: int,
+    physical: bool = False,
     conn:     sqlite3.Connection = Depends(get_db),
 ):
     """
     Elimina permanentemente una pauta de la base de datos.
+    Si physical=True, también localiza el archivo vinculado
+    en la tabla audios y lo borra físicamente.
 
     - 404 si el `pauta_id` no existe.
     - 204 No Content si la eliminación fue exitosa (sin cuerpo de respuesta).
     """
-    logger.info(f"DELETE /api/v1/pautas/{pauta_id}")
+    logger.info(f"DELETE /api/v1/pautas/{pauta_id}?physical={physical}")
 
     existing = conn.execute(
-        "SELECT id, cliente FROM pautas WHERE id = ?", (pauta_id,)
+        "SELECT id, cliente, audio_id FROM pautas WHERE id = ?", (pauta_id,)
     ).fetchone()
 
     if not existing:
@@ -1295,6 +1499,26 @@ def delete_pauta(
             detail=f"Pauta con id={pauta_id} no encontrada.",
         )
 
+    # Borrar archivo físico si se requiere y existe el vínculo
+    if physical and existing["audio_id"]:
+        audio = conn.execute(
+            "SELECT id, archivo_path FROM audios WHERE id = ?", (existing["audio_id"],)
+        ).fetchone()
+        
+        if audio and audio["archivo_path"]:
+            path = resolve_media(audio["archivo_path"])
+            if path.exists():
+                try:
+                    path.unlink()
+                    logger.info(f"  → Archivo físico {path} eliminado")
+                except Exception as e:
+                    logger.error(f"  → Error al eliminar archivo físico {path}: {e}")
+            
+            # Borrar también de la tabla audios para no dejar registros huérfanos
+            conn.execute("DELETE FROM audios WHERE id = ?", (audio["id"],))
+            logger.info(f"  → Audio id={audio['id']} eliminado también")
+
+    # Borrar la pauta
     conn.execute("DELETE FROM pautas WHERE id = ?", (pauta_id,))
     logger.info(f"  → Pauta id={pauta_id} ('{existing['cliente']}') eliminada")
     # FastAPI devuelve 204 sin cuerpo automáticamente cuando el handler retorna None
@@ -1328,6 +1552,212 @@ def health_check():
         return {"status": "ok", "db": "connected", "version": "2.0.0"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"DB no disponible: {e}")
+
+
+@app.get("/api/v1/status", tags=["Sistema"])
+def get_status():
+    """Estado en vivo del motor de audio (backend, modo, pista al aire, cola)."""
+    return engine.status
+
+
+# ===========================================================================
+# SECCIÓN: PLAYER — Control del motor de audio
+# Los mismos comandos están disponibles por WebSocket (ver /ws).
+# ===========================================================================
+
+PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue"}
+
+
+def _player_command(cmd: str, msg: dict) -> dict:
+    """
+    Ejecuta un comando de reproducción. Lanza ValueError con un mensaje
+    para el operador si el comando o sus datos no son válidos.
+    """
+    if not engine.status["running"]:
+        raise ValueError(f"Motor de audio detenido: {engine.last_error or 'no iniciado'}")
+
+    def _audio_id() -> int:
+        try:
+            return int(msg["audio_id"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Falta audio_id")
+
+    if cmd == "play":
+        if msg.get("audio_id") is None:
+            engine.play_next()
+        elif not engine.play_track(_audio_id()):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "queue":
+        if not engine.queue_track(_audio_id()):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "fire_effect":
+        if not engine.fire_effect(_audio_id(), int(msg.get("canal_offset") or 0)):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "set_mode":
+        engine.set_mode(str(msg.get("mode") or msg.get("modo") or ""))
+    elif cmd == "skip":
+        engine.skip()
+    elif cmd == "stop":
+        engine.stop_playback()
+    elif cmd == "clear_queue":
+        engine.clear_queue()
+    else:
+        raise ValueError(f"Comando desconocido: {cmd}")
+    return {"ok": True, "cmd": cmd}
+
+
+class PlayerCommand(BaseModel):
+    audio_id:     Optional[int] = None
+    canal_offset: Optional[int] = 0
+    mode:         Optional[str] = None
+
+
+@app.post("/api/v1/player/{cmd}", tags=["Player"], summary="Enviar comando al motor de audio")
+def player_command(cmd: str, body: Optional[PlayerCommand] = None):
+    """
+    Comandos: play (con audio_id = al aire ya; sin audio_id = siguiente de la cola),
+    queue, fire_effect, set_mode (mode: manual|automatico), skip, stop, clear_queue.
+    """
+    if cmd not in PLAYER_COMMANDS:
+        raise HTTPException(status_code=404, detail=f"Comando desconocido: {cmd}")
+    try:
+        return _player_command(cmd, body.model_dump() if body else {})
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+# ===========================================================================
+# SECCIÓN: CARTUCHERA — Botones de disparo del Studio
+# ===========================================================================
+
+BANCOS_CARTUCHERA = {"jingles": 8, "publicidad": 6}   # banco → nº de botones
+
+
+class CartucheraSlotIn(BaseModel):
+    audio_id: int
+    etiqueta: str = Field("", max_length=40)
+
+
+def _check_slot(banco: str, slot: int) -> None:
+    if banco not in BANCOS_CARTUCHERA or not (1 <= slot <= BANCOS_CARTUCHERA[banco]):
+        raise HTTPException(status_code=404, detail=f"Botón inexistente: {banco}/{slot}")
+
+
+@app.get("/api/v1/cartuchera", tags=["Cartuchera"], summary="Botones asignados")
+def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
+    """Devuelve, por banco, los botones que tienen audio asignado."""
+    rows = conn.execute(
+        """
+        SELECT c.banco, c.slot, c.audio_id, c.etiqueta,
+               a.titulo, a.artista, a.duracion, a.tipo_audio
+        FROM cartuchera c
+        JOIN audios a ON a.id = c.audio_id AND a.activo = 1
+        ORDER BY c.banco, c.slot
+        """
+    ).fetchall()
+    data = {banco: [] for banco in BANCOS_CARTUCHERA}
+    for r in rows:
+        data.setdefault(r["banco"], []).append(dict(r))
+    return {"bancos": BANCOS_CARTUCHERA, "slots": data}
+
+
+@app.put("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Asignar audio a un botón")
+async def set_cartuchera_slot(
+    banco: str, slot: int, body: CartucheraSlotIn,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    _check_slot(banco, slot)
+    audio = conn.execute(
+        "SELECT id, titulo FROM audios WHERE id = ? AND activo = 1", (body.audio_id,)
+    ).fetchone()
+    if not audio:
+        raise HTTPException(status_code=404, detail=f"Audio id={body.audio_id} no encontrado")
+    conn.execute(
+        """
+        INSERT INTO cartuchera (banco, slot, audio_id, etiqueta) VALUES (?, ?, ?, ?)
+        ON CONFLICT(banco, slot) DO UPDATE SET
+            audio_id = excluded.audio_id, etiqueta = excluded.etiqueta,
+            updated_at = datetime('now')
+        """,
+        (banco, slot, body.audio_id, body.etiqueta.strip()),
+    )
+    conn.commit()
+    await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": banco, "slot": slot}))
+    return {"banco": banco, "slot": slot, "audio_id": body.audio_id, "titulo": audio["titulo"]}
+
+
+@app.delete("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Vaciar un botón")
+async def clear_cartuchera_slot(banco: str, slot: int, conn: sqlite3.Connection = Depends(get_db)):
+    _check_slot(banco, slot)
+    conn.execute("DELETE FROM cartuchera WHERE banco = ? AND slot = ?", (banco, slot))
+    conn.commit()
+    await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": banco, "slot": slot}))
+    return {"banco": banco, "slot": slot, "audio_id": None}
+
+
+# ===========================================================================
+# SECCIÓN: CONFIG MOTOR — Parámetros de emisión (tabla config)
+# ===========================================================================
+
+class MotorConfig(BaseModel):
+    crossfade_seg:       Optional[float] = Field(None, ge=0, le=20)
+    ventana_artista_min: Optional[int]   = Field(None, ge=0, le=1440)
+    max_mismo_genero:    Optional[int]   = Field(None, ge=1, le=10)
+    ducking_db:          Optional[float] = Field(None, ge=-40, le=0)
+
+
+def _read_motor_config(conn: sqlite3.Connection) -> dict:
+    valores = {r["clave"]: r["valor"] for r in conn.execute("SELECT clave, valor FROM config")}
+    return {
+        "modo":                valores.get("modo", "manual"),
+        "crossfade_seg":       float(valores.get("crossfade_seg", 4)),
+        "ventana_artista_min": int(float(valores.get("ventana_artista_min", 60))),
+        "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
+        "ducking_db":          float(valores.get("ducking_db", -12)),
+    }
+
+
+@app.get("/api/v1/config/motor", tags=["Config"], summary="Parámetros del motor de audio")
+def get_motor_config(conn: sqlite3.Connection = Depends(get_db)):
+    return _read_motor_config(conn)
+
+
+@app.put("/api/v1/config/motor", tags=["Config"], summary="Guardar parámetros del motor")
+def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Guarda solo los campos enviados y los aplica al motor en caliente.
+    El modo (manual/automático) se cambia con el comando set_mode, no aquí.
+    """
+    for clave, valor in body.model_dump(exclude_none=True).items():
+        conn.execute(
+            "INSERT INTO config (clave, valor) VALUES (?, ?)"
+            " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+            (clave, str(valor)),
+        )
+    conn.commit()
+    engine.reload_config()
+    return _read_motor_config(conn)
+
+
+@app.get("/api/v1/audios/{audio_id}/stream", tags=["Audios"], summary="Preescucha del audio")
+def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
+    """Sirve el archivo de audio (con soporte de Range) para preescucha en el navegador."""
+    row = conn.execute(
+        "SELECT archivo_path FROM audios WHERE id = ? AND activo = 1", (audio_id,)
+    ).fetchone()
+    path = resolve_media(row["archivo_path"]) if row else None
+    if not path or not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Archivo del audio id={audio_id} no encontrado")
+    return FileResponse(path)
+
+
+@app.get("/api/v1/historial", tags=["Sistema"], summary="Historial de emisión")
+def get_historial(limit: int = 100, conn: sqlite3.Connection = Depends(get_db)):
+    """Últimos elementos que salieron al aire (música, pautas y efectos)."""
+    rows = conn.execute(
+        "SELECT * FROM historial_emision ORDER BY id DESC LIMIT ?", (max(1, min(limit, 1000)),)
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.get("/api/v1/stats", tags=["Sistema"])
@@ -1398,6 +1828,13 @@ def get_stats(conn: sqlite3.Connection = Depends(get_db)):
         ORDER BY cantidad DESC
     """).fetchall()
 
+    # ── Inventario por tipo de audio (contadores del Studio y del Shell) ──
+    por_tipo = {t: 0 for t in TIPOS_AUDIO}
+    for r in conn.execute(
+        "SELECT tipo_audio, COUNT(*) AS cantidad FROM audios WHERE activo = 1 GROUP BY tipo_audio"
+    ):
+        por_tipo[r["tipo_audio"]] = r["cantidad"]
+
     duracion_total = totales["duracion_total_segundos"]
 
     logger.info(
@@ -1418,6 +1855,9 @@ def get_stats(conn: sqlite3.Connection = Depends(get_db)):
         "por_cat2_rotacion": {r["valor"]: r["cantidad"] for r in rows_cat2},
         "por_cat3_subgenero":{r["valor"]: r["cantidad"] for r in rows_cat3},
         "por_voz":           {r["valor"]: r["cantidad"] for r in rows_voz},
+        "por_tipo":          por_tipo,
+        "total":             totales["total_activos"] or 0,
+        **por_tipo,          # claves planas: Musica, Cuña, Efecto, …
     }
 
 
@@ -1502,6 +1942,13 @@ async def websocket_endpoint(ws: WebSocket):
         DELETE        — audio eliminado (soft-delete)
         FILE_SELECTED — archivo seleccionado en el dropzone del modal
 
+    Comandos del Studio para el motor de audio (app.js), sin "module":
+        play        { cmd, audio_id? }   — sin audio_id: siguiente de la cola
+        queue       { cmd, audio_id }
+        fire_effect { cmd, audio_id, canal_offset }
+        set_mode    { cmd, mode: "manual"|"automatico" }
+        skip / stop / clear_queue / ping
+
     Flujo de cada mensaje:
         1. El frontend llama a wsCmd(cmd, data) → JSON.stringify → ws.send()
         2. Este endpoint recibe el texto, lo deserializa para loguear,
@@ -1514,20 +1961,44 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
 
-            # Parsear solo para logging; si el JSON está malformado
-            # lo registramos como advertencia pero no cortamos la conexión
+            # Si el JSON está malformado lo registramos como advertencia
+            # pero no cortamos la conexión
             try:
-                msg    = json.loads(raw)
-                cmd    = msg.get("cmd",    "?")
-                module = msg.get("module", "?")
-                logger.info(
-                    f"[WS] ← {module}/{cmd} | "
-                    f"data={str(msg.get('data', {}))[:120]}"
-                )
+                msg = json.loads(raw)
             except json.JSONDecodeError:
                 logger.warning(f"[WS] Mensaje no-JSON recibido: {raw[:120]}")
+                continue
+            if not isinstance(msg, dict):
+                continue
 
-            # Reemitir el mensaje a todos los clientes (broadcast)
+            cmd    = msg.get("cmd",    "?")
+            module = msg.get("module", "?")
+
+            # Keep-alive
+            if cmd == "ping":
+                await ws.send_text(_ws_message("pong"))
+                continue
+
+            # Comandos del Studio para el motor de audio. No se reemiten:
+            # el motor responde con sus propios eventos (track_started, …).
+            if cmd in PLAYER_COMMANDS:
+                logger.info(f"[WS] ← player/{cmd} | {str(msg)[:120]}")
+                try:
+                    # El motor consulta SQLite: fuera del event loop.
+                    await asyncio.to_thread(_player_command, cmd, msg)
+                except ValueError as exc:
+                    await ws.send_text(_ws_message(
+                        "playback_error",
+                        {"reason": "comando_rechazado", "msg": str(exc), "cmd": cmd},
+                    ))
+                continue
+
+            logger.info(
+                f"[WS] ← {module}/{cmd} | "
+                f"data={str(msg.get('data', {}))[:120]}"
+            )
+
+            # Resto de mensajes (UPLOAD, UPDATE, …): reemitir a todos los clientes
             await _manager.broadcast(raw)
 
     except WebSocketDisconnect:
@@ -1566,4 +2037,10 @@ if ADMIN_DIR.exists():
 if __name__ == "__main__":
     import uvicorn
     # Puerto 8000 por defecto para Ónix FM Core
-    uvicorn.run("api_server:app", host="0.0.0.0", port=8000, reload=True)
+    # reload reinicia el proceso (y corta el audio al aire) con cada cambio de
+    # código: solo se activa a pedido, con ONIX_RELOAD=1.
+    uvicorn.run(
+        "api_server:app", host="0.0.0.0",
+        port=int(os.getenv("ONIX_PORT", "8000")),
+        reload=os.getenv("ONIX_RELOAD") == "1",
+    )

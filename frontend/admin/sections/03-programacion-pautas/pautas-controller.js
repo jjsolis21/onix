@@ -1,175 +1,122 @@
 /**
  * ============================================================
- * PAUTAS-CONTROLLER.JS  — v2.0  (API REST)
+ * PAUTAS-CONTROLLER.JS  — v3.0  (Redesign Pro)
  * Módulo autónomo para la Sección 03 — Programación de Pautas
  *
- * Expone: window.PautasController
- * Dependencias externas: ninguna (vanilla JS puro)
+ * NUEVAS FUNCIONALIDADES v3:
+ *   · Editor de Cue Points vía onix-waveform.js (wfInit/wfLoadFile/wfLoadUrl)
+ *   · Campos extra: rubro, contrato, urgente, menciones/día
+ *   · Persistencia de campos extra dentro de matriz.__meta (sin cambios de schema)
+ *   · Semáforo de vencimientos (rojo / amarillo / urgente) en las filas
+ *   · Centro de Notificaciones (campana) con conteo de alertas
+ *   · Filtro avanzado con dropdown (por estado, rubro)
+ *   · Advertencia dinámica de menciones vs. franjas de la matriz
+ *   · Ruta de subida anualizada: MEDIA/COMERCIALES/{YYYY}/
  *
- * Endpoints consumidos:
- *   GET    /api/v1/audios            → catálogo de audios
- *   GET    /api/v1/pautas            → lista de pautas
- *   POST   /api/v1/pautas            → crear pauta
- *   PUT    /api/v1/pautas/:id        → actualizar pauta
- *   DELETE /api/v1/pautas/:id        → eliminar pauta
+ * Expone: window.PautasController
+ * Dependencias: onix-waveform.js (global wfInit / wfLoadFile / wfLoadUrl /
+ *               wfGetMarkers / wfDestroy), WaveSurfer.js + RegionsPlugin
+ *
+ * Endpoints:
+ *   GET    /api/v1/audios        → catálogo de audios
+ *   GET    /api/v1/pautas        → lista de pautas
+ *   POST   /api/v1/pautas        → crear pauta
+ *   PUT    /api/v1/pautas/:id    → actualizar
+ *   DELETE /api/v1/pautas/:id    → eliminar
+ *   POST   /api/v1/upload        → subir archivo de audio
  * ============================================================
  */
-; (function (global) {
+;(function (global) {
   'use strict';
 
   // ──────────────────────────────────────────────────────────
-  // 1. CONFIGURACIÓN DE LA API
+  // 1. CONFIGURACIÓN
   // ──────────────────────────────────────────────────────────
 
-  /** Base URL de la API. Vacío = mismo origen (recomendado en producción). */
   const API_BASE = '';
 
-  /**
-   * Categorías que se solicitan al filtrar audios.
-   * Si la API no soporta este filtro, se ignora y llegan todos.
-   */
+  // Categorías que interesan al filtrar audios del catálogo
   const AUDIO_CATEGORIAS = ['COMERCIAL', 'PUBLICIDAD'];
 
-  /**
-   * Wrapper de fetch con manejo centralizado de errores.
-   * Lanza un Error con el mensaje del servidor si el status >= 400.
-   *
-   * @param {string} url
-   * @param {RequestInit} [options]
-   * @returns {Promise<any>}   JSON parseado de la respuesta
-   */
-  async function _apiFetch(url, options = {}) {
-    const defaults = {
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    };
-    const res = await fetch(API_BASE + url, {
-      ...defaults, ...options,
-      headers: { ...defaults.headers, ...(options.headers ?? {}) },
-    });
-
-    if (!res.ok) {
-      // Intenta extraer el mensaje de error del cuerpo JSON
-      let msg = `HTTP ${res.status} ${res.statusText}`;
-      try {
-        const body = await res.json();
-        msg = body?.detail ?? body?.message ?? msg;
-      } catch (_) { /* body no es JSON, usar msg por defecto */ }
-      throw new Error(msg);
-    }
-
-    // 204 No Content — no hay body que parsear
-    if (res.status === 204) return null;
-    return res.json();
-  }
-
-  // ──────────────────────────────────────────────────────────
-  // 2. MODELO DE DATOS
-  // ──────────────────────────────────────────────────────────
+  // Días de aviso previo al vencimiento para el semáforo amarillo
+  const DAYS_WARN = 3;
 
   /**
-   * Fábrica del objeto OnixPauta.
-   * El campo `id` viene siempre del servidor; nunca lo generamos localmente.
-   *
-   * @param {Partial<OnixPauta>} data
-   * @returns {OnixPauta}
+   * Las horas "Prime Time" coinciden con las definidas en el CSS y en
+   * la lógica de onix-waveform.js: lun–vie 07-08 y 17-19.
+   * day: 0=Dom, 1=Lun…6=Sáb
    */
-  function createPauta(data = {}) {
-    return {
-      id: data.id ?? null,  // asignado por el servidor
-      cliente: data.cliente ?? '',
-      audio_id: data.audio_id ?? null,
-      audio_nombre: data.audio_nombre ?? '',
-      /**
-       * matriz: objeto indexado por "dia-hora" → true
-       * Ej: { "1-8": true, "3-14": true }
-       * dia: 0=Dom … 6=Sáb  |  hora: 0–23
-       */
-      matriz: data.matriz ?? {},
-      fecha_inicio: data.fecha_inicio ?? '',
-      fecha_fin: data.fecha_fin ?? '',
-      notas: data.notas ?? '',
-      creado_en: data.creado_en ?? new Date().toISOString(),
-    };
-  }
-
-  // Prime-time: lunes-viernes 07-09 y 17-20
   const PRIME_SLOTS = new Set(
     [1, 2, 3, 4, 5].flatMap(d => [7, 8, 17, 18, 19, 20].map(h => `${d}-${h}`))
   );
 
-  const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-  const HORAS = Array.from({ length: 24 }, (_, i) =>
-    String(i).padStart(2, '0') + ':00'
-  );
+  const DIAS  = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const HORAS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
 
   // ──────────────────────────────────────────────────────────
-  // 3. ESTADO LOCAL DEL MÓDULO
+  // 2. ESTADO DEL MÓDULO
   // ──────────────────────────────────────────────────────────
-  let _pautas = [];        // Array<OnixPauta>  — espejo local del servidor
-  let _audios = [];        // Array<OnixAudio>  — catálogo cargado una vez
-  let _editingId = null;      // ID de la pauta en edición (null = nueva)
-  let _deletingId = null;      // ID pendiente de borrado
-  let _filterActive = 'todas';   // 'todas' | 'activa' | 'vencida'
-  let _searchTerm = '';
-  let _isSaving = false;     // guard para evitar doble-submit
+
+  let _pautas      = [];        // espejo local del servidor
+  let _audios      = [];        // catálogo de audios
+  let _editingId   = null;      // id en edición (null = nueva)
+  let _deletingId  = null;      // id pendiente de borrado
+  let _isSaving    = false;     // guard anti-doble-submit
+  let _searchTerm  = '';
+  let _filterEstado= 'todas';   // 'todas'|'activa'|'vencida'|'por_vencer'|'urgente'
+  let _filterRubro = '';
 
   // Estado de arrastre en la matriz
   const _drag = { active: false, startState: null };
 
-  // REPRODUCTOR DE PREVIEW
-  let _previewAudio = null;
-  let _isPlaying = false;
+  // WaveSurfer ya inicializado
+  let _wfReady = false;
+
+  // Guarda para evitar doble inicialización de eventos
+  let _initialized = false;
 
   // ──────────────────────────────────────────────────────────
-  // 4. REFERENCIAS DOM
+  // 3. HELPERS DOM
   // ──────────────────────────────────────────────────────────
+
   const $ = id => document.getElementById(id);
 
-  const DOM = {
-    // Stats
-    statActivas: () => $('statActivas'),
-    statVencidas: () => $('statVencidas'),
-    statSpots: () => $('statSpots'),
-    statClientes: () => $('statClientes'),
-    // Lista
-    tableBody: () => $('pautasTableBody'),
-    tableEmpty: () => $('pautasEmpty'),
-    searchInput: () => $('pautaSearch'),
-    // Botones de filtro
-    filterBtns: () => document.querySelectorAll('.filter-btn'),
-    // Modal principal
-    modal: () => $('pautaModal'),
-    modalTitle: () => $('modalTitle'),
-    fCliente: () => $('fCliente'),
-    fAudio: () => $('fAudio'),
-    fFechaInicio: () => $('fFechaInicio'),
-    fFechaFin: () => $('fFechaFin'),
-    fNotas: () => $('fNotas'),
-    audioDropdown: () => $('audioDropdown'),
-    audioList: () => $('audioList'),
-    audioHint: () => $('audioHint'),
-    audioSearch: () => $('audioSearchInput'),
-    matrixGrid: () => $('matrixGrid'),
-    matrixSummary: () => $('matrixSummaryText'),
-    modalError: () => $('modalError'),
-    btnSave: () => $('btnModalSave'),
-    btnSaveText: () => $('btnSaveText'),
-    // Modal delete
-    deleteModal: () => $('deleteModal'),
-    deleteCliente: () => $('deleteClienteName'),
-  };
+  function _showEl(el) { el && el.classList.remove('hidden'); }
+  function _hideEl(el) { el && el.classList.add('hidden'); }
 
   // ──────────────────────────────────────────────────────────
-  // 5. HELPERS PUROS
+  // 4. HELPERS DE DATOS PUROS
   // ──────────────────────────────────────────────────────────
+
+  /** Hoy como "YYYY-MM-DD" */
   function _today() {
     return new Date().toISOString().slice(0, 10);
   }
 
+  /** Hoy + N días como "YYYY-MM-DD" */
   function _offsetDate(days) {
     const d = new Date();
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Calcula el estado semafórico de una pauta.
+   * Retorna: 'vencida' | 'por-vencer' | 'urgente' | 'activa'
+   *
+   * "urgente" toma precedencia sobre todos los demás estados
+   * para que la fila siempre llame la atención.
+   */
+  function _semaphore(pauta) {
+    const meta = pauta.matriz?.__meta ?? {};
+    const urgente = pauta.urgente ?? meta.urgente ?? false;
+    const hoy = _today();
+    const fin = pauta.fecha_fin;
+
+    if (!fin || fin < hoy)  return 'vencida';
+    if (fin <= _offsetDate(DAYS_WARN)) return 'por-vencer';
+    if (urgente) return 'urgente';
+    return 'activa';
   }
 
   function _isActiva(pauta) {
@@ -177,10 +124,23 @@
     return pauta.fecha_inicio <= hoy && pauta.fecha_fin >= hoy;
   }
 
+  /**
+   * Cuenta los slots activos de la matriz ignorando la clave
+   * especial "__meta" que usamos para persistir campos extra.
+   */
   function _countSpots(matriz) {
-    return Object.values(matriz).filter(Boolean).length;
+    if (!matriz || typeof matriz !== 'object') return 0;
+    return Object.entries(matriz)
+      .filter(([k, v]) => k !== '__meta' && v === true)
+      .length;
   }
 
+  /** Extrae los metadatos del campo especial de la matriz */
+  function _getMeta(pauta) {
+    return pauta.matriz?.__meta ?? {};
+  }
+
+  /** Fecha ISO → "DD/MM/AAAA" */
   function _fmt(isoDate) {
     if (!isoDate) return '—';
     const [y, m, d] = isoDate.split('-');
@@ -188,301 +148,466 @@
   }
 
   function _fmtDur(s) {
-    if (!s && s !== 0) return '';
+    if (!s && s !== 0) return '0:00';
     const m = Math.floor(s / 60), sec = s % 60;
-    return `${m}:${String(sec).padStart(2, '0')}`;
+    return `${m}:${String(Math.floor(sec)).padStart(2, '0')}`;
   }
 
-  function _showEl(el) { el && el.classList.remove('hidden'); }
-  function _hideEl(el) { el && el.classList.add('hidden'); }
-
   function _esc(str) {
-    return String(str)
+    return String(str ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function _truncate(str, max) {
-    return str.length > max ? str.slice(0, max - 1) + '…' : str;
+    return String(str ?? '').length > max
+      ? String(str).slice(0, max - 1) + '…'
+      : String(str ?? '');
   }
 
-  /** Muestra u oculta el spinner/bloqueo del botón de guardado */
-  function _setSaving(flag) {
-    _isSaving = flag;
-    const btn = DOM.btnSave();
-    const btnText = DOM.btnSaveText();
-    if (!btn || !btnText) return;
-    btn.disabled = flag;
-    btnText.textContent = flag
-      ? (_editingId ? 'Actualizando…' : 'Guardando…')
-      : (_editingId ? 'Actualizar Pauta' : 'Guardar Pauta');
-  }
-
-  /** Muestra un mensaje en #modalError */
-  function _showModalError(msg) {
-    const el = DOM.modalError();
-    if (!el) return;
-    el.textContent = '⚠ ' + msg;
-    _showEl(el);
-  }
-
-  function _clearModalError() {
-    const el = DOM.modalError();
-    if (!el) return;
-    el.textContent = '';
-    _hideEl(el);
+  function _fmtFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
   }
 
   // ──────────────────────────────────────────────────────────
-  // 6. CAPA DE API — AUDIOS
+  // 5. FÁBRICA DEL MODELO
   // ──────────────────────────────────────────────────────────
 
-  /**
-   * Obtiene el catálogo de audios desde la API REST.
-   *
-   * Intenta primero con el filtro de categorías para traer solo
-   * spots comerciales. Si la API devuelve 400/422 (no soporta el
-   * parámetro), reintenta sin filtro y registra un aviso.
-   *
-   * @returns {Promise<Array>}  Array normalizado de audios
-   */
-  async function fetchAudios() {
-    // Construir query string con los filtros de categoría
-    const params = new URLSearchParams();
-    AUDIO_CATEGORIAS.forEach(cat => params.append('categoria_1', cat));
+  function createPauta(data = {}) {
+    // BUG #3 FIX: Asegurar que se usen exactamente los nombres de campos del API (prioridad, contrato_id, menciones_diarias)
+    // El server (PautaOut) envía estos campos directamente.
+    return {
+      id:           data.id           ?? null,
+      cliente:      data.cliente      ?? '',
+      audio_id:     data.audio_id     ?? null,
+      audio_nombre: data.audio_nombre ?? '',
+      matriz:       data.matriz       ?? {},
+      fecha_inicio: data.fecha_inicio ?? '',
+      fecha_fin:    data.fecha_fin    ?? '',
+      notas:        data.notas        ?? '',
+      rubro:        data.rubro             ?? data.matriz?.__meta?.rubro       ?? '',
+      contrato:     data.contrato_id       ?? data.matriz?.__meta?.contrato    ?? '',
+      urgente:      data.prioridad         ?? data.matriz?.__meta?.urgente     ?? false,
+      menciones:    data.menciones_diarias ?? data.matriz?.__meta?.menciones ?? 4,
+      cue_intro:    data.cue_intro         ?? data.matriz?.__meta?.cue_intro   ?? 0,
+      cue_outro:    data.cue_outro         ?? data.matriz?.__meta?.cue_outro   ?? 0,
+    };
+  }
 
-    let raw;
-    try {
-      raw = await _apiFetch(`/api/v1/audios?${params.toString()}`);
-    } catch (err) {
-      // Si el endpoint no soporta el filtro, reintenta sin él
-      if (/400|422|unsupported/i.test(err.message)) {
-        console.warn('[PautasController] El endpoint /api/v1/audios no soporta ' +
-          'filtro por categoría. Cargando todos los audios.', err.message);
-        try {
-          raw = await _apiFetch('/api/v1/audios');
-        } catch (err2) {
-          console.error('[PautasController] No se pudo cargar el catálogo de audios.', err2);
-          return [];
-        }
-      } else {
-        console.error('[PautasController] Error al cargar audios:', err);
-        return [];
-      }
-    }
+  // ──────────────────────────────────────────────────────────
+  // 6. CAPA DE API
+  // ──────────────────────────────────────────────────────────
 
-    // Normalizar la respuesta filtrada
-    const normalizedFiltered = _normalizeAudios(
-      Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? [])
-    );
-
-    // ── Fallback: si el filtro COMERCIAL/PUBLICIDAD devolvió 0 resultados,
-    //    significa que los audios de ESTA instalación usan otros valores en
-    //    su campo subgénero. Cargamos todos para que el selector no quede vacío.
-    if (normalizedFiltered.length === 0) {
-      console.info(
-        '[PautasController] El filtro por categoría devolvió 0 audios. ' +
-        'Cargando catálogo completo como fallback.'
-      );
+  async function _apiFetch(url, options = {}) {
+    const defaults = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    };
+    const res = await fetch(API_BASE + url, {
+      ...defaults, ...options,
+      headers: { ...defaults.headers, ...(options.headers ?? {}) },
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status} ${res.statusText}`;
       try {
-        const rawAll = await _apiFetch('/api/v1/audios');
-        return _normalizeAudios(
-          Array.isArray(rawAll) ? rawAll : (rawAll?.items ?? rawAll?.data ?? [])
-        );
-      } catch (err3) {
-        console.error('[PautasController] Error al cargar catálogo completo:', err3);
-        return [];
-      }
+        const body = await res.json();
+        msg = body?.detail ?? body?.message ?? msg;
+      } catch (_) { /* body no es JSON */ }
+      throw new Error(msg);
     }
-
-    return normalizedFiltered;
+    if (res.status === 204) return null;
+    return res.json();
   }
 
-  /**
-   * Normaliza la respuesta del servidor al shape interno:
-   * { id, nombre, titulo, artista, duracion }
-   */
+  async function fetchAudios() {
+    try {
+      const params = new URLSearchParams();
+      AUDIO_CATEGORIAS.forEach(cat => params.append('categoria_1', cat));
+      let raw = await _apiFetch(`/api/v1/audios?${params.toString()}`);
+      const normalized = _normalizeAudios(
+        Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? [])
+      );
+      // Si el filtro devuelve 0, cargar todos como fallback
+      if (!normalized.length) {
+        raw = await _apiFetch('/api/v1/audios');
+        return _normalizeAudios(Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? []));
+      }
+      return normalized;
+    } catch (err) {
+      console.warn('[PautasController] No se pudo cargar catálogo de audios:', err.message);
+      return [];
+    }
+  }
+
   function _normalizeAudios(arr) {
     if (!Array.isArray(arr)) return [];
     return arr.map(a => ({
-      id: a.id ?? a.audio_id ?? String(a.codigo ?? Math.random()).slice(0, 8),
-      nombre: a.nombre ?? a.archivo_path?.split('/').pop() ?? a.title ?? a.titulo ?? `Audio #${a.id}`,
-      titulo: a.titulo ?? a.title ?? '',
-      artista: a.artista ?? a.artist ?? '',
+      id:       a.id ?? a.audio_id ?? String(Math.random()).slice(2, 10),
+      nombre:   a.nombre ?? a.archivo_path?.split('/').pop() ?? `Audio #${a.id}`,
+      titulo:   a.titulo  ?? a.title  ?? '',
+      artista:  a.artista ?? a.artist ?? '',
       duracion: a.duracion ?? _fmtDur(a.duration ?? a.duracion_seg ?? 0),
     }));
   }
 
-  // ──────────────────────────────────────────────────────────
-  // 7. CAPA DE API — PAUTAS (CRUD)
-  // ──────────────────────────────────────────────────────────
-
-  /**
-   * GET /api/v1/pautas
-   * Carga la lista completa y reemplaza el estado local.
-   */
   async function fetchPautas() {
     try {
       const raw = await _apiFetch('/api/v1/pautas');
       const arr = Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? []);
       _pautas = arr.map(createPauta);
-      console.info(`[PautasController] ${_pautas.length} pauta(s) cargada(s) desde la API.`);
     } catch (err) {
       console.error('[PautasController] Error al cargar pautas:', err);
       _pautas = [];
     }
   }
 
-  /**
-   * POST /api/v1/pautas
-   * Crea una nueva pauta en el servidor.
-   *
-   * @param {Object} payload  Datos validados de la pauta
-   * @returns {Promise<OnixPauta>}  La pauta creada (con ID asignado por el servidor)
-   */
   async function _apiCreatePauta(payload) {
-    const created = await _apiFetch('/api/v1/pautas', {
+    return createPauta(await _apiFetch('/api/v1/pautas', {
       method: 'POST',
       body: JSON.stringify(payload),
-    });
-    return createPauta(created);
+    }));
   }
 
-  /**
-   * PUT /api/v1/pautas/:id
-   * Actualiza una pauta existente en el servidor.
-   *
-   * @param {string|number} id
-   * @param {Object}        payload
-   * @returns {Promise<OnixPauta>}
-   */
   async function _apiUpdatePauta(id, payload) {
-    const updated = await _apiFetch(`/api/v1/pautas/${id}`, {
+    return createPauta(await _apiFetch(`/api/v1/pautas/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
-    });
-    return createPauta(updated);
+    }));
   }
 
-  /**
-   * DELETE /api/v1/pautas/:id
-   * Elimina la pauta del servidor.
-   *
-   * @param {string|number} id
-   * @returns {Promise<void>}
-   */
   async function _apiDeletePauta(id) {
     await _apiFetch(`/api/v1/pautas/${id}`, { method: 'DELETE' });
   }
 
   // ──────────────────────────────────────────────────────────
-  // 8. RENDERIZADO DE LA LISTA
+  // 7. RENDERIZADO: STATS
   // ──────────────────────────────────────────────────────────
-  function _renderStats() {
-    const activas = _pautas.filter(_isActiva);
-    const vencidas = _pautas.filter(p => !_isActiva(p));
-    const spotsTotal = _pautas.reduce((a, p) => a + _countSpots(p.matriz), 0);
-    const clientes = new Set(_pautas.map(p => p.cliente)).size;
 
-    DOM.statActivas().querySelector('.stat-card__num').textContent = activas.length;
-    DOM.statVencidas().querySelector('.stat-card__num').textContent = vencidas.length;
-    DOM.statSpots().querySelector('.stat-card__num').textContent = spotsTotal;
-    DOM.statClientes().querySelector('.stat-card__num').textContent = clientes;
+  function _renderStats() {
+    const hoy       = _today();
+    const limitDate = _offsetDate(DAYS_WARN);
+    const activas   = _pautas.filter(_isActiva).length;
+    const vencidas  = _pautas.filter(p => p.fecha_fin < hoy).length;
+    const porVencer = _pautas.filter(p =>
+      p.fecha_fin >= hoy && p.fecha_fin <= limitDate
+    ).length;
+    const spotsTotal = _pautas.reduce((a, p) => a + _countSpots(p.matriz), 0);
+    const clientes   = new Set(_pautas.map(p => p.cliente)).size;
+
+    const _num = (id, val) => {
+      const el = $(id); if (el) el.querySelector('.stat-card__num').textContent = val;
+    };
+
+    _num('statActivas',   activas);
+    _num('statPorVencer', porVencer);
+    _num('statVencidas',  vencidas);
+    _num('statSpots',     spotsTotal);
+    _num('statClientes',  clientes);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // 8. RENDERIZADO: CENTRO DE NOTIFICACIONES
+  // ──────────────────────────────────────────────────────────
+
+  function _renderNotifications() {
+    const hoy       = _today();
+    const limitDate = _offsetDate(DAYS_WARN);
+
+    const vencidas  = _pautas.filter(p => p.fecha_fin < hoy);
+    const porVencer = _pautas.filter(p =>
+      p.fecha_fin >= hoy && p.fecha_fin <= limitDate
+    );
+
+    const total = vencidas.length + porVencer.length;
+    const badge = $('notifBadge');
+    if (badge) {
+      badge.textContent = total;
+      total > 0 ? _showEl(badge) : _hideEl(badge);
+    }
+
+    // Poblar el panel de notificaciones
+    const list = $('notifList');
+    if (!list) return;
+
+    if (total === 0) {
+      list.innerHTML =
+        '<div class="notif-empty">✅ Sin alertas pendientes. Todas las pautas están al día.</div>';
+      return;
+    }
+
+    let html = '';
+
+    if (vencidas.length) {
+      html += `<div class="notif-group__title notif-group__title--vencida">
+        ● Vencidas (${vencidas.length})</div>`;
+      vencidas.slice(0, 8).forEach(p => {
+        html += `<div class="notif-item" data-notif-id="${_esc(String(p.id))}">
+          <span class="notif-item__dot notif-item__dot--vencida"></span>
+          <span class="notif-item__name">${_esc(_truncate(p.cliente, 26))}</span>
+          <span class="notif-item__date">${_fmt(p.fecha_fin)}</span>
+        </div>`;
+      });
+    }
+
+    if (porVencer.length) {
+      html += `<div class="notif-group__title notif-group__title--porvencer">
+        ◑ Por Vencer — ${DAYS_WARN} días (${porVencer.length})</div>`;
+      porVencer.slice(0, 8).forEach(p => {
+        html += `<div class="notif-item" data-notif-id="${_esc(String(p.id))}">
+          <span class="notif-item__dot notif-item__dot--porvencer"></span>
+          <span class="notif-item__name">${_esc(_truncate(p.cliente, 26))}</span>
+          <span class="notif-item__date">${_fmt(p.fecha_fin)}</span>
+        </div>`;
+      });
+    }
+
+    list.innerHTML = html;
+
+    // Clic en un ítem → abre el modal de esa pauta
+    list.querySelectorAll('.notif-item[data-notif-id]').forEach(item => {
+      item.addEventListener('click', () => {
+        _closeNotifications();
+        _openModal(item.dataset.notifId);
+      });
+    });
+  }
+
+  function _toggleNotifications() {
+    const dropdown  = $('notifDropdown');
+    const bell      = $('notifBell');
+    const isVisible = !dropdown?.classList.contains('hidden');
+    if (isVisible) {
+      _closeNotifications();
+    } else {
+      _showEl(dropdown);
+      bell?.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function _closeNotifications() {
+    _hideEl($('notifDropdown'));
+    $('notifBell')?.setAttribute('aria-expanded', 'false');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 9. RENDERIZADO: TABLA CON SEMÁFORO
+  // ──────────────────────────────────────────────────────────
+
   function _renderTable() {
-    const term = _searchTerm.toLowerCase();
+    const term  = _searchTerm.toLowerCase();
+    const tbody = $('pautasTableBody');
+    if (!tbody) return;
 
     const visible = _pautas.filter(p => {
+      // Búsqueda en tiempo real (cliente, rubro, contrato, audio)
+      const meta = _getMeta(p);
+      const rubro    = (p.rubro    || meta.rubro    || '').toLowerCase();
+      const contrato = (p.contrato || meta.contrato || '').toLowerCase();
       const matchSearch = !term ||
-        p.cliente.toLowerCase().includes(term) ||
-        p.audio_nombre.toLowerCase().includes(term);
+        p.cliente.toLowerCase().includes(term)     ||
+        p.audio_nombre.toLowerCase().includes(term) ||
+        rubro.includes(term)                         ||
+        contrato.includes(term);
 
-      const estado = _isActiva(p) ? 'activa' : 'vencida';
-      const matchFilter = _filterActive === 'todas' || _filterActive === estado;
+      // Filtro de estado
+      const semaf = _semaphore(p);
+      let matchFilter = true;
+      if      (_filterEstado === 'activa')     matchFilter = _isActiva(p);
+      else if (_filterEstado === 'vencida')    matchFilter = semaf === 'vencida';
+      else if (_filterEstado === 'por_vencer') matchFilter = semaf === 'por-vencer';
+      else if (_filterEstado === 'urgente')    matchFilter = semaf === 'urgente';
 
-      return matchSearch && matchFilter;
+      // Filtro de rubro
+      const matchRubro = !_filterRubro ||
+        (p.rubro || meta.rubro || '').toLowerCase() === _filterRubro.toLowerCase();
+
+      return matchSearch && matchFilter && matchRubro;
     });
 
-    const tbody = DOM.tableBody();
     tbody.innerHTML = '';
 
     if (!visible.length) {
-      _showEl(DOM.tableEmpty());
+      _showEl($('pautasEmpty'));
       return;
     }
-    _hideEl(DOM.tableEmpty());
+    _hideEl($('pautasEmpty'));
 
     visible.forEach(p => {
-      const activa = _isActiva(p);
-      const spots = _countSpots(p.matriz);
+      const semaf     = _semaphore(p);
+      const meta      = _getMeta(p);
+      const rubro     = p.rubro     || meta.rubro     || '—';
+      const contrato  = p.contrato  || meta.contrato  || '';
+      const urgente   = p.urgente   || meta.urgente   || false;
+      const menciones = p.menciones ?? meta.menciones ?? 4;
+
+      // Clase de semáforo para el fondo de la fila
+      const rowClass = {
+        'vencida':    'row--vencida',
+        'por-vencer': 'row--por-vencer',
+        'urgente':    'row--urgente',
+        'activa':     '',
+      }[semaf] ?? '';
+
+      // Badge de estado
+      let estadoBadge = '';
+      if (semaf === 'vencida') {
+        estadoBadge = `<span class="badge badge--dot badge--vencida">Vencida</span>`;
+      } else if (semaf === 'por-vencer') {
+        estadoBadge = `<span class="badge badge--dot badge--por-vencer">Por Vencer</span>`;
+      } else if (semaf === 'urgente') {
+        estadoBadge = `<span class="badge badge--dot badge--activa">Activa</span>`;
+      } else {
+        estadoBadge = `<span class="badge badge--dot badge--activa">Activa</span>`;
+      }
+
+      // Badge URGENTE adicional en el nombre del cliente
+      const urgenteBadge = urgente
+        ? `<span class="badge-urgente-row">URGENTE</span>`
+        : '';
+
       const tr = document.createElement('tr');
       tr.dataset.id = p.id;
+      if (rowClass) tr.classList.add(rowClass);
+
       tr.innerHTML = `
-        <td><strong>${_esc(p.cliente)}</strong></td>
+        <td>
+          <strong>${_esc(p.cliente)}</strong>
+          ${urgenteBadge}
+          ${contrato
+            ? `<br><span style="font-size:.72rem;color:var(--p-text-muted)">${_esc(contrato)}</span>`
+            : ''}
+        </td>
+        <td>${_esc(_truncate(rubro, 22))}</td>
         <td>
           <span title="${_esc(p.audio_nombre)}">
-            🎵 ${_esc(_truncate(p.audio_nombre, 28))}
+            🎵 ${_esc(_truncate(p.audio_nombre, 26))}
           </span>
         </td>
-        <td>${_fmt(p.fecha_inicio)}</td>
-        <td>${_fmt(p.fecha_fin)}</td>
-        <td>
-          <span style="color:var(--p-accent);font-weight:700">${spots}</span>
-          <span style="color:var(--p-text-muted);font-size:.75rem"> slots</span>
+        <td style="white-space:nowrap">
+          ${_fmt(p.fecha_inicio)} → ${_fmt(p.fecha_fin)}
         </td>
-        <td>
-          <span class="badge badge--dot ${activa ? 'badge--activa' : 'badge--vencida'}">
-            ${activa ? 'Activa' : 'Vencida'}
-          </span>
+        <td style="text-align:center">
+          <span style="color:var(--p-accent);font-weight:700">${menciones}</span>
         </td>
+        <td>${estadoBadge}</td>
         <td>
           <div class="row-actions">
-            <button class="btn-row btn-row--edit"   title="Editar"     data-action="edit"   data-id="${p.id}">✏️</button>
-            <button class="btn-row btn-row--matrix" title="Ver matriz" data-action="matrix" data-id="${p.id}">📊</button>
-            <button class="btn-row btn-row--delete" title="Eliminar"   data-action="delete" data-id="${p.id}">🗑</button>
+            <button class="btn-row btn-row--edit"
+              title="Editar" data-action="edit" data-id="${_esc(String(p.id))}">✏️</button>
+            <button class="btn-row btn-row--delete"
+              title="Eliminar" data-action="delete" data-id="${_esc(String(p.id))}">🗑</button>
           </div>
         </td>`;
+
       tbody.appendChild(tr);
     });
   }
 
   function _render() {
     _renderStats();
+    _renderNotifications();
     _renderTable();
+    _populateRubroFilter();
   }
 
   // ──────────────────────────────────────────────────────────
-  // 9. CONSTRUCCIÓN DE LA MATRIZ 24×7
+  // 10. FILTRO AVANZADO
   // ──────────────────────────────────────────────────────────
+
+  /** Llena el <select> de rubros con los valores únicos del listado */
+  function _populateRubroFilter() {
+    const sel = $('filtRubro');
+    if (!sel) return;
+    const rubros = [...new Set(
+      _pautas.map(p => p.rubro || _getMeta(p).rubro || '')
+        .filter(Boolean)
+    )].sort();
+
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Todos los rubros</option>';
+    rubros.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      if (r === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function _applyFilter() {
+    const dot = $('filterDotActive');
+    const hasFilter = _filterEstado !== 'todas' || _filterRubro !== '';
+    hasFilter ? _showEl(dot) : _hideEl(dot);
+    _renderTable();
+  }
+
+  function _clearFilters() {
+    _filterEstado = 'todas';
+    _filterRubro  = '';
+    // Resetear los radios
+    document.querySelectorAll('[name="filtEstado"]').forEach(r => {
+      r.checked = r.value === 'todas';
+    });
+    const sel = $('filtRubro');
+    if (sel) sel.value = '';
+    _hideEl($('filterDotActive'));
+    _renderTable();
+    _hideFilterPanel();
+  }
+
+  function _toggleFilterPanel() {
+    const panel = $('filterPanel');
+    const btn   = $('btnFilterToggle');
+    if (!panel) return;
+    const open = !panel.classList.contains('hidden');
+    open ? _hideFilterPanel() : _showFilterPanel();
+  }
+
+  function _showFilterPanel() {
+    _showEl($('filterPanel'));
+    $('btnFilterToggle')?.setAttribute('aria-expanded', 'true');
+  }
+
+  function _hideFilterPanel() {
+    _hideEl($('filterPanel'));
+    $('btnFilterToggle')?.setAttribute('aria-expanded', 'false');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 11. CONSTRUCCIÓN DE LA MATRIZ 24×7
+  // ──────────────────────────────────────────────────────────
+
   function _buildMatrix(matrizData = {}) {
-    const grid = DOM.matrixGrid();
+    const grid = $('matrixGrid');
+    if (!grid) return;
     grid.innerHTML = '';
 
-    // Fila 0: cabecera de días
-    const cornerEl = _matrixCell('', 'matrix-cell--day-header');
-    grid.appendChild(cornerEl);
+    // Fila de cabecera (esquina + días)
+    grid.appendChild(_matrixCell('', 'matrix-cell--day-header'));
     DIAS.forEach(d => grid.appendChild(_matrixCell(d, 'matrix-cell--day-header')));
 
-    // Filas 1-24: horas × días
+    // Filas de horas
     for (let h = 0; h < 24; h++) {
       grid.appendChild(_matrixCell(HORAS[h], 'matrix-cell--hour-label'));
-
       for (let d = 0; d < 7; d++) {
-        const key = `${d}-${h}`;
-        const isPrime = PRIME_SLOTS.has(key);
-        const isOn = !!matrizData[key];
+        const key    = `${d}-${h}`;
+        const isPrime= PRIME_SLOTS.has(key);
+        const isOn   = !!matrizData[key];
 
         const cell = document.createElement('div');
-        cell.className = 'matrix-cell';
+        cell.className   = 'matrix-cell';
         cell.dataset.key = key;
         cell.dataset.state = isOn ? 'on' : 'off';
         cell.dataset.prime = isPrime ? 'true' : 'false';
         cell.title = `${DIAS[d]} ${HORAS[h]}${isPrime ? ' ★ Prime Time' : ''}`;
 
-        cell.addEventListener('mousedown', _onCellMouseDown);
+        cell.addEventListener('mousedown',  _onCellMouseDown);
         cell.addEventListener('mouseenter', _onCellMouseEnter);
-        cell.addEventListener('mouseup', _onCellMouseUp);
+        cell.addEventListener('mouseup',    _onCellMouseUp);
 
         grid.appendChild(cell);
       }
@@ -498,13 +623,14 @@
     return el;
   }
 
-  // Drag & toggle
+  // Drag y toggle
   function _onCellMouseDown(e) {
     e.preventDefault();
     const cell = e.currentTarget;
-    _drag.active = true;
+    _drag.active     = true;
     _drag.startState = cell.dataset.state === 'on' ? 'off' : 'on';
     _toggleCell(cell, _drag.startState);
+    _checkMentionsWarning();
   }
 
   function _onCellMouseEnter(e) {
@@ -515,6 +641,7 @@
   function _onCellMouseUp() {
     _drag.active = false;
     _updateMatrixSummary(_readMatrixFromDOM());
+    _checkMentionsWarning();
   }
 
   function _toggleCell(cell, newState) {
@@ -530,400 +657,83 @@
   }
 
   function _updateMatrixSummary(matriz) {
-    const count = _countSpots(matriz);
-    const el = DOM.matrixSummary();
+    const el    = $('matrixSummaryText');
     if (!el) return;
+    const count = _countSpots(matriz);
     if (count === 0) {
       el.textContent = 'Sin franjas horarias asignadas';
-    } else {
-      const days = new Set(Object.keys(matriz).map(k => k.split('-')[0])).size;
-      el.textContent =
-        `${count} slot${count !== 1 ? 's' : ''} seleccionados en ${days} día${days !== 1 ? 's' : ''}`;
-    }
-  }
-
-  // ──────────────────────────────────────────────────────────
-  // 10. GESTIÓN DEL MODAL PRINCIPAL
-  // ──────────────────────────────────────────────────────────
-  function _openModal(pautaId = null) {
-    _editingId = pautaId;
-    _clearModalError();
-    _setSaving(false);
-
-    if (pautaId) {
-      const p = _pautas.find(x => x.id === pautaId || String(x.id) === String(pautaId));
-      if (!p) return;
-      DOM.modalTitle().textContent = `Editar Pauta — ${p.cliente}`;
-      DOM.fCliente().value = p.cliente;
-      DOM.fAudio().value = p.audio_nombre;
-      DOM.audioHint().textContent = p.audio_nombre || 'Ningún archivo seleccionado';
-      DOM.fFechaInicio().value = p.fecha_inicio;
-      DOM.fFechaFin().value = p.fecha_fin;
-      DOM.fNotas().value = p.notas;
-      DOM.btnSaveText().textContent = 'Actualizar Pauta';
-      // Restaurar el id del audio seleccionado para el submit
-      DOM.fAudio()._selectedId = p.audio_id;
-      DOM.fAudio()._selectedNombre = p.audio_nombre;
-      _buildMatrix(p.matriz);
-    } else {
-      DOM.modalTitle().textContent = 'Nueva Pauta';
-      DOM.fCliente().value = '';
-      DOM.fAudio().value = '';
-      DOM.fAudio()._selectedId = null;
-      DOM.fAudio()._selectedNombre = '';
-      DOM.audioHint().textContent = 'Ningún archivo seleccionado';
-      DOM.fFechaInicio().value = _today();
-      DOM.fFechaFin().value = _offsetDate(30);
-      DOM.fNotas().value = '';
-      DOM.btnSaveText().textContent = 'Guardar Pauta';
-      _buildMatrix({});
-    }
-
-    _hideEl(DOM.audioDropdown());
-    _showEl(DOM.modal());
-    DOM.fCliente().focus();
-  }
-
-  function _closeModal() {
-    _stopAudio();
-    _hideEl(DOM.modal());
-    _editingId = null;
-    _isSaving = false;
-    _drag.active = false;
-  }
-
-  function _globalMouseUp() {
-    _drag.active = false;
-    _updateMatrixSummary(_readMatrixFromDOM());
-  }
-
-  // ──────────────────────────────────────────────────────────
-  // 11. CRUD ASÍNCRONO
-  // ──────────────────────────────────────────────────────────
-
-  /**
-   * Valida el formulario del modal y llama a la API para
-   * crear o actualizar la pauta según corresponda.
-   */
-  async function _savePauta() {
-    if (_isSaving) return;  // evitar doble-submit
-
-    // ── Leer valores del formulario ──
-    const clienteRaw = DOM.fCliente().value.trim();
-    const audioVal = DOM.fAudio().value.trim();
-    const inicio = DOM.fFechaInicio().value;
-    const fin = DOM.fFechaFin().value;
-    const notas = DOM.fNotas().value.trim().toUpperCase();
-
-    // ── Normalizar a MAYÚSCULAS (identidad de marca) ──
-    const cliente = clienteRaw.toUpperCase();
-
-    // ── Validaciones ──
-    if (!cliente) { _showModalError('El cliente es obligatorio.'); return; }
-    if (!audioVal) { _showModalError('Selecciona un audio para la pauta.'); return; }
-    if (!inicio) { _showModalError('La fecha de inicio es obligatoria.'); return; }
-    if (!fin) { _showModalError('La fecha de fin es obligatoria.'); return; }
-    if (inicio > fin) { _showModalError('La fecha de inicio no puede superar al fin.'); return; }
-
-    const matriz = _readMatrixFromDOM();
-    if (!Object.keys(matriz).length) {
-      _showModalError('Selecciona al menos un slot en la Matriz de Horarios.');
       return;
     }
-
-    // ── Resolver el audio seleccionado ──
-    const fAudio = DOM.fAudio();
-    const audioId = fAudio._selectedId ?? null;
-    const audioNombre = fAudio._selectedNombre || audioVal;
-
-    /** Payload que se envía a la API */
-    const payload = {
-      cliente,
-      audio_id: audioId,
-      audio_nombre: audioNombre,
-      fecha_inicio: inicio,
-      fecha_fin: fin,
-      notas,
-      matriz,
-    };
-
-    _clearModalError();
-    _setSaving(true);
-
-    try {
-      if (_editingId) {
-        // ── PUT /api/v1/pautas/:id ──
-        const updated = await _apiUpdatePauta(_editingId, payload);
-        const idx = _pautas.findIndex(
-          p => String(p.id) === String(_editingId)
-        );
-        if (idx !== -1) _pautas[idx] = updated;
-        else _pautas.push(updated);  // fallback por si el índice falla
-
-        console.info(`[PautasController] Pauta ${_editingId} actualizada.`);
-      } else {
-        // ── POST /api/v1/pautas ──
-        const created = await _apiCreatePauta(payload);
-        _pautas.push(created);
-        console.info(`[PautasController] Pauta creada con ID: ${created.id}`);
-      }
-
-      _render();
-      _closeModal();
-
-    } catch (err) {
-      console.error('[PautasController] Error al guardar pauta:', err);
-      _showModalError(err.message || 'Error al conectar con el servidor. Intenta nuevamente.');
-    } finally {
-      _setSaving(false);
-    }
+    const days = new Set(
+      Object.keys(matriz).filter(k => k !== '__meta').map(k => k.split('-')[0])
+    ).size;
+    const perDay = (count / 7).toFixed(1);
+    el.textContent =
+      `${count} slot${count !== 1 ? 's' : ''} en ${days} día${days !== 1 ? 's' : ''} · ~${perDay}/día`;
   }
 
+  // ──────────────────────────────────────────────────────────
+  // 12. ADVERTENCIA DE MENCIONES vs. MATRIZ
+  // ──────────────────────────────────────────────────────────
+
   /**
-   * DELETE /api/v1/pautas/:id
-   * Elimina la pauta del servidor y actualiza la lista local.
+   * Verifica si algún día de la semana tiene más franjas seleccionadas
+   * en la matriz que el número de menciones configurado.
    *
-   * @param {string|number} id
+   * Ejemplo: si el usuario pidió 3 menciones/día pero marcó 8 franjas
+   * el lunes, eso implica que el spot podría emitirse hasta 8 veces ese día,
+   * superando el contrato. En ese caso mostramos una advertencia amarilla.
    */
-  async function _deletePauta(id) {
-    try {
-      await _apiDeletePauta(id);
-      _pautas = _pautas.filter(p => String(p.id) !== String(id));
-      _render();
-      console.info(`[PautasController] Pauta ${id} eliminada.`);
-    } catch (err) {
-      console.error(`[PautasController] Error al eliminar pauta ${id}:`, err);
-      // Notificación no invasiva — el modal de confirmación ya se cerró,
-      // mostramos el error en consola. Si quieres un toast, conéctalo aquí.
-      alert(`No se pudo eliminar la pauta: ${err.message}`);
-    }
-  }
+  function _checkMentionsWarning() {
+    const warnEl  = $('mentionsWarning');
+    const warnTxt = $('mentionsWarningText');
+    if (!warnEl) return;
 
-  // ──────────────────────────────────────────────────────────
-  // 12. SELECTOR DE AUDIO — File Picker local
-  //     El usuario elige un archivo de su PC.
-  //     Se sube al servidor via POST /api/v1/upload.
-  // ──────────────────────────────────────────────────────────
+    const menciones = parseInt($('fMenciones')?.value ?? 4, 10);
+    if (!menciones || menciones < 1) { _hideEl(warnEl); return; }
 
-  /** Activa el file picker del sistema operativo */
-  function _openFilePicker() {
-    const input = $('audioFileInput');
-    if (input) input.click();
-  }
+    const matriz = _readMatrixFromDOM();
 
-  /**
-   * Se dispara cuando el usuario selecciona un archivo.
-   * Muestra progreso, sube el archivo y actualiza el campo.
-   */
-  async function _onAudioFileSelected(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // --- Mostrar nombre provisional mientras sube ---
-    const fAudio = DOM.fAudio();
-    fAudio.value = file.name;
-    DOM.audioHint().textContent = `📤 Preparando subida: ${file.name} (${_fmtFileSize(file.size)})`;
-
-    // --- Mostrar barra de progreso ---
-    const progressWrap = $('uploadProgress');
-    const progressBar = $('uploadProgressBar');
-    const progressLbl = $('uploadProgressLabel');
-    _showEl(progressWrap);
-    progressBar.style.width = '0%';
-    progressLbl.textContent = 'Subiendo…';
-
-    // --- Deshabilitar el botón y campo durante la subida ---
-    const btnSelect = $('btnSelectAudio');
-    if (btnSelect) btnSelect.disabled = true;
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // Subida con XMLHttpRequest para tener progreso real
-      const result = await _uploadWithProgress(
-        '/api/v1/upload',
-        formData,
-        (pct) => {
-          progressBar.style.width = `${pct}%`;
-          progressLbl.textContent = `Subiendo… ${pct}%`;
-        }
-      );
-
-      // --- Éxito ---
-      const nombre = result.filename ?? file.name;
-      const path = result.archivo_path ?? '';
-
-      fAudio.value = nombre;
-      fAudio._selectedId = null;       // no tiene ID en biblioteca
-      fAudio._selectedNombre = nombre;
-      fAudio._selectedPath = path;       // ruta en disco para la API de pautas
-
-      DOM.audioHint().textContent = `✅ Archivo subido: ${nombre}`;
-      progressBar.style.width = '100%';
-      progressLbl.textContent = '¡Subida completada!';
-
-      // --- Inicializar reproductor ---
-      _initPreviewPlayer(path);
-
-      setTimeout(() => _hideEl(progressWrap), 2000);
-
-    } catch (err) {
-      console.error('[PautasController] Error al subir audio:', err);
-      fAudio.value = '';
-      fAudio._selectedId = null;
-      fAudio._selectedNombre = '';
-      fAudio._selectedPath = '';
-      DOM.audioHint().textContent = `⚠ Error al subir: ${err.message}`;
-      progressBar.style.width = '0%';
-      progressLbl.textContent = 'Error en la subida';
-      progressLbl.style.color = 'var(--p-red)';
-      setTimeout(() => {
-        _hideEl(progressWrap);
-        progressLbl.style.color = '';
-      }, 3000);
-
-    } finally {
-      if (btnSelect) btnSelect.disabled = false;
-      // Limpiar el input file para permitir re-seleccionar el mismo archivo
-      e.target.value = '';
-    }
-  }
-
-  /**
-   * Sube un FormData mostrando progreso real via XHR.
-   * Retorna una Promise que resuelve con el JSON de respuesta.
-   */
-  function _uploadWithProgress(url, formData, onProgress) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', url);
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          onProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        let json;
-        try { json = JSON.parse(xhr.responseText); } catch (_) { json = {}; }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(json);
-        } else {
-          reject(new Error(json?.detail ?? json?.message ?? `HTTP ${xhr.status}`));
-        }
-      });
-
-      xhr.addEventListener('error', () => reject(new Error('Error de red al subir el archivo.')));
-      xhr.addEventListener('abort', () => reject(new Error('Subida cancelada.')));
-
-      xhr.send(formData);
+    // Contamos cuántos slots tiene cada día
+    const perDay = Array(7).fill(0);
+    Object.keys(matriz).filter(k => k !== '__meta').forEach(k => {
+      const d = parseInt(k.split('-')[0], 10);
+      perDay[d]++;
     });
-  }
 
-  /** Formatea bytes a texto legible (KB / MB) */
-  function _fmtFileSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  }
+    const maxDay  = Math.max(...perDay);
+    const offenders = perDay
+      .map((n, d) => n > menciones ? DIAS[d] : null)
+      .filter(Boolean);
 
-  // ── REPRODUCTOR DE PREVIEW — LÓGICA ────────────────────────
-  function _initPreviewPlayer(path) {
-    if (!path) return;
-
-    // Detener previo si existe
-    _stopAudio();
-
-    const url = path.startsWith('http') ? path : `/stream/${path.replace(/\\/g, '/')}`;
-    _previewAudio = new Audio(url);
-
-    _previewAudio.addEventListener('timeupdate', _onAudioTimeUpdate);
-    _previewAudio.addEventListener('loadedmetadata', _onAudioLoaded);
-    _previewAudio.addEventListener('ended', _onAudioEnded);
-
-    _showEl($('audioPlayer'));
-    _updateTimeLabel(0, 0);
-  }
-
-  function _playToggle() {
-    if (!_previewAudio) return;
-
-    if (_isPlaying) {
-      _previewAudio.pause();
-      _isPlaying = false;
+    if (maxDay > menciones && offenders.length) {
+      _showEl(warnEl);
+      if (warnTxt) {
+        warnTxt.textContent =
+          `Advertencia: ${offenders.join(', ')} tienen más de ${menciones} franja${menciones !== 1 ? 's' : ''} ` +
+          `seleccionada${menciones !== 1 ? 's' : ''}. ` +
+          `Con ${menciones} menciones/día el sistema solo emitirá las primeras ${menciones}.`;
+      }
     } else {
-      _previewAudio.play().catch(err => {
-        console.error('[Pautas] Error al reproducir preview:', err);
-      });
-      _isPlaying = true;
+      _hideEl(warnEl);
     }
-    _updatePlayBtn();
   }
 
-  function _stopAudio() {
-    if (!_previewAudio) return;
-    _previewAudio.pause();
-    _previewAudio.currentTime = 0;
-    _isPlaying = false;
-    _updatePlayBtn();
-    _onAudioTimeUpdate();
-  }
+  // ──────────────────────────────────────────────────────────
+  // 13. RELLENO RÁPIDO DE MATRIZ
+  // ──────────────────────────────────────────────────────────
 
-  function _onAudioTimeUpdate() {
-    if (!_previewAudio) return;
-    const cur = _previewAudio.currentTime;
-    const dur = _previewAudio.duration || 0;
-
-    const pct = dur > 0 ? (cur / dur) * 100 : 0;
-    const progressEl = $('audioPlayProgress');
-    if (progressEl) progressEl.style.width = `${pct}%`;
-
-    _updateTimeLabel(cur, dur);
-  }
-
-  function _onAudioLoaded() {
-    _updateTimeLabel(0, _previewAudio.duration);
-  }
-
-  function _onAudioEnded() {
-    _isPlaying = false;
-    _updatePlayBtn();
-    _previewAudio.currentTime = 0;
-    _onAudioTimeUpdate();
-  }
-
-  function _onAudioSeek(e) {
-    if (!_previewAudio || !_previewAudio.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = x / rect.width;
-    _previewAudio.currentTime = pct * _previewAudio.duration;
-  }
-
-  function _updatePlayBtn() {
-    const btn = $('btnAudioPlay');
-    if (btn) btn.textContent = _isPlaying ? '⏸' : '▶';
-  }
-
-  function _updateTimeLabel(cur, dur) {
-    const lbl = $('audioTimeLabel');
-    if (lbl) lbl.textContent = `${_fmtDur(cur)} / ${_fmtDur(dur)}`;
-  }
-
-  // ── Relleno rápido de la Matriz ──────────────────────────
   function _matrixLV() {
     _applyQuickFill(c => {
       const d = parseInt(c.dataset.key.split('-')[0]);
-      return d >= 1 && d <= 5;  // Lun–Vie
+      return d >= 1 && d <= 5;
     });
   }
 
   function _matrixFinde() {
     _applyQuickFill(c => {
       const d = parseInt(c.dataset.key.split('-')[0]);
-      return d === 0 || d === 6;  // Dom y Sáb
+      return d === 0 || d === 6;
     });
   }
 
@@ -937,92 +747,594 @@
       c.classList.remove('matrix-cell--flash');
     });
     _updateMatrixSummary({});
+    _checkMentionsWarning();
   }
 
-  /**
-   * Activa las celdas que pasen el predicado con animación de flash neón.
-   * Las que no pasen se apagan.
-   */
   function _applyQuickFill(predicate) {
     document.querySelectorAll('.matrix-cell[data-key]').forEach((c, i) => {
       const match = predicate(c);
       c.dataset.state = match ? 'on' : 'off';
       if (match) {
         c.classList.remove('matrix-cell--flash');
-        setTimeout(() => c.classList.add('matrix-cell--flash'), i % 7 * 6);
+        // Animación de flash escalonada por columna de día
+        setTimeout(() => c.classList.add('matrix-cell--flash'), (i % 7) * 6);
       }
     });
     _updateMatrixSummary(_readMatrixFromDOM());
+    _checkMentionsWarning();
   }
 
   // ──────────────────────────────────────────────────────────
-  // 13. VINCULACIÓN DE EVENTOS
+  // 14. INTEGRACIÓN DE WAVESURFER (onix-waveform.js)
   // ──────────────────────────────────────────────────────────
-  function _bindEvents() {
-    const btnNueva = $('btnNuevaPauta');
-    if (btnNueva) {
-      console.log('[PautasController] Botón Nueva Pauta detectado ✅');
-      btnNueva.addEventListener('click', () => _openModal());
-    } else {
-      console.error('[PautasController] ❌ btnNuevaPauta no encontrado en el DOM.');
+
+  /**
+   * Inicializa WaveSurfer de forma diferida.
+   * onix-waveform.js expone wfInit() como global.
+   * Se llama una sola vez al abrir el modal por primera vez.
+   */
+  function _initWaveSurfer() {
+    if (_wfReady) return Promise.resolve();
+
+    if (typeof global.wfInit !== 'function') {
+      console.warn('[PautasController] wfInit no encontrado. ¿Está cargado onix-waveform.js?');
+      return Promise.resolve();  // el modal abre sin waveform; no es crítico
     }
 
-    // Cierre del modal principal
+    // BUG #4 FIX: la implementación anterior hacía await de wfInit() sin límite de
+    // tiempo. wfInit() internamente reintenta hasta 50 veces × 100 ms = 5 segundos
+    // esperando que WaveSurfer esté disponible. Durante esa espera, _openModal()
+    // quedaba suspendido en el await y el modal nunca aparecía para el usuario.
+    //
+    // La solución es Promise.race() contra un timeout de 3 segundos. Si WaveSurfer
+    // no está listo en ese tiempo, el modal abre de todas formas y el panel de la
+    // onda simplemente permanece oculto. Nunca rechazamos — siempre resolvemos —
+    // para garantizar que _openModal() siempre avanza.
+    var wfPromise = global.wfInit().then(function() { _wfReady = true; });
+    var timeout   = new Promise(function(resolve) { setTimeout(resolve, 3000); });
+
+    return Promise.race([wfPromise, timeout]).catch(function(err) {
+      console.error('[PautasController] WaveSurfer no pudo inicializar:', err);
+      // El catch convierte el rechazo en resolución para no bloquear al usuario.
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 15. MODAL PRINCIPAL
+  // ──────────────────────────────────────────────────────────
+
+  async function _openModal(pautaId = null) {
+    _editingId = pautaId;
+    _clearModalError();
+    _setSaving(false);
+
+    // Inicializar WaveSurfer si aún no está listo
+    await _initWaveSurfer();
+
+    if (pautaId) {
+      // ── MODO EDICIÓN ──
+      const p = _pautas.find(x => String(x.id) === String(pautaId));
+      if (!p) return;
+
+      const meta = _getMeta(p);
+
+      $('modalTitle').textContent = `Editar — ${p.cliente}`;
+      $('fCliente').value   = p.cliente;
+      $('fAudio').value     = p.audio_nombre;
+      $('fAudio')._selectedId     = p.audio_id;
+      $('fAudio')._selectedNombre = p.audio_nombre;
+      $('fAudio')._selectedPath   = '';
+      $('audioHint').textContent  = p.audio_nombre || 'Ningún archivo seleccionado';
+      $('fFechaInicio').value = p.fecha_inicio;
+      $('fFechaFin').value    = p.fecha_fin;
+      $('fNotas').value       = p.notas;
+      $('fRubro').value       = p.rubro    || meta.rubro    || '';
+      $('fContrato').value    = p.contrato || meta.contrato || '';
+      $('fMenciones').value   = p.menciones ?? meta.menciones ?? 4;
+      $('fUrgente').checked   = !!(p.urgente ?? meta.urgente ?? false);
+      $('btnSaveText').textContent = 'Actualizar Pauta';
+
+      _buildMatrix(p.matriz);
+
+      // Actualizar badge urgente en la cabecera del modal
+      _syncUrgenteHeader();
+
+      // Cargar la onda del audio existente (si tiene ruta)
+      const audioPath = p.audio_nombre || '';
+      if (audioPath && typeof global.wfLoadUrl === 'function') {
+        // El audio de la pauta se sirve por id: la API resuelve la ruta real
+        const url = audioPath.startsWith('http')
+          ? audioPath
+          : (p.audio_id ? `/api/v1/audios/${p.audio_id}/stream`
+                        : `/stream/${audioPath.replace(/\\/g, '/')}`);
+        const existingCues = {
+          intro:       meta.cue_intro       ?? 0,
+          outro:       meta.cue_outro       ?? 0,
+          mezcla:      meta.cue_mezcla      ?? 0,
+          inicio_coro: meta.cue_inicio_coro ?? 0,
+          final_coro:  meta.cue_final_coro  ?? 0,
+        };
+        global.wfLoadUrl(url, existingCues);
+      }
+
+    } else {
+      // ── MODO CREACIÓN ──
+      $('modalTitle').textContent  = 'Nueva Pauta';
+      $('fCliente').value          = '';
+      $('fAudio').value            = '';
+      $('fAudio')._selectedId      = null;
+      $('fAudio')._selectedNombre  = '';
+      $('fAudio')._selectedPath    = '';
+      $('audioHint').textContent   = 'Ningún archivo seleccionado';
+      $('fFechaInicio').value      = _today();
+      $('fFechaFin').value         = _offsetDate(30);
+      $('fNotas').value            = '';
+      $('fRubro').value            = '';
+      $('fContrato').value         = '';
+      $('fMenciones').value        = '4';
+      $('fUrgente').checked        = false;
+      $('btnSaveText').textContent = 'Guardar Pauta';
+
+      _buildMatrix({});
+      _hideEl($('urgenteBadgeHeader'));
+      _hideEl($('mentionsWarning'));
+    }
+
+    // Bloquear fechas pasadas en Fecha Inicio
+    $('fFechaInicio').min = _today();
+
+    _showEl($('pautaModal'));
+    $('fCliente').focus();
+  }
+
+  function _closeModal() {
+    _hideEl($('pautaModal'));
+    _editingId = null;
+    _isSaving  = false;
+    _drag.active = false;
+    _hideEl($('mentionsWarning'));
+  }
+
+  /** Actualiza el badge URGENTE del header del modal según el checkbox */
+  function _syncUrgenteHeader() {
+    const cb    = $('fUrgente');
+    const badge = $('urgenteBadgeHeader');
+    if (!cb || !badge) return;
+    cb.checked ? _showEl(badge) : _hideEl(badge);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 16. VALIDACIÓN Y GUARDADO
+  // ──────────────────────────────────────────────────────────
+
+  function _setSaving(flag) {
+    _isSaving = flag;
+    const btn  = $('btnModalSave');
+    const txt  = $('btnSaveText');
+    if (btn) btn.disabled = flag;
+    if (txt) txt.textContent = flag
+      ? (_editingId ? 'Actualizando…' : 'Guardando…')
+      : (_editingId ? 'Actualizar Pauta' : 'Guardar Pauta');
+  }
+
+  function _showModalError(msg) {
+    const el = $('modalError');
+    if (!el) return;
+    el.textContent = '⚠ ' + msg;
+    _showEl(el);
+  }
+
+  function _clearModalError() {
+    const el = $('modalError');
+    if (!el) return;
+    el.textContent = '';
+    _hideEl(el);
+  }
+
+  async function _savePauta() {
+    if (_isSaving) return;
+
+    // Leer campos del formulario
+    const cliente  = ($('fCliente')?.value  ?? '').trim().toUpperCase();
+    const audioVal = ($('fAudio')?.value    ?? '').trim();
+    const inicio   = $('fFechaInicio')?.value ?? '';
+    const fin      = $('fFechaFin')?.value    ?? '';
+    const notas    = ($('fNotas')?.value     ?? '').trim().toUpperCase();
+    const rubro    = ($('fRubro')?.value     ?? '').trim();
+    const contrato = ($('fContrato')?.value  ?? '').trim();
+    const urgente  = $('fUrgente')?.checked  ?? false;
+    const menciones= parseInt($('fMenciones')?.value ?? '4', 10);
+
+    // Validaciones
+    if (!cliente)  { _showModalError('El cliente es obligatorio.'); return; }
+    if (!audioVal) { _showModalError('Seleccioná un audio para la pauta.'); return; }
+    if (!inicio)   { _showModalError('La fecha de inicio es obligatoria.'); return; }
+    if (!fin)      { _showModalError('La fecha de fin es obligatoria.'); return; }
+    if (inicio > fin) { _showModalError('La fecha de inicio no puede superar al fin.'); return; }
+    if (isNaN(menciones) || menciones < 1 || menciones > 24) {
+      _showModalError('Las menciones deben estar entre 1 y 24.');
+      return;
+    }
+
+    const rawMatrix = _readMatrixFromDOM();
+    if (!Object.keys(rawMatrix).length) {
+      _showModalError('Seleccioná al menos un slot en la Matriz de Horarios.');
+      return;
+    }
+
+    // Obtener los marcadores de WaveSurfer si están disponibles
+    const cues = (typeof global.wfGetMarkers === 'function')
+      ? global.wfGetMarkers()
+      : {};
+
+    // Empaquetamos los campos extra en __meta para persistirlos
+    // sin requerir cambios de schema en el backend.
+    const matrizConMeta = {
+      ...rawMatrix,
+      __meta: {
+        rubro,
+        contrato,
+        urgente,
+        menciones,
+        cue_intro:       cues.intro       ?? 0,
+        cue_outro:       cues.outro       ?? 0,
+        cue_mezcla:      cues.mezcla      ?? 0,
+        cue_inicio_coro: cues.inicio_coro ?? 0,
+        cue_final_coro:  cues.final_coro  ?? 0,
+      }
+    };
+
+    // Resolver el audio seleccionado
+    const fAudioEl      = $('fAudio');
+    const audioId       = fAudioEl?._selectedId    ?? null;
+    const audioNombre   = fAudioEl?._selectedNombre || audioVal;
+
+    const payload = {
+      cliente,
+      audio_id:          audioId,
+      audio_nombre:      audioNombre,
+      fecha_inicio:      inicio,
+      fecha_fin:         fin,
+      notas,
+      rubro,
+      // BUG #3 FIX: these three fields were sent with the wrong names.
+      // JS used:  contrato    → PautaIn expects: contrato_id
+      // JS used:  urgente     → PautaIn expects: prioridad
+      // JS used:  menciones   → PautaIn expects: menciones_diarias
+      // Pydantic validates the payload strictly; mismatched names silently
+      // received their default values (empty string / False / None) instead
+      // of the user's input, and any validation error caused a 422 Unprocessable.
+      contrato_id:       contrato,
+      prioridad:         urgente,
+      menciones_diarias: menciones,
+      // cue_intro / cue_outro are top-level fields in PautaIn (not just __meta).
+      cue_intro:         cues.intro  ?? 0,
+      cue_outro:         cues.outro  ?? 0,
+      matriz:            matrizConMeta,
+    };
+
+    _clearModalError();
+    _setSaving(true);
+
+    try {
+      if (_editingId) {
+        const updated = await _apiUpdatePauta(_editingId, payload);
+        const idx = _pautas.findIndex(p => String(p.id) === String(_editingId));
+        if (idx !== -1) _pautas[idx] = updated;
+        else _pautas.push(updated);
+        console.info(`[PautasController] Pauta ${_editingId} actualizada.`);
+      } else {
+        const created = await _apiCreatePauta(payload);
+        _pautas.push(created);
+        console.info(`[PautasController] Pauta creada con ID: ${created.id}`);
+      }
+      _render();
+      _closeModal();
+    } catch (err) {
+      console.error('[PautasController] Error al guardar:', err);
+      _showModalError(err.message || 'Error de red. Intentá nuevamente.');
+    } finally {
+      _setSaving(false);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 17. SELECTOR DE AUDIO + SUBIDA CON RUTA ANUALIZADA
+  // ──────────────────────────────────────────────────────────
+
+  function _openFilePicker() {
+    $('audioFileInput')?.click();
+  }
+
+  /**
+   * Sube el archivo a /api/v1/upload incluyendo la subcarpeta
+   * anualizada MEDIA/COMERCIALES/{AÑO}/ y luego activa el
+   * waveform via wfLoadFile(file) para análisis inmediato.
+   */
+  async function _onAudioFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fAudio    = $('fAudio');
+    const audioHint = $('audioHint');
+    fAudio.value    = file.name;
+    if (audioHint) audioHint.textContent =
+      `📤 Preparando: ${file.name} (${_fmtFileSize(file.size)})`;
+
+    // Mostrar progreso
+    const progressWrap = $('uploadProgress');
+    const progressBar  = $('uploadProgressBar');
+    const progressLbl  = $('uploadProgressLabel');
+    _showEl(progressWrap);
+    progressBar.style.width = '0%';
+    progressLbl.textContent = 'Subiendo…';
+
+    const btnSelect = $('btnSelectAudio');
+    if (btnSelect) btnSelect.disabled = true;
+
+    // Cargar en WaveSurfer de inmediato (no esperar la subida)
+    // para que el operador ya pueda editar los cues mientras sube.
+    if (typeof global.wfLoadFile === 'function') {
+      global.wfLoadFile(file);
+    }
+
+    try {
+      const year    = new Date().getFullYear();
+      const subdir  = `MEDIA/COMERCIALES/${year}`;
+
+      const formData = new FormData();
+      formData.append('file',   file);
+      formData.append('subdir', subdir); // instrucción de ruta para el backend
+
+      const result = await _uploadWithProgress(
+        '/api/v1/upload',
+        formData,
+        pct => {
+          progressBar.style.width = `${pct}%`;
+          progressLbl.textContent = `Subiendo… ${pct}%`;
+        }
+      );
+
+      const nombre = result.filename ?? file.name;
+      const path   = result.archivo_path ?? `${subdir}/${nombre}`;
+
+      fAudio.value             = nombre;
+      fAudio._selectedNombre   = nombre;
+      fAudio._selectedPath     = path;
+
+      // ─── BUG FIX: audio_id NOT NULL constraint ──────────────────────
+      // El endpoint de upload devuelve filename y archivo_path pero NO
+      // devuelve un audio_id. La tabla pautas tiene audio_id NOT NULL,
+      // por lo que guardar con _selectedId = null produce un error 500.
+      //
+      // Solución: después del upload, refrescar el catálogo de audios
+      // y buscar el ID por coincidencia de nombre de archivo.
+      // El backend registra el audio en la tabla audios durante el upload,
+      // así que al refrescar debería aparecer.
+      //
+      // Primero: intentar leer el audio_id directo de la respuesta del
+      // upload (si el backend lo incluye en una versión futura).
+      if (result.audio_id) {
+        fAudio._selectedId = result.audio_id;
+        console.info(`[PautasController] audio_id resuelto desde respuesta upload: ${result.audio_id}`);
+      } else {
+        // El backend no retornó el ID → refrescar catálogo y buscar por nombre
+        progressLbl.textContent = 'Verificando registro…';
+        _audios = await fetchAudios();
+
+        // Normalizar el nombre para la comparación: quitar extensión, minúsculas
+        const baseName = nombre.replace(/\.[^/.]+$/, '').toLowerCase();
+
+        const match = _audios.find(a => {
+          const aNombre = (a.nombre ?? '').replace(/\.[^/.]+$/, '').toLowerCase();
+          return aNombre === baseName || a.nombre === nombre;
+        });
+
+        if (match) {
+          fAudio._selectedId = match.id;
+          console.info(`[PautasController] audio_id resuelto desde catálogo: ${match.id} → "${match.nombre}"`);
+        } else {
+          // Último recurso: el audio fue subido pero el catálogo aún no lo refleja.
+          // Dejar _selectedId = null y mostrar un aviso claro al operador para que
+          // seleccione el audio desde la biblioteca en vez de subir uno nuevo.
+          fAudio._selectedId = null;
+          console.warn(`[PautasController] Audio subido pero no encontrado en catálogo (nombre: "${nombre}"). El operador debe seleccionarlo desde la biblioteca para obtener el audio_id.`);
+          if (audioHint) {
+            audioHint.textContent = `⚠ Subido pero no vinculado. Seleccioná "${nombre}" desde la lista para poder guardar.`;
+            audioHint.style.color = 'var(--p-warn, #e6a817)';
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────
+
+      if (audioHint && fAudio._selectedId) {
+        audioHint.textContent = `✅ Subido y vinculado: ${nombre}`;
+        audioHint.style.color = '';
+      }
+      progressBar.style.width = '100%';
+      progressLbl.textContent = '¡Subida completada!';
+      setTimeout(() => _hideEl(progressWrap), 2200);
+
+    } catch (err) {
+      console.error('[PautasController] Error al subir audio:', err);
+      fAudio.value           = '';
+      fAudio._selectedId     = null;
+      fAudio._selectedNombre = '';
+      if (audioHint) audioHint.textContent = `⚠ Error: ${err.message}`;
+      progressBar.style.width = '0%';
+      progressLbl.textContent = 'Error en la subida';
+      progressLbl.style.color = 'var(--p-red)';
+      setTimeout(() => {
+        _hideEl(progressWrap);
+        progressLbl.style.color = '';
+      }, 3500);
+    } finally {
+      if (btnSelect) btnSelect.disabled = false;
+      e.target.value = ''; // permitir re-selección del mismo archivo
+    }
+  }
+
+  function _uploadWithProgress(url, formData, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      });
+      xhr.addEventListener('load', () => {
+        let json = {};
+        try { json = JSON.parse(xhr.responseText); } catch (_) { /* no-op */ }
+        if (xhr.status >= 200 && xhr.status < 300) resolve(json);
+        else reject(new Error(json?.detail ?? json?.message ?? `HTTP ${xhr.status}`));
+      });
+      xhr.addEventListener('error', () => reject(new Error('Error de red al subir.')));
+      xhr.addEventListener('abort', () => reject(new Error('Subida cancelada.')));
+      xhr.send(formData);
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 18. MODAL DE BORRADO
+  // ──────────────────────────────────────────────────────────
+
+  function _openDeleteModal(id) {
+    _deletingId = id;
+    const p = _pautas.find(x => String(x.id) === String(id));
+    if (!p) return;
+    const el = $('deleteClienteName');
+    if (el) el.textContent = p.cliente;
+    _showEl($('deleteModal'));
+  }
+
+  function _closeDeleteModal() {
+    _hideEl($('deleteModal'));
+    _deletingId = null;
+  }
+
+  async function _deletePauta(id) {
+    try {
+      await _apiDeletePauta(id);
+      _pautas = _pautas.filter(p => String(p.id) !== String(id));
+      _render();
+      console.info(`[PautasController] Pauta ${id} eliminada.`);
+    } catch (err) {
+      console.error(`[PautasController] Error al eliminar pauta ${id}:`, err);
+      alert(`No se pudo eliminar la pauta: ${err.message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 19. VINCULACIÓN DE EVENTOS
+  // ──────────────────────────────────────────────────────────
+
+  function _bindEvents() {
+    // ── Botón Nueva Pauta ──
+    $('btnNuevaPauta')?.addEventListener('click', () => _openModal());
+
+    // ── Modal principal ──
     $('btnModalClose')?.addEventListener('click', _closeModal);
     $('btnModalCancel')?.addEventListener('click', _closeModal);
     $('pautaModal')?.addEventListener('click', e => {
       if (e.target === $('pautaModal')) _closeModal();
     });
-
-    // Guardar (ahora async)
     $('btnModalSave')?.addEventListener('click', _savePauta);
 
-    // Selector de audio: file picker local
+    // ── Urgente: sincronizar badge del header en tiempo real ──
+    $('fUrgente')?.addEventListener('change', _syncUrgenteHeader);
+
+    // ── Menciones: botones +/- ──
+    $('btnMencionesDown')?.addEventListener('click', () => {
+      const inp = $('fMenciones');
+      if (!inp) return;
+      const val = Math.max(1, parseInt(inp.value, 10) - 1);
+      inp.value = val;
+      _checkMentionsWarning();
+    });
+    $('btnMencionesUp')?.addEventListener('click', () => {
+      const inp = $('fMenciones');
+      if (!inp) return;
+      const val = Math.min(24, parseInt(inp.value, 10) + 1);
+      inp.value = val;
+      _checkMentionsWarning();
+    });
+    $('fMenciones')?.addEventListener('input', _checkMentionsWarning);
+
+    // ── Selector de audio ──
     $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
     $('fAudio')?.addEventListener('click', _openFilePicker);
     $('audioFileInput')?.addEventListener('change', _onAudioFileSelected);
 
-    // Reproductor Preview
-    $('btnAudioPlay')?.addEventListener('click', _playToggle);
-    $('btnAudioStop')?.addEventListener('click', _stopAudio);
-    $('audioTrackBar')?.addEventListener('click', _onAudioSeek);
-
-    // Botonera de relleno rápido
-    $('btnQfLV')?.addEventListener('click', _matrixLV);
-    $('btnQfFinde')?.addEventListener('click', _matrixFinde);
-    $('btnQfPrime')?.addEventListener('click', _matrixPrimeTime);
+    // ── Relleno rápido de la Matriz ──
+    $('btnQfLV')?.addEventListener('click',       _matrixLV);
+    $('btnQfFinde')?.addEventListener('click',    _matrixFinde);
+    $('btnQfPrime')?.addEventListener('click',    _matrixPrimeTime);
     $('btnMatrixClear')?.addEventListener('click', _matrixClear);
 
-    // Fin del arrastre global
-    document.addEventListener('mouseup', _globalMouseUp);
+    // ── Arrastre global: liberar al soltar fuera de la matriz ──
+    document.addEventListener('mouseup', () => {
+      if (_drag.active) {
+        _drag.active = false;
+        _updateMatrixSummary(_readMatrixFromDOM());
+        _checkMentionsWarning();
+      }
+    });
 
-    // Acciones de fila (delegación de eventos)
+    // ── Acciones de fila (delegación) ──
     $('pautasTableBody')?.addEventListener('click', e => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const { action, id } = btn.dataset;
-      if (action === 'edit') _openModal(id);
-      if (action === 'matrix') _openModal(id);
+      if (action === 'edit')   _openModal(id);
       if (action === 'delete') _openDeleteModal(id);
     });
 
-    // Búsqueda en tiempo real
+    // ── Búsqueda en tiempo real ──
     $('pautaSearch')?.addEventListener('input', e => {
       _searchTerm = e.target.value;
       _renderTable();
     });
 
-    // Filtros de estado
-    DOM.filterBtns().forEach(btn => {
-      btn.addEventListener('click', () => {
-        DOM.filterBtns().forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        _filterActive = btn.dataset.filter;
-        _renderTable();
+    // ── Campana de notificaciones ──
+    $('notifBell')?.addEventListener('click', e => {
+      e.stopPropagation();
+      _toggleNotifications();
+    });
+    $('notifClose')?.addEventListener('click', _closeNotifications);
+
+    // Cerrar notificaciones al clicar fuera
+    document.addEventListener('click', e => {
+      const wrap = $('notifWrap');
+      if (wrap && !wrap.contains(e.target)) _closeNotifications();
+    });
+
+    // ── Filtro avanzado ──
+    $('btnFilterToggle')?.addEventListener('click', e => {
+      e.stopPropagation();
+      _toggleFilterPanel();
+    });
+    $('btnFilterClear')?.addEventListener('click', _clearFilters);
+
+    // Cerrar filtro al clicar fuera
+    document.addEventListener('click', e => {
+      const wrap = $('filterWrap');
+      if (wrap && !wrap.contains(e.target)) _hideFilterPanel();
+    });
+
+    // Radios de estado
+    document.querySelectorAll('[name="filtEstado"]').forEach(radio => {
+      radio.addEventListener('change', e => {
+        _filterEstado = e.target.value;
+        _applyFilter();
       });
     });
 
-    // Modal delete
+    // Select de rubro
+    $('filtRubro')?.addEventListener('change', e => {
+      _filterRubro = e.target.value;
+      _applyFilter();
+    });
+
+    // ── Modal delete ──
     $('btnDeleteClose')?.addEventListener('click', _closeDeleteModal);
     $('btnDeleteCancel')?.addEventListener('click', _closeDeleteModal);
     $('btnDeleteConfirm')?.addEventListener('click', () => {
@@ -1032,110 +1344,94 @@
     $('deleteModal')?.addEventListener('click', e => {
       if (e.target === $('deleteModal')) _closeDeleteModal();
     });
-
-    // Fin del arrastre global
-    document.addEventListener('mouseup', _globalMouseUp);
   }
 
   // ──────────────────────────────────────────────────────────
-  // 14. MODAL DELETE
-  // ──────────────────────────────────────────────────────────
-  function _openDeleteModal(id) {
-    _deletingId = id;
-    const p = _pautas.find(x => String(x.id) === String(id));
-    if (!p) return;
-    DOM.deleteCliente().textContent = p.cliente;
-    _showEl($('deleteModal'));
-  }
-
-  function _closeDeleteModal() {
-    _hideEl($('deleteModal'));
-    _deletingId = null;
-  }
-
-  // ──────────────────────────────────────────────────────────
-  // 15. INICIALIZACIÓN
+  // 20. INICIALIZACIÓN
   // ──────────────────────────────────────────────────────────
 
-  /**
-   * Punto de entrada del módulo.
-   * Carga pautas y audios en paralelo antes de renderizar.
-   */
   async function init() {
-    console.log('[PautasController] init() llamado — DOM listo para binding.');
-    // Cargar pautas y audios en paralelo para reducir el tiempo de arranque
-    const [, audios] = await Promise.all([
-      fetchPautas(),
-      fetchAudios(),
-    ]);
+    if (_initialized) {
+      console.info('[PautasController] init() — ya inicializado, omitiendo duplicados.');
+      return;
+    }
+    console.info('[PautasController] init() — iniciando módulo v3...');
+
+    // Cargar datos en paralelo
+    const [, audios] = await Promise.all([fetchPautas(), fetchAudios()]);
     _audios = audios;
 
     _bindEvents();
     _render();
 
+    // Inicializar WaveSurfer en segundo plano (warm-up)
+    _initWaveSurfer().then(() => {
+      console.info('[PautasController] WaveSurfer warm-up completado.');
+    });
+
+    _initialized = true;
     console.info(
-      '[PautasController] ✅ Módulo inicializado.',
-      `Pautas: ${_pautas.length} | Audios: ${_audios.length}`
+      `[PautasController] ✅ Módulo v3 listo. Pautas: ${_pautas.length} | Audios: ${_audios.length}`
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  // 16. API PÚBLICA
-  // ──────────────────────────────────────────────────────────
-  window.PautasController = {
-    init,    // Inicia el setup, fetch de pautas y audios, bind de eventos
-    save: _savePauta,
-    openModal: _openModal,
-    closeModal: _closeModal,
-    deletePauta: _deletePauta,
-    openDeleteModal: _openDeleteModal,   // era _confirmDelete (no existía)
-    closeDeleteModal: _closeDeleteModal,
+  function destroy() {
+    // Destruir la instancia de WaveSurfer al desmontar la sección
+    if (typeof global.wfDestroy === 'function') {
+      global.wfDestroy();
+      _wfReady = false;
+    }
+  }
 
-    /**
-     * Carga forzada desde la API REST.
-     * Útil si otro módulo necesita refrescar las pautas
-     * (ej.: después de una importación masiva).
-     */
+  // ──────────────────────────────────────────────────────────
+  // 21. API PÚBLICA (window.PautasController)
+  // ──────────────────────────────────────────────────────────
+
+  global.PautasController = {
+    /** Punto de entrada. Llamar desde admin-app.js tras inyectar el HTML. */
+    init,
+
+    /** Limpiar recursos al desmontar la sección. */
+    destroy,
+
+    /** Fuerza una recarga desde la API REST. */
     async reload() {
       await fetchPautas();
       _render();
     },
 
-    /** Expone las pautas actuales (solo lectura) */
-    getPautas() { return [..._pautas]; },
-
-    /** Expone el catálogo de audios en memoria */
-    getAudios() { return [..._audios]; },
-
-    /** Desmonta el módulo liberando listeners globales */
-    destroy() {
-      document.removeEventListener('mouseup', _globalMouseUp);
-      console.info('[PautasController] Módulo destruido.');
-    },
+    // Métodos de conveniencia para integración externa
+    save:             _savePauta,
+    openModal:        _openModal,
+    closeModal:       _closeModal,
+    deletePauta:      _deletePauta,
+    openDeleteModal:  _openDeleteModal,
+    closeDeleteModal: _closeDeleteModal,
   };
 
-  // ──────────────────────────────────────────────────────────
-  // 17. INICIALIZACIÓN MÓDULO (SHELL V3)
-  // ──────────────────────────────────────────────────────────
-  const panel = document.getElementById('section-panel-03-programacion-pautas');
-  if (panel) {
-    panel.addEventListener('section:init', () => {
-      if (!window.PautasController._initialized) {
-        window.PautasController._initialized = true;
-        window.PautasController.init().catch(e => {
-          console.error('[Pautas] Error en init:', e);
-          window.PautasController._initialized = false;
-        });
-      }
-    });
+  // ─────────────────────────────────────────────────────────────────────
+  // 22. AUTO-REGISTRO VÍA section:init (BUG #2 FIX)
+  //
+  // El shell dispara CustomEvent("section:init") sobre el panel después
+  // de inyectar el HTML (ver loadSection() en index.html). Suscribirse
+  // aquí hace al módulo resiliente: si por alguna razón el shell no llama
+  // explícitamente a PautasController.init(), la sección igual arranca.
+  //
+  // El listener se auto-elimina tras la primera llamada para evitar que
+  // navegar de vuelta a la sección dispare un init() duplicado.
+  // ─────────────────────────────────────────────────────────────────────
+  ;(function _autoRegister() {
+    var panel = document.getElementById('section-panel-03-programacion-pautas');
+    if (!panel) return;  // el panel ya existe en el DOM cuando este script carga
 
-    // Fallback: si el panel ya está activo cuando este script carga
-    if (panel.dataset.loaded === 'true' && !window.PautasController._initialized) {
-      window.PautasController._initialized = true;
-      window.PautasController.init().catch(console.error);
+    function _onSectionInit() {
+      panel.removeEventListener('section:init', _onSectionInit);
+      init().catch(function(err) {
+        console.error('[PautasController] Error en auto-init vía section:init:', err);
+      });
     }
-  }
 
-  console.log('[PautasController] CARGADO: Script parseado exitosamente.');
+    panel.addEventListener('section:init', _onSectionInit);
+  })();
 
 })(window);

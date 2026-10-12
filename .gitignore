@@ -5,9 +5,14 @@ media/*.mp3
 media/*.wav
 media/*.flac
 media/*.m4a
+# Audios subidos por la app (rutas relativas a media/)
+media/library/
+media/staging/
+media/COMERCIALES/
 
 # --- Base de Datos y Binarios ---
 # Ignoramos la DB local para que no se sobreescriba en GitHub
+*.db
 
 *.db-journal
 *.db-wal

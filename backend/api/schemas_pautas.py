@@ -45,6 +45,12 @@ class PautaIn(BaseModel):
     fecha_inicio: str            = Field("", description="YYYY-MM-DD o vacío")
     fecha_fin:    str            = Field("", description="YYYY-MM-DD o vacío")
     notas:        str            = Field("", max_length=2000)
+    cue_intro:    Optional[float]= Field(None, description="Punto de inicio o intro de la pauta")
+    cue_outro:    Optional[float]= Field(None, description="Punto final o outro de la pauta")
+    menciones_diarias: Optional[int] = Field(None, ge=1, le=24, description="Cantidad de veces a reproducir por día")
+    rubro:        str            = Field("", max_length=200)
+    prioridad:    bool           = Field(False, description="¿Es urgente o de alta prioridad?")
+    contrato_id:  str            = Field("", max_length=100)
 
     # ── Normalización de texto ────────────────────────────────────
 
@@ -57,6 +63,11 @@ class PautaIn(BaseModel):
     @field_validator("notas", mode="before")
     @classmethod
     def notas_upper(cls, v: str) -> str:
+        return (v or "").strip().upper()
+
+    @field_validator("rubro", "contrato_id", mode="before")
+    @classmethod
+    def rubro_contrato_str_upper(cls, v: str) -> str:
         return (v or "").strip().upper()
 
     @field_validator("audio_nombre", mode="before")
@@ -113,6 +124,12 @@ class PautaIn(BaseModel):
             "fecha_inicio": self.fecha_inicio,
             "fecha_fin":    self.fecha_fin,
             "notas":        self.notas,
+            "cue_intro":    self.cue_intro,
+            "cue_outro":    self.cue_outro,
+            "menciones_diarias": self.menciones_diarias,
+            "rubro":        self.rubro,
+            "prioridad":    1 if self.prioridad else 0,
+            "contrato_id":  self.contrato_id,
         }
 
 
@@ -135,6 +152,12 @@ class PautaOut(BaseModel):
     fecha_inicio: str
     fecha_fin:    str
     notas:        str
+    cue_intro:    Optional[float]
+    cue_outro:    Optional[float]
+    menciones_diarias: Optional[int]
+    rubro:        str
+    prioridad:    bool
+    contrato_id:  str
     activo:       int
     created_at:   str
     updated_at:   str
@@ -168,6 +191,12 @@ class PautaOut(BaseModel):
         data.setdefault("notas",        "")
         data.setdefault("fecha_inicio", "")
         data.setdefault("fecha_fin",    "")
+        data.setdefault("rubro",        "")
+        data.setdefault("contrato_id",  "")
         data.setdefault("updated_at",   data.get("created_at", ""))
+        
+        # Parse boolean properties
+        prioridad_val = data.get("prioridad")
+        data["prioridad"] = bool(prioridad_val) if prioridad_val is not None else False
 
         return cls(**data)

@@ -30,32 +30,35 @@ solis_fm/
 
 ## 🚀 Instalación y Ejecución
 
-### 1. Instalar dependencias Python
+### Opción A — Windows nativo (emisión real con `bass.dll`)
 
 ```bash
-pip install fastapi uvicorn websockets pygame mutagen
-```
-
-> **Alternativa sin pygame:** El motor incluye un `MockBackend` que funciona
-> sin hardware de audio (útil para desarrollo).
-
-### 2. Inicializar la base de datos
-
-```bash
-cd solis_fm
-python scripts/init_db.py
-```
-
-### 3. Iniciar el servidor
-
-```bash
-cd solis_fm
+pip install -r requirements.txt
 python backend/api/api_server.py
 ```
 
-### 4. Abrir la interfaz
+Abrir `http://localhost:8000` (Studio) y `http://localhost:8000/admin/` (Admin).
+La base de datos (`backend/api/radio_core.db`) se crea y migra sola al arrancar.
 
-Navegar a: `http://localhost:8000`
+Variables de entorno opcionales:
+
+| Variable | Default | Uso |
+|---|---|---|
+| `RADIO_DB_PATH` | `backend/api/radio_core.db` | Base de datos (API y motor usan la misma) |
+| `RADIO_MEDIA_ROOT` | `/media/onix` | Carpeta de audios (`library/`, `staging/`, `COMERCIALES/`) |
+| `ONIX_PORT` | `8000` | Puerto del servidor |
+| `ONIX_AUDIO_DEVICE` | `-1` | Dispositivo BASS (`-1` predeterminado, `0` sin sonido) |
+| `ONIX_AUDIO_BACKEND` | — | `mock` fuerza el motor simulado |
+| `ONIX_RELOAD` | — | `1` activa recarga automática (corta el audio; solo desarrollo) |
+
+### Opción B — Docker (vista previa, sin sonido)
+
+```bash
+docker compose up -d --build
+```
+
+Abrir `http://localhost:8765`. El motor corre simulado (`mock`): sirve para
+ver la interfaz y probar la API, no para emitir.
 
 ---
 

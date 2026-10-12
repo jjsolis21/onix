@@ -1,0 +1,8 @@
+.git
+**/__pycache__
+media
+bass.dll
+*.db-wal
+*.db-shm
+*.txt
+!requirements.txt

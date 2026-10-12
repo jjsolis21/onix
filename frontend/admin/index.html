@@ -37,6 +37,7 @@
   <!-- Layout estructural del shell -->
   <link rel="stylesheet" href="css/shell.css" />
   <link rel="stylesheet" href="sections/02-biblioteca-musical/estadisticas/estadisticas-estilos.css" />
+  <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css">
 </head>
 
 <body>
@@ -482,7 +483,7 @@
           if (event === "stats_updated") loadStats();
           if (event === "library_updated") loadStats();
           if (event === "track_started") updateNowPlaying(payload);
-          if (event === "engine_stopped") clearNowPlaying();
+          if (event === "engine_stopped" || event === "playback_stopped") clearNowPlaying();
 
           /*
            * Re-emitir el evento en el DOM para que las secciones
@@ -612,6 +613,15 @@
         panel.innerHTML = html;
         panel.dataset.loaded = "true";
 
+        // El navegador NO ejecuta los <script> insertados con innerHTML:
+        // hay que recrearlos para que el código de la sección corra.
+        panel.querySelectorAll("script").forEach(old => {
+          const fresh = document.createElement("script");
+          [...old.attributes].forEach(a => fresh.setAttribute(a.name, a.value));
+          fresh.textContent = old.textContent;
+          old.replaceWith(fresh);
+        });
+
         /*
          * Después de inyectar el HTML, disparamos un evento DOM para que
          * el script de la sección pueda inicializarse.
@@ -700,7 +710,27 @@
       // 7. Cargar el HTML de la sección (si no estaba cargado)
       await loadSection(sectionId);
 
-      // 8. Inicialización específica del módulo si es necesario
+      // 8. Inicialización específica del módulo si es necesario.
+      //
+      // BUG #1 FIX — "03-programacion-pautas" nunca llamaba a PautasController.init().
+      // Sin esta llamada, _bindEvents() nunca corría, por lo que btnNuevaPauta no tenía
+      // ningún listener de clic registrado y el modal nunca abría.
+      // El patrón es exactamente el mismo que ya existía para EstadisticasModule (sección 07).
+      if (sectionId === "03-programacion-pautas" && window.PautasController) {
+        window.PautasController.init().catch(e => {
+          console.error("[Pautas] Error en init:", e);
+        });
+      }
+
+      // La Biblioteca se inicializa con initApp() (admin-app.js). Ese script
+      // se carga antes de que el HTML de la sección exista, así que hay que
+      // llamarlo otra vez aquí, cuando la tabla ya está en el DOM.
+      if (sectionId === "02-biblioteca-musical" && typeof initApp === "function") {
+        initApp().catch(e => {
+          console.error("[Biblioteca] Error en init:", e);
+        });
+      }
+
       if (sectionId === "07-estadisticas" && window.EstadisticasModule) {
         window.EstadisticasModule.init().catch(e => {
           console.error("[Estadísticas] Error en init:", e);

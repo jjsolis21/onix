@@ -1,12 +1,16 @@
 <!-- ============================================================
-     SECCIÓN 03 — PROGRAMACIÓN DE PAUTAS
-     Esqueleto de UI puro. Toda la lógica vive en pautas-controller.js
+     ÓNIX FM — Sección 03 — Programación de Pautas (REDESIGN v3)
+     Cargado dinámicamente por admin-app.js
+     Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css">
 
 <div class="pautas-root" id="pautasRoot">
 
-  <!-- ── CABECERA ─────────────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════
+       CABECERA + CAMPANA DE NOTIFICACIONES
+       ══════════════════════════════════════════════════════ -->
   <header class="pautas-header">
     <div class="pautas-header__title">
       <span class="pautas-header__icon">📡</span>
@@ -15,24 +19,58 @@
         <p>Gestión de spots publicitarios y horarios de emisión</p>
       </div>
     </div>
-    <button class="btn-primary" id="btnNuevaPauta">
-      <span>＋</span> Nueva Pauta
-    </button>
+
+    <div class="pautas-header__actions">
+
+      <!-- Campana de notificaciones -->
+      <div class="notif-wrap" id="notifWrap">
+        <button class="notif-bell" id="notifBell" aria-label="Notificaciones de pautas" aria-expanded="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="notif-badge hidden" id="notifBadge">0</span>
+        </button>
+        <!-- Dropdown de notificaciones (generado por JS) -->
+        <div class="notif-dropdown hidden" id="notifDropdown" role="region" aria-label="Panel de notificaciones">
+          <div class="notif-dropdown__header">
+            <span>Centro de Alertas</span>
+            <button class="notif-dropdown__close" id="notifClose" aria-label="Cerrar">✕</button>
+          </div>
+          <div class="notif-dropdown__body" id="notifList">
+            <!-- Poblado por JS: _renderNotifications() -->
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="btnNuevaPauta">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        Nueva Pauta
+      </button>
+    </div>
   </header>
 
-  <!-- ── STATS BAR ─────────────────────────────────────────── -->
+  <!-- ══════════════════════════════════════════════════════
+       STATS BAR (ahora incluye "Por Vencer")
+       ══════════════════════════════════════════════════════ -->
   <div class="pautas-stats" id="pautasStats">
     <div class="stat-card" id="statActivas">
       <span class="stat-card__num">0</span>
       <span class="stat-card__lbl">Activas</span>
     </div>
-    <div class="stat-card" id="statVencidas">
+    <div class="stat-card stat-card--warn" id="statPorVencer">
+      <span class="stat-card__num">0</span>
+      <span class="stat-card__lbl">Por Vencer (3d)</span>
+    </div>
+    <div class="stat-card stat-card--danger" id="statVencidas">
       <span class="stat-card__num">0</span>
       <span class="stat-card__lbl">Vencidas</span>
     </div>
     <div class="stat-card" id="statSpots">
       <span class="stat-card__num">0</span>
-      <span class="stat-card__lbl">Spots / Semana</span>
+      <span class="stat-card__lbl">Slots / Semana</span>
     </div>
     <div class="stat-card" id="statClientes">
       <span class="stat-card__num">0</span>
@@ -40,32 +78,62 @@
     </div>
   </div>
 
-  <!-- ── CONTENIDO PRINCIPAL (lista + modal) ───────────────── -->
+  <!-- ══════════════════════════════════════════════════════
+       CUERPO PRINCIPAL
+       ══════════════════════════════════════════════════════ -->
   <div class="pautas-body">
 
-    <!-- Barra de búsqueda / filtros -->
+    <!-- Barra de herramientas: búsqueda + filtro avanzado -->
     <div class="pautas-toolbar">
       <div class="search-wrap">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="pautaSearch" placeholder="Buscar por cliente o audio…">
+        <svg class="search-svg-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+          <path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input type="search" id="pautaSearch" placeholder="Buscar por cliente, rubro o contrato…" autocomplete="off">
       </div>
-      <div class="filter-group">
-        <button class="filter-btn active" data-filter="todas">Todas</button>
-        <button class="filter-btn" data-filter="activa">Activas</button>
-        <button class="filter-btn" data-filter="vencida">Vencidas</button>
+
+      <!-- Filtro avanzado con dropdown -->
+      <div class="filter-advanced-wrap" id="filterWrap">
+        <button class="btn-filter-advanced" id="btnFilterToggle" aria-expanded="false" aria-controls="filterPanel">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M22 3H2l8 9.46V19l4 2V12.46L22 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Filtrar
+          <span class="filter-dot-active hidden" id="filterDotActive"></span>
+        </button>
+
+        <div class="filter-panel hidden" id="filterPanel" role="region" aria-label="Filtros avanzados">
+          <div class="filter-panel__group">
+            <span class="filter-panel__label">Estado</span>
+            <label class="filter-radio"><input type="radio" name="filtEstado" value="todas" checked> Todas</label>
+            <label class="filter-radio"><input type="radio" name="filtEstado" value="activa"> Activas</label>
+            <label class="filter-radio"><input type="radio" name="filtEstado" value="por_vencer"> Por Vencer</label>
+            <label class="filter-radio"><input type="radio" name="filtEstado" value="vencida"> Vencidas</label>
+            <label class="filter-radio"><input type="radio" name="filtEstado" value="urgente"> Urgentes</label>
+          </div>
+          <div class="filter-panel__group">
+            <span class="filter-panel__label">Rubro</span>
+            <select id="filtRubro" class="filter-select">
+              <option value="">Todos los rubros</option>
+              <!-- Poblado dinámicamente por JS -->
+            </select>
+          </div>
+          <button class="filter-panel__clear" id="btnFilterClear">Limpiar filtros</button>
+        </div>
       </div>
     </div>
 
-    <!-- Tabla de pautas -->
+    <!-- Tabla principal de pautas -->
     <div class="table-wrap">
       <table class="pautas-table" id="pautasTable">
         <thead>
           <tr>
             <th>Cliente</th>
-            <th>Audio</th>
-            <th>Inicio</th>
-            <th>Fin</th>
-            <th>Spots/Sem</th>
+            <th>Rubro</th>
+            <th>Audio / Spot</th>
+            <th>Vigencia</th>
+            <th>Mencs./día</th>
             <th>Estado</th>
             <th>Acciones</th>
           </tr>
@@ -79,166 +147,339 @@
         <p>No hay pautas registradas. ¡Crea la primera!</p>
       </div>
     </div>
+
   </div><!-- /pautas-body -->
 
-</div><!-- /pautasRoot -->
+</div><!-- /pautas-root -->
+
 
 <!-- ══════════════════════════════════════════════════════════
-     MODAL — FORMULARIO PRO + MATRIZ DE HORARIOS
+     MODAL PRINCIPAL — EDITOR DE PAUTAS PRO (Dashboard v3.1)
+     Layout: Header | [Col-A: Picker+Form+Wave] [Col-B: Matriz] | Footer
      ══════════════════════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="pautaModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-  <div class="modal-box">
+  <div class="modal-box modal-box--pro">
 
-    <!-- Header del modal -->
+    <!-- ── Cabecera fija ── -->
     <div class="modal-header">
-      <h3 id="modalTitle">Nueva Pauta</h3>
-      <button class="modal-close" id="btnModalClose" aria-label="Cerrar">✕</button>
+      <div class="modal-header__left">
+        <h3 id="modalTitle">Nueva Pauta</h3>
+        <span class="badge-urgente hidden" id="urgenteBadgeHeader" aria-label="Pauta urgente">URGENTE</span>
+      </div>
+      <button class="modal-close" id="btnModalClose" aria-label="Cerrar modal">✕</button>
     </div>
 
-    <!-- Cuerpo: formulario + matriz -->
-    <div class="modal-body">
+    <!-- ══════════════════════════════════════════════════
+         DASHBOARD: dos columnas que llenan el 90vh
+         Col-A (izq): Picker de audio + Formulario + Waveform fijo al pie
+         Col-B (der): Matriz horaria + Advertencia menciones al pie
+         ══════════════════════════════════════════════════ -->
+    <div class="modal-dashboard">
 
-      <!-- ── COLUMNA IZQ: Formulario ── -->
-      <section class="form-section">
-        <h4 class="section-label">Datos de la Pauta</h4>
+      <!-- ╔══════════════════════════════════════╗
+           ║  COLUMNA A — DATOS DEL SPOT + ONDA  ║
+           ╚══════════════════════════════════════╝ -->
+      <div class="modal-col-a">
 
-        <div class="form-group">
-          <label for="fCliente">Cliente <span class="required">*</span></label>
-          <input type="text" id="fCliente" placeholder="Ej: Coca-Cola Argentina" autocomplete="off">
-          <span class="field-hint">Nombre del anunciante</span>
-        </div>
-
-        <div class="form-group">
-          <label for="fAudio">Audio / Spot <span class="required">*</span></label>
-          <div class="audio-selector" id="audioSelector">
-            <input type="text" id="fAudio" placeholder="Haz clic en 🎵 para cargar un audio…" readonly>
-            <button class="btn-icon" id="btnSelectAudio" title="Explorar archivos de audio en tu PC"
-              type="button">🎵</button>
+        <!-- Picker de audio: siempre visible en el tope de la col -->
+        <div class="audio-picker-row">
+          <div class="audio-selector">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" class="audio-picker-icon" aria-hidden="true">
+              <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
+              <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            <input type="text" id="fAudio" placeholder="Seleccionar audio del spot desde la biblioteca…" readonly>
+            <button class="btn-icon" id="btnSelectAudio" type="button" title="Subir nuevo archivo desde tu PC">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              Subir archivo
+            </button>
           </div>
-          <!-- Input file oculto — activado por btnSelectAudio -->
-          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,.wma,audio/*"
-            style="display:none" aria-hidden="true">
-          <span class="field-hint" id="audioHint">Ningún archivo seleccionado</span>
+          <!-- Input file oculto, disparado por el botón -->
+          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
+          <span class="field-hint" id="audioHint">Seleccioná un audio de la biblioteca haciendo clic en el campo, o subí uno nuevo con el botón</span>
+
           <!-- Barra de progreso de subida -->
           <div class="upload-progress hidden" id="uploadProgress">
             <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
             <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
           </div>
-          <!-- Mini reproductor de audio (aparece tras subir) -->
-          <div class="audio-player hidden" id="audioPlayer">
-            <button class="audio-player__btn" id="btnAudioPlay" type="button" title="Reproducir">▶</button>
-            <button class="audio-player__btn" id="btnAudioStop" type="button" title="Detener">⏹</button>
-            <div class="audio-player__track" id="audioTrackBar">
-              <div class="audio-player__progress" id="audioPlayProgress" style="width:0%"></div>
+        </div>
+
+        <!-- Formulario: scrollable, ocupa todo el espacio disponible entre picker y waveform -->
+        <section class="form-section" aria-label="Datos de la pauta">
+          <h4 class="section-label">Datos de la Pauta</h4>
+
+          <!-- Cliente -->
+          <div class="form-group">
+            <label for="fCliente">Cliente <span class="required">*</span></label>
+            <input type="text" id="fCliente" placeholder="Ej: COCA-COLA ARGENTINA" autocomplete="off">
+            <span class="field-hint">Se normaliza automáticamente a MAYÚSCULAS</span>
+          </div>
+
+          <!-- Rubro -->
+          <div class="form-group">
+            <label for="fRubro">Rubro</label>
+            <input type="text" id="fRubro" placeholder="Ej: Bebidas, Política, Tecnología, Automotriz…">
+            <span class="field-hint">Categoría del anunciante — Marca Blanca</span>
+          </div>
+
+          <!-- Contrato / Factura -->
+          <div class="form-group">
+            <label for="fContrato">N° Contrato / Factura</label>
+            <input type="text" id="fContrato" placeholder="Ej: FAC-2026-0042 · CTR-00128">
+          </div>
+
+          <!-- Fechas de vigencia -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fFechaInicio">Inicio <span class="required">*</span></label>
+              <input type="date" id="fFechaInicio">
             </div>
-            <span class="audio-player__time" id="audioTimeLabel">0:00 / 0:00</span>
+            <div class="form-group">
+              <label for="fFechaFin">Fin <span class="required">*</span></label>
+              <input type="date" id="fFechaFin">
+            </div>
           </div>
-        </div>
 
-
-        <div class="form-row">
+          <!-- Menciones por día -->
           <div class="form-group">
-            <label for="fFechaInicio">Fecha Inicio <span class="required">*</span></label>
-            <input type="date" id="fFechaInicio">
+            <label for="fMenciones">Menciones / Día <span class="required">*</span></label>
+            <div class="menciones-control">
+              <button class="menciones-btn" id="btnMencionesDown" type="button" aria-label="Reducir menciones">−</button>
+              <input type="number" id="fMenciones" min="1" max="24" value="4" class="menciones-input" aria-label="Número de menciones por día">
+              <button class="menciones-btn" id="btnMencionesUp" type="button" aria-label="Aumentar menciones">+</button>
+              <span class="field-hint">Máx. 24 emisiones diarias</span>
+            </div>
           </div>
+
+          <!-- Checkbox Urgente -->
           <div class="form-group">
-            <label for="fFechaFin">Fecha Fin <span class="required">*</span></label>
-            <input type="date" id="fFechaFin">
+            <label class="urgente-label" for="fUrgente">
+              <input type="checkbox" id="fUrgente" class="urgente-checkbox">
+              <span class="urgente-label__text">
+                <span class="urgente-pill" aria-hidden="true">URGENTE</span>
+                Marcar como Urgente
+              </span>
+            </label>
+            <span class="field-hint">Destaca la pauta en rojo en todas las vistas</span>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label for="fNotas">Notas</label>
-          <textarea id="fNotas" rows="3" placeholder="Instrucciones especiales, restricciones…"></textarea>
-        </div>
-
-        <!-- Resumen de selección de matriz -->
-        <div class="matrix-summary" id="matrixSummary">
-          <span class="matrix-summary__icon">📊</span>
-          <span id="matrixSummaryText">Sin franjas horarias asignadas</span>
-        </div>
-      </section>
-
-      <!-- ── COLUMNA DER: Matriz 24×7 ── -->
-      <section class="matrix-section">
-        <div class="matrix-header">
-          <h4 class="section-label">Matriz de Horarios</h4>
-          <div class="matrix-actions">
-            <!-- Los botones de acción rápida ahora están en la botonera .matrix-quickfill -->
+          <!-- Notas -->
+          <div class="form-group">
+            <label for="fNotas">Notas internas</label>
+            <textarea id="fNotas" rows="2" placeholder="Instrucciones especiales, restricciones de horario…"></textarea>
           </div>
-        </div>
-        <p class="matrix-hint">Haz clic para activar/desactivar · Arrastra para selección múltiple</p>
 
-        <!-- Leyenda de la matriz -->
-        <div class="matrix-legend">
-          <span class="legend-item"><span class="legend-dot legend-dot--off"></span>Libre</span>
-          <span class="legend-item"><span class="legend-dot legend-dot--on"></span>Programado</span>
-          <span class="legend-item"><span class="legend-dot legend-dot--prime"></span>Prime Time</span>
-        </div>
-
-        <!-- ── Botonera de Relleno Rápido ── -->
-        <div class="matrix-quickfill">
-          <span class="quickfill-label">Relleno rápido:</span>
-          <button class="btn-quickfill" id="btnQfLV" title="Marcar todas las horas de Lunes a Viernes">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+          <!-- Resumen de la selección en la matriz -->
+          <div class="matrix-summary" id="matrixSummary">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="1.8"/>
             </svg>
-            Lunes a Viernes
-          </button>
-          <button class="btn-quickfill" id="btnQfFinde" title="Marcar Sábado y Domingo completos">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            Fin de Semana
-          </button>
-          <button class="btn-quickfill btn-quickfill--prime" id="btnQfPrime" title="Marcar solo franjas Prime Time">
-            ⭐ Prime Time
-          </button>
-          <button class="btn-quickfill btn-quickfill--clear" id="btnMatrixClear" title="Borrar toda la selección">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6M14 11v6" />
-            </svg>
-            Limpiar
-          </button>
-        </div>
-
-        <!-- Grid contenedor — generado 100% por JS -->
-        <div class="matrix-scroll-wrap">
-          <div class="matrix-grid" id="matrixGrid" role="grid" aria-label="Matriz de horarios 24×7">
-            <!-- Generado por PautasController.buildMatrix() -->
+            <span id="matrixSummaryText">Sin franjas horarias asignadas</span>
           </div>
+        </section><!-- /form-section -->
+
+        <!-- ══════════════════════════════════════════════
+             PANEL WAVESURFER — fijo al pie de col-A
+             Alto fijo: no empuja el formulario, siempre visible.
+             Los IDs exactos son requeridos por onix-waveform.js.
+             ══════════════════════════════════════════════ -->
+        <div class="wf-panel-wrap" id="wf-panel" style="display:none">
+
+          <!-- Barra superior: nombre + info + spinner -->
+          <div class="wf-topbar">
+            <span class="wf-filename" id="wf-filename">—</span>
+            <div class="wf-info-bar" id="wf-info-bar"></div>
+            <div class="wf-loading" id="wf-loading" style="display:none" aria-live="polite">
+              <span class="wf-spinner" aria-hidden="true"></span>
+              <span>Analizando…</span>
+            </div>
+          </div>
+
+          <!-- Canvas de la onda (WaveSurfer renderiza aquí) -->
+          <div id="waveform" aria-label="Visualizador de onda"></div>
+
+          <!-- Transport: play/stop + tiempo + volumen + util -->
+          <div class="wf-transport">
+            <div class="wf-time-display">
+              <span id="wf-time-cur" class="wf-time-cur">0:00.0</span>
+              <span class="wf-time-sep">/</span>
+              <span id="wf-time-total" class="wf-time-total">0:00.0</span>
+            </div>
+            <div class="wf-ctrl-group">
+              <button class="wf-btn wf-btn--play" id="wf-btn-play" title="Reproducir / Pausar">
+                <svg id="wf-play-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  <polygon points="5,2 21,12 5,22" fill="currentColor"/>
+                </svg>
+              </button>
+              <button class="wf-btn" id="wf-btn-stop" title="Detener">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+            <div class="wf-vol-group">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor" opacity=".7"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <input type="range" id="wf-volume" min="0" max="100" value="85" aria-label="Volumen">
+              <span id="wf-volume-label" class="wf-vol-label">85%</span>
+            </div>
+            <div class="wf-util-group">
+              <button class="wf-btn wf-btn--util" id="wf-btn-autocue" title="Calcular Cues automáticamente">Auto Cue</button>
+              <button class="wf-btn wf-btn--util wf-btn--reset" id="wf-btn-reiniciar" title="Reiniciar todos los Cues">↺ Reset</button>
+            </div>
+          </div>
+
+          <!-- Grid de Cue Points (INTRO / OUTRO / MEZCLA) -->
+          <div class="cue-grid" role="group" aria-label="Puntos de corte y mezcla">
+
+            <!-- INTRO -->
+            <div class="cue-row">
+              <span class="cue-label cue-label--intro">INTRO</span>
+              <div class="cue-micro-group">
+                <button class="cue-nudge" data-wf-nudge="intro:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button class="cue-mark" data-wf-marcar="intro" title="Marcar posición actual como INTRO">⏺ Marcar</button>
+                <button class="cue-nudge" data-wf-nudge="intro:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <input class="cue-input" id="cue-intro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del INTRO">
+                <span class="cue-unit">s</span>
+              </div>
+              <button class="cue-escuchar" data-wf-escuchar="intro" title="Ir a INTRO y reproducir">▶ Escuchar</button>
+              <button class="cue-reset-btn" data-wf-reiniciar="intro" title="Resetear INTRO">↺</button>
+            </div>
+
+            <!-- OUTRO -->
+            <div class="cue-row">
+              <span class="cue-label cue-label--outro">OUTRO</span>
+              <div class="cue-micro-group">
+                <button class="cue-nudge" data-wf-nudge="outro:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button class="cue-mark" data-wf-marcar="outro" title="Marcar posición actual como OUTRO">⏺ Marcar</button>
+                <button class="cue-nudge" data-wf-nudge="outro:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <input class="cue-input" id="cue-outro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del OUTRO">
+                <span class="cue-unit">s</span>
+              </div>
+              <button class="cue-escuchar" data-wf-escuchar="outro" title="Ir a OUTRO y reproducir">▶ Escuchar</button>
+              <button class="cue-reset-btn" data-wf-reiniciar="outro" title="Resetear OUTRO">↺</button>
+            </div>
+
+            <!-- MEZCLA -->
+            <div class="cue-row">
+              <span class="cue-label cue-label--mezcla">MEZCLA</span>
+              <div class="cue-micro-group">
+                <button class="cue-nudge" data-wf-nudge="mezcla:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button class="cue-mark" data-wf-marcar="mezcla" title="Marcar posición actual como MEZCLA">⏺ Marcar</button>
+                <button class="cue-nudge" data-wf-nudge="mezcla:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <input class="cue-input" id="cue-mezcla" type="number" step="0.1" min="0" value="0" aria-label="Segundos de MEZCLA">
+                <span class="cue-unit">s</span>
+              </div>
+              <button class="cue-escuchar" data-wf-escuchar="mezcla" title="Ir a MEZCLA y reproducir">▶ Escuchar</button>
+              <button class="cue-reset-btn" data-wf-reiniciar="mezcla" title="Resetear MEZCLA">↺</button>
+            </div>
+
+            <!-- Inputs ocultos requeridos por onix-waveform.js -->
+            <input type="hidden" id="cue-inicio"      value="0">
+            <input type="hidden" id="cue-inicio-coro" value="0">
+            <input type="hidden" id="cue-final-coro"  value="0">
+          </div>
+
+        </div><!-- /wf-panel-wrap -->
+
+      </div><!-- /modal-col-a -->
+
+      <!-- ╔═══════════════════════════════════════╗
+           ║  COLUMNA B — MATRIZ HORARIA  24×7    ║
+           ╚═══════════════════════════════════════╝ -->
+      <div class="modal-col-b">
+
+        <section class="matrix-section" aria-label="Matriz de horarios semanal">
+
+          <div class="matrix-header">
+            <h4 class="section-label">Matriz de Horarios</h4>
+          </div>
+          <p class="matrix-hint">Clic para activar · Arrastre para selección múltiple</p>
+
+          <!-- Leyenda -->
+          <div class="matrix-legend">
+            <span class="legend-item"><span class="legend-dot legend-dot--off"></span>Libre</span>
+            <span class="legend-item"><span class="legend-dot legend-dot--on"></span>Programado</span>
+            <span class="legend-item"><span class="legend-dot legend-dot--prime"></span>Prime Time</span>
+          </div>
+
+          <!-- Botonera de relleno rápido -->
+          <div class="matrix-quickfill">
+            <span class="quickfill-label">Relleno rápido:</span>
+            <button class="btn-quickfill" id="btnQfLV" title="Lunes a Viernes">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/><line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/></svg>
+              Lun–Vie
+            </button>
+            <button class="btn-quickfill" id="btnQfFinde" title="Sábado y Domingo">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Fin de Semana
+            </button>
+            <button class="btn-quickfill btn-quickfill--prime" id="btnQfPrime" title="Solo franjas Prime Time">
+              ⭐ Prime Time
+            </button>
+            <button class="btn-quickfill btn-quickfill--clear" id="btnMatrixClear" title="Limpiar toda la selección">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              Limpiar
+            </button>
+          </div>
+
+          <!-- Grid 24×7 — generado íntegramente por JS -->
+          <div class="matrix-scroll-wrap">
+            <div class="matrix-grid" id="matrixGrid" role="grid" aria-label="Matriz de horarios 24 horas por 7 días">
+              <!-- Inyectado por _buildMatrix() -->
+            </div>
+          </div>
+
+        </section><!-- /matrix-section -->
+
+        <!-- Advertencia menciones: SIEMPRE visible al pie de la col B,
+             aparece/desaparece según la selección supere el límite -->
+        <div class="mentions-warning hidden" id="mentionsWarning" role="alert" aria-live="polite">
+          <svg class="mentions-warning__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.8"/>
+            <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span id="mentionsWarningText">La selección supera las menciones configuradas.</span>
         </div>
-      </section>
 
-    </div><!-- /modal-body -->
+      </div><!-- /modal-col-b -->
 
-    <!-- Footer del modal -->
+    </div><!-- /modal-dashboard -->
+
+    <!-- ── Footer fijo ── -->
     <div class="modal-footer">
-      <span class="modal-error hidden" id="modalError"></span>
+      <span class="modal-error hidden" id="modalError" role="alert"></span>
       <button class="btn-secondary" id="btnModalCancel">Cancelar</button>
       <button class="btn-primary" id="btnModalSave">
-        <span id="btnSaveIcon">💾</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" id="btnSaveIcon" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="2"/>
+          <polyline points="17 21 17 13 7 13 7 21" stroke="currentColor" stroke-width="2"/>
+          <polyline points="7 3 7 8 15 8" stroke="currentColor" stroke-width="2"/>
+        </svg>
         <span id="btnSaveText">Guardar Pauta</span>
       </button>
     </div>
 
   </div><!-- /modal-box -->
-</div><!-- /modal-overlay -->
+</div><!-- /pautaModal -->
+
 
 <!-- ══════════════════════════════════════════════════════════
-     MODAL DE CONFIRMACIÓN — DELETE
+     MODAL DE CONFIRMACIÓN DE BORRADO
      ══════════════════════════════════════════════════════════ -->
-<div class="modal-overlay hidden" id="deleteModal">
+<div class="modal-overlay hidden" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteTitleId">
   <div class="modal-box modal-box--sm">
     <div class="modal-header">
-      <h3>Eliminar Pauta</h3>
-      <button class="modal-close" id="btnDeleteClose">✕</button>
+      <h3 id="deleteTitleId">Eliminar Pauta</h3>
+      <button class="modal-close" id="btnDeleteClose" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body modal-body--center">
       <span class="delete-icon">⚠️</span>
@@ -247,7 +488,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" id="btnDeleteCancel">Cancelar</button>
-      <button class="btn-danger" id="btnDeleteConfirm">Eliminar</button>
+      <button class="btn-danger" id="btnDeleteConfirm">Eliminar definitivamente</button>
     </div>
   </div>
 </div>

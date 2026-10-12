@@ -44,6 +44,16 @@ SEED_VALORES = {
 }
 
 
+# Parámetros por defecto del motor de audio (tabla config)
+SEED_CONFIG = [
+    ("modo",                "manual"),   # manual | automatico
+    ("crossfade_seg",       "4"),
+    ("ventana_artista_min", "60"),
+    ("max_mismo_genero",    "2"),
+    ("ducking_db",          "-12"),
+]
+
+
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -243,6 +253,114 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         ON pautas(activo)
     """)
     logger.info("  → Tabla pautas e índices: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 9 — Columnas extendidas para Pautas (Jazler Soho)
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando columnas extendidas en pautas...")
+    cursor.execute("PRAGMA table_info(pautas)")
+    columnas_pautas = {row["name"] for row in cursor.fetchall()}
+
+    nuevas_columnas_pautas = [
+        ("cue_intro", "REAL"),
+        ("cue_outro", "REAL"),
+        ("menciones_diarias", "INTEGER"),
+        ("rubro", "TEXT"),
+        ("prioridad", "INTEGER"),
+        ("contrato_id", "TEXT"),
+    ]
+    for col_name, col_type in nuevas_columnas_pautas:
+        if col_name not in columnas_pautas:
+            cursor.execute(f"ALTER TABLE pautas ADD COLUMN {col_name} {col_type} DEFAULT NULL")
+            logger.info(f"  → Columna {col_name} añadida a pautas: OK")
+        else:
+            logger.info(f"  → Columna {col_name} ya existe: SKIP")
+    logger.info("  → Columnas extendidas pautas verificadas/añadidas: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 10 — Soporte del motor de audio
+    #   · config             → parámetros del motor (clave/valor)
+    #   · audios             → ultima_reproduccion / veces_reproducido (rotación)
+    #   · historial_emision  → registro de todo lo que sale al aire.
+    #                          `slot` = 'YYYY-MM-DD-HH' para no repetir una
+    #                          pauta dentro de la misma hora.
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando tablas del motor de audio...")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            clave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL
+        )
+    """)
+    for clave, valor in SEED_CONFIG:
+        cursor.execute(
+            "INSERT OR IGNORE INTO config (clave, valor) VALUES (?, ?)", (clave, valor)
+        )
+
+    cursor.execute("PRAGMA table_info(audios)")
+    columnas_audios_v3 = {row["name"] for row in cursor.fetchall()}
+    for col_name, col_def in (
+        ("ultima_reproduccion", "TEXT DEFAULT NULL"),
+        ("veces_reproducido",   "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if col_name not in columnas_audios_v3:
+            cursor.execute(f"ALTER TABLE audios ADD COLUMN {col_name} {col_def}")
+            logger.info(f"  → Columna {col_name} añadida a audios: OK")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historial_emision (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            audio_id    INTEGER,
+            titulo      TEXT    NOT NULL DEFAULT '',
+            artista     TEXT    NOT NULL DEFAULT '',
+            tipo        TEXT    NOT NULL DEFAULT 'musica',
+            origen      TEXT    NOT NULL DEFAULT 'manual',
+            pauta_id    INTEGER,
+            slot        TEXT,
+            iniciado_en TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_historial_iniciado
+        ON historial_emision(iniciado_en)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_historial_pauta_slot
+        ON historial_emision(pauta_id, slot)
+    """)
+    logger.info("  → config, columnas de rotación e historial_emision: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 11 — Tipo de audio explícito y cartuchera
+    #   · audios.tipo_audio → Musica | Cuña | Efecto | Sweeper | Programa | Tips
+    #     (antes se deducía de la categoría 1). Se rellena 'Cuña' para los
+    #     audios comerciales ya existentes.
+    #   · cartuchera → qué audio dispara cada botón del Studio.
+    #     banco: 'jingles' | 'publicidad'   slot: 1..N
+    # ------------------------------------------------------------------
+    logger.info("MIGRACIÓN: Verificando tipo_audio y cartuchera...")
+    cursor.execute("PRAGMA table_info(audios)")
+    if "tipo_audio" not in {row["name"] for row in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN tipo_audio TEXT NOT NULL DEFAULT 'Musica'")
+        cursor.execute("""
+            UPDATE audios SET tipo_audio = 'Cuña'
+            WHERE UPPER(COALESCE(subgenero, '')) IN ('COMERCIAL', 'PUBLICIDAD')
+               OR id IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)
+        """)
+        logger.info("  → Columna tipo_audio añadida a audios: OK")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audios_tipo ON audios(tipo_audio)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cartuchera (
+            banco      TEXT    NOT NULL,
+            slot       INTEGER NOT NULL,
+            audio_id   INTEGER NOT NULL REFERENCES audios(id) ON DELETE CASCADE,
+            etiqueta   TEXT    NOT NULL DEFAULT '',
+            updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (banco, slot)
+        )
+    """)
+    logger.info("  → tipo_audio y cartuchera: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
