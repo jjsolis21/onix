@@ -1200,3 +1200,7 @@ body:not(.sidebar-expanded) .nav-btn:hover::after {
 .topbar-usuario { font-family: var(--font-data, monospace); font-size: .7rem; color: var(--text-lo, #8aa); margin-left: 10px; }
 #topbar-salir { cursor: pointer; margin-left: 6px; }
 #topbar-salir[hidden] { display: none; }
+
+/* Iconos propios (SVG) en el menú y en las migas de pan */
+.nav-ico { width: 22px; height: 22px; display: block; margin: 0 auto; }
+.breadcrumb__section-icon .nav-ico { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; margin: 0; }

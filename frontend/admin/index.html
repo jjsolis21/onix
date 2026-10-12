@@ -35,7 +35,7 @@
   <link rel="stylesheet" href="css/variables.css?v=2" />
 
   <!-- Layout estructural del shell -->
-  <link rel="stylesheet" href="css/shell.css?v=3" />
+  <link rel="stylesheet" href="css/shell.css?v=4" />
   <link rel="stylesheet" href="sections/02-biblioteca-musical/estadisticas/estadisticas-estilos.css?v=6" />
   <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css">
 </head>
@@ -185,7 +185,7 @@
           Gestión de archivos de audio: subir, editar, organizar.
         -->
         <button class="nav-btn" data-section="02-biblioteca-musical" data-tooltip="Biblioteca Musical">
-          <span class="nav-btn__icon" aria-hidden="true">🎵</span>
+          <span class="nav-btn__icon" aria-hidden="true"><img class="nav-ico" src="/static/studio/icons/music.svg" alt=""></span>
           <span class="nav-btn__label">Biblioteca Musical</span>
           <span class="nav-btn__num">02</span>
         </button>
@@ -248,7 +248,7 @@
         </button>
 
         <button class="nav-btn" data-section="09-playlists" data-tooltip="Playlists">
-          <span class="nav-btn__icon" aria-hidden="true">☰</span>
+          <span class="nav-btn__icon" aria-hidden="true"><img class="nav-ico" src="/static/studio/icons/carpeta-musica2.svg" alt=""></span>
           <span class="nav-btn__label">Playlists</span>
           <span class="nav-btn__num">09</span>
         </button>
@@ -388,7 +388,7 @@
         src: "sections/01-estado-global/estado-global.html",
       },
       "02-biblioteca-musical": {
-        icon: "🎵",
+        icon: "🎵", img: "music",
         name: "Biblioteca Musical",
         sub: "Gestión de archivos y metadatos",
         src: "sections/02-biblioteca-musical/biblioteca-musical.html",
@@ -430,7 +430,7 @@
         src: "sections/08-relojes/relojes.html",
       },
       "09-playlists": {
-        icon: "☰",
+        icon: "☰", img: "carpeta-musica2",
         name: "Playlists",
         sub: "Listas de 1 a 12 horas desde un reloj, o armadas a mano; programables",
         src: "sections/09-playlists/playlists.html",
@@ -608,7 +608,10 @@
       const nameEl = $id("breadcrumb-name");
       const subEl = $id("breadcrumb-sub");
       const actEl = $id("breadcrumb-actions");
-      if (iconEl) iconEl.textContent = meta.icon;
+      if (iconEl) {
+        if (meta.img) iconEl.innerHTML = `<img class="nav-ico" src="/static/studio/icons/${meta.img}.svg" alt="">`;
+        else iconEl.textContent = meta.icon;
+      }
       if (nameEl) nameEl.textContent = meta.name;
       if (subEl) subEl.textContent = meta.sub;
       /* Limpiar acciones del breadcrumb — la nueva sección las inyectará si las necesita */
