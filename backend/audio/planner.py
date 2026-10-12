@@ -350,18 +350,57 @@ class Planner:
                 key = f"{fecha} {hh:02d}:{mm:02d}#{e['id']}"
                 if key in hechos or hora < desde - self.ATRASO_EVENTO:
                     continue
+                fin = None
+                hasta = (e["hasta"] if "hasta" in e.keys() else "") or ""
+                if hasta:
+                    try:
+                        h2, m2 = (int(x) for x in hasta.split(":")[:2])
+                        fin = hora.replace(hour=h2, minute=m2)
+                        if fin <= hora:                  # pasa la medianoche
+                            fin += timedelta(days=1)
+                    except ValueError:
+                        fin = None
                 if mejor is None or hora < mejor["hora"]:
                     mejor = {"hora": hora, "key": key, "id": e["id"], "nombre": e["nombre"],
-                             "inmediato": bool(e["inmediato"]), "reloj": reloj}
+                             "inmediato": bool(e["inmediato"]), "reloj": reloj, "fin": fin}
         return mejor
 
     def _poner_evento(self, conn, ev, t, nuevos, previos, en_plan, excluir, crossfade) -> datetime:
-        """Pone las filas del reloj del evento una sola vez, en orden."""
+        """
+        Pone las filas del reloj del evento en orden: una vuelta, o con "dura
+        hasta" (ev["fin"]) las repite hasta esa hora. La última canción se
+        busca para que termine cerca de la hora de fin (± tolerancia); si no
+        hay ninguna que encaje, termina antes si falta menos de media canción
+        o, si no, deja la que toca (se pasa menos de media canción).
+        """
         reloj, primero = ev["reloj"], True
-        for i, fila in enumerate(reloj["filas"]):
+        fin = ev.get("fin")
+        tol = self._icfg("tolerancia_tanda_seg", 90)
+        filas = reloj["filas"]
+        idx, vacias = 0, 0
+        while True:
+            if fin is None and idx >= len(filas):
+                break
+            if fin is not None and (t >= fin - timedelta(seconds=min(tol, 30)) or vacias >= len(filas)):
+                break
+            fila = filas[idx % len(filas)]
+            idx += 1
             audio = self._elegir(conn, fila, t, previos, en_plan, excluir)
+            if audio and fin is not None:
+                restante = (fin - t).total_seconds()
+                if duracion_efectiva(audio, crossfade) > restante + tol and fila["tipo_audio"] == "Musica":
+                    lo, hi = max(1, restante - tol + crossfade), restante + tol + crossfade
+                    alt = (self._elegir(conn, fila, t, previos, en_plan, excluir, dur_objetivo=(lo, hi))
+                           or self._elegir(conn, {**fila, "filtros": {}}, t, previos, en_plan, excluir,
+                                           dur_objetivo=(lo, hi)))
+                    if alt:
+                        audio = alt
+                    elif restante < duracion_efectiva(audio, crossfade) / 2:
+                        break      # ninguna encaja y falta poco: termina antes en vez de pasarse
             if not audio:
+                vacias += 1
                 continue
+            vacias = 0
             dur = duracion_efectiva(audio, crossfade)
             nuevos.append(_item(
                 "audio", t, dur, audio_id=audio["id"], titulo=audio["titulo"],

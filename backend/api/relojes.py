@@ -96,6 +96,7 @@ class EventoIn(BaseModel):
     nombre:       str = Field(..., min_length=1, max_length=80)
     reloj_id:     int
     hora:         str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$")    # HH:MM
+    hasta:        str = Field("", pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")  # '' = una vuelta
     dias:         list[int] = Field(default_factory=lambda: list(range(7)))  # 0=Dom … 6=Sáb
     fecha_inicio: str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
     fecha_fin:    str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
@@ -288,7 +289,7 @@ def vista_previa(body: VistaIn, conn: sqlite3.Connection = Depends(get_db)):
 
 def _evento_out(r) -> dict:
     return {"id": r["id"], "nombre": r["nombre"], "reloj_id": r["reloj_id"], "reloj": r["reloj"],
-            "color": r["color"], "hora": r["hora"],
+            "color": r["color"], "hora": r["hora"], "hasta": (r["hasta"] if "hasta" in r.keys() else "") or "",
             "dias": [int(d) for d in str(r["dias"] or "").split(",") if d.strip().isdigit()],
             "fecha_inicio": r["fecha_inicio"], "fecha_fin": r["fecha_fin"],
             "inmediato": bool(r["inmediato"]), "activo": bool(r["activo"])}
@@ -303,8 +304,10 @@ def _validar_evento(conn, body: EventoIn):
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
     if body.fecha_inicio and body.fecha_fin and body.fecha_fin < body.fecha_inicio:
         raise HTTPException(status_code=422, detail="La fecha final es anterior a la inicial")
+    if body.hasta and body.hasta == body.hora:
+        raise HTTPException(status_code=422, detail="«Dura hasta» no puede ser igual a la hora de inicio")
     return (body.nombre.strip(), body.reloj_id, body.hora, ",".join(map(str, body.dias)),
-            body.fecha_inicio, body.fecha_fin, int(body.inmediato), int(body.activo))
+            body.fecha_inicio, body.fecha_fin, int(body.inmediato), int(body.activo), body.hasta)
 
 
 @router.get("/api/v1/relojes/eventos", summary="Eventos a hora fija")
@@ -315,8 +318,8 @@ def eventos(conn: sqlite3.Connection = Depends(get_db)):
 @router.post("/api/v1/relojes/eventos", status_code=201, summary="Crear evento a hora fija")
 def crear_evento(body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
     eid = conn.execute(
-        "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)", _validar_evento(conn, body)).lastrowid
+        "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo, hasta)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", _validar_evento(conn, body)).lastrowid
     conn.commit()
     _replanificar()
     return _evento_out(conn.execute(_SQL_EVENTOS + " WHERE e.id = ?", (eid,)).fetchone())
@@ -327,7 +330,7 @@ def guardar_evento(evento_id: int, body: EventoIn, conn: sqlite3.Connection = De
     valores = _validar_evento(conn, body)
     if not conn.execute(
             "UPDATE reloj_eventos SET nombre = ?, reloj_id = ?, hora = ?, dias = ?, fecha_inicio = ?,"
-            " fecha_fin = ?, inmediato = ?, activo = ? WHERE id = ?", (*valores, evento_id)).rowcount:
+            " fecha_fin = ?, inmediato = ?, activo = ?, hasta = ? WHERE id = ?", (*valores, evento_id)).rowcount:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
     conn.commit()
     _replanificar()

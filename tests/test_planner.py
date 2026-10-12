@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -389,3 +389,19 @@ def test_fila_sin_canciones_usa_el_respaldo_del_reloj(base):
     conn.close()
     items = [i for i in planear(base, tandas=()) if i["tipo"] == "audio"]
     assert items and all(i["titulo"].startswith("CLASICO") for i in items[:4])
+
+
+def test_evento_con_dura_hasta_repite_su_reloj_hasta_esa_hora(base):
+    for i in range(20):
+        audio(base, f"TEMA {i}", artista=f"A{i}", dur=200)
+    for i in range(12):
+        audio(base, f"ESPECIAL {i}", artista=f"E{i}", categoria="ESPECIAL", dur=180 + i * 10)
+    rid = reloj(base, "Especial", [{"filtros": {"cat2": "ESPECIAL"}}], horas=())
+    evento(base, "Especial 45 min", rid, "10:10", inmediato=1, hasta="10:40")
+    items = planear(base, minutos=60, tandas=())
+    ev = [i for i in items if i.get("evento")]
+    assert len(ev) > 1 and all(i["titulo"].startswith("ESPECIAL") for i in ev)
+    fin_ev = datetime.fromisoformat(ev[-1]["inicio"]) + timedelta(seconds=ev[-1]["duracion"])
+    assert abs((fin_ev - datetime(2026, 10, 12, 10, 40)).total_seconds()) <= 90
+    despues = items[items.index(ev[-1]) + 1]
+    assert not despues.get("evento") and despues["titulo"].startswith("TEMA")     # vuelve la grilla

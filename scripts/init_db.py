@@ -667,6 +667,16 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE relojes ADD COLUMN respaldo TEXT NOT NULL DEFAULT '{}'")
     logger.info("  → relojes.respaldo: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 28 — Eventos con duración: "Dura hasta" (HH:MM)
+    #   '' = el evento toca una vuelta de su reloj (como antes); con hora,
+    #   repite las filas hasta esa hora y vuelve a la grilla.
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(reloj_eventos)")
+    if "hasta" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE reloj_eventos ADD COLUMN hasta TEXT NOT NULL DEFAULT ''")
+    logger.info("  → reloj_eventos.hasta: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

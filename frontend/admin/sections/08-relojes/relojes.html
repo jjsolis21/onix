@@ -181,12 +181,14 @@
     <h3>Eventos a hora fija</h3>
     <p class="ox-hint">Para lo que debe sonar a una hora exacta (noticiero 13:05, programa grabado 20:30, himno…).
       El evento toca <b>una vez</b> las filas de su reloj y después sigue el reloj de la grilla.
+      Con <b>Dura hasta</b>, repite sus filas hasta esa hora (la última canción se elige para terminar a tiempo).
+      Para un solo día, pon la misma fecha en Desde y Hasta.
       <b>En punto</b>: corta con fade lo que suene y entra a la hora exacta (solo en automático).
       Sin marcar: entra al terminar la canción que suene; el sistema elige canciones que encajen para llegar a tiempo.
       Para un audio concreto, crea un reloj con ese audio fijo.</p>
     <div class="ox-table-wrap">
       <table class="ox-table rj-ev-tabla">
-        <thead><tr><th>Hora</th><th>Evento</th><th>Reloj</th><th>Días</th><th>Vigencia</th><th>Entrada</th></tr></thead>
+        <thead><tr><th>Hora</th><th>Dura</th><th>Evento</th><th>Reloj</th><th>Días</th><th>Vigencia</th><th>Entrada</th></tr></thead>
         <tbody id="rjEventos"></tbody>
       </table>
     </div>
@@ -197,6 +199,8 @@
         <input class="ox-input" id="rjEvNombre" maxlength="80" placeholder="Ej.: Noticiero del mediodía"></div>
       <div class="ox-field" style="flex:0 0 110px"><label for="rjEvHora">Hora exacta</label>
         <input type="time" class="ox-input" id="rjEvHora" value="13:00"></div>
+      <div class="ox-field" style="flex:0 0 130px"><label for="rjEvHasta2" title="Vacío = una vuelta de su reloj">Dura hasta (opcional)</label>
+        <input type="time" class="ox-input" id="rjEvHasta2"></div>
       <div class="ox-field" style="flex:1 1 180px"><label for="rjEvReloj">Reloj que suena</label>
         <select class="ox-select" id="rjEvReloj"></select></div>
     </div>
@@ -682,12 +686,13 @@
   function pintarEventos() {
     $("rjEventos").innerHTML = eventos.length ? eventos.map(e => `
       <tr data-id="${e.id}" class="${evActual?.id === e.id ? "active" : ""} ${e.activo ? "" : "off"}">
-        <td class="ox-mono"><b>${esc(e.hora)}</b></td><td>${esc(e.nombre)}</td>
+        <td class="ox-mono"><b>${esc(e.hora)}</b></td>
+        <td class="ox-mono">${e.hasta ? `hasta ${esc(e.hasta)}` : "una vuelta"}</td><td>${esc(e.nombre)}</td>
         <td><span class="rj-dot" style="display:inline-block;background:${esc(e.color)}"></span> ${esc(e.reloj)}</td>
         <td>${diasTxt(e.dias)}</td>
         <td class="ox-mono">${e.fecha_inicio || e.fecha_fin ? `${fecha(e.fecha_inicio) || "…"} → ${fecha(e.fecha_fin) || "…"}` : "Siempre"}</td>
         <td>${e.inmediato ? "⚡ En punto" : "Al terminar la canción"}${e.activo ? "" : " · inactivo"}</td></tr>`).join("")
-      : `<tr><td colspan="6" class="ox-empty">Sin eventos. Ejemplo: "Noticiero" a las 13:05, de lunes a viernes.</td></tr>`;
+      : `<tr><td colspan="7" class="ox-empty">Sin eventos. Ejemplo: "Noticiero" a las 13:05, de lunes a viernes.</td></tr>`;
     const sel = $("rjEvReloj"), prev = sel.value;
     sel.innerHTML = relojes.length ? relojes.map(r => `<option value="${r.id}">${esc(r.nombre)}</option>`).join("")
       : `<option value="">Primero crea un reloj</option>`;
@@ -702,7 +707,7 @@
   function evNuevo() {
     evActual = null;
     $("rjEvTitulo").textContent = "Nuevo evento";
-    $("rjEvNombre").value = ""; $("rjEvHora").value = "13:00";
+    $("rjEvNombre").value = ""; $("rjEvHora").value = "13:00"; $("rjEvHasta2").value = "";
     $("rjEvDesde").value = ""; $("rjEvHasta").value = "";
     $("rjEvInmediato").checked = false; $("rjEvActivo").checked = true;
     $("rjEvBorrar").disabled = true;
@@ -713,6 +718,7 @@
     evActual = e;
     $("rjEvTitulo").textContent = `Evento: ${e.nombre}`;
     $("rjEvNombre").value = e.nombre; $("rjEvHora").value = e.hora; $("rjEvReloj").value = e.reloj_id;
+    $("rjEvHasta2").value = e.hasta || "";
     $("rjEvDesde").value = e.fecha_inicio; $("rjEvHasta").value = e.fecha_fin;
     $("rjEvInmediato").checked = e.inmediato; $("rjEvActivo").checked = e.activo;
     $("rjEvBorrar").disabled = false;
@@ -734,6 +740,7 @@
   $("rjEvGuardar").addEventListener("click", async () => {
     const body = {
       nombre: $("rjEvNombre").value.trim(), reloj_id: +$("rjEvReloj").value, hora: $("rjEvHora").value,
+      hasta: $("rjEvHasta2").value || "",
       dias: [...document.querySelectorAll("#rjEvDias input:checked")].map(i => +i.value),
       fecha_inicio: $("rjEvDesde").value, fecha_fin: $("rjEvHasta").value,
       inmediato: $("rjEvInmediato").checked, activo: $("rjEvActivo").checked,

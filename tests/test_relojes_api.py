@@ -133,3 +133,12 @@ def test_reloj_guarda_respaldo_y_lo_cuenta_en_la_vista(client, tmp_path):
     assert dup["respaldo"] == {"cat2": "RESPALDO1"}
     v = client.post("/api/v1/relojes/vista-previa", json={"filas": [], "respaldo": {"cat2": "RESPALDO1"}}).json()
     assert v["respaldo_candidatos"] >= 1
+
+
+def test_evento_guarda_dura_hasta(client):
+    rid = client.post("/api/v1/relojes", json={"nombre": "Ev dura", "filas": []}).json()["id"]
+    r = client.post("/api/v1/relojes/eventos", json={"nombre": "Especial", "reloj_id": rid, "hora": "20:30",
+                                                      "hasta": "21:15", "fecha_inicio": "2030-01-05", "fecha_fin": "2030-01-05"})
+    assert r.status_code == 201 and r.json()["hasta"] == "21:15"
+    assert client.post("/api/v1/relojes/eventos", json={"nombre": "Mal", "reloj_id": rid, "hora": "20:30",
+                                                        "hasta": "20:30"}).status_code == 422
