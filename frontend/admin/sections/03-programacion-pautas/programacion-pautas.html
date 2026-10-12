@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=5">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=6">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=2">
 
 <div class="pautas-root" id="pautasRoot">
@@ -119,6 +119,7 @@
         <table class="pautas-table cm-tabla" id="pautasTable">
           <thead>
             <tr>
+              <th class="cm-exp"></th>
               <th class="cm-pin" title="Posición fija en la tanda">📌</th>
               <th>Spot</th>
               <th>Cliente</th>
@@ -144,13 +145,17 @@
 
       <!-- Vista previa (clic en una fila = escuchar, doble clic = editar) -->
       <div class="cm-previa" id="cmPrevia">
-        <button class="cm-previa-play" id="cmPlay" type="button" title="Escuchar / pausar" disabled>▶</button>
-        <button class="cm-previa-play" id="cmStop" type="button" title="Detener" disabled>■</button>
-        <div class="cm-previa-info">
-          <b id="cmPreviaTit">Elige un spot para escucharlo…</b>
-          <div class="cm-previa-barra" id="cmBarra"><i id="cmBarraFill"></i></div>
+        <div class="cm-previa-btns">
+          <button class="cm-previa-play" id="cmAtras" type="button" title="Atrás 5 s (←)" disabled>⏪</button>
+          <button class="cm-previa-play cm-previa-play--grande" id="cmPlay" type="button" title="Escuchar / pausar (Espacio)" disabled>▶</button>
+          <button class="cm-previa-play" id="cmStop" type="button" title="Detener" disabled>■</button>
+          <button class="cm-previa-play" id="cmAdelante" type="button" title="Adelante 5 s (→)" disabled>⏩</button>
         </div>
-        <span class="cm-previa-t" id="cmPreviaT">0:00 / 0:00</span>
+        <div class="cm-previa-info">
+          <div class="cm-previa-tit"><b id="cmPreviaTit">Seleccione un spot para obtener una vista previa…</b>
+            <span class="cm-previa-t" id="cmPreviaT">0:00 / 0:00</span></div>
+          <div class="cm-onda" id="cmOnda" title="Clic para ir a ese punto"></div>
+        </div>
         <label class="cm-auto"><input type="checkbox" id="cmAutoPlay"> AutoPlay</label>
       </div>
     </div>

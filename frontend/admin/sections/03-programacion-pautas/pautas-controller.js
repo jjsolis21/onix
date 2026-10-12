@@ -470,6 +470,7 @@
       if (String(p.id) === String(_previa.id)) tr.classList.add('cm-sel');
 
       tr.innerHTML = `
+        <td class="cm-exp"><button type="button" data-action="expandir" data-id="${_esc(String(p.id))}" title="Ver detalle">›</button></td>
         <td class="cm-pin" title="${p.posicion ? 'Siempre ' + POSICION[p.posicion].toLowerCase() + ' en la tanda' : ''}">${p.posicion ? '📌<small>' + (p.posicion === 1 ? '1º' : 'ÚLT') + '</small>' : ''}</td>
         <td><span class="cm-spot" title="${_esc(p.audio_nombre)}">${_esc(_truncate(p.audio_nombre, 34))}</span>
           ${(p.versiones || []).length > 1 ? `<small class="cm-sub cm-sub--ver">🔁 ${p.versiones.length} versiones</small>` : ''}
@@ -552,7 +553,7 @@
   // 10b. VISTA PREVIA (clic = escuchar · doble clic = editar)
   // ──────────────────────────────────────────────────────────
 
-  const _previa = { id: null, audio: null };
+  const _previa = { id: null, audio: null, onda: null };
 
   // ──────────────────────────────────────────────────────────
   // 10c. VERSIONES QUE ROTAN (spot con varios audios)
@@ -631,7 +632,6 @@
       const a = _previa.audio = new Audio();
       a.addEventListener('timeupdate', () => {
         $('cmPreviaT').textContent = `${_mmss(a.currentTime)} / ${_mmss(a.duration)}`;
-        $('cmBarraFill').style.width = a.duration ? `${a.currentTime / a.duration * 100}%` : '0';
       });
       const icono = () => { $('cmPlay').textContent = a.paused ? '▶' : '❚❚'; };
       a.addEventListener('play', icono);
@@ -640,7 +640,14 @@
     }
     _previa.audio.src = `/api/v1/audios/${p.audio_id}/stream`;
     $('cmPreviaTit').textContent = `${p.cliente} — ${p.audio_nombre}`;
-    $('cmPlay').disabled = $('cmStop').disabled = false;
+    ['cmPlay', 'cmStop', 'cmAtras', 'cmAdelante'].forEach(id => { $(id).disabled = false; });
+    // Onda del spot (clic = ir a ese punto), sobre el mismo audio
+    try { _previa.onda?.destroy(); } catch (_) { }
+    _previa.onda = typeof WaveSurfer !== 'undefined' ? WaveSurfer.create({
+      container: $('cmOnda'), media: _previa.audio, height: 46, normalize: true,
+      waveColor: '#5d6675', progressColor: '#f5b301', cursorColor: '#fff', cursorWidth: 2,
+      barWidth: 2, barGap: 1, dragToSeek: true,
+    }) : null;
     if ($('cmAutoPlay')?.checked) _previa.audio.play().catch(() => {});
   }
 
@@ -670,6 +677,27 @@
     }
     $('repDesde').value = iso(desde);
     $('repHasta').value = iso(hasta);
+  }
+
+  function _saltar(seg) {
+    const a = _previa.audio;
+    if (a && a.duration) a.currentTime = Math.min(a.duration, Math.max(0, a.currentTime + seg));
+  }
+
+  /** Detalle desplegable de la fila (›): horario, días, versiones y notas */
+  function _detalle(p) {
+    const m = p.matriz || {};
+    const horasDe = d => Object.keys(m).filter(k => k.startsWith(d + '-') && m[k]).map(k => +k.split('-')[1]).sort((a, b) => a - b);
+    const dias = [1, 2, 3, 4, 5, 6, 0].filter(d => horasDe(d).length);
+    const hoy = horasDe(new Date().getDay());
+    const vers = (p.versiones || []).map((v, i) => `${String.fromCharCode(65 + i)}: ${_esc(v.titulo)} (${v.emitidas} salidas)`).join(' · ');
+    return `<div class="cm-det">
+      <div><span>Días</span>${dias.map(d => DIAS[d]).join(', ') || '—'}</div>
+      <div><span>Horas hoy</span>${hoy.map(h => HORAS[h].slice(0, 5)).join(' · ') || 'no sale hoy'}</div>
+      <div><span>Contrato</span>${_esc(p.contrato || '—')}</div>
+      ${vers ? `<div class="cm-det-ancho"><span>Versiones</span>${vers}</div>` : ''}
+      ${p.notas ? `<div class="cm-det-ancho"><span>Notas</span>${_esc(p.notas)}</div>` : ''}
+    </div>`;
   }
 
   function _pararPrevia() {
@@ -1565,6 +1593,16 @@
       const { action, id } = btn.dataset;
       if (action === 'edit')   _openModal(id);
       if (action === 'delete') _openDeleteModal(id);
+      if (action === 'expandir') {
+        const tr = btn.closest('tr');
+        const abierto = tr.nextElementSibling?.classList.contains('cm-det-fila');
+        if (abierto) tr.nextElementSibling.remove();
+        else {
+          const p = _pautas.find(x => String(x.id) === String(id));
+          tr.insertAdjacentHTML('afterend', `<tr class="cm-det-fila"><td colspan="12">${_detalle(p)}</td></tr>`);
+        }
+        btn.classList.toggle('abierto', !abierto);
+      }
       if (action === 'reporte') _abrirReporte(_pautas.find(p => String(p.id) === String(id))?.cliente);
     });
 
@@ -1653,11 +1691,16 @@
       const q = new URLSearchParams({ cliente: $('repCliente').value, desde: $('repDesde').value, hasta: $('repHasta').value });
       window.open(`/api/v1/reportes/certificado?${q}`, '_blank');
     });
-    $('cmBarra')?.addEventListener('click', e => {
-      const a = _previa.audio;
-      if (!a || !a.duration) return;
-      const r = e.currentTarget.getBoundingClientRect();
-      a.currentTime = (e.clientX - r.left) / r.width * a.duration;
+    $('cmAtras')?.addEventListener('click', () => _saltar(-5));
+    $('cmAdelante')?.addEventListener('click', () => _saltar(5));
+    // Teclado en la lista (si no se está escribiendo): Espacio, ← →
+    document.addEventListener('keydown', e => {
+      if (!_previa.audio || !$('pautasRoot')?.offsetParent) return;
+      if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (!$('pautaModal')?.classList.contains('hidden')) return;
+      if (e.code === 'Space') { e.preventDefault(); $('cmPlay').click(); }
+      else if (e.key === 'ArrowLeft') _saltar(-5);
+      else if (e.key === 'ArrowRight') _saltar(5);
     });
 
     // Select de rubro
@@ -1699,14 +1742,23 @@
   }
 
   async function init() {
+    // La marca va ANTES del primer await: el shell y section:init llaman casi
+    // a la vez y, si no, los dos registraban los eventos (clics dobles).
     if (_initialized) {
       console.info('[PautasController] init() — ya inicializado, omitiendo duplicados.');
       return;
     }
+    _initialized = true;
     console.info('[PautasController] init() — iniciando módulo v3...');
 
     // Cargar datos en paralelo
-    const [, audios] = await Promise.all([fetchPautas(), fetchAudios()]);
+    let audios;
+    try {
+      [, audios] = await Promise.all([fetchPautas(), fetchAudios()]);
+    } catch (err) {
+      _initialized = false;      // que el próximo intento vuelva a probar
+      throw err;
+    }
     _audios = audios;
 
     _bindEvents();
@@ -1718,7 +1770,6 @@
       console.info('[PautasController] WaveSurfer warm-up completado.');
     });
 
-    _initialized = true;
     console.info(
       `[PautasController] ✅ Módulo v3 listo. Pautas: ${_pautas.length} | Audios: ${_audios.length}`
     );
