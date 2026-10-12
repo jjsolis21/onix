@@ -237,3 +237,9 @@
 .bv-prio { font-size: 11px; font-weight: 700; }
 .bv-prio.p1 { color: var(--gold-2); }
 .bv-prio.p3 { color: var(--text-lo); }
+
+/* Energía con nombre: Baja · Media · Alta */
+.bv-energia { font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.bv-energia.e-baja { color: #7fb8ff; }
+.bv-energia.e-media { color: var(--gold-1); }
+.bv-energia.e-alta { color: #ff6b6b; }

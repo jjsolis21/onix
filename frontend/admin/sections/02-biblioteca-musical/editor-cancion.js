@@ -123,7 +123,7 @@
               <label>${esc(etq('cat3', 'Subgénero'))} <select id="ecCat3">${opcionesCat('cat3', f.cat3)}</select></label>
               <label>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
               <label>Origen <select id="ecOrigen"><option value="">—</option>${['NACIONAL', 'INTERNACIONAL'].map(o => `<option ${String(f.origen || '').toUpperCase() === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
-              <label>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${'●'.repeat(n)}</option>`).join('')}</select></label>
+              <label>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${n <= 2 ? 'Baja' : n <= 4 ? 'Media' : 'Alta'}</option>`).join('')}</select></label>
               <label>Prioridad <select id="ecPrioridad">${[1, 2, 3].map(n => `<option value="${n}" ${(+f.prioridad || 2) === n ? 'selected' : ''}>${PRIORIDAD[n]}</option>`).join('')}</select></label>
             </div>
           </section>
@@ -169,7 +169,8 @@
   function pintarMarcas() {
     E.raiz.querySelector('#ecMarcas').innerHTML = MARCAS.map((m, i) => `
       <div class="ec-marca ${E.sel === m.k ? 'sel' : ''}" data-m="${m.k}" style="--mc:${m.c}">
-        <button class="ec-marca-tit" data-acc="fijar" title="Fijar ${m.n} donde va el audio (F)">${i + 1} · ${m.n}</button>
+        <div class="ec-marca-tit">${i + 1} · ${m.n}</div>
+        <button class="ec-marcar" data-acc="fijar" title="Marca ${m.n} donde va sonando el audio (tecla F)">● MARCAR</button>
         <input class="ec-marca-v" data-acc="valor" value="${E.valores[m.k] ? fmt(E.valores[m.k]) : '—'}" title="Escribe m:ss.d o segundos">
         <div class="ec-marca-btns">
           <button data-acc="menos" title="Atrás 0,1 s (Mayús: 1 s) — el audio salta ahí">«</button>

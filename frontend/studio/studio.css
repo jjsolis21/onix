@@ -434,3 +434,10 @@ kbd {
 .lib-cargar:hover { background: var(--ambar); color: var(--bg-0); }
 .prob-donde a { color: var(--ambar); text-decoration: none; }
 .prob-donde a:hover { text-decoration: underline; }
+
+/* Outro: cuenta hasta que termina la voz */
+.intro.outro { background: rgba(255, 169, 77, .14); border-color: #ffa94d; }
+.intro.outro span, .intro.outro b { color: #ffa94d; }
+.intro.outro.voz { background: rgba(82, 183, 136, .15); border-color: var(--verde); }
+.intro.outro.voz span, .intro.outro.voz b { color: var(--verde); }
+.marca-outro { background: #ffa94d; }

@@ -2307,6 +2307,7 @@ class AudioEngine:
                 # Marcas en segundos del archivo (como position_sec)
                 "cue_inicio":   self._cue_range(item)[0] if item.get("track") else 0,
                 "cue_intro":    float(track.get("cue_intro") or track.get("intro") or 0),
+                "cue_outro":    float(track.get("cue_outro") or 0),      # dónde termina la voz
                 "mezcla":       round(self._mix_point, 2) if self._mix_point != float("inf") else None,
                 "fin":          round(self._hard_end, 2) if self._hard_end != float("inf") else None,
             } if track else None,

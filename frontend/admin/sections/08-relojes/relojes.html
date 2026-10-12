@@ -221,6 +221,10 @@
   }
 
   const audioLabel = a => `${a.titulo} — ${a.artista} #${a.id}`;
+  // Energía: 1–2 Baja · 3–4 Media · 5 Alta
+  const selectEnergia = (campo, txt, valor) => `<select class="ox-select" data-filtro="${campo}" title="${txt}">
+    <option value="">${txt}: todas</option>${[1, 2, 3, 4, 5].map(n =>
+      `<option value="${n}" ${+valor === n ? "selected" : ""}>${txt.split(" ")[1]} ${n} · ${n <= 2 ? "Baja" : n <= 4 ? "Media" : "Alta"}</option>`).join("")}</select>`;
 
   function pintarFilas(vista) {
     const tb = $("rjFilas");
@@ -242,8 +246,8 @@
           ? `<input class="ox-input" data-campo="audio" list="rjAudios" style="width:100%" placeholder="Buscar audio…"
                value="${audio ? esc(audioLabel(audio)) : ""}">`
           : `<div class="rj-filtros">${FILTROS.map(([k]) => selectValores(k, f.filtros[k])).join("")}
-               <input type="number" class="ox-input" data-filtro="energia_min" min="1" max="5" placeholder="E≥" value="${f.filtros.energia_min ?? ""}">
-               <input type="number" class="ox-input" data-filtro="energia_max" min="1" max="5" placeholder="E≤" value="${f.filtros.energia_max ?? ""}"></div>`}
+               ${selectEnergia("energia_min", "Energía desde", f.filtros.energia_min)}
+               ${selectEnergia("energia_max", "Energía hasta", f.filtros.energia_max)}</div>`}
         </td>
         <td>${v ? `<span class="rj-cand ${v.candidatos ? "" : "cero"}">${v.candidatos} audio(s)${v.duracion_media ? ` · ${fmt(v.duracion_media)}` : ""}</span>` : ""}</td>
         <td style="white-space:nowrap">

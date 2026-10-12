@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=6">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=7">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2518,7 +2518,7 @@
         <select data-campo="prioridad" title="Prioridad">
           <option value="">Prioridad…</option><option value="1">▲ Alta</option><option value="2">● Normal</option><option value="3">▼ Baja</option></select>
         <select data-campo="energia" title="Energía">
-          <option value="">Energía…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+          <option value="">Energía…</option><option value="1">1 · Baja</option><option value="2">2 · Baja</option><option value="3">3 · Media</option><option value="4">4 · Media</option><option value="5">5 · Alta</option></select>
         <button class="bv-btn bv-btn--ok" id="bvAprobar" title="Aprobar: pueden salir al aire (necesitan género y rotación)">✓ Aprobar</button>
         <button class="bv-btn" id="bvBandeja" title="Devolver a la Bandeja: no suenan en automático">📥 A la Bandeja</button>
         <button class="bv-btn" id="bvMarcas" title="Volver a detectar inicio y mezcla (no toca las marcadas a mano)">✂ Marcas</button>
@@ -2551,9 +2551,9 @@
 
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
-<link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=1">
-<script src="sections/02-biblioteca-musical/editor-cancion.js?v=1"></script>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=8"></script>
+<link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=2">
+<script src="sections/02-biblioteca-musical/editor-cancion.js?v=2"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=9"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)
@@ -2720,13 +2720,13 @@
             <div class="jz-field">
               <label>Energía</label>
               <select class="jz-select" id="modal-energia" style="width:100%"
-                title="1 = muy suave · 5 = muy movida. Los relojes pueden filtrar por energía">
+                title="1–2 Baja · 3–4 Media · 5 Alta. Los relojes pueden filtrar por energía">
                 <option value="">—</option>
-                <option value="1">1 · suave</option>
-                <option value="2">2</option>
-                <option value="3">3 · media</option>
-                <option value="4">4</option>
-                <option value="5">5 · movida</option>
+                <option value="1">1 · Baja</option>
+                <option value="2">2 · Baja</option>
+                <option value="3">3 · Media</option>
+                <option value="4">4 · Media</option>
+                <option value="5">5 · Alta</option>
               </select>
             </div>
             <div class="jz-field">

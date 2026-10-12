@@ -37,7 +37,7 @@
     { k: 'cat3',    t: 'Subgénero',  w: 'minmax(80px, 1fr)', oculta: true },
     { k: 'voz',     t: 'Voz',        w: '80px' },
     { k: 'origen',  t: 'Origen',     w: '70px', oculta: true },
-    { k: 'energia', t: 'Energía',    w: '70px' },
+    { k: 'energia', t: 'Energía',    w: '84px' },
     { k: 'prioridad', t: 'Prior.',   w: '76px' },
     { k: 'bpm',     t: 'BPM',        w: '50px', num: true, oculta: true },
     { k: 'anio',    t: 'Año',        w: '56px' },
@@ -63,6 +63,9 @@
     ['origen', 'Origen'], ['energia', 'Energía'], ['prioridad', 'Prioridad'], ['coro', 'Coro'], ['decada', 'Década'],
   ];
   const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
+  // Energía: 1–2 Baja · 3–4 Media · 5 Alta (se guarda el número)
+  const ENERGIA = { 1: '1 · Baja', 2: '2 · Baja', 3: '3 · Media', 4: '4 · Media', 5: '5 · Alta' };
+  const nivelEnergia = n => (n <= 2 ? 'baja' : n <= 4 ? 'media' : 'alta');
   const CALIDAD = [['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
     ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'], ['olvidadas', '💤 Olvidadas (30 días)'],
     ['restringidas', '⏱ Con restricciones']];
@@ -142,7 +145,7 @@
       const orden = ['energia', 'prioridad'].includes(campo) ? (x, y) => x - y : (x, y) => String(x).localeCompare(String(y));
       const valores = [...cuenta.keys()].filter(v => v !== '' && v !== null).sort(orden);
       const actual = S.f[campo];
-      const etiquetaValor = v => campo === 'tipo_audio' ? (TIPOS[v] || v) : campo === 'energia' ? '●'.repeat(v)
+      const etiquetaValor = v => campo === 'tipo_audio' ? (TIPOS[v] || v) : campo === 'energia' ? (ENERGIA[v] || v)
         : campo === 'prioridad' ? (PRIORIDAD[v] || v) : v;
       return `<select data-filtro="${campo}" class="${actual !== undefined ? 'bv-filtro-activo' : ''}">
         <option value="">${esc(nombre)} (Todo)</option>
@@ -248,7 +251,7 @@
       if (a[campo] && !opciones.includes(a[campo])) opciones.push(a[campo]);
     }
     return `<div><select class="bv-rapido" data-rapido="${campo}" data-id="${a.id}">${opciones.map(o =>
-      `<option value="${esc(o)}" ${String(a[campo] ?? '') === o ? 'selected' : ''}>${o === '' ? '—' : esc(campo === 'energia' ? '●'.repeat(+o) : campo === 'prioridad' ? PRIORIDAD[o] : o)}</option>`).join('')}</select></div>`;
+      `<option value="${esc(o)}" ${String(a[campo] ?? '') === o ? 'selected' : ''}>${o === '' ? '—' : esc(campo === 'energia' ? ENERGIA[o] : campo === 'prioridad' ? PRIORIDAD[o] : o)}</option>`).join('')}</select></div>`;
   }
 
   function celda(a, c) {
@@ -258,7 +261,7 @@
         <span class="bv-tapa" data-tapa="${a.id}">${S.sinTapa?.has(a.id) ? '♪' : `<img loading="lazy" src="/api/v1/audios/${a.id}/caratula" alt="" onerror="this.parentNode.textContent='♪';window.BibliotecaVista&&window.BibliotecaVista.sinTapa(${a.id})">`}</span>
         <b>${esc(a.titulo)}</b><small>${esc(a.artista)}</small></div>`;
       case 'cat1': return `<div>${a.cat1 ? `<span class="bv-chip" style="background:${esc(S.colores[String(a.cat1).toUpperCase()] || '#777')}">${esc(a.cat1)}</span>` : ''}</div>`;
-      case 'energia': return `<div class="bv-energia" title="Energía ${a.energia ?? '—'}">${a.energia ? '●'.repeat(a.energia) : ''}</div>`;
+      case 'energia': return `<div class="bv-energia e-${a.energia ? nivelEnergia(a.energia) : ''}" title="Energía ${a.energia ?? '—'}">${a.energia ? ENERGIA[a.energia] : ''}</div>`;
       case 'prioridad': return `<div class="bv-prio p${a.prioridad}">${a.prioridad === 2 ? '' : PRIORIDAD[a.prioridad]}</div>`;
       case 'bpm': return `<div class="bv-num">${a.bpm || ''}</div>`;
       case 'duracion': return `<div class="bv-num">${fmt(a.duracion)}</div>`;
@@ -455,7 +458,7 @@
         `<div class="bv-f-dup" data-f="ir" data-id="${d.id}">${esc(d.titulo)} — ${esc(d.artista)} · ${fmt(d.duracion)} <small>(#${d.id}, ir)</small></div>`).join('')}</div>` : ''}
       <div class="bv-f-sec"><h4>Datos</h4><dl class="bv-f-datos">
         ${dato(etq.cat1 || 'Género', f.cat1)}${dato(etq.cat2 || 'Rotación', f.cat2)}${dato(etq.cat3 || 'Subgénero', f.cat3)}
-        ${dato('Voz', f.voz)}${dato('Origen', f.origen)}${dato('Energía', f.energia ? '●'.repeat(f.energia) : '')}
+        ${dato('Voz', f.voz)}${dato('Origen', f.origen)}${dato('Energía', f.energia ? ENERGIA[f.energia] : '')}
         ${dato('Prioridad', PRIORIDAD[f.prioridad || 2])}${dato('Coro', f.coro?.[0] ? `${fmt(f.coro[0])} → ${fmt(f.coro[1])}` : 'sin marcar')}
         ${dato('Año', f.anio)}${dato('BPM', f.bpm)}${dato('Volumen', volumen)}${dato('Marcas', marcas)}
         ${dato('Cargada', (f.creado || '').slice(0, 10))}${dato('Archivo', f.archivo_path)}

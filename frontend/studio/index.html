@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=7" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=8" />
 </head>
 <body>
 
@@ -47,11 +47,13 @@
       </div>
       <div class="pl-tiempos">
         <div class="intro" id="nowIntro" hidden><span>INTRO</span><b id="nowIntroSeg">0</b></div>
+        <div class="intro outro" id="nowOutro" hidden title="Cuánto falta para que termine la voz"><span>OUTRO</span><b id="nowOutroSeg">0</b></div>
         <div class="cuenta" id="nowRestante">0:00</div>
       </div>
       <div class="barra" id="nowBarra">
         <div class="barra-fill" id="nowFill"></div>
         <div class="marca marca-intro" id="marcaIntro" hidden title="Fin del intro"></div>
+        <div class="marca marca-outro" id="marcaOutro" hidden title="Termina la voz (outro)"></div>
         <div class="marca marca-mezcla" id="marcaMezcla" hidden title="Punto de mezcla"></div>
         <div class="barra-hover" id="barraHover" hidden><span></span></div>
         <div class="marca marca-salto" id="marcaSalto" hidden></div>
@@ -207,6 +209,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=7"></script>
+  <script src="/static/studio/studio.js?v=8"></script>
 </body>
 </html>

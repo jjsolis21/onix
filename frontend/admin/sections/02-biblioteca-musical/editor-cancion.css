@@ -58,8 +58,13 @@
   padding: 6px; display: grid; gap: 5px;
 }
 .ec-marca.sel { border-color: var(--mc); box-shadow: 0 0 0 1px var(--mc), 0 0 14px color-mix(in srgb, var(--mc) 35%, transparent); background: var(--choc-4); }
-.ec-marca-tit { background: transparent; border: 0; color: var(--mc); font-weight: 700; font-size: 14px; text-align: left; cursor: pointer; padding: 0; font-family: inherit; }
-.ec-marca-tit:hover { text-decoration: underline; }
+.ec-marca-tit { color: var(--mc); font-weight: 700; font-size: 14px; }
+.ec-marcar {
+  background: var(--mc); color: #000; border: 0; border-radius: 5px; padding: 8px 0; font-size: 14px;
+  font-weight: 800; letter-spacing: .06em; cursor: pointer; font-family: inherit;
+}
+.ec-marcar:hover { filter: brightness(1.15); }
+.ec-marcar:active { transform: scale(.97); }
 .ec-marca-v {
   width: 100%; background: #000; border: 1px solid var(--choc-5); border-radius: 4px; color: var(--text-hi);
   font-family: var(--font-data); font-size: 18px; padding: 3px 6px; text-align: center;

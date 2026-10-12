@@ -145,6 +145,7 @@ const Estado = (() => {
     };
     marca($("marcaIntro"), ct?.cue_intro);
     marca($("marcaMezcla"), ct?.mezcla);
+    marca($("marcaOutro"), ct?.cue_outro);
 
     // Controles y avisos
     $("btnDetener").classList.toggle("activo", !!st.detener_al_terminar);
@@ -203,6 +204,21 @@ const Estado = (() => {
         $("nowIntroSeg").textContent = falta > 0 ? Math.ceil(falta) : "▶";
       } else {
         caja.hidden = true;
+      }
+
+      // Outro: cuánto falta para que termine la voz (30 s antes) y, ya
+      // terminada, "HABLA" hasta la mezcla: el locutor puede entrar encima
+      const outro = ct?.cue_outro ?? 0, cajaO = $("nowOutro");
+      const finHabla = ct?.mezcla ?? total;
+      if (ct && ct.tipo_audio === "Musica" && outro > 0 && pos >= outro - 30 && pos < Math.max(outro + 3, finHabla)
+          && pos >= intro) {
+        const falta = outro - pos;
+        cajaO.hidden = false;
+        cajaO.classList.toggle("voz", falta <= 0);
+        cajaO.querySelector("span").textContent = falta > 0 ? "OUTRO" : "HABLA";
+        $("nowOutroSeg").textContent = falta > 0 ? Math.ceil(falta) : "▶";
+      } else {
+        cajaO.hidden = true;
       }
 
       // Cuándo entra lo siguiente: en el punto de mezcla
