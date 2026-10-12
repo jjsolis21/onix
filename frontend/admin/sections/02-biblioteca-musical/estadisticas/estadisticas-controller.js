@@ -201,82 +201,15 @@
   }
 
   // ──────────────────────────────────────────────────────────
-  //  DATOS MOCK (sólo para desarrollo sin backend real)
-  //  Eliminar cuando el backend FastAPI esté disponible.
-  // ──────────────────────────────────────────────────────────
-
-  function generateMockTop40(period) {
-    const tipos = ['TEMA', 'TEMA', 'TEMA', 'PAUTA'];
-    const items = [];
-    for (let i = 1; i <= 40; i++) {
-      const tipo = tipos[i % tipos.length];
-      const baseToques = Math.max(1, Math.floor(100 / i) + Math.floor(Math.random() * 8));
-      items.push({
-        id: `item-${period}-${i}`,
-        tipo,
-        titulo: tipo === 'PAUTA'
-          ? `Pauta Cliente ${String.fromCharCode(64 + (i % 10) + 1)} — Spot ${i}`
-          : `Título del Tema ${i}`,
-        artista: tipo === 'PAUTA' ? 'Pautante Comercial' : `Artista ${i}`,
-        categoria: CONFIG.CATEGORIES[(i + 1) % CONFIG.CATEGORIES.length],
-        toques: baseToques,
-        duracion: tipo === 'PAUTA' ? 30 : 180 + Math.floor(Math.random() * 120),
-        audio_url: `/media/audio/${period}-${i}.mp3`,
-      });
-    }
-    return items;
-  }
-
-  function generateMockForgotten() {
-    const tipos = ['TEMA', 'PAUTA', 'TEMA'];
-    return Array.from({ length: 12 }, (_, i) => {
-      const tipo = tipos[i % tipos.length];
-      const dias = 30 + Math.floor(Math.random() * 90);
-      const last = new Date(Date.now() - dias * 86400000).toISOString();
-      return {
-        id: `olvidado-${i + 1}`,
-        tipo,
-        titulo: tipo === 'PAUTA' ? `Pauta Inactiva ${i + 1}` : `Tema Olvidado ${i + 1}`,
-        artista: tipo === 'PAUTA' ? 'Cliente Inactivo' : `Artista ${i + 1}`,
-        dias_sin_sonar: dias,
-        ultima_emision: last,
-        audio_url: `/media/audio/forgotten-${i + 1}.mp3`,
-      };
-    });
-  }
-
-  function generateMockDetail(id) {
-    const tipo = id.startsWith('olvidado') || Math.random() > 0.75 ? 'PAUTA' : 'TEMA';
-    const totalEmisiones = tipo === 'PAUTA' ? Math.floor(Math.random() * 200 + 50) : Math.floor(Math.random() * 500 + 100);
-    const emisiones = Array.from({ length: Math.min(totalEmisiones, 60) }, (_, i) => {
-      const fecha = new Date(Date.now() - i * 8 * 3600000 - Math.random() * 3600000);
-      return {
-        id: `log-${i + 1}`,
-        fecha_hora: fecha.toISOString(),
-        canal: ['Principal', 'Secundario', 'Stream'][i % 3],
-      };
-    });
-    const cumplimiento = tipo === 'PAUTA' ? Math.floor(Math.random() * 40 + 60) : null;
-
-    return {
-      id,
-      tipo,
-      titulo: tipo === 'PAUTA' ? `Pauta Cliente A — Spot ${id.split('-').pop()}` : `Tema ${id.split('-').pop()}`,
-      artista: tipo === 'PAUTA' ? 'Pautante Comercial' : 'Artista del Tema',
-      categoria: CONFIG.CATEGORIES[Math.floor(Math.random() * CONFIG.CATEGORIES.length)],
-      duracion: tipo === 'PAUTA' ? 30 : 213,
-      audio_url: `/media/audio/${id}.mp3`,
-      total_toques: totalEmisiones,
-      ultima_emision: emisiones[0]?.fecha_hora ?? null,
-      promedio_dia: (totalEmisiones / 30).toFixed(1),
-      cumplimiento_pct: cumplimiento,
-      emisiones,
-    };
-  }
-
-  // ──────────────────────────────────────────────────────────
   //  CARGA DE DATOS (con fallback a mock)
   // ──────────────────────────────────────────────────────────
+
+  // Sin datos inventados: si el servidor falla se muestra vacío y se avisa.
+  // (Antes se rellenaba con datos de ejemplo que parecían reales.)
+  function avisarError(err) {
+    console.error('[EstadisticasModule] Backend no disponible:', err.message);
+    if (typeof global.toast === 'function') global.toast(`Estadísticas: ${err.message}`, 'error');
+  }
 
   /** Carga el Top 40 para el período activo. */
   async function fetchTop40(period) {
@@ -284,8 +217,8 @@
       return await apiFetch(`/top40?period=${period}`);
     } catch (err) {
       if (err.name === 'AbortError') return null; // solicitud cancelada, ignorar
-      console.warn('[EstadisticasModule] Backend no disponible — usando datos mock:', err.message);
-      return generateMockTop40(period);
+      avisarError(err);
+      return [];
     }
   }
 
@@ -295,7 +228,8 @@
       return await apiFetch('/top40/forgotten');
     } catch (err) {
       if (err.name === 'AbortError') return null;
-      return generateMockForgotten();
+      avisarError(err);
+      return [];
     }
   }
 
@@ -305,7 +239,8 @@
       return await apiFetch(`/detalle/${encodeURIComponent(id)}`);
     } catch (err) {
       if (err.name === 'AbortError') return null;
-      return generateMockDetail(id);
+      avisarError(err);
+      return null;
     }
   }
 
@@ -466,7 +401,10 @@
 
     // Cargar datos del detalle
     const data = await fetchDetail(id);
-    if (!data) return; // solicitud cancelada
+    if (!data) {                      // cancelada o error del servidor
+      if (STATE.currentItemId === id && DOM.auditTitle) DOM.auditTitle.textContent = 'No se pudo cargar';
+      return;
+    }
 
     STATE.currentItemData = data;
     STATE.logAll = data.emisiones ?? [];

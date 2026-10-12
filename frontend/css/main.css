@@ -1472,3 +1472,54 @@ input, select, textarea { font-family: var(--font-ui); }
   }
   .players-row { grid-template-columns: 1fr 380px 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   FASE 3 — Ajustes del hub de biblioteca
+   · La fila de búsqueda + filtros se parte en varias líneas en vez
+     de desbordar la columna (antes empujaba la tabla a la izquierda).
+   · La columna central nunca crece más que su espacio en el grid.
+   · Botones de acción de la tabla con estilo y ancho suficiente.
+══════════════════════════════════════════════════════════════ */
+.console-grid { grid-template-columns: var(--col-playlist-w) minmax(0, 1fr) var(--col-cart-w); }
+.col-hub { min-width: 0; }
+
+.hub-search { flex-wrap: wrap; row-gap: 6px; }
+.hub-search .search-input { flex: 1 1 100%; }
+.search-filters.filter-row { flex-wrap: wrap; align-items: center; }
+.filter-row-label {
+  font-family: var(--font-data);
+  font-size: .55rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  margin-right: 2px;
+}
+#btnClearFilters {
+  font-family: var(--font-data);
+  font-size: .58rem;
+  background: none;
+  border: none;
+  color: var(--text-lo);
+  cursor: pointer;
+}
+#btnClearFilters:hover { color: var(--gold-1); }
+.search-count { margin-left: auto; font-family: var(--font-data); font-size: .6rem; color: var(--text-lo); }
+
+.th-e   { width: 34px; }
+.th-act { width: 150px; }
+.lib-col-actions { white-space: nowrap; text-align: right; }
+.lib-btn-play, .lib-btn-queue, .lib-btn-prev {
+  font-family: var(--font-data);
+  font-size: .58rem;
+  letter-spacing: .06em;
+  padding: 3px 7px;
+  margin-left: 3px;
+  border: 1px solid var(--choc-5);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-mid);
+  cursor: pointer;
+}
+.lib-btn-play:hover  { border-color: var(--red-live); color: var(--red-live); }
+.lib-btn-queue:hover { border-color: var(--gold-0); color: var(--gold-1); }
+.lib-btn-prev:hover  { border-color: var(--blue-next); color: var(--blue-next); }

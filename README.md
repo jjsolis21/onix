@@ -11,6 +11,7 @@ onix/
 │   ├── paths.py                 ← Rutas únicas: BD, media/, respaldo/
 │   ├── api/
 │   │   ├── api_server.py        ← FastAPI REST + WebSocket
+│   │   ├── reportes.py          ← Top 40, historial, cumplimiento de pautas
 │   │   └── schemas_pautas.py
 │   └── audio/
 │       ├── audio_engine.py      ← Motor: crossfade, rotación, tandas, watchdog
@@ -91,12 +92,31 @@ Corren en cualquier sistema (motor simulado, BD y audios temporales).
 | `ventana_artista_min` | 60 | Minutos antes de repetir artista |
 | `max_mismo_genero` | 2 | Máximo de canciones seguidas con la misma voz |
 | `ducking_db` | -12 | Atenuación de la música al disparar la cartuchera |
+| `dispositivo_aire` | -1 | Tarjeta de sonido del AIRE (-1 = predeterminada de Windows) |
+| `dispositivo_preescucha` | -1 | Tarjeta de la PREESCUCHA (escucha interna) |
 | `tandas_minutos` | 15,45 | Minutos de cada hora en que salen las pautas |
 | `normalizacion_activa` | 1 | Normalizar volumen |
 | `normalizacion_lufs` | -16 | Sonoridad objetivo (LUFS) |
 
+## 🔊 Salidas de audio (aire y preescucha)
+
+ONIX usa dos salidas, cada una en la tarjeta de sonido que elijas en
+**Admin → 06 Motor de Audio**:
+
+- **AIRE**: lo que va al transmisor o al codificador de streaming (música, tandas, cartuchera).
+- **PREESCUCHA**: escucha interna en cabina. El botón 🎧 del Studio y del editor de
+  cartuchera suena aquí y **nunca** sale al aire.
+
+Si las dos usan la misma tarjeta, la preescucha se oye al aire: conviene una
+segunda tarjeta (una USB sencilla sirve). El cambio de tarjeta se aplica desde la
+próxima pista, sin cortar lo que suena.
+
 ## 📢 Pautas y tandas
 
+- **Automático**: las tandas salen solas en el primer cambio de pista después de su minuto.
+- **Manual**: el Studio muestra la barra ámbar *TANDA EN ESPERA* y el operador elige
+  *LANZAR AHORA* o *AL TERMINAR LA CANCIÓN*. Si no la lanza dentro de su hora, se pierde
+  y figura como faltante en el reporte del cliente.
 - La matriz de la pauta marca **qué horas** sale; `tandas_minutos` decide **en qué minuto**.
 - Las pautas de cada hora se reparten entre sus tandas separando anunciantes
   del mismo rubro, y dentro de una tanda nunca van dos del mismo rubro seguidas.
@@ -119,3 +139,10 @@ En modo automático, si la rotación no tiene nada que sonar (biblioteca vacía,
 base de datos caída, archivos rotos), el motor toma audios de
 `media/respaldo/` en vez de quedarse en silencio. Conviene dejar ahí 20–30
 canciones seguras. El Studio avisa con `respaldo_activado`.
+
+## 📊 Historial y reportes (Admin → 05)
+
+- **Historial**: todo lo que salió al aire, con filtros por fecha, tipo, origen y texto; exporta CSV (Excel).
+- **Reporte por cliente**: por cada pauta, programadas vs emitidas y % de cumplimiento en el
+  período; detalle por día, CSV y *comprobante* imprimible para entregar al cliente.
+- **Estadísticas (07)**: Top 40 por día/semana/mes y música que no suena hace 30+ días.

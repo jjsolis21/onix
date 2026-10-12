@@ -609,6 +609,8 @@ class AudioUpdateRequest(BaseModel):
     tipo_audio: Optional[str] = Field(default=None, description="Musica | Cuña | Efecto | Sweeper | Programa | Tips")
     ganancia_db: Optional[float] = Field(default=None, ge=-20, le=6,
                                          description="Ajuste manual de volumen sobre la normalización (dB)")
+    origen:  Optional[str] = Field(default=None, description="NACIONAL | INTERNACIONAL")
+    energia: Optional[int] = Field(default=None, ge=1, le=5)
     # Cue points retrocompatibles
     intro: Optional[float] = Field(default=None)
     outro: Optional[float] = Field(default=None)
@@ -638,6 +640,18 @@ def _validate_tipo_audio(valor: Optional[str]) -> Optional[str]:
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=f"tipo_audio inválido: '{valor}'. Valores: {', '.join(TIPOS_AUDIO)}",
     )
+
+
+ORIGENES = ("NACIONAL", "INTERNACIONAL")
+
+
+def _validate_origen(valor: Optional[str]) -> Optional[str]:
+    if valor is None or not valor.strip():
+        return None
+    v = valor.strip().upper()
+    if v not in ORIGENES:
+        raise HTTPException(status_code=422, detail=f"origen inválido: '{valor}'. Valores: {', '.join(ORIGENES)}")
+    return v
 
 
 # ===========================================================================
@@ -906,6 +920,8 @@ async def create_audio(
     cat3: Optional[str] = Form(None),
     voz: Optional[str] = Form(None),
     tipo_audio: Optional[str] = Form(None),
+    origen: Optional[str] = Form(None),
+    energia: Optional[int] = Form(None, ge=1, le=5),
     intro: Optional[float] = Form(None),
     outro: Optional[float] = Form(None),
     hook: Optional[float] = Form(None),
@@ -940,6 +956,7 @@ async def create_audio(
     # PASO 1: Validación dinámica de categorías
     _validate_all_categorias(conn, cat1, cat2, cat3, voz)
     tipo_audio = _validate_tipo_audio(tipo_audio) or "Musica"
+    origen = _validate_origen(origen)
     logger.info("  → Validación de categorías: PASS")
 
     # PASO 2: Guardar el archivo subido en LIBRARY_DIR directamente
@@ -983,8 +1000,8 @@ async def create_audio(
                 subgenero, categoria, cat3, genero_vocal,
                 bpm, intro, outro, hook, fecha_lanzamiento,
                 cue_inicio, cue_intro, cue_inicio_coro, cue_final_coro,
-                cue_mezcla, fade_in, fade_out, tipo_audio
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cue_mezcla, fade_in, fade_out, tipo_audio, origen, energia
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
@@ -1008,6 +1025,8 @@ async def create_audio(
             fade_in,
             fade_out,
             tipo_audio,
+            origen,
+            energia,
         ))
         nuevo_id = cursor.lastrowid
 
@@ -1121,6 +1140,8 @@ async def update_audio(
     tipo_final = _validate_tipo_audio(body.tipo_audio)
     if tipo_final is not None: campos_update["tipo_audio"] = tipo_final
     if body.ganancia_db is not None: campos_update["ganancia_db"] = body.ganancia_db
+    if body.origen  is not None: campos_update["origen"]  = _validate_origen(body.origen)
+    if body.energia is not None: campos_update["energia"] = body.energia
     # Cue points extendidos (6 marcadores Jazler)
     if body.cue_inicio      is not None: campos_update["cue_inicio"]      = body.cue_inicio
     if body.cue_intro       is not None: campos_update["cue_intro"]       = body.cue_intro
@@ -1211,7 +1232,7 @@ def list_audios(
                cue_inicio, cue_intro, cue_inicio_coro,
                cue_final_coro, cue_mezcla, fade_in, fade_out,
                tipo_audio, veces_reproducido, ultima_reproduccion,
-               loudness_lufs, pico_db, loudness_estado, ganancia_db
+               loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia
         FROM audios
         WHERE activo = 1
     """

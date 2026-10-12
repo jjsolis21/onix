@@ -13,7 +13,8 @@ Los reportes aceptan ?formato=csv para descargar (se abre en Excel).
 
 CUMPLIMIENTO DE UNA PAUTA
     programadas = horas marcadas en su matriz dentro del período (y dentro de
-                  sus fechas de vigencia), como máximo menciones_diarias por día.
+                  sus fechas de vigencia; sin fecha de inicio, desde que se creó),
+                  como máximo menciones_diarias por día.
                   Del día de hoy solo cuentan las horas ya cumplidas.
     emitidas    = salidas registradas en historial_emision con ese pauta_id.
     cumplimiento = emitidas / programadas (tope 100 %).
@@ -230,7 +231,9 @@ def _cumplimiento_pauta(conn, p, desde: date, hasta: date, ahora: datetime = Non
         matriz = {}
     if not isinstance(matriz, dict):
         matriz = {}
-    ini = max(desde, _parse_fecha(p["fecha_inicio"], desde)) if p["fecha_inicio"] else desde
+    # Sin fecha de inicio, la pauta rige desde el día en que se creó
+    inicio_pauta = p["fecha_inicio"] or (p["created_at"] or "")[:10]
+    ini = max(desde, _parse_fecha(inicio_pauta, desde)) if inicio_pauta else desde
     fin = min(hasta, _parse_fecha(p["fecha_fin"], hasta)) if p["fecha_fin"] else hasta
     fin = min(fin, ahora.date())
     tope = p["menciones_diarias"] or None

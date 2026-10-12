@@ -497,7 +497,7 @@ class MockBackend:
 
     DEVICES = [
         {"index": 0, "nombre": "Sin sonido", "habilitado": True, "predeterminado": False},
-        {"index": 1, "nombre": "Simulada 1 (predeterminada)", "habilitado": True, "predeterminado": True},
+        {"index": 1, "nombre": "Simulada 1", "habilitado": True, "predeterminado": True},
         {"index": 2, "nombre": "Simulada 2", "habilitado": True, "predeterminado": False},
     ]
 

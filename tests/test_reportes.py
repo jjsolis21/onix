@@ -160,3 +160,19 @@ def test_preescucha_por_api(client, tmp_path):
 def test_lanzar_tanda_sin_tanda(client):
     r = client.post("/api/v1/player/lanzar_tanda", json={"ahora": True})
     assert r.status_code == 422 and "tanda" in r.json()["detail"]
+
+
+def test_pauta_sin_fecha_inicio_cuenta_desde_su_creacion():
+    """Una pauta creada hoy no debe aparecer como incumplida en semanas anteriores."""
+    conn = db()
+    aid = nuevo_audio("CUÑA NUEVA", tipo="Cuña")
+    cur = conn.execute(
+        "INSERT INTO pautas (cliente, audio_id, matriz, created_at)"
+        " VALUES ('NUEVO', ?, ?, '2026-10-12 08:00:00')", (aid, json.dumps({"1-8": True})))
+    conn.commit()
+    p = conn.execute("SELECT * FROM pautas WHERE id = ?", (cur.lastrowid,)).fetchone()
+    # Los lunes 5 y 12 tienen la hora 8 marcada; solo cuenta el 12
+    r = _cumplimiento_pauta(conn, p, date(2026, 10, 1), date(2026, 10, 12),
+                            ahora=datetime(2026, 10, 13, 0, 0))
+    assert r["programadas"] == 1
+    conn.close()

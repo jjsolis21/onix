@@ -389,6 +389,18 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             logger.info(f"  → Columna {col_name} añadida a audios: OK")
     logger.info("  → Columnas de normalización: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 13 — Origen y energía de la música (filtros del Studio)
+    #   · origen  → 'NACIONAL' | 'INTERNACIONAL' (NULL = sin clasificar)
+    #   · energia → 1 (suave) … 5 (muy movida)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    columnas_audios_v5 = {row["name"] for row in cursor.fetchall()}
+    for col_name, col_def in (("origen", "TEXT DEFAULT NULL"), ("energia", "INTEGER DEFAULT NULL")):
+        if col_name not in columnas_audios_v5:
+            cursor.execute(f"ALTER TABLE audios ADD COLUMN {col_name} {col_def}")
+            logger.info(f"  → Columna {col_name} añadida a audios: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

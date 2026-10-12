@@ -1,0 +1,296 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 05 — Historial de Emisión
+     · Historial: todo lo que salió al aire, con filtros y exportación.
+     · Reporte por cliente: cumplimiento de cada pauta (programadas vs emitidas).
+     API: /api/v1/historial/buscar, /api/v1/reportes/pautas[/{id}]
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+
+<div class="ox-root" id="histRoot">
+  <header class="ox-head">
+    <div>
+      <h2>Historial de Emisión</h2>
+      <p>Registro de todo lo que salió al aire y comprobantes de pauta para los clientes.</p>
+    </div>
+  </header>
+
+  <nav class="ox-tabs">
+    <button class="ox-tab active" data-pane="histPaneLog">HISTORIAL</button>
+    <button class="ox-tab" data-pane="histPaneClientes">REPORTE POR CLIENTE</button>
+  </nav>
+
+  <!-- ═══════════════ HISTORIAL ═══════════════ -->
+  <div class="ox-pane active" id="histPaneLog">
+    <section class="ox-card">
+      <div class="ox-row">
+        <div class="ox-field"><label for="hDesde">Desde</label><input type="date" class="ox-input" id="hDesde"></div>
+        <div class="ox-field"><label for="hHasta">Hasta</label><input type="date" class="ox-input" id="hHasta"></div>
+        <div class="ox-field">
+          <label for="hTipo">Tipo</label>
+          <select class="ox-select" id="hTipo">
+            <option value="">Todo</option><option value="musica">Música</option>
+            <option value="pauta">Pautas</option><option value="efecto">Cartuchera</option>
+          </select>
+        </div>
+        <div class="ox-field">
+          <label for="hOrigen">Origen</label>
+          <select class="ox-select" id="hOrigen">
+            <option value="">Todos</option><option value="auto">Automático</option>
+            <option value="manual">Manual</option><option value="cola">Cola</option>
+            <option value="pauta">Tanda</option><option value="respaldo">Respaldo</option>
+          </select>
+        </div>
+        <div class="ox-field" style="flex:2 1 200px">
+          <label for="hBuscar">Buscar</label>
+          <input class="ox-input" id="hBuscar" placeholder="Título, artista o cliente…">
+        </div>
+        <button class="ox-btn ox-btn--primary" id="hFiltrar">Filtrar</button>
+        <button class="ox-btn" id="hCsv" title="Descargar para Excel">⬇ CSV</button>
+      </div>
+    </section>
+
+    <section class="ox-card">
+      <div class="ox-table-wrap">
+        <table class="ox-table">
+          <thead><tr><th>Fecha y hora</th><th>Título</th><th>Artista / Cliente</th><th>Tipo</th><th>Origen</th></tr></thead>
+          <tbody id="hBody"><tr><td colspan="5" class="ox-empty">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="ox-pager">
+        <span id="hInfo"></span>
+        <button class="ox-btn ox-btn--sm" id="hPrev">◀</button>
+        <button class="ox-btn ox-btn--sm" id="hNext">▶</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══════════════ REPORTE POR CLIENTE ═══════════════ -->
+  <div class="ox-pane" id="histPaneClientes">
+    <section class="ox-card">
+      <p class="ox-hint">
+        <b>Programadas</b> = horas marcadas en la matriz de la pauta dentro del período (máximo
+        "menciones diarias" por día). <b>Emitidas</b> = salidas registradas al aire.
+        Lo que no salió (motor apagado, tanda no lanzada en manual, archivo dañado) aparece como faltante.
+      </p>
+      <div class="ox-row">
+        <div class="ox-field"><label for="rDesde">Desde</label><input type="date" class="ox-input" id="rDesde"></div>
+        <div class="ox-field"><label for="rHasta">Hasta</label><input type="date" class="ox-input" id="rHasta"></div>
+        <div class="ox-field" style="flex:2 1 200px">
+          <label for="rCliente">Cliente</label>
+          <input class="ox-input" id="rCliente" placeholder="Todos">
+        </div>
+        <button class="ox-btn ox-btn--primary" id="rGenerar">Generar</button>
+        <button class="ox-btn" id="rCsv">⬇ CSV</button>
+      </div>
+    </section>
+
+    <section class="ox-card">
+      <div class="ox-kpis" id="rKpis"></div>
+      <div class="ox-table-wrap" style="margin-top:var(--s3)">
+        <table class="ox-table">
+          <thead><tr><th>Cliente</th><th>Rubro</th><th>Contrato</th>
+            <th class="ox-num">Programadas</th><th class="ox-num">Emitidas</th>
+            <th class="ox-num">Faltantes</th><th>Cumplimiento</th></tr></thead>
+          <tbody id="rBody"><tr><td colspan="7" class="ox-empty">Elige el período y pulsa Generar</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="ox-card" id="rDetalle" hidden>
+      <div class="ox-head">
+        <h3 id="rDetTitulo" style="margin:0"></h3>
+        <span class="ox-spacer"></span>
+        <button class="ox-btn" id="rDetCsv">⬇ CSV del cliente</button>
+        <button class="ox-btn ox-btn--primary" id="rDetImprimir">🖨 Comprobante</button>
+      </div>
+      <div class="ox-grid" style="margin-top:var(--s3)">
+        <div class="ox-table-wrap">
+          <table class="ox-table">
+            <thead><tr><th>Día</th><th class="ox-num">Prog.</th><th class="ox-num">Emit.</th><th class="ox-num">Falt.</th></tr></thead>
+            <tbody id="rDetDias"></tbody>
+          </table>
+        </div>
+        <div class="ox-table-wrap" style="max-height:360px">
+          <table class="ox-table">
+            <thead><tr><th>Salida al aire</th><th>Origen</th></tr></thead>
+            <tbody id="rDetEmisiones"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const iso = d => d.toISOString().slice(0, 10);
+  const hoy = new Date();
+  const PAGINA = 100;
+  const ETIQ_TIPO = { musica: "Música", pauta: "Pauta", efecto: "Cartuchera" };
+  const ETIQ_ORIGEN = { auto: "Automático", manual: "Manual", cola: "Cola", pauta: "Tanda", respaldo: "Respaldo" };
+  let offset = 0, total = 0, detalle = null;
+
+  // Pestañas
+  document.querySelectorAll("#histRoot .ox-tab").forEach(tab => tab.addEventListener("click", () => {
+    document.querySelectorAll("#histRoot .ox-tab").forEach(t => t.classList.toggle("active", t === tab));
+    document.querySelectorAll("#histRoot .ox-pane").forEach(p => p.classList.toggle("active", p.id === tab.dataset.pane));
+  }));
+
+  // ── Historial ─────────────────────────────────────────────
+  $("hDesde").value = iso(new Date(hoy.getTime() - 6 * 86400000));
+  $("hHasta").value = iso(hoy);
+
+  function filtros() {
+    const p = new URLSearchParams({ desde: $("hDesde").value, hasta: $("hHasta").value });
+    if ($("hTipo").value) p.set("tipo", $("hTipo").value);
+    if ($("hOrigen").value) p.set("origen", $("hOrigen").value);
+    if ($("hBuscar").value.trim()) p.set("q", $("hBuscar").value.trim());
+    return p;
+  }
+
+  async function cargarHistorial() {
+    const p = filtros();
+    p.set("limit", PAGINA); p.set("offset", offset);
+    const body = $("hBody");
+    try {
+      const r = await fetch(`/api/v1/historial/buscar?${p}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || r.status);
+      total = data.total;
+      body.innerHTML = data.data.length ? data.data.map(h => `<tr>
+          <td class="ox-mono">${esc(h.iniciado_en)}</td>
+          <td>${esc(h.titulo)}</td>
+          <td>${h.cliente ? `📢 ${esc(h.cliente)}` : esc(h.artista)}</td>
+          <td><span class="ox-tag ox-tag--${esc(h.tipo)}">${esc(ETIQ_TIPO[h.tipo] || h.tipo)}</span></td>
+          <td><span class="ox-tag ${h.origen === "respaldo" ? "ox-tag--respaldo" : ""}">${esc(ETIQ_ORIGEN[h.origen] || h.origen)}</span></td>
+        </tr>`).join("")
+        : `<tr><td colspan="5" class="ox-empty">Nada salió al aire con estos filtros</td></tr>`;
+      $("hInfo").textContent = total ? `${offset + 1}–${Math.min(offset + PAGINA, total)} de ${total}` : "";
+      $("hPrev").disabled = offset === 0;
+      $("hNext").disabled = offset + PAGINA >= total;
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="5" class="ox-empty">Error: ${esc(err.message)}</td></tr>`;
+    }
+  }
+
+  $("hFiltrar").addEventListener("click", () => { offset = 0; cargarHistorial(); });
+  $("hBuscar").addEventListener("keydown", e => { if (e.key === "Enter") { offset = 0; cargarHistorial(); } });
+  $("hPrev").addEventListener("click", () => { offset = Math.max(0, offset - PAGINA); cargarHistorial(); });
+  $("hNext").addEventListener("click", () => { offset += PAGINA; cargarHistorial(); });
+  $("hCsv").addEventListener("click", () => {
+    const p = filtros(); p.set("formato", "csv");
+    window.location.href = `/api/v1/historial/buscar?${p}`;
+  });
+
+  // ── Reporte por cliente ───────────────────────────────────
+  $("rDesde").value = iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  $("rHasta").value = iso(hoy);
+
+  const params = () => {
+    const p = new URLSearchParams({ desde: $("rDesde").value, hasta: $("rHasta").value });
+    if ($("rCliente").value.trim()) p.set("cliente", $("rCliente").value.trim());
+    return p;
+  };
+
+  function medidor(pct) {
+    if (pct == null) return `<span class="ox-meter__txt">—</span>`;
+    const cls = pct >= 90 ? "" : pct >= 70 ? "warn" : "bad";
+    return `<div class="ox-meter"><div class="ox-meter__bar"><div class="ox-meter__fill ${cls}" style="width:${pct}%"></div></div>
+            <span class="ox-meter__txt">${pct}%</span></div>`;
+  }
+
+  async function generar() {
+    const body = $("rBody");
+    $("rDetalle").hidden = true;
+    try {
+      const r = await fetch(`/api/v1/reportes/pautas?${params()}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || r.status);
+      const filas = data.data;
+      const prog = filas.reduce((s, f) => s + f.programadas, 0);
+      const emit = filas.reduce((s, f) => s + Math.min(f.emitidas, f.programadas), 0);
+      $("rKpis").innerHTML = `
+        <div class="ox-kpi"><b>${filas.length}</b><span>Pautas</span></div>
+        <div class="ox-kpi"><b>${prog}</b><span>Programadas</span></div>
+        <div class="ox-kpi"><b>${filas.reduce((s, f) => s + f.emitidas, 0)}</b><span>Emitidas</span></div>
+        <div class="ox-kpi"><b>${filas.reduce((s, f) => s + f.faltantes, 0)}</b><span>Faltantes</span></div>
+        <div class="ox-kpi"><b>${prog ? Math.round(100 * emit / prog) : "—"}%</b><span>Cumplimiento</span></div>`;
+      body.innerHTML = filas.length ? filas.map(f => `<tr class="ox-clickable" data-pauta="${f.pauta_id}">
+          <td>${esc(f.cliente)}</td><td>${esc(f.rubro)}</td><td class="ox-mono">${esc(f.contrato_id)}</td>
+          <td class="ox-num">${f.programadas}</td><td class="ox-num">${f.emitidas}</td>
+          <td class="ox-num">${f.faltantes}</td><td>${medidor(f.cumplimiento_pct)}</td></tr>`).join("")
+        : `<tr><td colspan="7" class="ox-empty">No hubo pautas programadas en este período</td></tr>`;
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="7" class="ox-empty">Error: ${esc(err.message)}</td></tr>`;
+    }
+  }
+
+  async function verDetalle(id, fila) {
+    document.querySelectorAll("#rBody tr").forEach(tr => tr.classList.toggle("ox-selected", tr === fila));
+    const p = params(); p.delete("cliente");
+    const r = await fetch(`/api/v1/reportes/pautas/${id}?${p}`);
+    detalle = await r.json();
+    if (!r.ok) return;
+    $("rDetTitulo").textContent = `${detalle.cliente} — ${detalle.desde} a ${detalle.hasta} · ${detalle.cumplimiento_pct ?? "—"}% de cumplimiento`;
+    $("rDetDias").innerHTML = detalle.dias.map(d => `<tr><td class="ox-mono">${d.fecha}</td>
+      <td class="ox-num">${d.programadas}</td><td class="ox-num">${d.emitidas}</td>
+      <td class="ox-num" style="${d.faltantes ? "color:var(--red-live)" : ""}">${d.faltantes}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="ox-empty">Sin datos</td></tr>`;
+    $("rDetEmisiones").innerHTML = detalle.emisiones.map(e => `<tr><td class="ox-mono">${esc(e.iniciado_en)}</td>
+      <td>${esc(ETIQ_ORIGEN[e.origen] || e.origen)}</td></tr>`).join("")
+      || `<tr><td colspan="2" class="ox-empty">No salió al aire en este período</td></tr>`;
+    $("rDetalle").hidden = false;
+    $("rDetalle").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function comprobante() {
+    if (!detalle) return;
+    const filas = detalle.emisiones.map((e, i) =>
+      `<tr><td>${i + 1}</td><td>${esc(e.iniciado_en.slice(0, 10))}</td><td>${esc(e.iniciado_en.slice(11, 19))}</td></tr>`).join("");
+    const w = window.open("", "_blank");
+    w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8">
+      <title>Comprobante de emisión — ${esc(detalle.cliente)}</title>
+      <style>body{font-family:Arial,sans-serif;margin:32px;color:#111}h1{font-size:20px;margin:0 0 4px}
+      .sub{color:#555;margin-bottom:16px}table{border-collapse:collapse;width:100%;font-size:12px}
+      th,td{border:1px solid #bbb;padding:4px 8px;text-align:left}th{background:#eee}
+      .res{display:flex;gap:24px;margin:12px 0 20px}.res div b{display:block;font-size:20px}
+      .firma{margin-top:48px;display:flex;gap:80px}.firma div{border-top:1px solid #333;padding-top:4px;width:220px;text-align:center}</style>
+      </head><body>
+      <h1>Comprobante de emisión publicitaria</h1>
+      <div class="sub">Cliente: <b>${esc(detalle.cliente)}</b> · Contrato: ${esc(detalle.contrato_id || "—")} ·
+        Período: ${esc(detalle.desde)} al ${esc(detalle.hasta)}</div>
+      <div class="res"><div><b>${detalle.programadas}</b>programadas</div><div><b>${detalle.emitidas}</b>emitidas</div>
+        <div><b>${detalle.cumplimiento_pct ?? "—"}%</b>cumplimiento</div></div>
+      <table><thead><tr><th>#</th><th>Fecha</th><th>Hora de salida al aire</th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="firma"><div>Emisora</div><div>Cliente</div></div>
+      <script>window.onload = () => window.print();<\/script></body></html>`);
+    w.document.close();
+  }
+
+  $("rGenerar").addEventListener("click", generar);
+  $("rCsv").addEventListener("click", () => {
+    const p = params(); p.set("formato", "csv");
+    window.location.href = `/api/v1/reportes/pautas?${p}`;
+  });
+  $("rBody").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-pauta]");
+    if (tr) verDetalle(tr.dataset.pauta, tr);
+  });
+  $("rDetCsv").addEventListener("click", () => {
+    if (!detalle) return;
+    const p = params(); p.delete("cliente"); p.set("formato", "csv");
+    window.location.href = `/api/v1/reportes/pautas/${detalle.pauta_id}?${p}`;
+  });
+  $("rDetImprimir").addEventListener("click", comprobante);
+
+  // Lo nuevo que sale al aire aparece si se está mirando la primera página
+  document.addEventListener("ws:track_started", () => {
+    if (offset === 0 && document.getElementById("histPaneLog")?.classList.contains("active")) cargarHistorial();
+  });
+
+  cargarHistorial();
+})();
+</script>

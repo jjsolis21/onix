@@ -30,6 +30,9 @@
  *   queue       { cmd:"queue",      audio_id }
  *   fire_effect { cmd:"fire_effect", audio_id, canal_offset }
  *   set_mode    { cmd:"set_mode",   mode:"manual"|"automatico" }
+ *   lanzar_tanda{ cmd:"lanzar_tanda", ahora }   (modo manual: el operador lanza la tanda)
+ *   cue         { cmd:"cue", audio_id }         (preescucha por la salida interna)
+ *   cue_stop    { cmd:"cue_stop" }
  *   ping        { cmd:"ping" }                 (keep-alive cada 25s)
  *
  * USO:
@@ -76,6 +79,11 @@ function fmtSec(sec) {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+/** Mayúsculas sin tildes, para comparar "Dúo" con "DUO" */
+function normTxt(s) {
+  return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 }
 
 /** Anti-rebote: ejecuta fn sólo si no la llamaron de nuevo en `ms` ms */
@@ -351,8 +359,8 @@ const NowPlaying = (() => {
 const StudioLibrary = (() => {
   let _tracks   = [];
   let _filtered = [];
-  let _previewAudio = null;
-  let _previewId    = null;
+  let _cueId    = null;                                   // audio en preescucha
+  const _f = { origen: "", genero: "", energia: "" };     // filtros de MÚSICA
 
   /** Carga todos los tracks activos desde la API */
   async function load(force = false) {
@@ -368,6 +376,7 @@ const StudioLibrary = (() => {
       }));
       // Aplicar filtros actuales al nuevo set
       applyFilters();
+      _fillArtistas();
     } catch (err) {
       console.error("[StudioLibrary] Error al cargar biblioteca:", err);
       studioToast("Error al cargar la biblioteca", "error");
@@ -376,14 +385,19 @@ const StudioLibrary = (() => {
 
   /** Filtra por el texto del buscador y reparte los audios por pestaña */
   function applyFilters() {
-    const q = (($s("#studioLibSearch") ?? $s("#searchInput"))?.value ?? "").toLowerCase().trim();
+    const q = normTxt(($s("#studioLibSearch") ?? $s("#searchInput"))?.value);
     const match = t => !q ||
-      t.titulo.toLowerCase().includes(q)  ||
-      t.artista.toLowerCase().includes(q) ||
-      (t.genero_vocal ?? "").toLowerCase().includes(q);
+      normTxt(t.titulo).includes(q)  ||
+      normTxt(t.artista).includes(q) ||
+      normTxt(t.genero_vocal).includes(q);
+    // Filtros de la pestaña MÚSICA (origen, voz, energía)
+    const pasaFiltros = t =>
+      (!_f.origen  || t.origen === _f.origen) &&
+      (!_f.genero  || normTxt(t.genero_vocal) === _f.genero) &&
+      (!_f.energia || String(t.energia ?? "") === _f.energia);
 
     // MÚSICA muestra todo lo que no es cuña ni efecto (música, sweepers, programas…)
-    _filtered     = _tracks.filter(t => !["Cuña", "Efecto"].includes(t.tipo_audio) && match(t));
+    _filtered     = _tracks.filter(t => !["Cuña", "Efecto"].includes(t.tipo_audio) && match(t) && pasaFiltros(t));
     const ads     = _tracks.filter(t => t.tipo_audio === "Cuña"   && match(t));
     const jingles = _tracks.filter(t => t.tipo_audio === "Efecto" && match(t));
 
@@ -394,6 +408,9 @@ const StudioLibrary = (() => {
     const counter = $s("#studioLibCount") ?? $s("#searchCount");
     if (counter) counter.textContent = `${_filtered.length + ads.length + jingles.length} / ${_tracks.length}`;
   }
+
+  const _prevBtn = t => `<button class="lib-btn-prev${t.id === _cueId ? " previewing" : ""}"
+          data-prev-id="${t.id}" title="Preescuchar por la salida interna (no sale al aire)">${t.id === _cueId ? "■" : "🎧"}</button>`;
 
   const _actions = t => `
           <button class="lib-btn-play"  data-play-id="${t.id}"  title="Reproducir ahora">▶ AIRE</button>
@@ -418,9 +435,7 @@ const StudioLibrary = (() => {
         <td class="lib-col-dur">${fmtSec(t.duracion_seg)}</td>
         <td class="lib-col-meta">${escHtml(t.genero_vocal ?? "")}</td>
         <td class="lib-col-meta">${escHtml(t.cat1 ?? "")}</td>
-        <td class="lib-col-prev">
-          <button class="lib-btn-prev" data-prev-id="${t.id}" title="Preescuchar">▶</button>
-        </td>
+        <td class="lib-col-prev">${_prevBtn(t)}</td>
         <td class="lib-col-actions">${_actions(t)}</td>
       </tr>
     `).join("");
@@ -444,7 +459,7 @@ const StudioLibrary = (() => {
         </td>
         <td class="lib-col-dur">${fmtSec(t.duracion_seg)}</td>
         <td class="lib-col-actions">
-          <button class="lib-btn-prev" data-prev-id="${t.id}" title="Preescuchar">▶</button>${_actions(t)}
+          ${_prevBtn(t)}${_actions(t)}
           <button class="lib-btn-queue" data-cart-id="${t.id}" data-cart-banco="${banco}" title="Asignar al primer botón libre de la cartuchera">→ CART</button>
         </td>
       </tr>
@@ -462,7 +477,7 @@ const StudioLibrary = (() => {
       StudioWS.send({ cmd: "queue", audio_id: id });
       studioToast(`+ Cola: ${_tracks.find(x => x.id === id)?.titulo ?? id}`, "info");
     } else if (btn.dataset.prevId) {
-      togglePreview(parseInt(btn.dataset.prevId), btn);
+      togglePreview(parseInt(btn.dataset.prevId));
     } else if (btn.dataset.cartId) {
       Cartuchera.assign(btn.dataset.cartBanco, parseInt(btn.dataset.cartId));
     }
@@ -481,48 +496,54 @@ const StudioLibrary = (() => {
     return parseInt($s(".row-now")?.dataset?.audioId ?? "0") || null;
   }
 
-  /** Alterna la preescucha en línea de un track */
-  function togglePreview(id, btnEl) {
-    // Mismo track: pausar
-    if (_previewId === id && _previewAudio) {
-      _previewAudio.pause();
-      _clearPreviewBtn(btnEl);
-      _previewAudio = null; _previewId = null;
-      return;
-    }
-    // Otro track activo: detenerlo primero
-    if (_previewAudio) {
-      _previewAudio.pause();
-      const oldBtn = document.querySelector(".lib-btn-prev.previewing");
-      if (oldBtn) _clearPreviewBtn(oldBtn);
-    }
-    // El endpoint /stream soporta Range headers — el <audio> puede saltar
-    _previewAudio = new Audio(`${STUDIO_CONFIG.apiBase}/api/v1/audios/${id}/stream`);
-    _previewId    = id;
-    btnEl.classList.add("previewing");
-    btnEl.textContent = "■";
+  /**
+   * Preescucha: la hace el MOTOR por la tarjeta de preescucha (Admin → 06
+   * Motor), así el operador escucha sin salir al aire. El estado vuelve por
+   * los eventos cue_started / cue_stopped.
+   */
+  function togglePreview(id) {
+    StudioWS.send(_cueId === id ? { cmd: "cue_stop" } : { cmd: "cue", audio_id: id });
+  }
 
-    _previewAudio.play().catch(err => {
-      studioToast(`No se pudo preescuchar: ${err.message}`, "warning");
-      _clearPreviewBtn(btnEl);
-      _previewAudio = null; _previewId = null;
+  /** Marca qué botón está preescuchando (llamado desde los eventos del motor) */
+  function setCue(id) {
+    _cueId = id;
+    $$s(".lib-btn-prev").forEach(btn => {
+      const on = parseInt(btn.dataset.prevId) === id;
+      btn.classList.toggle("previewing", on);
+      btn.textContent = on ? "■" : "🎧";
     });
-    _previewAudio.onended = () => {
-      _clearPreviewBtn(btnEl);
-      _previewAudio = null; _previewId = null;
-    };
   }
 
-  function _clearPreviewBtn(btn) {
-    if (!btn) return;
-    btn.classList.remove("previewing");
-    btn.textContent = "▶";
+  function _fillArtistas() {
+    const dl = $s("#artistasList");
+    if (!dl) return;
+    const artistas = [...new Set(_tracks.map(t => t.artista).filter(Boolean))].sort();
+    dl.innerHTML = artistas.map(a => `<option value="${escHtml(a)}">`).join("");
   }
+
+  // ── Píldoras de filtro (una activa por fila) ───────────────
+  $s("#hubSearch")?.addEventListener("click", (e) => {
+    const pill = e.target.closest(".filter-pill");
+    if (pill) {
+      const clave = ["origen", "genero", "energia"].find(k => k in pill.dataset);
+      if (!clave) return;
+      _f[clave] = pill.dataset[clave];
+      pill.closest(".filter-row")?.querySelectorAll(".filter-pill")
+        .forEach(p => p.classList.toggle("active", p === pill));
+      applyFilters();
+    } else if (e.target.closest("#btnClearFilters")) {
+      Object.keys(_f).forEach(k => { _f[k] = ""; });
+      $$s("#hubSearch .filter-row").forEach(row =>
+        row.querySelectorAll(".filter-pill").forEach((p, i) => p.classList.toggle("active", i === 0)));
+      applyFilters();
+    }
+  });
 
   // ── Filtros en tiempo real ─────────────────────────────────
   ($s("#studioLibSearch") ?? $s("#searchInput"))?.addEventListener("input", debounce(applyFilters, 150));
 
-  return { load, applyFilters, render };
+  return { load, applyFilters, render, setCue, tracks: () => _tracks };
 })();
 
 
@@ -568,6 +589,8 @@ const ModeToggle = (() => {
     btn.classList.toggle("mode-manual", mode === "manual");
   }
 
+  const get = () => _currentMode;
+
   // Click en el botón envía el comando de cambio de modo
   ($s("#btnModeToggle") ?? $s(".btn-mode-toggle"))?.addEventListener("click", () => {
     const newMode = _currentMode === "manual" ? "automatico" : "manual";
@@ -579,7 +602,7 @@ const ModeToggle = (() => {
     StudioWS.send({ cmd: "set_mode", mode: e.target.checked ? "automatico" : "manual" });
   });
 
-  return { setMode };
+  return { setMode, get };
 })();
 
 
@@ -594,7 +617,55 @@ const Transport = (() => {
   $s("#btnFadeNext")?.addEventListener("click", () => StudioWS.send({ cmd: "skip" }));
   $s("#btnClearQueue")?.addEventListener("click", () => StudioWS.send({ cmd: "clear_queue" }));
 
+  /** Bloque NEXT: lo primero de la cola (o lo que decida el modo automático) */
+  function renderNext(queue = [], st = null) {
+    const t = queue[0];
+    const set = (sel, txt) => { const el = $s(sel); if (el) el.textContent = txt; };
+    if (t) {
+      const full = StudioLibrary.tracks().find(x => x.id === t.id) ?? {};
+      set("#nextTitle", t.titulo); set("#nextArtist", t.artista);
+      set("#nextGenero", full.genero_vocal || "—"); set("#nextOrigen", "COLA");
+      set("#nextDuracion", fmtSec(full.duracion_seg));
+    } else {
+      const auto = (st?.modo ?? ModeToggle.get()) === "automatico";
+      set("#nextTitle", auto ? "Rotación automática" : "—");
+      set("#nextArtist", auto ? "elige el motor" : "Cola vacía");
+      set("#nextGenero", "—"); set("#nextOrigen", auto ? "AUTO" : "—");
+      set("#nextDuracion", "0:00");
+    }
+  }
+
+  /** Lista HISTORIAL de la columna izquierda (últimas 15 salidas) */
+  function addHistory(item, prepend = true) {
+    const list = $s("#historyList");
+    if (!list) return;
+    list.querySelector(".empty-state-sm")?.remove();
+    const div = document.createElement("div");
+    div.className = "hist-item";
+    const hora = item.hora ?? new Date().toTimeString().slice(0, 5);
+    const quien = item.cliente ? `📢 ${item.cliente}` : item.artista;
+    div.innerHTML = `<span class="hist-time">${escHtml(hora)}</span>
+      <span class="hist-title">${escHtml(item.titulo)} — ${escHtml(quien ?? "")}</span>`;
+    prepend ? list.prepend(div) : list.append(div);
+    while (list.children.length > 15) list.lastChild.remove();
+  }
+
+  async function loadHistory() {
+    try {
+      const rows = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/historial?limit=15`).then(r => r.json());
+      const list = $s("#historyList");
+      if (!list || !rows.length) return;
+      list.innerHTML = "";
+      rows.filter(r => r.tipo !== "efecto").forEach(r => addHistory({
+        titulo: r.titulo, artista: r.artista, hora: (r.iniciado_en ?? "").slice(11, 16),
+      }, false));
+    } catch (err) {
+      console.warn("[Transport] Historial no disponible:", err);
+    }
+  }
+
   function renderQueue(queue = []) {
+    renderNext(queue);
     const list = $s("#playlistList");
     if (!list) return;
     list.innerHTML = queue.length
@@ -616,12 +687,14 @@ const Transport = (() => {
       ModeToggle.setMode(st.modo ?? "manual");
       NowPlaying.syncFromStatus(st);
       renderQueue(st.queue ?? []);
+      renderNext(st.queue ?? [], st);
+      EstadoMotor.apply(st);
     } catch (err) {
       console.warn("[Transport] No se pudo leer /api/v1/status:", err);
     }
   }
 
-  return { renderQueue, sync };
+  return { renderQueue, renderNext, addHistory, loadHistory, sync };
 })();
 
 
@@ -726,6 +799,145 @@ const Cartuchera = (() => {
 
 
 /* ============================================================
+   MÓDULO: ESTADO DEL MOTOR (tanda en espera y preescucha)
+   En MODO MANUAL las tandas no salen solas: aparece la barra
+   ámbar y el operador decide cuándo lanzarla. Se sondea
+   /api/v1/status cada 3 s para no depender de un evento perdido.
+   ============================================================ */
+const EstadoMotor = (() => {
+  let _cueDur = 0;
+
+  function apply(st) {
+    if (!st) return;
+    // ── Tanda en espera ──
+    const strip = $s("#tandaStrip");
+    const n = st.tanda_en_espera ?? 0;
+    strip?.classList.toggle("active", n > 0);
+    if (n > 0) {
+      const txt = $s("#tandaStripTxt");
+      if (txt) txt.textContent = `TANDA EN ESPERA — ${n} cuña(s). En modo manual sale cuando tú la lances.`;
+    }
+    // ── Preescucha ──
+    const cue = st.preescucha;
+    StudioLibrary.setCue(cue?.audio_id ?? null);
+    $s("#cueStrip")?.classList.toggle("active", !!cue);
+    if (cue) {
+      _cueDur = cue.duracion || _cueDur;
+      const txt = $s("#cueStripTxt");
+      if (txt) txt.textContent = `PREESCUCHA (no sale al aire): ${cue.titulo} · ${fmtSec(cue.posicion)} / ${fmtSec(_cueDur)}`;
+    }
+  }
+
+  async function poll() {
+    try {
+      apply(await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/status`).then(r => r.json()));
+    } catch { /* sin servidor: el indicador WS ya lo muestra */ }
+  }
+
+  $s("#btnTandaAhora")?.addEventListener("click", () => {
+    StudioWS.send({ cmd: "lanzar_tanda", ahora: true });
+    $s("#tandaStrip")?.classList.remove("active");
+  });
+  $s("#btnTandaAlTerminar")?.addEventListener("click", () => {
+    StudioWS.send({ cmd: "lanzar_tanda", ahora: false });
+    $s("#tandaStrip")?.classList.remove("active");
+    studioToast("📢 La tanda sale al terminar la canción", "info", 3000);
+  });
+  $s("#btnCueStop")?.addEventListener("click", () => StudioWS.send({ cmd: "cue_stop" }));
+
+  setInterval(poll, 3000);
+  return { apply, poll };
+})();
+
+
+/* ============================================================
+   MÓDULO: INGESTA
+   Sube un audio a la biblioteca desde el Studio (POST /api/v1/audios).
+   ============================================================ */
+const Ingesta = (() => {
+  const form  = $s("#ingestaForm");
+  const input = $s("#fileInput");
+  const zone  = $s("#fileDropZone");
+  const fb    = $s("#ingestaFeedback");
+  let _file   = null;
+
+  function _setFile(file) {
+    _file = file;
+    const txt = $s("#dropContent .drop-text");
+    if (txt) txt.innerHTML = file ? `${escHtml(file.name)} <small>${(file.size / 1048576).toFixed(1)} MB</small>`
+                                  : "Arrastra el archivo aquí <small>MP3 · WAV · FLAC · OGG</small>";
+    // Sugerir título y artista desde el nombre "Artista - Título.mp3"
+    if (file) {
+      const base = file.name.replace(/\.[^.]+$/, "").replace(/_/g, " ");
+      const [art, ...resto] = base.split(" - ");
+      const tit = $s("#inputTitulo"), ar = $s("#inputArtista");
+      if (tit && !tit.value) tit.value = (resto.length ? resto.join(" - ") : base).trim();
+      if (ar && !ar.value && resto.length) ar.value = art.trim();
+    }
+  }
+
+  function _feedback(msg, ok) {
+    if (!fb) return;
+    fb.textContent = msg;
+    fb.className = `ingesta-feedback ${ok ? "ok" : "err"}`;
+  }
+
+  zone?.addEventListener("click", () => input?.click());
+  input?.addEventListener("change", () => _setFile(input.files[0] ?? null));
+  zone?.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
+  zone?.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone?.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    if (e.dataTransfer.files[0]) _setFile(e.dataTransfer.files[0]);
+  });
+  $s("#sliderEnergia")?.addEventListener("input", e => {
+    const v = $s("#energiaValue");
+    if (v) v.textContent = e.target.value;
+  });
+
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!_file) { _feedback("Elige un archivo de audio", false); return; }
+    const fd = new FormData();
+    fd.append("file", _file);
+    fd.append("titulo", $s("#inputTitulo").value.trim());
+    fd.append("artista", $s("#inputArtista").value.trim());
+    fd.append("tipo_audio", $s("#selTipo").value);
+    const voz = $s("#selGenero").value, origen = $s("#selOrigen").value;
+    if (voz) fd.append("voz", voz);
+    if (origen) fd.append("origen", origen);
+    fd.append("energia", $s("#sliderEnergia").value);
+    const intro = parseFloat($s("#inputIntro").value), mix = parseFloat($s("#inputMixPoint").value);
+    if (intro > 0) fd.append("cue_intro", intro);
+    if (mix > 0) fd.append("cue_mezcla", mix);
+
+    const btn = $s("#btnIngestar");
+    if (btn) btn.disabled = true;
+    _feedback("Subiendo…", true);
+    try {
+      const res = await fetch(`${STUDIO_CONFIG.apiBase}/api/v1/audios`, { method: "POST", body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const det = Array.isArray(body.detail) ? body.detail.map(d => d.msg).join("; ") : body.detail;
+        throw new Error(det || `HTTP ${res.status}`);
+      }
+      _feedback(`✓ Ingestado: ${body.data.artista} — ${body.data.titulo}`, true);
+      form.reset();
+      _setFile(null);
+      const v = $s("#energiaValue"); if (v) v.textContent = "3";
+    } catch (err) {
+      _feedback(`✗ ${err.message}`, false);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  return {};
+})();
+
+
+/* ============================================================
    MÓDULO: CONFIGURACIÓN DEL MOTOR
    Panel de la pestaña INGESTA ↔ /api/v1/config/motor
    ============================================================ */
@@ -814,6 +1026,7 @@ const EffectPanel = (() => {
 // ── Track empezó ──────────────────────────────────────────────
 StudioWS.onEvent("track_started", (data) => {
   NowPlaying.setTrack(data);
+  Transport.addHistory(data);
   studioToast(`▶ ${data.artista} — ${data.titulo}`, "info", 2500);
 });
 
@@ -852,8 +1065,18 @@ StudioWS.onEvent("queue_updated", (data) => {
 // ── Tanda de pautas lanzada (sale en el próximo cambio de pista) ──
 StudioWS.onEvent("tanda_scheduled", (data) => {
   const n = data?.pautas?.length ?? 0;
-  studioToast(`📢 Tanda :${String(data?.minuto ?? 0).padStart(2, "0")} — ${n} cuña(s) en cola`, "info", 4000);
+  const min = String(data?.minuto ?? 0).padStart(2, "0");
+  if (data?.requiere_operador) {
+    studioToast(`📢 Tanda :${min} lista — ${n} cuña(s). Lánzala cuando quieras.`, "warning", 6000);
+    EstadoMotor.poll();
+  } else {
+    studioToast(`📢 Tanda :${min} — ${n} cuña(s) en cola`, "info", 4000);
+  }
 });
+
+// ── Preescucha (salida interna) ───────────────────────────────
+StudioWS.onEvent("cue_started", () => EstadoMotor.poll());
+StudioWS.onEvent("cue_stopped", () => EstadoMotor.poll());
 
 // ── Lista de respaldo (la rotación no tenía nada que sonar) ───
 StudioWS.onEvent("respaldo_activado", (data) => {
@@ -869,6 +1092,7 @@ StudioWS.onEvent("engine_stopped", () => {
 // ── Modo cambiado ─────────────────────────────────────────────
 StudioWS.onEvent("mode_changed", (data) => {
   ModeToggle.setMode(data?.mode ?? "manual");
+  EstadoMotor.poll();
   studioToast(`Modo: ${data?.mode?.toUpperCase() ?? "?"}`, "info", 2000);
 });
 
@@ -943,10 +1167,19 @@ StudioWS.onEvent("bloques_updated", (data) => {
     Transport.sync(),
     Cartuchera.load(),
     MotorConfig.load(),
+    Transport.loadHistory(),
   ]);
 
   // Inicializar panel de efectos (si existe en el HTML)
   EffectPanel.init();
+
+  // Reloj del encabezado (hora de la PC del Studio)
+  const reloj = $s("#systemClock");
+  if (reloj) {
+    const tick = () => { reloj.textContent = new Date().toTimeString().slice(0, 8); };
+    tick();
+    setInterval(tick, 1000);
+  }
 
   console.info("[StudioApp] Módulos inicializados. Versión 3.0 — Ónix FM Digital.");
 })();
@@ -970,5 +1203,6 @@ window.StudioApp = {
   play:  (id)          => StudioWS.send({ cmd: "play",        audio_id: id }),
   queue: (id)          => StudioWS.send({ cmd: "queue",       audio_id: id }),
   fire:  (id, canal=0) => StudioWS.send({ cmd: "fire_effect", audio_id: id, canal_offset: canal }),
-  mode:  (m)           => StudioWS.send({ cmd: "set_mode",    mode: m }),
+  setMode: (m)         => StudioWS.send({ cmd: "set_mode",    mode: m }),
+  cue:   (id)          => StudioWS.send({ cmd: "cue",         audio_id: id }),
 };

@@ -1,0 +1,199 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 06 — Motor de Audio
+     · Salidas: qué tarjeta de sonido usa el AIRE y cuál la PREESCUCHA.
+     · Parámetros de emisión, normalización de volumen y estado del motor.
+     API: /api/v1/audio/dispositivos, /api/v1/audio/salidas,
+          /api/v1/config/motor, /api/v1/normalizacion, /api/v1/status
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+
+<div class="ox-root" id="motorRoot">
+  <header class="ox-head">
+    <div>
+      <h2>Motor de Audio</h2>
+      <p>Salidas de sonido, parámetros de emisión y salud del motor.</p>
+    </div>
+    <span class="ox-spacer"></span>
+    <button class="ox-btn" id="mRecargar">↻ Recargar</button>
+  </header>
+
+  <div class="ox-grid">
+    <!-- ── Salidas de audio ── -->
+    <section class="ox-card">
+      <h3>🔊 Salidas de audio</h3>
+      <p class="ox-hint">
+        <b>AIRE</b> es lo que va al transmisor o al codificador de streaming.
+        <b>PREESCUCHA</b> es para escuchar en cabina sin salir al aire (botón 🎧 del Studio).
+        Usa tarjetas distintas: si comparten tarjeta, la preescucha se oye en el aire.
+        El cambio se aplica desde la próxima pista; lo que suena termina por la tarjeta anterior.
+      </p>
+      <div class="ox-row">
+        <div class="ox-field"><label for="mDevAire">Aire</label><select class="ox-select" id="mDevAire"></select></div>
+        <div class="ox-field"><label for="mDevPre">Preescucha</label><select class="ox-select" id="mDevPre"></select></div>
+        <button class="ox-btn ox-btn--primary" id="mGuardarSalidas">Guardar</button>
+      </div>
+      <p class="ox-msg" id="mMsgSalidas"></p>
+    </section>
+
+    <!-- ── Estado del motor ── -->
+    <section class="ox-card">
+      <h3>❤ Estado del motor</h3>
+      <dl class="ox-kv" id="mEstado"><dt>…</dt><dd></dd></dl>
+    </section>
+  </div>
+
+  <!-- ── Parámetros de emisión ── -->
+  <section class="ox-card">
+    <h3>⚙ Parámetros de emisión</h3>
+    <div class="ox-row">
+      <div class="ox-field"><label for="mCrossfade">Crossfade (s)</label>
+        <input type="number" class="ox-input" id="mCrossfade" min="0" max="20" step="0.5"></div>
+      <div class="ox-field"><label for="mVentana">No repetir artista (min)</label>
+        <input type="number" class="ox-input" id="mVentana" min="0" max="1440"></div>
+      <div class="ox-field"><label for="mMaxGenero">Máx. misma voz seguidas</label>
+        <input type="number" class="ox-input" id="mMaxGenero" min="1" max="10"></div>
+      <div class="ox-field"><label for="mDucking">Ducking cartuchera (dB)</label>
+        <input type="number" class="ox-input" id="mDucking" min="-40" max="0" step="1"></div>
+      <div class="ox-field"><label for="mTandas">Tandas (minutos)</label>
+        <input class="ox-input" id="mTandas" placeholder="15,45"></div>
+    </div>
+    <p class="ox-hint" style="margin-top:var(--s3)">
+      En <b>automático</b> las tandas salen solas en el primer cambio de pista después de su minuto.
+      En <b>manual</b> el Studio muestra un aviso y el operador decide cuándo lanzarlas.
+    </p>
+    <div class="ox-row"><button class="ox-btn ox-btn--primary" id="mGuardarParams">Guardar parámetros</button></div>
+    <p class="ox-msg" id="mMsgParams"></p>
+  </section>
+
+  <!-- ── Normalización ── -->
+  <section class="ox-card">
+    <h3>📏 Normalización de volumen (EBU R128)</h3>
+    <div class="ox-row">
+      <div class="ox-field"><label for="mNormActiva">Normalizar</label>
+        <select class="ox-select" id="mNormActiva"><option value="1">Activada</option><option value="0">Desactivada</option></select></div>
+      <div class="ox-field"><label for="mLufs">Volumen objetivo (LUFS)</label>
+        <input type="number" class="ox-input" id="mLufs" min="-30" max="-5" step="0.5"></div>
+      <button class="ox-btn ox-btn--primary" id="mGuardarNorm">Guardar</button>
+      <button class="ox-btn" id="mRemedir" title="Vuelve a medir los audios que dieron error">Volver a medir errores</button>
+    </div>
+    <div class="ox-kpis" id="mNormKpis" style="margin-top:var(--s3)"></div>
+    <p class="ox-msg" id="mMsgNorm"></p>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const msg = (id, texto, ok = true) => { const el = $(id); el.textContent = texto; el.className = `ox-msg ${ok ? "ok" : "err"}`; };
+  const errTxt = async r => { const b = await r.json().catch(() => ({}));
+    return Array.isArray(b.detail) ? b.detail.map(d => d.msg).join("; ") : (b.detail || `HTTP ${r.status}`); };
+
+  // ── Salidas ──────────────────────────────────────────────
+  async function cargarSalidas() {
+    try {
+      const data = await fetch("/api/v1/audio/dispositivos").then(r => r.json());
+      const devs = data.dispositivos || [];
+      const opciones = sel => [`<option value="-1">Predeterminada de Windows</option>`]
+        .concat(devs.filter(d => d.habilitado).map(d =>
+          `<option value="${d.index}">${d.index} · ${esc(d.nombre)}${d.predeterminado ? " (predeterminada)" : ""}</option>`))
+        .join("");
+      $("mDevAire").innerHTML = opciones();
+      $("mDevPre").innerHTML = opciones();
+      $("mDevAire").value = String(data.salidas?.aire ?? -1);
+      $("mDevPre").value = String(data.salidas?.preescucha ?? -1);
+      if (!devs.length) msg("mMsgSalidas", "El motor no respondió: no se pudo leer la lista de tarjetas", false);
+    } catch (err) {
+      msg("mMsgSalidas", `Error: ${err.message}`, false);
+    }
+  }
+
+  $("mGuardarSalidas").addEventListener("click", async () => {
+    const aire = parseInt($("mDevAire").value), pre = parseInt($("mDevPre").value);
+    const r = await fetch("/api/v1/audio/salidas", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aire, preescucha: pre }),
+    });
+    if (!r.ok) { msg("mMsgSalidas", await errTxt(r), false); return; }
+    msg("mMsgSalidas", aire === pre
+      ? "✓ Guardado — ATENCIÓN: aire y preescucha usan la misma tarjeta; la preescucha se oirá al aire"
+      : "✓ Guardado. Se aplica desde la próxima pista.", aire !== pre);
+  });
+
+  // ── Parámetros y normalización ───────────────────────────
+  async function cargarConfig() {
+    const c = await fetch("/api/v1/config/motor").then(r => r.json());
+    $("mCrossfade").value = c.crossfade_seg; $("mVentana").value = c.ventana_artista_min;
+    $("mMaxGenero").value = c.max_mismo_genero; $("mDucking").value = c.ducking_db;
+    $("mTandas").value = c.tandas_minutos;
+    $("mNormActiva").value = c.normalizacion_activa ? "1" : "0"; $("mLufs").value = c.normalizacion_lufs;
+  }
+
+  async function guardar(body, msgId) {
+    const r = await fetch("/api/v1/config/motor", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { msg(msgId, await errTxt(r), false); return; }
+    msg(msgId, "✓ Guardado y aplicado al motor");
+    cargarConfig();
+  }
+
+  $("mGuardarParams").addEventListener("click", () => guardar({
+    crossfade_seg: parseFloat($("mCrossfade").value), ventana_artista_min: parseInt($("mVentana").value),
+    max_mismo_genero: parseInt($("mMaxGenero").value), ducking_db: parseFloat($("mDucking").value),
+    tandas_minutos: $("mTandas").value.trim(),
+  }, "mMsgParams"));
+  $("mGuardarNorm").addEventListener("click", () => guardar({
+    normalizacion_activa: $("mNormActiva").value === "1", normalizacion_lufs: parseFloat($("mLufs").value),
+  }, "mMsgNorm"));
+
+  async function cargarNorm() {
+    const n = await fetch("/api/v1/normalizacion").then(r => r.json());
+    $("mNormKpis").innerHTML = `
+      <div class="ox-kpi"><b>${n.ok}</b><span>Medidos</span></div>
+      <div class="ox-kpi"><b>${n.pendiente}</b><span>Pendientes</span></div>
+      <div class="ox-kpi"><b>${n.error}</b><span>Con error</span></div>`;
+    if (!n.ffmpeg) msg("mMsgNorm", "ffmpeg no está instalado: los audios NO se normalizan. En PowerShell: winget install Gyan.FFmpeg y reinicia ONIX.", false);
+    else if (!$("mMsgNorm").textContent) msg("mMsgNorm", `Medidor: ${n.ffmpeg}`);
+  }
+  $("mRemedir").addEventListener("click", async () => {
+    const r = await fetch("/api/v1/normalizacion/remedir", { method: "POST" }).then(r => r.json());
+    msg("mMsgNorm", `${r.pendientes} audio(s) se volverán a medir`);
+    setTimeout(cargarNorm, 1500);
+  });
+
+  // ── Estado del motor ─────────────────────────────────────
+  async function cargarEstado() {
+    try {
+      const st = await fetch("/api/v1/status").then(r => r.json());
+      const fila = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+      const nombreSalida = i => i === -1 ? "predeterminada" : `tarjeta ${i}`;
+      $("mEstado").innerHTML =
+        fila("Motor", `<span class="ox-status-dot ${st.running ? "on" : "off"}"></span>${st.running ? "En marcha" : "Detenido"}`) +
+        fila("Backend", `${esc(st.backend)}${st.remoto ? " · proceso aparte" : " · dentro de la API"}`) +
+        fila("Modo", esc(st.modo ?? "—")) +
+        fila("Al aire", st.current_track ? `${esc(st.current_track.artista)} — ${esc(st.current_track.titulo)}` : "—") +
+        fila("Salidas", st.salidas ? `aire: ${nombreSalida(st.salidas.aire)} · preescucha: ${nombreSalida(st.salidas.preescucha)}` : "—") +
+        fila("Próxima tanda", st.proxima_tanda ? `:${String(st.proxima_tanda.minuto).padStart(2, "0")} (${st.proxima_tanda.pautas} cuñas)` : "—") +
+        (st.tanda_en_espera ? fila("Tanda en espera", `<span style="color:var(--gold-1)">${st.tanda_en_espera} cuña(s) esperando al operador</span>`) : "") +
+        fila("Último error", st.last_error ? `<span style="color:var(--red-live)">${esc(st.last_error)}</span>` : "—");
+    } catch (err) {
+      $("mEstado").innerHTML = `<dt>Motor</dt><dd style="color:var(--red-live)">Sin respuesta (${esc(err.message)})</dd>`;
+    }
+  }
+
+  function recargarTodo() {
+    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado();
+  }
+  $("mRecargar").addEventListener("click", recargarTodo);
+
+  // Refresco del estado solo mientras la sección esté visible
+  setInterval(() => {
+    if (document.getElementById("section-panel-06-motor-audio")?.classList.contains("section-panel--active")) cargarEstado();
+  }, 3000);
+  document.addEventListener("ws:engine_connected", recargarTodo);
+
+  recargarTodo();
+})();
+</script>

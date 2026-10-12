@@ -1,0 +1,179 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 04 — Editor de Cartuchera
+     Asigna audios a los botones de disparo del Studio.
+     API: GET/PUT/DELETE /api/v1/cartuchera, /api/v1/audios, comando cue
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+
+<div class="ox-root" id="cartRoot">
+  <header class="ox-head">
+    <div>
+      <h2>Editor de Cartuchera</h2>
+      <p>Lo que asignes aquí aparece al instante en los botones del Studio.</p>
+    </div>
+    <span class="ox-spacer"></span>
+    <button class="ox-btn" id="cartReload">↻ Recargar</button>
+  </header>
+
+  <section class="ox-card">
+    <h3>Asignar audio a un botón</h3>
+    <div class="ox-row">
+      <div class="ox-field">
+        <label for="cartBanco">Banco</label>
+        <select class="ox-select" id="cartBanco"></select>
+      </div>
+      <div class="ox-field">
+        <label for="cartSlot">Botón</label>
+        <select class="ox-select" id="cartSlot"></select>
+      </div>
+      <div class="ox-field" style="flex:3 1 260px">
+        <label for="cartBuscar">Audio (escribe para buscar)</label>
+        <input class="ox-input" id="cartBuscar" list="cartAudios" placeholder="Título o artista…" autocomplete="off">
+        <datalist id="cartAudios"></datalist>
+      </div>
+      <div class="ox-field">
+        <label for="cartEtiqueta">Etiqueta del botón</label>
+        <input class="ox-input" id="cartEtiqueta" maxlength="40" placeholder="(opcional)">
+      </div>
+      <button class="ox-btn" id="cartPreescuchar" title="Suena por la salida de preescucha, no al aire">🎧 Preescuchar</button>
+      <button class="ox-btn ox-btn--primary" id="cartGuardar">Asignar</button>
+    </div>
+    <p class="ox-msg" id="cartMsg"></p>
+  </section>
+
+  <section class="ox-card">
+    <h3>⚡ Jingles y efectos</h3>
+    <div class="ox-cart-grid" id="cartGrid-jingles"></div>
+  </section>
+
+  <section class="ox-card">
+    <h3>📢 Publicidad</h3>
+    <div class="ox-cart-grid" id="cartGrid-publicidad"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = s => s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "—";
+  const NOMBRES = { jingles: "Jingles", publicidad: "Publicidad" };
+
+  let bancos = {}, slots = {}, audios = [];
+
+  function msg(texto, ok = true) {
+    const el = $("cartMsg");
+    el.textContent = texto;
+    el.className = `ox-msg ${ok ? "ok" : "err"}`;
+  }
+
+  const etiquetaAudio = a => `${a.titulo} — ${a.artista} [${a.tipo_audio}] #${a.id}`;
+  function audioElegido() {
+    const v = $("cartBuscar").value.trim();
+    const id = parseInt((v.match(/#(\d+)$/) || [])[1]);
+    return audios.find(a => a.id === id) || null;
+  }
+
+  async function cargar() {
+    try {
+      const [cart, lib] = await Promise.all([
+        fetch("/api/v1/cartuchera").then(r => r.json()),
+        fetch("/api/v1/audios?limit=5000").then(r => r.json()),
+      ]);
+      bancos = cart.bancos || {};
+      slots = cart.slots || {};
+      // Primero lo que suele ir en la cartuchera; la música al final
+      const orden = { Efecto: 0, Sweeper: 1, Cuña: 2, Tips: 3, Programa: 4, Musica: 5 };
+      audios = (lib.data || []).sort((a, b) => (orden[a.tipo_audio] ?? 9) - (orden[b.tipo_audio] ?? 9)
+        || a.titulo.localeCompare(b.titulo));
+      $("cartAudios").innerHTML = audios.map(a => `<option value="${esc(etiquetaAudio(a))}">`).join("");
+      llenarSelects();
+      pintar();
+    } catch (err) {
+      msg(`No se pudo cargar la cartuchera: ${err.message}`, false);
+    }
+  }
+
+  function llenarSelects() {
+    const banco = $("cartBanco").value || Object.keys(bancos)[0];
+    $("cartBanco").innerHTML = Object.keys(bancos)
+      .map(b => `<option value="${b}" ${b === banco ? "selected" : ""}>${NOMBRES[b] || b}</option>`).join("");
+    const slot = $("cartSlot").value;
+    $("cartSlot").innerHTML = Array.from({ length: bancos[banco] || 0 }, (_, i) => i + 1)
+      .map(n => `<option value="${n}" ${String(n) === slot ? "selected" : ""}>${n}</option>`).join("");
+  }
+
+  function pintar() {
+    for (const banco of Object.keys(bancos)) {
+      const grid = $(`cartGrid-${banco}`);
+      if (!grid) continue;
+      grid.innerHTML = Array.from({ length: bancos[banco] }, (_, i) => {
+        const n = i + 1;
+        const s = (slots[banco] || []).find(x => x.slot === n);
+        return `<div class="ox-slot ${s ? "assigned" : ""}">
+          <span class="ox-slot__num">${banco === "publicidad" ? "A" : ""}${String(n).padStart(2, "0")}</span>
+          <span class="ox-slot__title">${s ? esc(s.etiqueta || s.titulo) : "<i>vacío</i>"}</span>
+          <span class="ox-slot__meta">${s ? `${esc(s.titulo)} · ${esc(s.tipo_audio)} · ${fmt(s.duracion)}` : "&nbsp;"}</span>
+          <div class="ox-slot__actions">
+            <button class="ox-btn ox-btn--sm" data-editar="${banco}:${n}">Editar</button>
+            ${s ? `<button class="ox-btn ox-btn--sm" data-cue="${s.audio_id}">🎧</button>
+                   <button class="ox-btn ox-btn--sm ox-btn--danger" data-vaciar="${banco}:${n}">Vaciar</button>` : ""}
+          </div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  function cue(id) {
+    window.ShellWS?.send({ cmd: "cue", audio_id: id });
+    msg("🎧 Sonando por la salida de preescucha (no sale al aire)");
+  }
+
+  $("cartBanco").addEventListener("change", () => { $("cartSlot").value = ""; llenarSelects(); });
+  $("cartReload").addEventListener("click", cargar);
+  $("cartPreescuchar").addEventListener("click", () => {
+    const a = audioElegido();
+    a ? cue(a.id) : msg("Elige un audio de la lista", false);
+  });
+
+  $("cartGuardar").addEventListener("click", async () => {
+    const a = audioElegido();
+    if (!a) { msg("Elige un audio de la lista (escribe y selecciona una sugerencia)", false); return; }
+    const banco = $("cartBanco").value, slot = $("cartSlot").value;
+    const res = await fetch(`/api/v1/cartuchera/${banco}/${slot}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audio_id: a.id, etiqueta: $("cartEtiqueta").value.trim() }),
+    });
+    if (!res.ok) { msg("No se pudo asignar", false); return; }
+    msg(`✓ ${a.titulo} asignado a ${NOMBRES[banco]} ${slot}`);
+    $("cartBuscar").value = ""; $("cartEtiqueta").value = "";
+    cargar();
+  });
+
+  document.getElementById("cartRoot").addEventListener("click", async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.cue) cue(parseInt(b.dataset.cue));
+    if (b.dataset.editar) {
+      const [banco, n] = b.dataset.editar.split(":");
+      $("cartBanco").value = banco; llenarSelects(); $("cartSlot").value = n;
+      const s = (slots[banco] || []).find(x => x.slot === parseInt(n));
+      const a = s && audios.find(x => x.id === s.audio_id);
+      $("cartBuscar").value = a ? etiquetaAudio(a) : "";
+      $("cartEtiqueta").value = s?.etiqueta || "";
+      $("cartBuscar").focus();
+    }
+    if (b.dataset.vaciar) {
+      const [banco, n] = b.dataset.vaciar.split(":");
+      await fetch(`/api/v1/cartuchera/${banco}/${n}`, { method: "DELETE" });
+      msg(`Botón ${n} vaciado`);
+      cargar();
+    }
+  });
+
+  document.addEventListener("ws:cartuchera_updated", cargar);
+  document.addEventListener("ws:library_updated", cargar);
+  cargar();
+})();
+</script>

@@ -5,58 +5,8 @@
 // outro, mezcla.  Todas las funciones de modal exportadas a window al final.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/* ── SHELL ────────────────────────────────────────────────────────────────── */
-const Shell = {
-  config: { basePath: 'sections/', containerId: 'module-view', activeClass: 'active' },
-  init() {
-    console.log('Ónix FM Shell — Sistema Iniciado');
-    this.bindEvents();
-    this.loadSection('01-estado-global');
-  },
-  bindEvents() {
-    document.querySelectorAll('.nav-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const module = btn.getAttribute('data-module');
-        if (!module) return;
-        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const routes = {
-          dashboard: '01-estado-global',
-          biblioteca: '02-biblioteca-musical',
-          pautas: '03-programacion-pautas',
-          cartuchera: '04-editor-cartuchera',
-          logs: '05-historial-emision',
-          engine: '06-motor-audio',
-        };
-        this.loadSection(routes[module]).then(() => {
-          if (module === 'biblioteca') {
-            initApp();
-            if (typeof CategoriesModule !== 'undefined') CategoriesModule.syncSelects();
-          }
-        });
-      });
-    });
-  },
-  // PARCHE 3: viewport-main + HTML_OVERRIDES
-  async loadSection(sectionName) {
-    const container = document.getElementById('viewport-main')
-      || document.getElementById(this.config.containerId);
-    if (!container) return;
-    const HTML_OVERRIDES = {};
-    try {
-      const url = HTML_OVERRIDES[sectionName]
-        || `${this.config.basePath}${sectionName}/${sectionName.split('-').slice(1).join('-')}.html`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`No se pudo cargar: ${sectionName}`);
-      container.innerHTML = await response.text();
-      const titleEl = document.getElementById('module-title');
-      if (titleEl) titleEl.textContent = sectionName.replace(/-/g, ' ').toUpperCase().slice(3);
-    } catch (error) {
-      container.innerHTML = `Error al cargar pieza: ${error.message}`;
-    }
-  },
-};
-document.addEventListener('DOMContentLoaded', () => Shell.init());
+/* La navegación entre secciones la hace el shell de admin/index.html.
+   (Aquí había un segundo shell que buscaba un contenedor inexistente.) */
 
 'use strict';
 

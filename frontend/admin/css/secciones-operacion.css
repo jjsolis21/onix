@@ -1,0 +1,189 @@
+/*
+ * secciones-operacion.css — Ónix FM · Admin
+ * Estilos compartidos de las secciones 04 Cartuchera, 05 Historial y 06 Motor.
+ * Usa solo los tokens de variables.css. Prefijo .ox- para no chocar con otras secciones.
+ */
+
+.ox-root {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  font-family: var(--font-ui);
+  color: var(--text-mid);
+}
+
+.ox-head { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; }
+.ox-head h2 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: .06em;
+  color: var(--text-hi);
+  margin: 0;
+}
+.ox-head p { margin: 0; font-size: .85rem; color: var(--text-lo); }
+.ox-head .ox-spacer { flex: 1; }
+
+.ox-card {
+  background: var(--choc-2);
+  border: 1px solid var(--choc-4);
+  border-radius: 6px;
+  padding: var(--s4);
+}
+.ox-card h3 {
+  font-family: var(--font-data);
+  font-size: .72rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--gold-0);
+  margin: 0 0 var(--s3);
+}
+.ox-card .ox-hint { font-size: .8rem; color: var(--text-lo); margin: 0 0 var(--s3); }
+
+.ox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s4); }
+
+/* ── Formularios ─────────────────────────────────────────── */
+.ox-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ox-field label {
+  font-family: var(--font-data);
+  font-size: .62rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.ox-input, .ox-select {
+  background: var(--choc-1);
+  border: 1px solid var(--choc-5);
+  border-radius: 4px;
+  color: var(--text-hi);
+  font-family: var(--font-data);
+  font-size: .8rem;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.ox-input:focus, .ox-select:focus { outline: none; border-color: var(--gold-0); }
+.ox-row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.ox-row > .ox-field { flex: 1 1 140px; }
+
+.ox-btn {
+  font-family: var(--font-data);
+  font-size: .68rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--choc-6);
+  background: transparent;
+  color: var(--text-mid);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ox-btn:hover { border-color: var(--gold-0); color: var(--gold-1); }
+.ox-btn--primary { background: var(--gold-0); border-color: var(--gold-0); color: var(--choc-0); font-weight: 600; }
+.ox-btn--primary:hover { background: var(--gold-1); color: var(--choc-0); }
+.ox-btn--danger:hover { border-color: var(--rust); color: var(--red-live); }
+.ox-btn:disabled { opacity: .4; cursor: default; }
+.ox-btn--sm { padding: 4px 8px; font-size: .6rem; }
+
+/* ── Tablas ──────────────────────────────────────────────── */
+.ox-table-wrap { overflow-x: auto; }
+.ox-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.ox-table th {
+  font-family: var(--font-data);
+  font-size: .6rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--choc-5);
+  position: sticky;
+  top: 0;
+  background: var(--choc-2);
+}
+.ox-table td { padding: 6px 8px; border-bottom: 1px solid var(--choc-3); color: var(--text-mid); }
+.ox-table tr.ox-clickable { cursor: pointer; }
+.ox-table tr.ox-clickable:hover td { background: var(--choc-3); }
+.ox-table tr.ox-selected td { background: var(--choc-4); }
+.ox-table .ox-num { font-family: var(--font-data); text-align: right; white-space: nowrap; }
+.ox-table .ox-mono { font-family: var(--font-data); white-space: nowrap; color: var(--text-mono); }
+.ox-empty { text-align: center; color: var(--text-lo); padding: var(--s5) !important; }
+
+.ox-tag {
+  display: inline-block;
+  font-family: var(--font-data);
+  font-size: .58rem;
+  letter-spacing: .08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--choc-5);
+  color: var(--text-mono);
+  text-transform: uppercase;
+}
+.ox-tag--pauta    { border-color: var(--gold-0); color: var(--gold-1); }
+.ox-tag--efecto   { border-color: var(--blue-next); color: var(--blue-next); }
+.ox-tag--respaldo { border-color: var(--rust); color: var(--red-live); }
+.ox-tag--ok       { border-color: var(--green-dim); color: var(--green-on); }
+
+/* Barra de cumplimiento */
+.ox-meter { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+.ox-meter__bar { flex: 1; height: 6px; background: var(--choc-4); border-radius: 3px; overflow: hidden; }
+.ox-meter__fill { height: 100%; background: var(--green-on); }
+.ox-meter__fill.warn { background: var(--gold-0); }
+.ox-meter__fill.bad  { background: var(--red-live); }
+.ox-meter__txt { font-family: var(--font-data); font-size: .72rem; min-width: 44px; text-align: right; }
+
+.ox-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--choc-4); }
+.ox-tab {
+  font-family: var(--font-data);
+  font-size: .68rem;
+  letter-spacing: .12em;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-lo);
+  cursor: pointer;
+}
+.ox-tab.active { color: var(--gold-1); border-bottom-color: var(--gold-0); }
+.ox-pane { display: none; flex-direction: column; gap: var(--s4); }
+.ox-pane.active { display: flex; }
+
+.ox-pager { display: flex; align-items: center; gap: var(--s3); justify-content: flex-end;
+  font-family: var(--font-data); font-size: .7rem; color: var(--text-lo); }
+
+/* Indicadores numéricos */
+.ox-kpis { display: flex; gap: var(--s4); flex-wrap: wrap; }
+.ox-kpi { display: flex; flex-direction: column; min-width: 90px; }
+.ox-kpi b { font-family: var(--font-display); font-size: 1.6rem; color: var(--text-hi); font-weight: 400; }
+.ox-kpi span { font-family: var(--font-data); font-size: .6rem; letter-spacing: .12em; color: var(--text-lo); text-transform: uppercase; }
+
+/* ── Cartuchera ──────────────────────────────────────────── */
+.ox-cart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s3); }
+.ox-slot {
+  background: var(--choc-1);
+  border: 1px solid var(--choc-4);
+  border-radius: 6px;
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ox-slot.assigned { border-color: var(--choc-6); }
+.ox-slot__num { font-family: var(--font-display); font-size: 1.3rem; color: var(--gold-0); line-height: 1; }
+.ox-slot__title { color: var(--text-hi); font-size: .9rem; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ox-slot__meta { font-family: var(--font-data); font-size: .62rem; color: var(--text-lo); }
+.ox-slot__actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ── Motor: tarjetas de sonido ───────────────────────────── */
+.ox-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-lo); margin-right: 6px; }
+.ox-status-dot.on  { background: var(--green-on); box-shadow: 0 0 6px var(--green-on); }
+.ox-status-dot.off { background: var(--red-live); }
+.ox-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: .82rem; }
+.ox-kv dt { font-family: var(--font-data); font-size: .62rem; letter-spacing: .1em; color: var(--text-lo); text-transform: uppercase; padding-top: 2px; }
+.ox-kv dd { margin: 0; color: var(--text-hi); word-break: break-word; }
+.ox-msg { font-family: var(--font-data); font-size: .72rem; min-height: 1em; }
+.ox-msg.ok  { color: var(--green-on); }
+.ox-msg.err { color: var(--red-live); }
