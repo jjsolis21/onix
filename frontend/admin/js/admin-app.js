@@ -749,6 +749,7 @@ async function processLote() {
         title = parts[1].split('.')[0].trim();
       }
       if (item.tags?.album) formData.append('album', item.tags.album);
+      if (item.tags?.bpm && !globalMeta.bpm) formData.append('bpm', item.tags.bpm);
       if (item.tags?.anio && !globalMeta.year) formData.append('fecha_lanzamiento', item.tags.anio);
 
       formData.append('titulo', title);

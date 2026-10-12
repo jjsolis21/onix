@@ -25,13 +25,15 @@
      WCAG AA entre capas adyacentes para que la jerarquía sea
      perceptible sin necesidad de bordes fuertes.
   ──────────────────────────────────────────────────────────── */
-  --choc-0: #000d14;   /* Abismo — fondo más oscuro, topbar            */
-  --choc-1: #001219;   /* Mar profundo — fondo del body                */
-  --choc-2: #001e2b;   /* Fondo de paneles principales                 */
-  --choc-3: #002a38;   /* Paneles elevados, cards                      */
-  --choc-4: #003545;   /* Hover, estados activos de fondo              */
-  --choc-5: #005f73;   /* Teal principal — bordes, separadores         */
-  --choc-6: #0a9396;   /* Teal iluminado — bordes activos, iconos      */
+  /* PALETA AZABACHE (antes "Deep Sea"): negro neutro en capas, bordes
+     visibles y texto blanco. El ámbar sigue siendo el color de acción. */
+  --choc-0: #050506;   /* Azabache — topbar, campos de texto           */
+  --choc-1: #0b0b0d;   /* Fondo del body                               */
+  --choc-2: #121215;   /* Paneles principales                          */
+  --choc-3: #1a1a1f;   /* Paneles elevados, cards, cabeceras de tabla  */
+  --choc-4: #24242a;   /* Hover, activo                                */
+  --choc-5: #34343c;   /* Bordes y separadores                         */
+  --choc-6: #6f7b8d;   /* Acero — bordes activos, iconos, gráficos     */
 
   /* ────────────────────────────────────────────────────────────
      PALETA ÁMBAR — La firma visual del sistema
@@ -50,17 +52,17 @@
   --green-dim:  #2d8653;   /* Verde apagado — bordea estados ok        */
   --red-live:   #e63946;   /* Rojo vivo — ON AIR en vivo               */
   --blue-next:  #48cae4;   /* Cian — siguiente pista, información      */
-  --mint:       #94d2bd;   /* Menta — decorativo, texto destacado      */
+  --mint:       #d6d6dc;   /* Texto destacado                          */
 
   /* ────────────────────────────────────────────────────────────
      JERARQUÍA TIPOGRÁFICA
      Tres niveles claramente diferenciados en luminosidad:
      hi (títulos) > mid (cuerpo) > lo (labels, metadatos)
   ──────────────────────────────────────────────────────────── */
-  --text-hi:   #e9f5f3;   /* Blanco frío — títulos, valores clave     */
-  --text-mid:  #94d2bd;   /* Menta — texto de cuerpo principal        */
-  --text-lo:   #4a8f87;   /* Teal apagado — labels, placeholders      */
-  --text-mono: #7cbfb5;   /* Menta suave — datos técnicos en mono     */
+  --text-hi:   #f5f5f7;   /* Blanco — títulos, valores clave          */
+  --text-mid:  #c8c8d0;   /* Gris claro — texto de cuerpo             */
+  --text-lo:   #84848f;   /* Gris medio — labels, placeholders        */
+  --text-mono: #b4b4be;   /* Datos técnicos en mono                   */
 
   /* ────────────────────────────────────────────────────────────
      TIPOGRAFÍA
@@ -70,7 +72,8 @@
   ──────────────────────────────────────────────────────────── */
   --font-display: 'Bebas Neue', sans-serif;
   --font-data:    'DM Mono', monospace;
-  --font-ui:      'Rajdhani', sans-serif;
+  /* Segoe UI (Windows): sólida y legible, y no depende de internet */
+  --font-ui:      'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
 
   /* ────────────────────────────────────────────────────────────
      ESCALA DE ESPACIADO (8pt grid)
@@ -111,7 +114,7 @@
      el contraste. Los usamos solo en elementos focales.
   ──────────────────────────────────────────────────────────── */
   --glow-gold:  0 0 14px rgba(238, 155, 0,  .40);
-  --glow-teal:  0 0 12px rgba(10,  147, 150, .35);
+  --glow-teal:  0 0 12px rgba(111, 123, 141, .35);
   --glow-red:   0 0 10px rgba(230, 57,  70,  .45);
   --glow-green: 0 0 10px rgba(82,  183, 136, .30);
 

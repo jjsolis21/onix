@@ -5,17 +5,18 @@
  */
 
 :root {
-  --bg-0: #000d14;
-  --bg-1: #001219;
-  --bg-2: #001e2b;
-  --bg-3: #002a38;
-  --bg-4: #003545;
-  --line: #00475a;
-  --teal: #0a9396;
+  /* Paleta azabache (la misma del Admin) */
+  --bg-0: #050506;
+  --bg-1: #0b0b0d;
+  --bg-2: #121215;
+  --bg-3: #1a1a1f;
+  --bg-4: #24242a;
+  --line: #34343c;
+  --teal: #6f7b8d;
 
-  --txt-hi: #e9f5f3;
-  --txt-mid: #94d2bd;
-  --txt-lo: #4a8f87;
+  --txt-hi: #f5f5f7;
+  --txt-mid: #c8c8d0;
+  --txt-lo: #84848f;
 
   --ambar: #ee9b00;
   --ambar-vivo: #ffc233;
@@ -25,7 +26,7 @@
   --cyan: #48cae4;
 
   /* Colores por tipo de audio (decks, chips, biblioteca) */
-  --t-musica: #94d2bd;
+  --t-musica: #8fd6b0;
   --t-efecto: #ee9b00;
   --t-sweeper: #48cae4;
   --t-cuna: #e63946;
@@ -34,7 +35,7 @@
 
   --f-display: 'Bebas Neue', 'Arial Narrow', sans-serif;
   --f-data: 'DM Mono', Consolas, monospace;
-  --f-ui: 'Rajdhani', 'Segoe UI', sans-serif;
+  --f-ui: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }

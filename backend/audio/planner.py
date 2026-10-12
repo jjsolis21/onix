@@ -127,6 +127,11 @@ class Planner:
             self._con_tope, self._tiene_restricciones = {}, False
         self._emitidas_dia = {}
         try:
+            conn.execute("SELECT prioridad FROM audios LIMIT 1")
+            self._tiene_prioridad = True
+        except sqlite3.OperationalError:
+            self._tiene_prioridad = False
+        try:
             self.eventos = [dict(e) for e in conn.execute(
                 "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
         except sqlite3.OperationalError:       # BD sin la migración 16
@@ -490,6 +495,11 @@ class Planner:
 
         n = max(1, int(self._icfg("aleatoriedad", 3)))
         orden = "a.ultima_reproduccion ASC NULLS FIRST, a.id ASC"
+        if self._tiene_prioridad:
+            # Prioridad (1 Alta · 2 Normal · 3 Baja): una alta cuenta como si
+            # hubiera sonado 12 h antes (sale antes); una baja, 12 h después.
+            orden = ("julianday(COALESCE(a.ultima_reproduccion, '1970-01-01'))"
+                     " + (COALESCE(a.prioridad, 2) - 2) * 0.5 ASC, a.id ASC")
         # Cascada: se sueltan las reglas de la última a la primera; la primera
         # (no repetir dentro del plan) es la que más se sostiene.
         # Con canciones ya planificadas, el paso "sin ninguna regla" lo cubre la

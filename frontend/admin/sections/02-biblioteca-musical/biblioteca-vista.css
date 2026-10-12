@@ -227,3 +227,13 @@
 .bv-dif-f em { font-style: normal; text-align: right; color: var(--text-hi); }
 .bv-dif-cab b { font-weight: 400; color: var(--text-lo); font-size: 8px; }
 .bv-player .bv-p-chk { white-space: nowrap; }
+
+.bv-bpm { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.bv-prio { font-size: 11px; font-weight: 700; }
+.bv-prio.p1 { color: var(--gold-2); }
+.bv-prio.p3 { color: var(--text-lo); }
+
+.bv-bpm { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.bv-prio { font-size: 11px; font-weight: 700; }
+.bv-prio.p1 { color: var(--gold-2); }
+.bv-prio.p3 { color: var(--text-lo); }

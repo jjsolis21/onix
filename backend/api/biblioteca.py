@@ -92,7 +92,7 @@ def _desde_nombre(nombre: str) -> dict:
 
 def leer_etiquetas(datos: bytes, nombre: str) -> dict:
     """Etiquetas del archivo (o del nombre). Nunca lanza."""
-    res = {"titulo": "", "artista": "", "album": "", "anio": "", "genero": "", "origen_datos": "nombre"}
+    res = {"titulo": "", "artista": "", "album": "", "anio": "", "genero": "", "bpm": "", "origen_datos": "nombre"}
     try:
         import mutagen
         f = mutagen.File(io.BytesIO(datos), easy=True)
@@ -105,6 +105,8 @@ def leer_etiquetas(datos: bytes, nombre: str) -> dict:
             return (v[0] if isinstance(v, list) and v else (v or "")).strip() if v else ""
         res.update(titulo=uno("title"), artista=uno("artist") or uno("albumartist"),
                    album=uno("album"), genero=uno("genre"))
+        bpm = re.search(r"\d{2,3}", uno("bpm") or "")
+        res["bpm"] = bpm.group(0) if bpm and 40 <= int(bpm.group(0)) <= 300 else ""
         anio = re.search(r"\d{4}", uno("date") or uno("year") or "")
         res["anio"] = anio.group(0) if anio else ""
         if res["titulo"] or res["artista"]:
@@ -219,6 +221,8 @@ def ficha(audio_id: int):
             "anio": (a["fecha_lanzamiento"] or "")[:4], "tipo_audio": a["tipo_audio"],
             "cat1": a["subgenero"], "cat2": a["categoria"], "cat3": a["cat3"], "voz": a["genero_vocal"],
             "origen": a["origen"], "energia": a["energia"], "bpm": a["bpm"],
+            "prioridad": a["prioridad"] if "prioridad" in claves else None,
+            "coro": [a["cue_inicio_coro"] or 0, a["cue_final_coro"] or 0],
             "duracion": a["duracion"] or 0, "cue_inicio": a["cue_inicio"] or 0, "cue_intro": a["cue_intro"] or 0,
             "cue_mezcla": a["cue_mezcla"] or 0,
             "marcas_auto": a["marcas_auto"] if "marcas_auto" in claves else None,

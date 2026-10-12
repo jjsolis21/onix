@@ -1,7 +1,7 @@
 /* ============================================================
    ÓNIX FM — Waveform Editor Styles  (waveform-editor.css)
    Añadir en tu CSS principal o con <link> en biblioteca-musical.html
-   Identidad visual: naranja Ónix #ff6600 · dark industrial
+   Identidad visual: naranja Ónix #ee9b00 · dark industrial
    ============================================================ */
 
 /* ── Variables (añadir a tu :root existente si ya tienes uno) ────────────── */
@@ -9,9 +9,9 @@
   --wf-bg: #0d0d0d;
   --wf-panel-bg: #141414;
   --wf-border: #2a2a2a;
-  --wf-border-glow: #ff660044;
-  --wf-orange: #ff6600;
-  --wf-orange-glow: #ff660020;
+  --wf-border-glow: #ee9b0044;
+  --wf-orange: #ee9b00;
+  --wf-orange-glow: #ee9b0020;
   --wf-green: #00e676;
   --wf-green-dim: rgba(0, 230, 118, 0.15);
   --wf-red: #ff3d3d;

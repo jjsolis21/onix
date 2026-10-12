@@ -8,7 +8,7 @@
 
 /* ── TOKENS ADICIONALES ─────────────────────────────────── */
 :root {
-  --p-orange-dim:   rgba(255, 102, 0, .10);
+  --p-orange-dim:   rgba(238, 155, 0, .10);
   --p-yellow-dim:   rgba(255, 193, 7, .12);
   --p-yellow-border:rgba(255, 193, 7, .28);
   --p-red-row:      rgba(255, 61, 90, .06);

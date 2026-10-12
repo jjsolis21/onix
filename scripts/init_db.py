@@ -585,6 +585,15 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             cursor.execute(f"ALTER TABLE audios ADD COLUMN {col} {tipo} DEFAULT NULL")
     logger.info("  → restricciones por canción: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 22 — Prioridad por canción (1 Alta · 2 Normal · 3 Baja)
+    #   El automático elige antes las de prioridad alta (ver planner._elegir)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "prioridad" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN prioridad INTEGER DEFAULT NULL")
+    logger.info("  → audios.prioridad: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

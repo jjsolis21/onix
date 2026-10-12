@@ -1355,7 +1355,7 @@ def list_audios(
                cue_final_coro, cue_mezcla, fade_in, fade_out,
                tipo_audio, veces_reproducido, ultima_reproduccion,
                loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia,
-               marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia
+               marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia, prioridad
         FROM audios
         WHERE activo = 1
     """
@@ -1429,7 +1429,8 @@ class LoteAudiosRequest(BaseModel):
 _LOTE_COLUMNAS = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal",
                   "origen": "origen", "energia": "energia", "tipo_audio": "tipo_audio",
                   "restr_desde": "restr_desde", "restr_hasta": "restr_hasta",
-                  "restr_dias": "restr_dias", "max_por_dia": "max_por_dia"}
+                  "restr_dias": "restr_dias", "max_por_dia": "max_por_dia",
+                  "prioridad": "prioridad", "bpm": "bpm"}
 
 
 @app.post("/api/v1/biblioteca/lote", tags=["Audios"], summary="Edición masiva de la Biblioteca")
@@ -1470,6 +1471,14 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
             v = int(v) if v not in (None, "") else None
             if v is not None and not 0 <= v <= 24:
                 raise HTTPException(status_code=422, detail="Las horas van de 0 a 24")
+        elif clave == "prioridad":
+            v = int(v) if v not in (None, "") else None
+            if v is not None and v not in (1, 2, 3):
+                raise HTTPException(status_code=422, detail="Prioridad: 1 Alta, 2 Normal o 3 Baja")
+        elif clave == "bpm":
+            v = int(float(v)) if v not in (None, "") else None
+            if v is not None and not 40 <= v <= 300:
+                raise HTTPException(status_code=422, detail="BPM entre 40 y 300")
         elif clave == "max_por_dia":
             v = int(v) if v not in (None, "", 0, "0") else None
             if v is not None and not 1 <= v <= 48:

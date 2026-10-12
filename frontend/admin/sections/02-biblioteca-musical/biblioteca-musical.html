@@ -16,25 +16,25 @@
    Tipografía: Plus Jakarta Sans + JetBrains Mono
 ══════════════════════════════════════════════════════════════ */
   :root {
-    --jz-void: #070b10;
-    --jz-bg: #0c1018;
-    --jz-panel: #101620;
-    --jz-raised: #141d28;
-    --jz-surface: #19232f;
-    --jz-hover: #1e2b3a;
-    --jz-active: #22334a;
+    --jz-void: #050506;
+    --jz-bg: #0b0b0d;
+    --jz-panel: #121215;
+    --jz-raised: #1a1a1f;
+    --jz-surface: #1f1f25;
+    --jz-hover: #24242a;
+    --jz-active: #2c2c34;
 
-    --jz-border: rgba(255, 255, 255, .055);
-    --jz-border2: rgba(255, 255, 255, .10);
+    --jz-border: rgba(255, 255, 255, .10);
+    --jz-border2: rgba(255, 255, 255, .16);
     --jz-sep: rgba(255, 255, 255, .038);
 
-    --jz-text: #dde6f0;
-    --jz-text2: #6e8fa8;
-    --jz-text3: #344d60;
+    --jz-text: #f5f5f7;
+    --jz-text2: #a8a8b2;
+    --jz-text3: #6c6c76;
     --jz-white: #eef4fa;
 
     /* ONIX FM accent colours */
-    --jz-gold: #f0a50a;
+    --jz-gold: #ee9b00;
     --jz-gold2: #ffcc44;
     --neon-cyan: #00c8f0;
     --neon-cyan2: #4dd8f8;
@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=5">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=6">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2515,6 +2515,8 @@
         <select data-campo="voz" title="Voz"></select>
         <select data-campo="origen" title="Origen">
           <option value="">Origen…</option><option value="NACIONAL">Nacional</option><option value="INTERNACIONAL">Internacional</option></select>
+        <select data-campo="prioridad" title="Prioridad">
+          <option value="">Prioridad…</option><option value="1">▲ Alta</option><option value="2">● Normal</option><option value="3">▼ Baja</option></select>
         <select data-campo="energia" title="Energía">
           <option value="">Energía…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
         <button class="bv-btn bv-btn--ok" id="bvAprobar" title="Aprobar: pueden salir al aire (necesitan género y rotación)">✓ Aprobar</button>
@@ -2549,7 +2551,7 @@
 
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=6"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=7"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)

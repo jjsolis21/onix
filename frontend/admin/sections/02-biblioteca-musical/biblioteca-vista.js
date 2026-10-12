@@ -38,6 +38,8 @@
     { k: 'voz',     t: 'Voz',        w: '80px' },
     { k: 'origen',  t: 'Origen',     w: '70px', oculta: true },
     { k: 'energia', t: 'Energía',    w: '70px' },
+    { k: 'prioridad', t: 'Prior.',   w: '76px' },
+    { k: 'bpm',     t: 'BPM',        w: '50px', num: true, oculta: true },
     { k: 'anio',    t: 'Año',        w: '56px' },
     { k: 'duracion', t: 'Dur.',      w: '56px', num: true },
     { k: 'intro',   t: 'Intro',      w: '52px', num: true, oculta: true },
@@ -53,13 +55,14 @@
     sel: new Set(), ancla: null, cursor: -1, sonando: null,
     verFicha: leer('bv_ficha', true), fichaId: null,
     calidad: {}, papelera: [],
-    f: {}, campoQ: 'todos', rapida: false, soloMarcados: false, autoplay: leer('bv_autoplay', false),
+    f: {}, bpm: {}, campoQ: 'todos', rapida: false, soloMarcados: false, autoplay: leer('bv_autoplay', false),
   };
   // Filtros combinables del panel izquierdo (como Jazler SoHo)
   const FILTROS = [
     ['tipo_audio', 'Tipo'], ['cat1', null], ['cat2', null], ['cat3', null], ['voz', 'Voz'],
-    ['origen', 'Origen'], ['energia', 'Energía'], ['decada', 'Década'],
+    ['origen', 'Origen'], ['energia', 'Energía'], ['prioridad', 'Prioridad'], ['coro', 'Coro'], ['decada', 'Década'],
   ];
+  const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
   const CALIDAD = [['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
     ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'], ['olvidadas', '💤 Olvidadas (30 días)'],
     ['restringidas', '⏱ Con restricciones']];
@@ -76,7 +79,9 @@
              anio: Number.isFinite(anio) ? anio : null,
              decada: Number.isFinite(anio) ? `${Math.floor(anio / 10) * 10}s` : null,
              veces: a.veces_reproducido || 0, ultima: a.ultima_reproduccion || '',
-             intro: a.cue_intro || a.intro || 0, aprobada: a.aprobada ?? 1 };
+             intro: a.cue_intro || a.intro || 0, aprobada: a.aprobada ?? 1,
+             prioridad: a.prioridad || 2, bpm: a.bpm || null,
+             coro: (a.cue_inicio_coro || 0) > 0 ? 'CON CORO MARCADO' : 'SIN CORO MARCADO' };
   }
 
   async function cargar() {
@@ -134,16 +139,24 @@
       const nombre = titulo || etq[campo] || campo;
       const cuenta = new Map();
       base.forEach(a => { if (pasa(a, campo)) { const v = a[campo] ?? ''; cuenta.set(v, (cuenta.get(v) || 0) + 1); } });
-      const orden = campo === 'energia' ? (x, y) => x - y : (x, y) => String(x).localeCompare(String(y));
+      const orden = ['energia', 'prioridad'].includes(campo) ? (x, y) => x - y : (x, y) => String(x).localeCompare(String(y));
       const valores = [...cuenta.keys()].filter(v => v !== '' && v !== null).sort(orden);
       const actual = S.f[campo];
-      const etiquetaValor = v => campo === 'tipo_audio' ? (TIPOS[v] || v) : (campo === 'energia' ? '●'.repeat(v) : v);
+      const etiquetaValor = v => campo === 'tipo_audio' ? (TIPOS[v] || v) : campo === 'energia' ? '●'.repeat(v)
+        : campo === 'prioridad' ? (PRIORIDAD[v] || v) : v;
       return `<select data-filtro="${campo}" class="${actual !== undefined ? 'bv-filtro-activo' : ''}">
         <option value="">${esc(nombre)} (Todo)</option>
         ${valores.map(v => `<option value="${esc(v)}" ${String(actual) === String(v) ? 'selected' : ''}>${esc(etiquetaValor(v))} (${cuenta.get(v)})</option>`).join('')}
         ${cuenta.get('') ? `<option value="__vacio" ${actual === '' ? 'selected' : ''}>(sin asignar) (${cuenta.get('')})</option>` : ''}
       </select>`;
-    }).join('');
+    }).join('') + `<div class="bv-bpm"><select data-bpm="min" title="BPM desde">${opcionesBpm('desde', S.bpm.min)}</select>
+      <select data-bpm="max" title="BPM hasta">${opcionesBpm('hasta', S.bpm.max)}</select></div>`;
+  }
+  function opcionesBpm(txt, actual) {
+    const conBpm = (enPapelera() ? S.papelera : S.todos).filter(a => a.bpm).length;
+    return `<option value="">BPM ${txt} (Todo)</option>` + Array.from({ length: 15 }, (_, i) => 60 + i * 10).map(v =>
+      `<option value="${v}" ${actual === v ? 'selected' : ''}>BPM ${txt} ${v}</option>`).join('') +
+      (conBpm ? '' : '<option disabled>— ninguna canción tiene BPM —</option>');
   }
 
 
@@ -156,6 +169,8 @@
       if (String(a[campo] ?? '') !== String(valor)) return false;
     }
     if (S.soloMarcados && !S.sel.has(a.id)) return false;
+    if (S.bpm.min && !(a.bpm >= S.bpm.min)) return false;
+    if (S.bpm.max && !(a.bpm && a.bpm <= S.bpm.max)) return false;
     if (n.tipo === 'bandeja' && !(a.tipo_audio === 'Musica' && !a.aprobada)) return false;
     if (n.tipo === 'ids' && !S.calidad[n.clave]?.has(a.id)) return false;
     if (n.campo) {
@@ -226,23 +241,26 @@
   function selectRapido(a, campo) {
     let opciones;
     if (campo === 'energia') opciones = ['', '1', '2', '3', '4', '5'];
+    else if (campo === 'prioridad') opciones = ['1', '2', '3'];
     else {
       const cat = (S.schema?.categorias || []).find(x => x.nombre_interno === campo);
       opciones = [''].concat((cat?.valores || []).map(v => String(v.valor).toUpperCase()));
       if (a[campo] && !opciones.includes(a[campo])) opciones.push(a[campo]);
     }
     return `<div><select class="bv-rapido" data-rapido="${campo}" data-id="${a.id}">${opciones.map(o =>
-      `<option value="${esc(o)}" ${String(a[campo] ?? '') === o ? 'selected' : ''}>${o === '' ? '—' : esc(campo === 'energia' ? '●'.repeat(+o) : o)}</option>`).join('')}</select></div>`;
+      `<option value="${esc(o)}" ${String(a[campo] ?? '') === o ? 'selected' : ''}>${o === '' ? '—' : esc(campo === 'energia' ? '●'.repeat(+o) : campo === 'prioridad' ? PRIORIDAD[o] : o)}</option>`).join('')}</select></div>`;
   }
 
   function celda(a, c) {
-    if (S.rapida && !enPapelera() && ['cat1', 'cat2', 'voz', 'energia'].includes(c.k)) return selectRapido(a, c.k);
+    if (S.rapida && !enPapelera() && ['cat1', 'cat2', 'voz', 'energia', 'prioridad'].includes(c.k)) return selectRapido(a, c.k);
     switch (c.k) {
       case 'titulo': return `<div class="bv-c-tit" title="${esc(a.titulo)} — ${esc(a.artista)}">
         <span class="bv-tapa" data-tapa="${a.id}">${S.sinTapa?.has(a.id) ? '♪' : `<img loading="lazy" src="/api/v1/audios/${a.id}/caratula" alt="" onerror="this.parentNode.textContent='♪';window.BibliotecaVista&&window.BibliotecaVista.sinTapa(${a.id})">`}</span>
         <b>${esc(a.titulo)}</b><small>${esc(a.artista)}</small></div>`;
       case 'cat1': return `<div>${a.cat1 ? `<span class="bv-chip" style="background:${esc(S.colores[String(a.cat1).toUpperCase()] || '#777')}">${esc(a.cat1)}</span>` : ''}</div>`;
       case 'energia': return `<div class="bv-energia" title="Energía ${a.energia ?? '—'}">${a.energia ? '●'.repeat(a.energia) : ''}</div>`;
+      case 'prioridad': return `<div class="bv-prio p${a.prioridad}">${a.prioridad === 2 ? '' : PRIORIDAD[a.prioridad]}</div>`;
+      case 'bpm': return `<div class="bv-num">${a.bpm || ''}</div>`;
       case 'duracion': return `<div class="bv-num">${fmt(a.duracion)}</div>`;
       case 'intro': return `<div class="bv-num">${a.intro ? Math.round(a.intro) + 's' : ''}</div>`;
       case 'veces': return `<div class="bv-num">${a.veces || ''}</div>`;
@@ -436,6 +454,7 @@
       <div class="bv-f-sec"><h4>Datos</h4><dl class="bv-f-datos">
         ${dato(etq.cat1 || 'Género', f.cat1)}${dato(etq.cat2 || 'Rotación', f.cat2)}${dato(etq.cat3 || 'Subgénero', f.cat3)}
         ${dato('Voz', f.voz)}${dato('Origen', f.origen)}${dato('Energía', f.energia ? '●'.repeat(f.energia) : '')}
+        ${dato('Prioridad', PRIORIDAD[f.prioridad || 2])}${dato('Coro', f.coro?.[0] ? `${fmt(f.coro[0])} → ${fmt(f.coro[1])}` : 'sin marcar')}
         ${dato('Año', f.anio)}${dato('BPM', f.bpm)}${dato('Volumen', volumen)}${dato('Marcas', marcas)}
         ${dato('Cargada', (f.creado || '').slice(0, 10))}${dato('Archivo', f.archivo_path)}
       </dl></div>
@@ -462,7 +481,7 @@
     const cont = $('bvOnda');
     if (!cont || typeof WaveSurfer === 'undefined') return;
     try { onda?.destroy(); } catch (_) { }
-    onda = WaveSurfer.create({ container: cont, height: 70, waveColor: '#0a9396', progressColor: '#0a9396',
+    onda = WaveSurfer.create({ container: cont, height: 70, waveColor: '#8a96a8', progressColor: '#8a96a8',
                                cursorWidth: 0, interact: false, normalize: true, barWidth: 2, barGap: 1,
                                url: `/api/v1/audios/${f.id}/stream` });
     onda.on('ready', () => {
@@ -593,14 +612,16 @@
     };
     $('bvVista').addEventListener('change', e => cambiarVista(e.target.value));
     $('bvFiltros').addEventListener('change', e => {
+      const b = e.target.closest('select[data-bpm]');
+      if (b) { S.bpm[b.dataset.bpm] = b.value ? +b.value : undefined; filtrar(); return; }
       const s = e.target.closest('select[data-filtro]');
       if (!s) return;
       if (s.value === '') delete S.f[s.dataset.filtro];
-      else S.f[s.dataset.filtro] = s.value === '__vacio' ? '' : (s.dataset.filtro === 'energia' ? +s.value : s.value);
+      else S.f[s.dataset.filtro] = s.value === '__vacio' ? '' : (['energia', 'prioridad'].includes(s.dataset.filtro) ? +s.value : s.value);
       S.cursor = -1; $('bvScroll').scrollTop = 0; filtrar();
     });
     $('bvReiniciar').addEventListener('click', () => {
-      S.f = {}; S.q = ''; $('bvBuscar').value = ''; S.soloMarcados = false; $('bvSoloMarcados').checked = false;
+      S.f = {}; S.bpm = {}; S.q = ''; $('bvBuscar').value = ''; S.soloMarcados = false; $('bvSoloMarcados').checked = false;
       cambiarVista('{"tipo":"todo"}');
     });
     $('bvCampoQ').addEventListener('change', e => { S.campoQ = e.target.value; filtrar(); });
@@ -626,7 +647,7 @@
         body: JSON.stringify({ ids: [id], cambios: { [campo]: valor } }) });
       if (!r.ok) { aviso('No se pudo guardar', 'error'); return; }
       const a = S.todos.find(x => x.id === id);
-      if (a) a[campo] = campo === 'energia' ? (valor ? +valor : null) : (valor || '');
+      if (a) a[campo] = campo === 'energia' ? (valor ? +valor : null) : campo === 'prioridad' ? (+valor || 2) : (valor || '');
       pintarFiltros();
       if (S.fichaId === id) mostrarFicha(id, true);
     });

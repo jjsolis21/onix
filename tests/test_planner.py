@@ -324,3 +324,11 @@ def test_maximo_por_dia(base):
         audio(base, f"OTRA {i}", artista=f"O{i}")
     titulos = [i["titulo"] for i in planear(base, minutos=180, tandas=())]
     assert 1 <= titulos.count("TOPE 2") <= 2
+
+
+def test_prioridad_alta_sale_antes(base):
+    cfg(base, aleatoriedad=1)
+    audio(base, "NORMAL", artista="N", ultima_reproduccion="2026-10-10 10:00:00")
+    audio(base, "ALTA", artista="A", ultima_reproduccion="2026-10-10 18:00:00", prioridad=1)   # sonó 8 h después
+    primero = [i for i in planear(base, minutos=10, tandas=()) if i["tipo"] == "audio"][0]["titulo"]
+    assert primero == "ALTA"             # 18:00 − 12 h = 06:00: va antes que la normal de las 10:00
