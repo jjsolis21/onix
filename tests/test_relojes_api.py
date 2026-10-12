@@ -200,14 +200,14 @@ def test_importar_m3u_y_pls_busca_en_la_biblioteca(client, tmp_path):
     b = subir(client, tmp_path, "Noche Larga", seconds=10)
     m3u = ("#EXTM3U\n"
            f"#EXTINF:10,ART Camino Al Sol - Camino Al Sol\nC:\\Musica\\Camino Al Sol.wav\n"
-           "#EXTINF:200,Nadie - No Existe\nD:/otra/no_existe.mp3\n"
+           "#EXTINF:200,Zzqx Nadie - Qwvz Inexistente\nD:/otra/zzqx_qwvz_inexistente.mp3\n"
            "#EXTINF:10,ART NOCHE LARGA - Noche Larga\n\\\\SERVIDOR\\temas\\nóche_larga_remix.mp3\n")
     r = client.post("/api/v1/playlists/importar", data={"nombre": "Importada M3U"},
                     files={"archivo": ("lista.m3u", m3u.encode("cp1252"), "audio/x-mpegurl")})
     assert r.status_code == 201, r.text
     d = r.json()
     assert [i["audio_id"] for i in d["items"]] == [a, b] and d["encontradas"] == 2
-    assert d["no_encontradas"] == ["Nadie - No Existe"] and d["total_lista"] == 3
+    assert d["no_encontradas"] == ["Zzqx Nadie - Qwvz Inexistente"] and d["total_lista"] == 3
     pls = "[playlist]\nFile1=/x/Noche Larga.mp3\nTitle1=Noche Larga\nNumberOfEntries=1\n"
     r = client.post("/api/v1/playlists/importar", files={"archivo": ("otra.pls", pls.encode(), "text/plain")})
     assert r.status_code == 201 and r.json()["nombre"] == "otra" and r.json()["items"][0]["audio_id"] == b
