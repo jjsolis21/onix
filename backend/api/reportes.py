@@ -379,20 +379,36 @@ def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = 
     for p in pautas:
         r = _cumplimiento_pauta(conn, p, d_desde, d_hasta)
         emis = conn.execute(
-            "SELECT iniciado_en FROM historial_emision"
+            "SELECT iniciado_en, audio_id FROM historial_emision"
             " WHERE pauta_id = ? AND iniciado_en >= ? AND iniciado_en < ? ORDER BY iniciado_en",
             (p["id"], d_desde.isoformat(), (d_hasta + timedelta(days=1)).isoformat())).fetchall()
         if not (r["programadas"] or emis):
             continue
         tot_prog += r["programadas"]
         tot_emit += len(emis)
+        # Spot con varias versiones (A, B, C…): qué versión salió en cada hora
+        versiones = conn.execute(
+            "SELECT a.id, a.titulo FROM pauta_audios pa JOIN audios a ON a.id = pa.audio_id"
+            " WHERE pa.pauta_id = ? ORDER BY pa.orden", (p["id"],)).fetchall()
+        letra = {v["id"]: chr(65 + i) for i, v in enumerate(versiones)} if len(versiones) > 1 else {}
         por_dia: dict[str, list[str]] = {}
-        for (t,) in emis:
-            por_dia.setdefault(t[:10], []).append(t[11:16])
+        cuenta: dict[str, int] = {}
+        for t, aid in emis:
+            marca = letra.get(aid, "?") if letra else ""
+            if letra:
+                cuenta[marca] = cuenta.get(marca, 0) + 1
+            por_dia.setdefault(t[:10], []).append(f"{t[11:16]}<sup>{marca}</sup>" if marca else t[11:16])
         filas = "".join(
             f"<tr><td>{_DIAS[date.fromisoformat(d).weekday()]} {d[8:10]}/{d[5:7]}/{d[:4]}</td>"
             f"<td class='n'>{len(hs)}</td><td>{' · '.join(hs)}</td></tr>"
             for d, hs in sorted(por_dia.items()))
+        por_version = ""
+        if letra:
+            por_version = ("<table class='ver'><thead><tr><th>Versión</th><th>Audio</th><th>Salidas</th></tr></thead><tbody>" +
+                           "".join(f"<tr><td class='n'>{letra[v['id']]}</td><td>{_e(v['titulo'])}</td>"
+                                   f"<td class='n'>{cuenta.get(letra[v['id']], 0)}</td></tr>" for v in versiones) +
+                           (f"<tr><td class='n'>?</td><td>Otra versión (ya no está en el spot)</td><td class='n'>{cuenta['?']}</td></tr>"
+                            if cuenta.get("?") else "") + "</tbody></table>")
         # Mismo conteo que el total: salidas reales del período frente a lo contratado
         pct = f"{min(100, 100 * len(emis) / r['programadas']):.0f} %" if r["programadas"] else "—"
         bloques.append(f"""
@@ -402,7 +418,8 @@ def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = 
              · {_e(p['menciones_diarias'] or '—')} menciones por día</p>
           <div class="kpis"><div><b>{r['programadas']}</b>Contratadas en el período</div>
             <div><b>{len(emis)}</b>Emitidas</div><div><b>{pct}</b>Cumplimiento</div></div>
-          {f'<table><thead><tr><th>Día</th><th>Salidas</th><th>Horas al aire</th></tr></thead><tbody>{filas}</tbody></table>'
+          {por_version}
+          {f'<table><thead><tr><th>Día</th><th>Salidas</th><th>Horas al aire{" (la letra es la versión)" if letra else ""}</th></tr></thead><tbody>{filas}</tbody></table>'
            if filas else '<p class="vacio">Sin emisiones registradas en el período.</p>'}
         </section>""")
 
@@ -429,6 +446,8 @@ def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = 
   th, td {{ border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }}
   th {{ background: #f2f2f2; }}
   td.n {{ text-align: center; font-weight: 700; width: 60px; }}
+  table.ver {{ width: auto; min-width: 60%; margin: 8px 0; }}
+  sup {{ color: #555; font-weight: 700; margin-left: 1px; }}
   .vacio {{ color: #a00; }}
   .firma {{ display: flex; justify-content: space-between; margin-top: 60px; gap: 40px; }}
   .firma div {{ flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 12px; }}
@@ -679,3 +698,68 @@ def dia_al_aire(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(
         bloque["cunas" if es_cuna else "musica"] += 1
         bloque["segundos"] += float(r["duracion"] or 0)
     return {"fecha": ini, "total": len(filas), "horas": horas}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Exportar a Excel: un libro con todas las vistas de Estadísticas
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/api/v1/stats/exportar", summary="Libro de Excel con las estadísticas")
+def exportar_excel(period: str = "week", fecha: Optional[str] = None,
+                   conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Una hoja por vista: Top, Olvido, Rotación, Quemadas, Artistas, Música por
+    hora, Cumplimiento por cliente y el reloj del día elegido.
+    """
+    from backend.api import xlsx
+    nombre_periodo = {"day": "hoy", "week": "semana", "month": "mes"}.get(period)
+    if nombre_periodo is None:
+        raise HTTPException(status_code=422, detail="period debe ser day, week o month")
+    hojas = []
+
+    top = top40(period=period, limit=200, tipo="musica", conn=conn)
+    hojas.append((f"Top música ({nombre_periodo})", ["#", "Título", "Artista", "Género", "Toques", "Período anterior", "Última emisión"],
+                  [[i + 1, t["titulo"], t["artista"], t["categoria"], t["toques"], t["previos"],
+                    (t["ultima_emision"] or "")[:16]] for i, t in enumerate(top)]))
+    topc = top40(period=period, limit=200, tipo="pauta", conn=conn)
+    hojas.append((f"Top cuñas ({nombre_periodo})", ["#", "Cuña", "Anunciante", "Toques", "Período anterior"],
+                  [[i + 1, t["titulo"], t["artista"], t["toques"], t["previos"]] for i, t in enumerate(topc)]))
+
+    olv = olvidados(dias=30, limit=1000, conn=conn)
+    hojas.append(("Olvido (30 días)", ["Título", "Artista", "Días sin sonar", "Última emisión", "Nunca sonó"],
+                  [[o["titulo"], o["artista"], o["dias_sin_sonar"], (o["ultima_emision"] or "")[:16], o["nunca_emitido"]] for o in olv]))
+
+    rot = rotacion(period=period, conn=conn)
+    hojas.append((f"Rotación ({nombre_periodo})", ["Rotación", "Canciones", "Toques", "Promedio por canción", "Máximo", "Sin sonar", "% real", "% planeado"],
+                  [[f["rotacion"], f["canciones"], f["toques"], f["promedio"], f["maximo"], f["sin_sonar"], f["pct_real"],
+                    f["pct_planeado"]] for f in rot["data"]]))
+    qm = quemadas(dias=7, factor=2.0, minimo=5, conn=conn)["data"]
+    hojas.append(("Quemadas (7 días)", ["Título", "Artista", "Rotación", "Toques", "Promedio de su rotación", "Veces el promedio"],
+                  [[q["titulo"], q["artista"], q["rotacion"], q["toques"], q["promedio_rotacion"], q["veces_promedio"]] for q in qm]))
+
+    an = analisis(period=period, conn=conn)
+    hojas.append((f"Artistas ({nombre_periodo})", ["Artista", "Toques", "Canciones distintas"],
+                  [[a["artista"], a["toques"], a["canciones"]] for a in an["artistas"]]))
+    hojas.append((f"Por hora ({nombre_periodo})", ["Hora", "Canciones"], [[f"{h:02d}:00", n] for h, n in enumerate(an["horas"])]))
+    hojas.append(("Pautas por mes", ["Mes", "Contratadas", "Emitidas", "% cumplimiento"],
+                  [[m["mes"], m["programadas"], m["emitidas"], m["pct"]] for m in an["pautas_mes"]]))
+
+    pautas = reporte_pautas(desde=None, hasta=None, cliente=None, formato="json", conn=conn)
+    por: dict = {}
+    for p in pautas["data"]:
+        c = por.setdefault(p["cliente"], [0, 0])
+        c[0] += p["programadas"]
+        c[1] += min(p["emitidas"], p["programadas"])
+    hojas.append((f"Clientes {pautas['desde'][:7]}", ["Cliente", "Contratadas", "Emitidas", "% cumplimiento"],
+                  sorted([[k, v[0], v[1], round(100 * v[1] / v[0], 1) if v[0] else None] for k, v in por.items()],
+                         key=lambda r: (r[3] is None, r[3]))))
+
+    dia = dia_al_aire(fecha=fecha, conn=conn)
+    hojas.append((f"Día {dia['fecha']}", ["Hora", "Título / cliente", "Artista / spot", "Tipo", "Rotación", "Origen", "Tanda", "Duración (s)"],
+                  [[it["hora"], it["cliente"] or it["titulo"], it["artista"] if it["tipo"] != "cuña" else it["titulo"],
+                    it["tipo"], it["rotacion"], it["origen"], it["tanda"], it["duracion"]]
+                   for h in dia["horas"] for it in h["items"]]))
+
+    datos = xlsx.libro(hojas)
+    return Response(datos, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{xlsx.nombre_archivo("estadisticas_onix")}"'})

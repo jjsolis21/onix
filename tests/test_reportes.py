@@ -271,3 +271,47 @@ def test_dia_al_aire_por_hora(client):
     h = d["horas"][15]
     assert (h["musica"], h["cunas"]) == (1, 1) and h["items"][1]["tipo"] == "cuña"
     assert d["horas"][14]["items"] == []
+
+
+def test_exportar_excel_abre_con_todas_las_hojas(client):
+    import io
+    import zipfile
+    from xml.etree import ElementTree
+    r = client.get("/api/v1/stats/exportar", params={"period": "week"})
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    assert z.testzip() is None
+    libro = ElementTree.fromstring(z.read("xl/workbook.xml"))
+    hojas = [s.get("name") for s in libro.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")]
+    assert len(hojas) == 10 and any(h.startswith("Top música") for h in hojas)
+    for i in range(1, len(hojas) + 1):
+        ElementTree.fromstring(z.read(f"xl/worksheets/sheet{i}.xml"))     # XML válido
+    assert client.get("/api/v1/stats/exportar", params={"period": "x"}).status_code == 422
+    # Lo abre una librería de verdad (si está instalada)
+    try:
+        import openpyxl
+    except ImportError:
+        return
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    assert len(wb.sheetnames) == 10 and wb.worksheets[0]["A1"].value == "#"
+
+
+def test_certificado_dice_que_version_salio(client, tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from tests.test_api import subir_cancion
+    from backend.paths import DB_PATH
+    a = subir_cancion(client, tmp_path, "Ver A")["id"]
+    b = subir_cancion(client, tmp_path, "Ver B")["id"]
+    r = client.post("/api/v1/pautas", json={"cliente": "tienda versiones", "audio_id": a, "versiones": [b],
+                                             "audio_nombre": "Ver A", "matriz": {"1-10": True}})
+    pid = r.json()["id"]
+    conn = sqlite3.connect(DB_PATH)
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    for aid, hora in ((a, "09:00:00"), (b, "10:00:00"), (b, "11:00:00")):
+        conn.execute("INSERT INTO historial_emision (audio_id, titulo, tipo, pauta_id, iniciado_en) VALUES (?, 'x', 'pauta', ?, ?)",
+                     (aid, pid, f"{hoy} {hora}"))
+    conn.commit()
+    conn.close()
+    html = client.get("/api/v1/reportes/certificado", params={"cliente": "TIENDA VERSIONES", "desde": hoy, "hasta": hoy}).text
+    assert "Versión" in html and "09:00<sup>A</sup>" in html and "10:00<sup>B</sup>" in html

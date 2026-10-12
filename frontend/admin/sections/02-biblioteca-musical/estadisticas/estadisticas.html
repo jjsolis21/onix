@@ -20,6 +20,8 @@
       </h2>
     </div>
 
+    <button type="button" class="stats-btn-excel" id="btnExcel" title="Un libro de Excel con todas las vistas: Top, olvido, rotación, quemadas, artistas, por hora, clientes y el día elegido">⬇ Exportar a Excel</button>
+
     <!-- Filtros rápidos de período -->
     <nav class="stats-period-nav" role="navigation" aria-label="Filtro de período">
       <button class="stats-period-btn stats-period-btn--active" data-period="day" aria-pressed="true">
@@ -354,6 +356,13 @@
     $('anDiaAnt')?.addEventListener('click', () => mover(-1));
     $('anDiaSig')?.addEventListener('click', () => mover(1));
     $('anDiaHoy')?.addEventListener('click', () => { horaSel = null; cargarDia(iso(new Date())); });
+
+    // ── Exportar a Excel (período activo + día elegido en el reloj de un día) ──
+    $('btnExcel')?.addEventListener('click', () => {
+      const q = new URLSearchParams({ period: document.querySelector('.stats-period-btn--active')?.dataset.period || 'week' });
+      if ($('anDiaFecha')?.value) q.set('fecha', $('anDiaFecha').value);
+      window.location.href = `/api/v1/stats/exportar?${q}`;
+    });
 
     const actual = () => document.querySelector('.stats-period-btn--active')?.dataset.period || 'day';
     document.querySelectorAll('.stats-period-btn').forEach(b => b.addEventListener('click', () => setTimeout(() => {
