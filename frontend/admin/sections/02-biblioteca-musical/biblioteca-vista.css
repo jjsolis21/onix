@@ -256,7 +256,7 @@
   color: var(--text-hi); font-size: 13px; cursor: pointer; display: grid; place-items: center;
 }
 .bvp-b:hover { border-color: var(--gold-0); color: var(--gold-1); }
-.bvp-play { width: 50px; height: 50px; border-radius: 50%; background: var(--gold-0); color: #000; border: 0; font-size: 18px; font-weight: 800; }
+.bvp-play { width: 50px; height: 50px; border-radius: 50%; background: transparent; color: #000; border: 0; font-size: 18px; font-weight: 800; }
 .bvp-play:hover { background: var(--gold-1); color: #000; }
 .bv-player.sonando .bvp-play { box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold-0) 25%, transparent); }
 .bvp-tapa {
@@ -280,3 +280,5 @@
 .bvp-vol { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .bvp-vol input { width: 90px; accent-color: var(--gold-0); }
 @media (max-width: 1100px) { .bvp-tapa { display: none; } .bv-player { grid-template-columns: auto minmax(0, 1fr) auto; } }
+.bvp-b .ico { width: 22px; height: 22px; display: block; }
+.bvp-play .ico { width: 30px; height: 30px; }

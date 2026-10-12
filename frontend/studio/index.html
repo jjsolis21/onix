@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=9" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=10" />
 </head>
 <body>
 
@@ -63,11 +63,11 @@
     </div>
 
     <div class="pl-controles">
-      <!-- Iconos propios en /static/studio/icons/ (play2, avanzar2, stop2): si no están, queda el símbolo -->
-      <button class="ctl ctl-play" id="btnPlay" title="Reproducir lo siguiente"><img class="ctl-ico" src="/static/studio/icons/play2.png" alt="" onerror="this.remove()"><i class="glifo">▶</i><small>REPRODUCIR</small></button>
-      <button class="ctl ctl-next" id="btnNext" title="Pasar a lo siguiente (con crossfade)"><img class="ctl-ico" src="/static/studio/icons/avanzar2.png" alt="" onerror="this.remove()"><i class="glifo">⏭</i><small>SIGUIENTE</small></button>
+      <!-- Iconos propios en /static/studio/icons/ (play2, avanzar2, stop2, .svg): si no están, queda el símbolo -->
+      <button class="ctl ctl-play" id="btnPlay" title="Reproducir lo siguiente"><img class="ctl-ico" src="/static/studio/icons/play2.svg" alt="" onerror="this.remove()"><i class="glifo">▶</i><small>REPRODUCIR</small></button>
+      <button class="ctl ctl-next" id="btnNext" title="Pasar a lo siguiente (con crossfade)"><img class="ctl-ico" src="/static/studio/icons/avanzar2.svg" alt="" onerror="this.remove()"><i class="glifo">⏭</i><small>SIGUIENTE</small></button>
       <button class="ctl ctl-detener" id="btnDetener" title="La pista actual termina y no entra nada más">⏹<small>DETENER AL TERMINAR</small></button>
-      <button class="ctl ctl-stop" id="btnStop" title="Corta el aire ahora"><img class="ctl-ico" src="/static/studio/icons/stop2.png" alt="" onerror="this.remove()"><i class="glifo">■</i><small>PARAR</small></button>
+      <button class="ctl ctl-stop" id="btnStop" title="Corta el aire ahora"><img class="ctl-ico" src="/static/studio/icons/stop2.svg" alt="" onerror="this.remove()"><i class="glifo">■</i><small>PARAR</small></button>
     </div>
 
     <div class="pl-next">
@@ -206,6 +206,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=10"></script>
+  <script src="/static/studio/studio.js?v=11"></script>
 </body>
 </html>

@@ -380,7 +380,10 @@
       $('bvpDur').textContent = `/ ${mmss(d)}`;
       $('bvpResta').textContent = d ? `−${mmss(d - audio.currentTime)}` : '';
     });
-    const icono = () => { $('bvPlay').textContent = audio.paused ? '▶' : '❚❚'; $('bvPlayer').classList.toggle('sonando', !audio.paused); };
+    const icono = () => {
+      $('bvPlay').innerHTML = `<img class="ico" src="/static/studio/icons/${audio.paused ? 'play2' : 'pause2'}.svg" alt="">`;
+      $('bvPlayer').classList.toggle('sonando', !audio.paused);
+    };
     audio.addEventListener('play', icono);
     audio.addEventListener('pause', icono);
     audio.addEventListener('ended', () => parar());

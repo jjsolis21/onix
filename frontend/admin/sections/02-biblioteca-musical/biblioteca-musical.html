@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=8">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=9">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2539,10 +2539,10 @@
       <!-- Reproductor de preescucha -->
       <footer class="bv-player" id="bvPlayer">
         <div class="bvp-mandos">
-          <button class="bvp-b" id="bvAtras" title="Atrás 5 s (Mayús+←)">⏪</button>
-          <button class="bvp-b bvp-play" id="bvPlay" title="Escuchar / pausar (Espacio)">▶</button>
-          <button class="bvp-b" id="bvStop" title="Detener">■</button>
-          <button class="bvp-b" id="bvAdelante" title="Adelante 5 s (Mayús+→)">⏩</button>
+          <button class="bvp-b" id="bvAtras" title="Atrás 5 s (Mayús+←)"><img class="ico" src="/static/studio/icons/atras2.svg" alt=""></button>
+          <button class="bvp-b bvp-play" id="bvPlay" title="Escuchar / pausar (P)"><img class="ico" src="/static/studio/icons/play2.svg" alt=""></button>
+          <button class="bvp-b" id="bvStop" title="Detener"><img class="ico" src="/static/studio/icons/stop2.svg" alt=""></button>
+          <button class="bvp-b" id="bvAdelante" title="Adelante 5 s (Mayús+→)"><img class="ico" src="/static/studio/icons/avanzar2.svg" alt=""></button>
         </div>
         <div class="bvp-tapa" id="bvpTapa">♪</div>
         <div class="bvp-centro">
@@ -2568,7 +2568,7 @@
 </div>
 <link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=2">
 <script src="sections/02-biblioteca-musical/editor-cancion.js?v=2"></script>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=10"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=11"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)
