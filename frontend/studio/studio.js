@@ -70,7 +70,7 @@ const WS = (() => {
   const tick = () => {
     const d = new Date();
     $("relojHora").textContent = d.toTimeString().slice(0, 8);
-    $("relojFecha").textContent = d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    $("relojFecha").textContent = d.toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "");
   };
   tick(); setInterval(tick, 500);
 })();
@@ -123,9 +123,8 @@ const Estado = (() => {
     // Barra superior
     const me = $("motorEstado");
     me.className = `motor-estado ${st.running ? "ok" : "mal"}`;
-    me.querySelector(".txt").textContent = st.running
-      ? `EN MARCHA · ${String(st.backend).toUpperCase()}${st.remoto ? " · PROCESO APARTE" : ""}`
-      : `MOTOR DETENIDO${st.last_error ? " · " + st.last_error : ""}`;
+    me.querySelector(".txt").textContent = st.running ? "EN AIRE" : `MOTOR DETENIDO${st.last_error ? " · " + st.last_error : ""}`;
+    me.title = st.running ? `Motor en marcha · ${String(st.backend).toUpperCase()}${st.remoto ? " · proceso aparte" : ""}` : "Motor de audio detenido";
     document.querySelectorAll(".modo-btn").forEach(b => b.classList.toggle("active", b.dataset.modo === st.modo));
 
     // Al aire

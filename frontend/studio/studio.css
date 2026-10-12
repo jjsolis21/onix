@@ -467,3 +467,40 @@ kbd {
 .pl-memo { margin-top: 6px; display: inline-block; max-width: 100%; background: #f5c400; color: #111; font-weight: 700;
   font-size: 15px; padding: 4px 10px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .deck-memo { font-size: 12px; color: #f5c400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+
+/* ═══════════ COMPACTO: cabecera y reproductor ═══════════ */
+.topbar { gap: 12px; padding: 4px 14px; }
+.brand { font-size: 24px; }
+.modo-btn { padding: 4px 12px; font-size: 11px; }
+.motor-estado { font-size: 10px; white-space: nowrap; }
+.motor-estado .dot { width: 8px; height: 8px; }
+.vu { width: 200px; padding-bottom: 0; gap: 2px; }
+.vu-barra { height: 7px; }
+.vu-escala { display: none; }
+.top-link { padding: 4px 9px; font-size: 10px; }
+#btnAtajos { padding: 4px 8px; }
+.reloj-hora { font-size: 28px; }
+.reloj-fecha { font-size: 9px; white-space: nowrap; }
+
+.player { gap: 8px; padding: 6px 14px; grid-template-columns: minmax(0, 1.5fr) auto minmax(0, 1fr); }
+.pl-now, .pl-next { gap: 4px 12px; padding: 6px 12px; }
+.pl-titulo { font-size: 26px; }
+.pl-next .pl-titulo { font-size: 20px; }
+.pl-artista { font-size: 14px; }
+.pl-next .pl-artista { font-size: 13px; }
+.chip { font-size: 9px; padding: 0 6px; }
+.pl-chips { margin-bottom: 0; }
+.cuenta { font-size: 46px; min-width: 110px; }
+.intro b { font-size: 28px; }
+.entra b { font-size: 30px; }
+.barra { height: 22px; }
+.barra-tiempos { font-size: 11px; }
+.btn-saltar { font-size: 11px; }
+.pl-label { font-size: 10px; }
+.pl-controles { grid-template-columns: repeat(5, 62px); gap: 6px; }
+.ctl { height: 56px; }
+.ctl .ctl-ico { width: 24px; height: 24px; }
+.ctl small { font-size: 8px; }
+.ctl-stop { grid-column: auto; }
+@media (max-width: 1500px) { .hide-sm { display: none; } .pl-controles { grid-template-columns: repeat(5, 54px); gap: 4px; } .ctl small { font-size: 7px; } }
