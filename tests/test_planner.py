@@ -376,3 +376,16 @@ def test_dia_especifico_manda_sobre_la_grilla(base):
     conn.close()
     items = [i for i in planear(base, tandas=()) if i["tipo"] == "audio"]
     assert items and all(i["titulo"].startswith("FIESTA") for i in items)
+
+
+def test_fila_sin_canciones_usa_el_respaldo_del_reloj(base):
+    for i in range(4):
+        audio(base, f"CLASICO {i}", categoria="CLASICO")
+        audio(base, f"OTRO {i}", categoria="OTRO")
+    rid = reloj(base, "Con respaldo", [{"filtros": {"cat2": "NO HAY"}}])
+    conn = db(base)
+    conn.execute("UPDATE relojes SET respaldo = ? WHERE id = ?", (json.dumps({"cat2": "CLASICO"}), rid))
+    conn.commit()
+    conn.close()
+    items = [i for i in planear(base, tandas=()) if i["tipo"] == "audio"]
+    assert items and all(i["titulo"].startswith("CLASICO") for i in items[:4])

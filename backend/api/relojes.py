@@ -88,6 +88,7 @@ class RelojIn(BaseModel):
     color:        str = Field("#0a9396", pattern=r"^#[0-9a-fA-F]{6}$")
     comentario:   str = Field("", max_length=500)
     compensacion: dict = Field(default_factory=dict)
+    respaldo:     dict = Field(default_factory=dict)
     filas:        list[FilaIn] = Field(default_factory=list)
 
 
@@ -125,7 +126,8 @@ def _reloj_out(conn, r) -> dict:
         " WHERE rf.reloj_id = ? ORDER BY rf.orden, rf.id", (r["id"],))]
     horas = conn.execute("SELECT COUNT(*) FROM reloj_grilla WHERE reloj_id = ?", (r["id"],)).fetchone()[0]
     return {"id": r["id"], "nombre": r["nombre"], "color": r["color"], "comentario": r["comentario"],
-            "compensacion": json.loads(r["compensacion"] or "{}"), "filas": filas,
+            "compensacion": json.loads(r["compensacion"] or "{}"),
+            "respaldo": json.loads(r["respaldo"] or "{}") if "respaldo" in r.keys() else {}, "filas": filas,
             "horas_asignadas": horas}
 
 
@@ -209,7 +211,8 @@ def asignar_dia(body: DiaIn, conn: sqlite3.Connection = Depends(get_db)):
 # ── Vista previa de un reloj sin guardar ─────────────────────────────────────
 
 class VistaIn(BaseModel):
-    filas: list[FilaIn] = Field(default_factory=list)
+    filas:    list[FilaIn] = Field(default_factory=list)
+    respaldo: dict = Field(default_factory=dict)
 
 
 def _tanda_media_seg(conn) -> float:
@@ -221,6 +224,20 @@ def _tanda_media_seg(conn) -> float:
     return round((row[0] or 0) / row[1]) if row and row[1] else 0.0
 
 
+def _contar(conn, f: dict) -> tuple[int, int]:
+    """Audios que cumplen una fila (o un audio fijo) y su duración media."""
+    from backend.audio.planner import Planner
+    if f.get("audio_id"):
+        row = conn.execute("SELECT COUNT(*), AVG(duracion) FROM audios WHERE id = ? AND activo = 1",
+                           (f["audio_id"],)).fetchone()
+    else:
+        clauses, params = Planner(DB_PATH)._where_filtros(_limpiar_filtros(f.get("filtros") or {}))
+        where = " AND ".join(["a.activo = 1", "a.tipo_audio = ?"] + clauses)
+        row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}",
+                           [f.get("tipo_audio", "Musica")] + params).fetchone()
+    return row[0], round(row[1] or 0)
+
+
 def _vista_filas(conn, filas: list[dict]) -> dict:
     """
     Por fila: audios que cumplen el filtro, duración media y minuto en que
@@ -228,23 +245,13 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
     en orden hasta llenar lo que dejan las tandas (como "Completar dando vuelta
     al reloj" de Jazler, que en ONIX siempre está activo).
     """
-    from backend.audio.planner import Planner
-    p = Planner(DB_PATH)
     try:
         crossfade = float(conn.execute("SELECT valor FROM config WHERE clave = 'crossfade_seg'").fetchone()[0])
     except (TypeError, ValueError):
         crossfade = 4.0
     out, t = [], 0.0
     for f in filas:
-        if f.get("audio_id"):
-            row = conn.execute("SELECT COUNT(*), AVG(duracion) FROM audios WHERE id = ? AND activo = 1",
-                               (f["audio_id"],)).fetchone()
-        else:
-            clauses, params = p._where_filtros(_limpiar_filtros(f.get("filtros") or {}))
-            where = " AND ".join(["a.activo = 1", "a.tipo_audio = ?"] + clauses)
-            row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}",
-                               [f.get("tipo_audio", "Musica")] + params).fetchone()
-        n, media = row[0], round(row[1] or 0)
+        n, media = _contar(conn, f)
         efectiva = max(1.0, media - crossfade) if media else 0
         out.append({**f, "candidatos": n, "duracion_media": media, "inicio": round(t)})
         t += efectiva
@@ -270,7 +277,10 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
 
 @router.post("/api/v1/relojes/vista-previa", summary="Cómo queda la hora con estas filas (sin guardar)")
 def vista_previa(body: VistaIn, conn: sqlite3.Connection = Depends(get_db)):
-    return _vista_filas(conn, [f.model_dump() for f in body.filas])
+    v = _vista_filas(conn, [f.model_dump() for f in body.filas])
+    v["respaldo_candidatos"] = _contar(conn, {"tipo_audio": "Musica", "filtros": body.respaldo})[0] \
+        if body.respaldo else None
+    return v
 
 
 # ── Eventos a hora fija ──────────────────────────────────────────────────────
@@ -341,9 +351,10 @@ def listar(conn: sqlite3.Connection = Depends(get_db)):
 def crear(body: RelojIn, conn: sqlite3.Connection = Depends(get_db)):
     try:
         rid = conn.execute(
-            "INSERT INTO relojes (nombre, color, comentario, compensacion) VALUES (?, ?, ?, ?)",
+            "INSERT INTO relojes (nombre, color, comentario, compensacion, respaldo) VALUES (?, ?, ?, ?, ?)",
             (body.nombre.strip(), body.color, body.comentario,
-             json.dumps(_limpiar_filtros(body.compensacion)))).lastrowid
+             json.dumps(_limpiar_filtros(body.compensacion)),
+             json.dumps(_limpiar_filtros(body.respaldo)))).lastrowid
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe un reloj llamado '{body.nombre}'")
     _guardar_filas(conn, rid, body.filas)
@@ -358,10 +369,11 @@ def guardar(reloj_id: int, body: RelojIn, conn: sqlite3.Connection = Depends(get
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
     try:
         conn.execute(
-            "UPDATE relojes SET nombre = ?, color = ?, comentario = ?, compensacion = ?,"
+            "UPDATE relojes SET nombre = ?, color = ?, comentario = ?, compensacion = ?, respaldo = ?,"
             " updated_at = datetime('now') WHERE id = ?",
             (body.nombre.strip(), body.color, body.comentario,
-             json.dumps(_limpiar_filtros(body.compensacion)), reloj_id))
+             json.dumps(_limpiar_filtros(body.compensacion)),
+             json.dumps(_limpiar_filtros(body.respaldo)), reloj_id))
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe un reloj llamado '{body.nombre}'")
     _guardar_filas(conn, reloj_id, body.filas)
@@ -387,8 +399,8 @@ def duplicar(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
     while conn.execute("SELECT 1 FROM relojes WHERE nombre = ?", (nombre,)).fetchone():
         nombre, n = f"{r['nombre']} (copia {n})", n + 1
     nuevo = conn.execute(
-        "INSERT INTO relojes (nombre, color, comentario, compensacion) VALUES (?, ?, ?, ?)",
-        (nombre, r["color"], r["comentario"], r["compensacion"])).lastrowid
+        "INSERT INTO relojes (nombre, color, comentario, compensacion, respaldo) VALUES (?, ?, ?, ?, ?)",
+        (nombre, r["color"], r["comentario"], r["compensacion"], r["respaldo"])).lastrowid
     conn.execute(
         "INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
         " SELECT ?, orden, tipo_audio, filtros, audio_id, nota FROM reloj_filas WHERE reloj_id = ?",

@@ -73,6 +73,16 @@
   .rj-fechas button.activo { border-color: var(--gold-0); color: var(--gold-1); }
   .rj-grilla td.semana { opacity: .35; }
   .rj-grilla td.exc { box-shadow: inset 0 -3px 0 var(--gold-2); }
+  .rj-modal { position: fixed; inset: 0; z-index: 10030; background: rgba(0, 0, 0, .75); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .rj-modal[hidden] { display: none; }
+  .rj-modal-caja { width: min(640px, 100%); max-height: 92vh; overflow-y: auto; background: var(--choc-1); border: 1px solid var(--choc-5); border-radius: 10px; padding: 18px 20px; }
+  .rj-modal-cab { display: flex; justify-content: space-between; align-items: center; }
+  .rj-modal-cab h3 { margin: 0; }
+  .rj-regla { display: grid; grid-template-columns: 80px 1fr; gap: 14px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--choc-4); }
+  .rj-regla input { font-size: 1.2rem; text-align: center; font-family: var(--font-data); }
+  .rj-regla b { display: block; color: var(--gold-1); margin-bottom: 2px; }
+  .rj-regla span { font-size: .8rem; color: var(--text-mid); }
+  .rj-ejemplo { margin: 12px 0; padding: 10px 12px; background: var(--choc-0); border-left: 3px solid var(--gold-0); font-size: .82rem; color: var(--text-hi); }
 </style>
 
 <div class="ox-root" id="rjRoot">
@@ -90,6 +100,7 @@
       <h3>Relojes</h3>
       <div class="rj-lista" id="rjLista"></div>
       <button class="ox-btn ox-btn--primary" id="rjNuevo" style="margin-top:var(--s3);width:100%">+ Nuevo reloj</button>
+      <button class="ox-btn" id="rjReglas" style="margin-top:var(--s2);width:100%">⚙ Reglas de rotación</button>
     </section>
 
     <!-- ── Editor ── -->
@@ -125,6 +136,12 @@
       <p class="ox-hint">Si una canción haría llegar tarde la tanda, el sistema busca otra que encaje en el tiempo
         que queda. Elige de qué categoría (vacío = cualquier música).</p>
       <div class="rj-filtros" id="rjComp"></div>
+
+      <h3 style="margin-top:var(--s4)">Respaldo</h3>
+      <p class="ox-hint">Si una fila de música no consigue canción (filtro vacío o todas bloqueadas por las reglas),
+        suena una de esta categoría en vez de saltarse la fila. Vacío = se salta, como antes.</p>
+      <div class="rj-filtros" id="rjResp"></div>
+      <p class="ox-hint" id="rjRespTxt" style="margin-top:4px"></p>
 
       <div class="ox-row" style="margin-top:var(--s4)">
         <button class="ox-btn ox-btn--primary" id="rjGuardar">Guardar reloj</button>
@@ -202,6 +219,28 @@
     </div>
     <p class="ox-msg" id="rjMsgEv"></p>
   </section>
+</div>
+
+<div class="rj-modal" id="rjReglasModal" hidden>
+  <div class="rj-modal-caja">
+    <div class="rj-modal-cab"><h3>⚙ Reglas de rotación</h3><button class="ox-btn ox-btn--sm" id="rjReglasX">✕</button></div>
+    <p class="ox-hint">Valen para todos los relojes. Si no hay canción que las cumpla, el sistema las va soltando
+      de la última a la primera para que nunca quede el aire vacío.</p>
+    <div class="rj-regla"><input type="number" class="ox-input" id="rgAleat" min="1" max="50">
+      <div><b>Selección al azar</b><span>Elige al azar entre las <i>N</i> canciones que más tiempo llevan sin sonar.
+        1 = siempre la que más espera (orden estricto). Más alto = menos repetitivo, pero menos parejo.</span></div></div>
+    <div class="rj-regla"><input type="number" class="ox-input" id="rgArtista" min="0" max="720">
+      <div><b>Separación de artistas (minutos)</b><span>Cuánto debe pasar para que vuelva a sonar el mismo artista.</span></div></div>
+    <div class="rj-regla"><input type="number" class="ox-input" id="rgVoz" min="0" max="10">
+      <div><b>Misma voz seguidas (máximo)</b><span>Cuántas canciones seguidas con la misma voz (masculina, femenina…). 0 = sin límite.</span></div></div>
+    <div class="rj-regla"><input type="number" class="ox-input" id="rgDias" min="0" max="14">
+      <div><b>No repetir a la misma hora (días)</b><span>Durante cuántos días una canción no vuelve a sonar cerca de la hora en que sonó. 0 = apagado.</span></div></div>
+    <div class="rj-regla"><input type="number" class="ox-input" id="rgVent" min="0" max="720">
+      <div><b>…margen (minutos antes y después)</b><span>Qué tan cerca de esa hora se bloquea.</span></div></div>
+    <p class="rj-ejemplo" id="rgEjemplo"></p>
+    <div class="ox-row"><button class="ox-btn ox-btn--primary" id="rgGuardar">Guardar reglas</button></div>
+    <p class="ox-msg" id="rgMsg"></p>
+  </div>
 </div>
 
 <script>
@@ -317,7 +356,7 @@
     tPrevia = setTimeout(async () => {
       leerFilas();
       const n = ++nPrevia;
-      const body = { filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros, audio_id: f.fijo ? f.audio_id : null })) };
+      const body = { respaldo: leerRespaldo(), filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros, audio_id: f.fijo ? f.audio_id : null })) };
       const r = await fetch("/api/v1/relojes/vista-previa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok || n !== nPrevia) return;
       pintarHora(await r.json());
@@ -336,13 +375,18 @@
         ? `${f.candidatos} audio(s)${f.duracion_media ? ` · ${fmt(f.duracion_media)}` : ""}` : "0 audios: se salta"}</span>`;
     });
     const ultima = v.ultima_fila != null ? v.ultima_fila + 1 : "—";
+    $("rjRespTxt").innerHTML = v.respaldo_candidatos == null ? "Sin respaldo."
+      : v.respaldo_candidatos ? `Respaldo con <b>${v.respaldo_candidatos}</b> canción(es).`
+        : '<span style="color:var(--red-live)">⚠ El respaldo no tiene canciones: elige otra categoría.</span>';
     $("rjResumenHora").innerHTML = v.duracion_ciclo ? `
       <span>Una vuelta: <b>${fmt(v.duracion_ciclo)}</b></span>
       <span>Vueltas por hora: <b>${v.vueltas}</b></span>
       <span>Tandas (promedio real): <b>${fmt(v.tandas_seg)}</b></span>
       <span>Música por hora: <b>${fmt(v.disponible_seg)}</b></span>
       <span>La hora termina en la fila <b>${ultima}</b></span>
-      ${v.saltadas.length ? `<span class="mal">⚠ Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: se saltan</span>` : ""}`
+      ${v.saltadas.length ? (v.respaldo_candidatos
+        ? `<span>Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: <b>usan el respaldo</b></span>`
+        : `<span class="mal">⚠ Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: se saltan</span>`) : ""}`
       : `<span class="mal">Ninguna fila tiene audios: esta hora sonará solo con música al azar.</span>`;
     const total = 3600;
     cont.innerHTML = v.linea.map(it => {
@@ -352,6 +396,13 @@
       return `<div style="width:${w}%;background:${COLORES[f.tipo_audio]}" title="Fila ${it.fila + 1} · ${fmt(it.inicio)} · ${esc(txt)} · ${fmt(it.dur)}">${w > 4 ? esc(String(it.fila + 1)) : ""}</div>`;
     }).join("") + (v.tandas_seg ? `<div class="tanda" style="width:${v.tandas_seg / total * 100}%" title="Tandas ≈ ${fmt(v.tandas_seg)}">${v.tandas_seg > 90 ? "TANDAS" : ""}</div>` : "");
   }
+
+  function pintarRespaldo(resp) {
+    $("rjResp").innerHTML = FILTROS.map(([k]) => selectValores(k, resp[k], 'data-resp="1"')).join("");
+  }
+  const leerRespaldo = () => Object.fromEntries([...document.querySelectorAll("#rjResp [data-filtro]")]
+    .filter(el => el.value).map(el => [el.dataset.filtro, el.value]));
+  $("rjResp").addEventListener("change", () => previa());
 
   function pintarCompensacion(comp) {
     $("rjComp").innerHTML = FILTROS.map(([k]) => selectValores(k, comp[k], 'data-comp="1"')).join("");
@@ -363,7 +414,7 @@
     $("rjTituloEditor").textContent = "Nuevo reloj";
     $("rjNombre").value = ""; $("rjColor").value = "#0a9396"; $("rjComentario").value = "";
     $("rjDuplicar").disabled = $("rjBorrar").disabled = true;
-    pintarCompensacion({}); pintarFilas(); pintarLista(); previa();
+    pintarCompensacion({}); pintarRespaldo({}); pintarFilas(); pintarLista(); previa();
   }
 
   async function abrir(r) {
@@ -373,7 +424,7 @@
     $("rjTituloEditor").textContent = `Reloj: ${r.nombre}`;
     $("rjNombre").value = r.nombre; $("rjColor").value = r.color; $("rjComentario").value = r.comentario;
     $("rjDuplicar").disabled = $("rjBorrar").disabled = false;
-    pintarCompensacion(r.compensacion || {}); pintarLista();
+    pintarCompensacion(r.compensacion || {}); pintarRespaldo(r.respaldo || {}); pintarLista();
     pintarFilas(); previa();
   }
 
@@ -447,6 +498,7 @@
     const sinAudio = filas.findIndex(f => f.fijo && !f.audio_id);
     const body = {
       nombre: $("rjNombre").value.trim(), color: $("rjColor").value, comentario: $("rjComentario").value.trim(),
+      respaldo: leerRespaldo(),
       compensacion: Object.fromEntries([...document.querySelectorAll("#rjComp [data-filtro]")]
         .filter(el => el.value).map(el => [el.dataset.filtro, el.value])),
       filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros,
@@ -564,6 +616,36 @@
     const rel = await fetch("/api/v1/relojes").then(x => x.json());
     relojes = rel; pintarLista(); pintarGrilla();
     msg("rjMsgGrilla", `✓ ${celdas.length} hora(s) ${reloj_id ? "asignadas" : "liberadas"}. El programa se vuelve a planificar.`);
+  });
+
+  // ── Reglas de rotación (las del Motor, a mano desde Relojes) ──
+  function ejemploReglas() {
+    const d = +$("rgDias").value || 0, v = +$("rgVent").value || 0;
+    const h = 10, m = 15, ini = h * 60 + m - v, fin = h * 60 + m + v;
+    const hhmm = x => `${String(Math.floor(((x % 1440) + 1440) % 1440 / 60)).padStart(2, "0")}:${String(((x % 60) + 60) % 60).padStart(2, "0")}`;
+    $("rgEjemplo").innerHTML = `<b>Ejemplo:</b> una canción que suena hoy a las 10:15 ` +
+      (d && v ? `no se elige durante ${d} día(s) entre las ${hhmm(ini)} y las ${hhmm(fin)}.` : "puede volver mañana a cualquier hora.") +
+      ` Un artista que suena a las 10:15 vuelve desde las ${hhmm(h * 60 + m + (+$("rgArtista").value || 0))}.`;
+  }
+  $("rjReglas").addEventListener("click", async () => {
+    const c = await fetch("/api/v1/config/motor").then(r => r.json());
+    $("rgAleat").value = Math.max(1, c.aleatoriedad); $("rgArtista").value = c.ventana_artista_min;
+    $("rgVoz").value = c.max_mismo_genero; $("rgDias").value = c.separacion_cancion_dias;
+    $("rgVent").value = c.separacion_cancion_ventana_min;
+    $("rgMsg").textContent = "";
+    ejemploReglas();
+    $("rjReglasModal").hidden = false;
+  });
+  ["rgDias", "rgVent", "rgArtista"].forEach(id => $(id).addEventListener("input", ejemploReglas));
+  $("rjReglasX").addEventListener("click", () => { $("rjReglasModal").hidden = true; });
+  $("rjReglasModal").addEventListener("click", e => { if (e.target.id === "rjReglasModal") $("rjReglasModal").hidden = true; });
+  $("rgGuardar").addEventListener("click", async () => {
+    const r = await fetch("/api/v1/config/motor", { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aleatoriedad: +$("rgAleat").value || 1, ventana_artista_min: +$("rgArtista").value || 0,
+        max_mismo_genero: +$("rgVoz").value || 0, separacion_cancion_dias: +$("rgDias").value || 0,
+        separacion_cancion_ventana_min: +$("rgVent").value || 0 }) });
+    if (!r.ok) { msg("rgMsg", await errTxt(r), false); return; }
+    msg("rgMsg", "✓ Guardadas. El programa del Studio se vuelve a planificar.");
   });
 
   // ── Semana | Día específico ──────────────────────────────

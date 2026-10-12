@@ -102,8 +102,13 @@ class Planner:
                 comp = json.loads(r["compensacion"] or "{}")
             except ValueError:
                 comp = {}
+            try:
+                resp = json.loads(r["respaldo"] or "{}") if "respaldo" in r.keys() else {}
+            except ValueError:
+                resp = {}
             self.relojes[r["id"]] = {"id": r["id"], "nombre": r["nombre"], "color": r["color"],
                                      "compensacion": comp if isinstance(comp, dict) else {},
+                                     "respaldo": resp if isinstance(resp, dict) else {},
                                      "filas": []}
         for f in conn.execute("SELECT * FROM reloj_filas ORDER BY reloj_id, orden, id"):
             if f["reloj_id"] in self.relojes:
@@ -263,6 +268,11 @@ class Planner:
             fila_idx += 1
 
             audio = self._elegir(conn, fila, t, previos, en_plan, excluir)
+            respaldo = (reloj or {}).get("respaldo") or {}
+            if not audio and respaldo and fila["tipo_audio"] == "Musica" and not fila.get("audio_id"):
+                # La fila no consigue canción: el respaldo del reloj en vez de saltarla
+                audio = self._elegir(conn, {"tipo_audio": "Musica", "filtros": respaldo, "audio_id": None},
+                                     t, previos, en_plan, excluir)
             compensado = False
             if audio and hito_hora and fila["tipo_audio"] == "Musica":
                 restante = (hito_hora - t).total_seconds()
@@ -276,9 +286,11 @@ class Planner:
             if not audio:
                 vueltas_vacias += 1
                 if vueltas_vacias >= len(filas):
-                    # Ninguna fila del reloj tiene audios: reloj implícito
-                    audio = self._elegir(conn, {"tipo_audio": "Musica", "filtros": {}, "audio_id": None},
-                                         t, previos, en_plan, excluir)
+                    # Ninguna fila del reloj tiene audios: respaldo y, si no, cualquier música
+                    audio = (respaldo and self._elegir(conn, {"tipo_audio": "Musica", "filtros": respaldo,
+                                                              "audio_id": None}, t, previos, en_plan, excluir)) \
+                        or self._elegir(conn, {"tipo_audio": "Musica", "filtros": {}, "audio_id": None},
+                                        t, previos, en_plan, excluir)
                     if not audio:
                         log.warning("[Planner] Sin audios para planificar a las %s", t.strftime("%H:%M"))
                         break

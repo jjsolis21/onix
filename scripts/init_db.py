@@ -657,6 +657,16 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     """)
     logger.info("  → reloj_dias: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 27 — Respaldo del reloj (Jazler "Categoría de respaldo")
+    #   Filtros (JSON) que se usan cuando una fila de música no consigue
+    #   canción; '{}' = sin respaldo (la fila se salta, como antes).
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(relojes)")
+    if "respaldo" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE relojes ADD COLUMN respaldo TEXT NOT NULL DEFAULT '{}'")
+    logger.info("  → relojes.respaldo: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

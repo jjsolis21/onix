@@ -123,3 +123,13 @@ def test_vista_previa_y_dia_especifico(client, tmp_path):
     horas = client.get("/api/v1/relojes/dias", params={"fecha": "2030-12-24"}).json()
     assert horas == [{"fecha": "2030-12-24", "hora": 21, "reloj_id": None}]
     assert any(d["fecha"] == "2030-12-24" for d in client.get("/api/v1/relojes/dias").json())
+
+
+def test_reloj_guarda_respaldo_y_lo_cuenta_en_la_vista(client, tmp_path):
+    subir(client, tmp_path, "RESP A", cat2="RESPALDO1")
+    r = client.post("/api/v1/relojes", json={"nombre": "Con resp", "respaldo": {"cat2": "respaldo1"}, "filas": []})
+    assert r.status_code == 201 and r.json()["respaldo"] == {"cat2": "RESPALDO1"}
+    dup = client.post(f"/api/v1/relojes/{r.json()['id']}/duplicar").json()
+    assert dup["respaldo"] == {"cat2": "RESPALDO1"}
+    v = client.post("/api/v1/relojes/vista-previa", json={"filas": [], "respaldo": {"cat2": "RESPALDO1"}}).json()
+    assert v["respaldo_candidatos"] >= 1
