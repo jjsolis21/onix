@@ -137,6 +137,14 @@ class NormalizadorWorker:
                 self.procesar_pendientes()
             except Exception as exc:
                 log.error("[Loudness] Error en el normalizador: %s", exc)
+            try:
+                # Misma pasada: marcas automáticas de la música (inicio y mezcla)
+                if self.ffmpeg:
+                    from backend.audio import marcas
+                    marcas.procesar_pendientes(self.db_path, self.resolve, self.ffmpeg,
+                                               seguir=lambda: self._running)
+            except Exception as exc:
+                log.error("[Marcas] Error detectando marcas: %s", exc)
             self._evento.wait(self.intervalo)
             self._evento.clear()
 

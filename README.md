@@ -71,6 +71,26 @@ Para volver al aire sola tras un corte de luz hace falta: BIOS «Restore on AC p
 Power On», inicio de sesión automático de Windows (`netplwiz`) y que la PC no se suspenda
 (`powercfg /change standby-timeout-ac 0`). El script lo recuerda al instalarse.
 
+### Entrar desde otra PC de la red (jefe de programación)
+
+1. En la PC del estudio, una vez: **`Abrir ONIX en la red local.bat`** (pide permisos de
+   administrador). Abre el puerto **solo para la red local** y avisa si Windows marcó la red
+   como Pública.
+2. **Admin › Motor de audio › Usuarios**: crear el usuario (rol *Programación*). Ahí mismo
+   aparece la dirección a escribir en la otra PC, p. ej. `http://192.168.1.20:8001/admin/`.
+
+La **PC del estudio no pide contraseña** (si ONIX se reinicia solo, el aire sigue). Las demás
+PCs entran con usuario: *Programación* = Admin sin operar el aire ni tocar motor, salidas,
+respaldos o usuarios; *Operador* = Studio; *Administrador* = todo.
+
+### Marcas automáticas al cargar música
+
+Como Jazler SoHo: al cargar una canción se detectan el **inicio** (salta el silencio) y el
+**punto de mezcla** (donde el final cae 12 dB bajo su volumen normal: sirve para fades y
+finales secos). El **intro** (cuándo entra la voz) se sigue marcando a mano. Las marcas
+puestas a mano nunca se pisan. Se activa o desactiva en Admin › Motor de audio
+(normalización); también analiza la música que ya estaba cargada (≈1 s por canción).
+
 ### Respaldos de la base de datos
 
 Una copia por día de relojes, grilla, eventos, pautas, biblioteca (con marcas), cartuchera,

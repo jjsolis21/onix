@@ -1198,6 +1198,12 @@ async def update_audio(
     if not campos_update:
         return {"mensaje": "Sin cambios que aplicar", "data": {"id": audio_id}}
 
+    # Si el usuario movió el inicio o la mezcla, son marcas a mano: la
+    # detección automática no las vuelve a tocar.
+    if any(k in campos_update and abs(float(campos_update[k] or 0) - float(audio[k] or 0)) > 0.05
+           for k in ("cue_inicio", "cue_mezcla")):
+        campos_update["marcas_auto"] = 0
+
     campos_update["updated_at"] = "datetime('now')"
 
     set_clause = ", ".join(
@@ -1854,6 +1860,7 @@ class MotorConfig(BaseModel):
     tandas_inmediatas:   Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos cuya tanda corta la canción, p. ej. '0' (vacío = ninguna)")
     tanda_max_seg:       Optional[int]   = Field(None, ge=0, le=1800)
+    marcas_auto:         Optional[bool]  = Field(None, description="Detectar inicio y mezcla de la música al cargarla")
     silencio_seg:        Optional[int]   = Field(None, ge=0, le=120,
                                                  description="Aire muerto: segundos de silencio antes de actuar (0 = apagado)")
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
@@ -1892,6 +1899,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
         "tanda_max_seg":       int(float(valores.get("tanda_max_seg", 240) or 0)),
         "silencio_seg":        int(float(valores.get("silencio_seg", 10) or 0)),
+        "marcas_auto":         valores.get("marcas_auto", "1") not in ("0", "false", ""),
         "normalizacion_activa": valores.get("normalizacion_activa", "1") not in ("0", "false", ""),
         "normalizacion_lufs":  float(valores.get("normalizacion_lufs", -16)),
         "horas_planificadas":  float(valores.get("horas_planificadas", 2)),
@@ -2049,8 +2057,14 @@ def get_normalizacion(conn: sqlite3.Connection = Depends(get_db)):
         " FROM audios WHERE activo = 1 GROUP BY e"
     ):
         cuenta[r["e"]] = r["n"]
+    marcas = {"auto": 0, "manual": 0, "pendiente": 0, "error": 0}
+    nombres = {1: "auto", 0: "manual", -1: "error", None: "pendiente"}
+    for r in conn.execute("SELECT marcas_auto AS m, COUNT(*) AS n FROM audios"
+                          " WHERE activo = 1 AND tipo_audio = 'Musica' GROUP BY m"):
+        marcas[nombres.get(r["m"], "pendiente")] += r["n"]
     return {
         **cuenta,
+        "marcas": marcas,
         "ffmpeg": _normalizador.ffmpeg,
         "config": {k: v for k, v in _read_motor_config(conn).items() if k.startswith("normalizacion")},
     }

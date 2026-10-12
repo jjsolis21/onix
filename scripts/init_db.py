@@ -71,6 +71,8 @@ SEED_CONFIG = [
     ("tanda_max_seg",        "240"),    # aviso si una tanda dura más
     # Detector de aire muerto: segundos de silencio antes de actuar (0 = apagado)
     ("silencio_seg",         "10"),
+    # Detectar inicio y punto de mezcla de la música al cargarla (backend/audio/marcas.py)
+    ("marcas_auto",          "1"),
 ]
 
 # Secciones de la tanda (orden dentro del corte). Como las "priorities" de Jazler.
@@ -538,6 +540,15 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         );
     """)
     logger.info("  → usuarios y sesiones: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 18 — Marcas automáticas (inicio y mezcla detectados)
+    #   audios.marcas_auto: NULL sin analizar · 1 automáticas · 0 a mano · -1 error
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "marcas_auto" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN marcas_auto INTEGER DEFAULT NULL")
+    logger.info("  → audios.marcas_auto: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")

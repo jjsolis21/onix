@@ -131,6 +131,9 @@
         <select class="ox-select" id="mNormActiva"><option value="1">Activada</option><option value="0">Desactivada</option></select></div>
       <div class="ox-field"><label for="mLufs">Volumen objetivo (LUFS)</label>
         <input type="number" class="ox-input" id="mLufs" min="-30" max="-5" step="0.5"></div>
+      <div class="ox-field"><label for="mMarcasAuto">Marcas al cargar música</label>
+        <select class="ox-select" id="mMarcasAuto" title="Inicio (salta el silencio) y punto de mezcla del final">
+          <option value="1">Detectar inicio y mezcla</option><option value="0">No detectar</option></select></div>
       <button class="ox-btn ox-btn--primary" id="mGuardarNorm">Guardar</button>
       <button class="ox-btn" id="mRemedir" title="Vuelve a medir los audios que dieron error">Volver a medir errores</button>
     </div>
@@ -255,6 +258,7 @@
     $("mTol").value = c.tolerancia_tanda_seg; $("mSepDias").value = c.separacion_cancion_dias;
     $("mSepVent").value = c.separacion_cancion_ventana_min;
     $("mNormActiva").value = c.normalizacion_activa ? "1" : "0"; $("mLufs").value = c.normalizacion_lufs;
+    $("mMarcasAuto").value = c.marcas_auto === false ? "0" : "1";
     $("mInmediatas").value = c.tandas_inmediatas || ""; $("mTandaMax").value = c.tanda_max_seg;
   }
 
@@ -277,6 +281,7 @@
   }, "mMsgParams"));
   $("mGuardarNorm").addEventListener("click", () => guardar({
     normalizacion_activa: $("mNormActiva").value === "1", normalizacion_lufs: parseFloat($("mLufs").value),
+    marcas_auto: $("mMarcasAuto").value === "1",
   }, "mMsgNorm"));
 
   $("mGuardarTandas").addEventListener("click", () => guardar({
@@ -338,7 +343,10 @@
     $("mNormKpis").innerHTML = `
       <div class="ox-kpi"><b>${n.ok}</b><span>Medidos</span></div>
       <div class="ox-kpi"><b>${n.pendiente}</b><span>Pendientes</span></div>
-      <div class="ox-kpi"><b>${n.error}</b><span>Con error</span></div>`;
+      <div class="ox-kpi"><b>${n.error}</b><span>Con error</span></div>
+      ${n.marcas ? `<div class="ox-kpi"><b>${n.marcas.auto}</b><span>Marcas automáticas</span></div>
+      <div class="ox-kpi"><b>${n.marcas.manual}</b><span>Marcas a mano</span></div>
+      <div class="ox-kpi"><b>${n.marcas.pendiente}</b><span>Marcas pendientes</span></div>` : ""}`;
     if (!n.ffmpeg) msg("mMsgNorm", "ffmpeg no está instalado: los audios NO se normalizan. En PowerShell: winget install Gyan.FFmpeg y reinicia ONIX.", false);
     else if (!$("mMsgNorm").textContent) msg("mMsgNorm", `Medidor: ${n.ffmpeg}`);
   }
