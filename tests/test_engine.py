@@ -39,7 +39,7 @@ def engine(tmp_db, media):
     eng.events = []
     for ev in ("pauta_scheduled", "pauta_missed", "tanda_scheduled",
                "respaldo_activado", "track_started", "playback_error",
-               "cue_started", "cue_stopped"):
+               "cue_started", "cue_stopped", "tanda_inmediata", "tanda_excedida"):
         eng.bus.subscribe(ev, lambda e, d: eng.events.append((e, d)))
     return eng
 
@@ -69,10 +69,10 @@ def add_pauta(engine, media, cliente, rubro="", horas=(LUNES_10,), **cols):
     conn = db(engine)
     cur = conn.execute(
         "INSERT INTO pautas (cliente, audio_id, matriz, rubro, menciones_diarias, prioridad,"
-        " cue_intro, cue_outro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        " cue_intro, cue_outro, seccion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (cliente, audio_id, json.dumps({h: True for h in horas}), rubro,
          cols.get("menciones_diarias"), cols.get("prioridad", 0),
-         cols.get("cue_intro"), cols.get("cue_outro")),
+         cols.get("cue_intro"), cols.get("cue_outro"), cols.get("seccion", 3)),
     )
     conn.commit()
     conn.close()
@@ -408,3 +408,89 @@ def test_cartuchera_por_su_propia_salida(engine, media):
     engine.fire_effect(jid)
     engine._drain_commands()
     assert engine._audio.device_of(CANAL_EFX_BASE) == 1
+
+
+# ── Tandas al estilo Jazler: secciones, opcional, inicio inmediato ──────────
+
+def test_tanda_ordenada_por_secciones(engine, media):
+    add_pauta(engine, media, "CIERRE", seccion=4)            # cortina de salida (opcional)
+    add_pauta(engine, media, "CLIENTE A", rubro="BANCA")
+    add_pauta(engine, media, "APERTURA", seccion=2)          # cortina de entrada (opcional)
+    add_pauta(engine, media, "ID ESTACION", seccion=1)
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert en_cola(engine) == ["ID ESTACION", "APERTURA", "CLIENTE A", "CIERRE"]
+
+
+def test_id_y_cortinas_salen_en_cada_tanda(engine, media):
+    add_pauta(engine, media, "ID ESTACION", seccion=1)
+    add_pauta(engine, media, "APERTURA", seccion=2)
+    add_pauta(engine, media, "CLIENTE A")
+    add_pauta(engine, media, "CLIENTE B")
+    engine._now.dt = datetime(2026, 10, 12, 10, 45)          # tandas :15 y :45
+    engine._check_pautas()
+    tandas = [(p["tanda"], p["cliente"]) for p in engine._priority_queue]
+    assert tandas.count((15, "ID ESTACION")) == 1 and tandas.count((45, "ID ESTACION")) == 1
+    assert tandas.count((15, "APERTURA")) == 1 and tandas.count((45, "APERTURA")) == 1
+    # Las comerciales siguen repartidas: una por tanda
+    assert sum(1 for t, c in tandas if c.startswith("CLIENTE")) == 2
+
+
+def test_cortina_opcional_no_sale_sin_comerciales(engine, media):
+    add_pauta(engine, media, "ID ESTACION", seccion=1)
+    add_pauta(engine, media, "APERTURA", seccion=2)
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert en_cola(engine) == ["ID ESTACION"]
+
+
+def test_seccion_fija_no_se_repite_en_la_misma_tanda(engine, media):
+    add_pauta(engine, media, "ID ESTACION", seccion=1)
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    item = engine._pick_next()
+    engine._log_emision(item["track"], item, tipo="pauta")
+    engine._check_pautas()
+    assert en_cola(engine) == []
+
+
+def test_tanda_inmediata_corta_la_cancion(engine, media):
+    add_pauta(engine, media, "EN PUNTO")
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    engine._tandas_minutos, engine._tandas_inmediatas = [0], [0]
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "auto"           # todavía no es la hora
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "pauta"          # cortó y salió la tanda
+    assert any(e == "tanda_inmediata" for e, _ in engine.events)
+
+
+def test_tanda_inmediata_no_corta_en_manual(engine, media):
+    engine._mode = "manual"
+    add_pauta(engine, media, "EN PUNTO")
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    engine._tandas_minutos, engine._tandas_inmediatas = [0], [0]
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "manual"})
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "manual"
+
+
+def test_aviso_de_tanda_demasiado_larga(engine, media):
+    for i in range(3):
+        add_pauta(engine, media, f"LARGA {i}")
+    conn = db(engine)
+    conn.execute("UPDATE audios SET duracion = 2 WHERE tipo_audio = 'Cuña'")
+    conn.commit()
+    conn.close()
+    engine._tandas_minutos, engine._tanda_max_seg = [15], 3
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    exc = [d for e, d in engine.events if e == "tanda_excedida"]
+    assert exc and exc[0]["duracion"] >= 6 and exc[0]["maximo"] == 3

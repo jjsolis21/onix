@@ -115,3 +115,30 @@ def test_config_normalizacion(client):
     assert r.status_code == 200
     assert r.json()["normalizacion_activa"] is False and r.json()["normalizacion_lufs"] == -18
     client.put("/api/v1/config/motor", json={"normalizacion_activa": True, "normalizacion_lufs": -16})
+
+
+def test_secciones_de_tanda(client, tmp_path):
+    secs = client.get("/api/v1/tandas/secciones").json()
+    assert [s["nombre"] for s in secs][:3] == ["Identificación", "Cortina de entrada", "Comerciales"]
+    nuevas = [{"numero": 1, "nombre": "ID", "opcional": False, "comercial": False},
+              {"numero": 3, "nombre": "Comerciales", "opcional": False, "comercial": True},
+              {"numero": 9, "nombre": "Cierre", "opcional": True, "comercial": False}]
+    assert len(client.put("/api/v1/tandas/secciones", json=nuevas).json()) == 3
+    sin_comercial = [{"numero": 1, "nombre": "ID"}]
+    assert client.put("/api/v1/tandas/secciones", json=sin_comercial).status_code == 422
+    # La pauta guarda su sección
+    wav = make_wav(tmp_path / "id.wav", seconds=1.0)
+    with open(wav, "rb") as fh:
+        aid = client.post("/api/v1/upload", data={"tipo": "pauta"},
+                          files={"file": ("id.wav", fh, "audio/wav")}).json()["audio_id"]
+    r = client.post("/api/v1/pautas", json={"cliente": "emisora", "audio_id": aid, "seccion": 1,
+                                             "matriz": {"1-10": True}})
+    assert r.status_code == 201 and r.json()["seccion"] == 1
+
+
+def test_config_tandas_inmediatas(client):
+    r = client.put("/api/v1/config/motor", json={"tandas_inmediatas": "0, 30", "tanda_max_seg": 180})
+    assert r.json()["tandas_inmediatas"] == "0,30" and r.json()["tanda_max_seg"] == 180
+    r = client.put("/api/v1/config/motor", json={"tandas_inmediatas": ""})
+    assert r.json()["tandas_inmediatas"] == ""
+    assert client.put("/api/v1/config/motor", json={"tandas_inmediatas": "61"}).status_code == 422

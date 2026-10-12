@@ -282,12 +282,15 @@ def reporte_pautas(desde: Optional[str] = None, hasta: Optional[str] = None,
     hoy = date.today()
     d_desde = _parse_fecha(desde, hoy.replace(day=1))
     d_hasta = _parse_fecha(hasta, hoy)
-    sql, params = "SELECT * FROM pautas", []
+    # Solo pautas comerciales: ID y cortinas son de la emisora, no de un cliente
+    sql = ("SELECT p.* FROM pautas p LEFT JOIN tanda_secciones s ON s.numero = COALESCE(p.seccion, 3)"
+           " WHERE COALESCE(s.comercial, 1) = 1")
+    params = []
     if cliente:
-        sql += " WHERE cliente LIKE ?"
+        sql += " AND p.cliente LIKE ?"
         params.append(f"%{cliente.upper()}%")
     filas = []
-    for p in conn.execute(sql + " ORDER BY cliente, id", params).fetchall():
+    for p in conn.execute(sql + " ORDER BY p.cliente, p.id", params).fetchall():
         r = _cumplimiento_pauta(conn, p, d_desde, d_hasta)
         if r["programadas"] or r["emitidas"]:
             r.pop("dias")

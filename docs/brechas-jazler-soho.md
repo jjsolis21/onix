@@ -9,15 +9,15 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 
 | Jazler SoHo | ONIX hoy |
 |---|---|
-| **Relojes**: patrón de la hora por filas (categoría, jingle, sweeper…) que se repite hasta cambiar de reloj | ❌ elige canción por canción sin estructura |
-| **Grilla de relojes 24 × 7** (un reloj por hora y día) | ❌ |
-| **Auto SOHO**: carga en el Studio lo que sonará las próximas 2 horas, con hora exacta de cada ítem | ❌ solo se sabe la canción actual |
-| **Compensación**: rellena con un reloj o categoría de respaldo para que la tanda caiga a su hora | ❌ |
+| **Relojes**: patrón de la hora por filas (categoría, jingle, sweeper…) que se repite hasta cambiar de reloj | ✅ |
+| **Grilla de relojes 24 × 7** (un reloj por hora y día) | ✅ |
+| **Auto SOHO**: carga en el Studio lo que sonará las próximas 2 horas, con hora exacta de cada ítem | ✅ |
+| **Compensación**: rellena con un reloj o categoría de respaldo para que la tanda caiga a su hora | ✅ |
 | **Force clocks**: un reloj que suena una sola vez en una fecha y hora | ❌ |
 | **Final Log**: genera el día completo, se revisa, se edita y se emite tal cual | ❌ |
 | Separación de artista (minutos) | ✅ |
-| Separación de la misma canción al día siguiente en la misma franja | ❌ |
-| Aleatoriedad configurable (0 = estricto, todas suenan antes de repetir) | 🟡 fija (al azar entre 5) |
+| Separación de la misma canción al día siguiente en la misma franja | ✅ |
+| Aleatoriedad configurable (0 = estricto, todas suenan antes de repetir) | ✅ |
 | Reglas restrictivas (p. ej. "pop no seguido de balada") | 🟡 solo "no más de N con la misma voz" |
 | Registro de por qué se eligió cada canción | ❌ |
 
@@ -26,13 +26,13 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 | Jazler SoHo | ONIX hoy |
 |---|---|
 | Tandas a hora fija (por defecto :00 y :30) | ✅ (`tandas_minutos`) |
-| **Inicio inmediato** por tanda: corta la canción con fade y sale a la hora exacta | ❌ siempre espera el fin de la canción |
-| **Prioridades** dentro de la tanda: ID → cortina de entrada → hora → cuñas → clima → noticias → cortina de salida | ❌ solo separa rubros |
-| **Reproducción opcional**: la cortina de entrada no sale si no hay cuñas | ❌ |
+| **Inicio inmediato** por tanda: corta la canción con fade y sale a la hora exacta | ✅ (`tandas_inmediatas`, en automático) |
+| **Prioridades** dentro de la tanda: ID → cortina de entrada → hora → cuñas → clima → noticias → cortina de salida | ✅ secciones editables (falta la hora locutada) |
+| **Reproducción opcional**: la cortina de entrada no sale si no hay cuñas | ✅ |
 | Campañas con varios audios (en orden, al azar o elegido) | ❌ una pauta = un audio |
 | Programación semanal o detallada día por día | 🟡 matriz semanal |
 | Reportes de emisión real por campaña | ✅ |
-| Aviso si la tanda excede su duración máxima | ❌ |
+| Aviso si la tanda excede su duración máxima | ✅ |
 
 ## 3. Eventos, programas y piezas especiales (cap. 5.4, 5.5, 5.7, 5.9, 6.1, 6.4)
 
@@ -52,7 +52,7 @@ Leyenda: ✅ ya está · 🟡 parcial · ❌ falta
 
 | Jazler SoHo | ONIX hoy |
 |---|---|
-| Salidas: principal, monitor y **cartuchera por salida propia** | 🟡 aire y preescucha; falta salida de cartuchera |
+| Salidas: principal, monitor y **cartuchera por salida propia** | ✅ |
 | Modos: automático, manual, retransmisión, fuera de línea | 🟡 automático y manual |
 | Cartuchera (instant jingles) por paletas | ✅ (2 bancos) |
 | Atajos de teclado configurables | ❌ |

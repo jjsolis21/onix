@@ -840,6 +840,9 @@ class AudioEngine:
         self._plan_slot:       Optional[str] = None
         self._plan:            dict[int, list[int]] = {}
         self._tandas_lanzadas: set[int] = set()
+        self._tandas_inmediatas: list[int] = []      # minutos cuya tanda corta la cancion
+        self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
+        self._tanda_max_seg    = 240
         self._pautas_fallidas: set[tuple[str, int]] = set()   # (slot, pauta_id)
         self._respaldo_recent: deque = deque(maxlen=20)
 
@@ -910,6 +913,9 @@ class AudioEngine:
             # Compatibilidad: ONIX_AUDIO_DEVICE fuerza la tarjeta del aire
             if os.getenv("ONIX_AUDIO_DEVICE") not in (None, ""):
                 self._devices["aire"] = int(os.environ["ONIX_AUDIO_DEVICE"])
+            inm = self._cfg("tandas_inmediatas", "")
+            self._tandas_inmediatas = parse_minutos(inm) if inm.strip() else []
+            self._tanda_max_seg = int(float(self._cfg("tanda_max_seg", "240") or 0))
             minutos = parse_minutos(self._cfg("tandas_minutos", "15,45"))
             if minutos != self._tandas_minutos:
                 self._tandas_minutos = minutos
@@ -926,6 +932,7 @@ class AudioEngine:
                 self._finish_crossfade()
                 self._restore_ducking()
                 self._check_pautas()
+                self._check_tanda_inmediata()
                 self._actualizar_programa()
                 self._tick()
                 self._process_deferred_moves()
@@ -1261,6 +1268,14 @@ class AudioEngine:
         with self._programa_lock:
             items = [dict(i) for i in self._programa]
         for it in items:
+            if it["tipo"] == "tanda" and it.get("inmediata"):
+                # Sale en punto (corta lo que suene): su hora no es estimada
+                try:
+                    fija = datetime.strptime(it["slot"], "%Y-%m-%d-%H") + timedelta(minutes=it["minuto"])
+                    if fija > t - timedelta(minutes=10):
+                        t = fija
+                except (KeyError, ValueError):
+                    pass
             it["hora"] = t.strftime("%H:%M:%S")
             t += timedelta(seconds=it["duracion"])
         return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
@@ -1581,6 +1596,11 @@ class AudioEngine:
            juntas a la cola prioritaria y salen en el proximo cambio de pista.
            Si el motor arranca tarde, las tandas ya vencidas salen enseguida.
         3. Lo que no alcanzo a salir en su hora se descarta (no se acumula).
+        4. SECCIONES (tanda_secciones, como las prioridades de Jazler): la tanda
+           sale ordenada por seccion (ID, cortina de entrada, comerciales,
+           cortina de salida…). Solo las secciones comerciales se reparten
+           entre las tandas; las demas salen en CADA tanda de sus horas, y las
+           opcionales solo si la tanda lleva al menos una cuña comercial.
         """
         if forzar is None and time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
             return
@@ -1604,7 +1624,8 @@ class AudioEngine:
                 rows = conn.execute(
                     """
                     SELECT p.id, p.cliente, p.audio_id, p.matriz, p.rubro,
-                           p.menciones_diarias, p.cue_intro, p.cue_outro
+                           p.menciones_diarias, p.cue_intro, p.cue_outro,
+                           COALESCE(p.seccion, 3) AS seccion, a.duracion
                     FROM pautas p
                     JOIN audios a ON a.id = p.audio_id AND a.activo = 1
                     WHERE p.activo = 1
@@ -1619,6 +1640,16 @@ class AudioEngine:
                         "SELECT pauta_id FROM historial_emision"
                         " WHERE slot = ? AND pauta_id IS NOT NULL", (slot,)
                     )
+                }
+                por_tanda = {
+                    (r[0], r[1]) for r in conn.execute(
+                        "SELECT pauta_id, tanda FROM historial_emision"
+                        " WHERE slot = ? AND pauta_id IS NOT NULL", (slot,)
+                    )
+                }
+                secciones = {
+                    r[0]: {"opcional": bool(r[1]), "comercial": bool(r[2])}
+                    for r in conn.execute("SELECT numero, opcional, comercial FROM tanda_secciones")
                 }
                 del_dia = dict(conn.execute(
                     "SELECT pauta_id, COUNT(*) FROM historial_emision"
@@ -1643,10 +1674,15 @@ class AudioEngine:
                     "audio_id": row["audio_id"], "rubro": row["rubro"] or "",
                     "menciones_diarias": row["menciones_diarias"],
                     "cue_intro": row["cue_intro"], "cue_outro": row["cue_outro"],
+                    "seccion": row["seccion"], "duracion": row["duracion"] or 0,
                     "slot": slot,
                 }
 
-        self._plan_hour(slot, now.minute, list(de_la_hora.values()))
+        # Seccion desconocida = comercial (asi nunca se pierde una cuña de cliente)
+        es_comercial = lambda p: secciones.get(p["seccion"], {"comercial": True})["comercial"]
+        comerciales = {pid: p for pid, p in de_la_hora.items() if es_comercial(p)}
+        fijas = [p for p in de_la_hora.values() if not es_comercial(p)]
+        self._plan_hour(slot, now.minute, list(comerciales.values()))
 
         # forzar=(slot, minuto): el programa llego al marcador de esa tanda
         # unos segundos antes de su minuto; sale ya.
@@ -1654,12 +1690,13 @@ class AudioEngine:
         if forzar and forzar[0] == slot:
             limite = max(limite, forzar[1])
         en_cola = {p["pauta_id"] for p in self._priority_queue}
+        en_cola_tanda = {(p["pauta_id"], p.get("tanda")) for p in self._priority_queue}
         for minuto in sorted(self._plan):
             if minuto > limite:
                 break
             lanzadas = []
             for pid in self._plan[minuto]:
-                pauta = de_la_hora.get(pid)
+                pauta = comerciales.get(pid)
                 if (pauta is None or pid in emitidas or pid in en_cola
                         or (slot, pid) in self._pautas_fallidas):
                     continue
@@ -1672,16 +1709,72 @@ class AudioEngine:
                 lanzadas.append(pauta)
                 log.info("[Pautas] Tanda :%02d → %s (pauta %d)", minuto, pauta["cliente"], pid)
                 self.bus.emit("pauta_scheduled", pauta)
+
+            # Secciones fijas (ID, cortinas): una vez por tanda
+            hay_comercial = any(
+                p.get("tanda") == minuto and es_comercial(p) for p in self._priority_queue
+            ) or any((pid, minuto) in por_tanda for pid in comerciales)
+            for pauta in fijas:
+                pid = pauta["pauta_id"]
+                if ((pid, minuto) in por_tanda or (pid, minuto) in en_cola_tanda
+                        or (slot, pid) in self._pautas_fallidas):
+                    continue
+                if secciones.get(pauta["seccion"], {}).get("opcional") and not hay_comercial:
+                    continue
+                tope = pauta["menciones_diarias"]
+                if tope and del_dia.get(pid, 0) >= tope:
+                    continue
+                pauta = {**pauta, "tanda": minuto}
+                self._priority_queue.append(pauta)
+                en_cola_tanda.add((pid, minuto))
+                lanzadas.append(pauta)
+                self.bus.emit("pauta_scheduled", pauta)
+
             if lanzadas:
+                # Orden dentro de la tanda: por seccion (estable: respeta el
+                # reparto por rubro y prioridad de las comerciales)
+                self._priority_queue = deque(sorted(
+                    self._priority_queue, key=lambda p: (p.get("tanda") or 0, p.get("seccion") or 0)))
                 self._idle_retry_at = 0.0
                 if minuto not in self._tandas_lanzadas:
                     self._tandas_lanzadas.add(minuto)
+                    duracion = sum(float(p.get("duracion") or 0) for p in self._priority_queue
+                                   if p.get("tanda") == minuto)
+                    if self._tanda_max_seg and duracion > self._tanda_max_seg:
+                        log.warning("[Pautas] Tanda :%02d dura %.0fs (maximo %ds)",
+                                    minuto, duracion, self._tanda_max_seg)
+                        self.bus.emit("tanda_excedida", {"minuto": minuto, "duracion": round(duracion),
+                                                         "maximo": self._tanda_max_seg})
                     self.bus.emit("tanda_scheduled", {
+                        "duracion": round(duracion),
                         "minuto": minuto, "slot": slot,
                         "requiere_operador": self._mode == "manual",
                         "pautas": [{"pauta_id": p["pauta_id"], "cliente": p["cliente"]}
                                    for p in lanzadas],
                     })
+
+    def _check_tanda_inmediata(self):
+        """
+        Inicio inmediato (Jazler "Break Starts Immediately"): en automatico, al
+        llegar el minuto de una tanda marcada, la cancion que suena sale con
+        fade y la tanda empieza a su hora exacta. En manual decide el operador.
+        """
+        if not self._tandas_inmediatas or self._mode != "automatico":
+            return
+        now = self._now()
+        if now.minute not in self._tandas_inmediatas:
+            return
+        clave = (now.strftime("%Y-%m-%d-%H"), now.minute)
+        if clave in self._inmediatas_hechas:
+            return
+        self._inmediatas_hechas = {c for c in self._inmediatas_hechas if c[0] == clave[0]} | {clave}
+        self._check_pautas(forzar=clave)
+        sonando_musica = (self._current_track is not None and self._current_item
+                          and self._current_item.get("origen") != "pauta")
+        if sonando_musica and any(p.get("tanda") == now.minute for p in self._priority_queue):
+            log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", now.minute)
+            self.bus.emit("tanda_inmediata", {"minuto": now.minute})
+            self._advance()
 
     def _plan_hour(self, slot: str, minuto_actual: int, pautas: list[dict]):
         """Reparte las pautas de la hora en tandas (una vez por hora)."""
@@ -1836,11 +1929,11 @@ class AudioEngine:
             try:
                 conn.execute(
                     "INSERT INTO historial_emision"
-                    " (audio_id, titulo, artista, tipo, origen, pauta_id, slot)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    " (audio_id, titulo, artista, tipo, origen, pauta_id, slot, tanda)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (track["id"], track.get("titulo", ""), track.get("artista", ""),
                      tipo, item.get("origen", "manual"),
-                     item.get("pauta_id"), item.get("slot")),
+                     item.get("pauta_id"), item.get("slot"), item.get("tanda")),
                 )
                 conn.execute(
                     "UPDATE audios SET"

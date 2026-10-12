@@ -191,6 +191,7 @@
       contrato:     data.contrato_id       ?? data.matriz?.__meta?.contrato    ?? '',
       urgente:      data.prioridad         ?? data.matriz?.__meta?.urgente     ?? false,
       menciones:    data.menciones_diarias ?? data.matriz?.__meta?.menciones ?? 4,
+      seccion:      data.seccion           ?? 3,
       cue_intro:    data.cue_intro         ?? data.matriz?.__meta?.cue_intro   ?? 0,
       cue_outro:    data.cue_outro         ?? data.matriz?.__meta?.cue_outro   ?? 0,
     };
@@ -832,6 +833,7 @@
       $('fContrato').value    = p.contrato || meta.contrato || '';
       $('fMenciones').value   = p.menciones ?? meta.menciones ?? 4;
       $('fUrgente').checked   = !!(p.urgente ?? meta.urgente ?? false);
+      _cargarSecciones(p.seccion ?? 3);
       $('btnSaveText').textContent = 'Actualizar Pauta';
 
       _buildMatrix(p.matriz);
@@ -873,6 +875,7 @@
       $('fContrato').value         = '';
       $('fMenciones').value        = '4';
       $('fUrgente').checked        = false;
+      _cargarSecciones(3);
       $('btnSaveText').textContent = 'Guardar Pauta';
 
       _buildMatrix({});
@@ -944,6 +947,7 @@
     const contrato = ($('fContrato')?.value  ?? '').trim();
     const urgente  = $('fUrgente')?.checked  ?? false;
     const menciones= parseInt($('fMenciones')?.value ?? '4', 10);
+    const seccion  = parseInt($('fSeccion')?.value ?? '3', 10) || 3;
 
     // Validaciones
     if (!cliente)  { _showModalError('El cliente es obligatorio.'); return; }
@@ -1007,6 +1011,7 @@
       contrato_id:       contrato,
       prioridad:         urgente,
       menciones_diarias: menciones,
+      seccion,
       // cue_intro / cue_outro are top-level fields in PautaIn (not just __meta).
       cue_intro:         cues.intro  ?? 0,
       cue_outro:         cues.outro  ?? 0,
@@ -1349,6 +1354,22 @@
   // ──────────────────────────────────────────────────────────
   // 20. INICIALIZACIÓN
   // ──────────────────────────────────────────────────────────
+
+  // Secciones de la tanda (Admin → 06 Motor de audio las define)
+  async function _cargarSecciones(valor) {
+    const sel = $('fSeccion');
+    if (!sel) return;
+    try {
+      const secs = await fetch('/api/v1/tandas/secciones').then(r => r.json());
+      sel.innerHTML = secs.map(s =>
+        `<option value="${s.numero}">${s.numero} · ${_esc(s.nombre)}${s.comercial ? '' : (s.opcional ? ' (opcional)' : ' (fija)')}</option>`
+      ).join('');
+    } catch (e) {
+      console.warn('[Pautas] Secciones no disponibles:', e);
+    }
+    sel.value = String(valor ?? 3);
+    if (!sel.value) sel.value = '3';
+  }
 
   async function init() {
     if (_initialized) {

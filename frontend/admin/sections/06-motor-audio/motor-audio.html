@@ -84,6 +84,41 @@
     <p class="ox-msg" id="mMsgParams"></p>
   </section>
 
+  <!-- ── Tandas al estilo Jazler ── -->
+  <section class="ox-card">
+    <h3>📢 Tandas</h3>
+    <div class="ox-row">
+      <div class="ox-field"><label for="mInmediatas">Inicio inmediato (minutos)</label>
+        <input class="ox-input" id="mInmediatas" placeholder="p. ej. 0  (vacío = ninguna)"></div>
+      <div class="ox-field"><label for="mTandaMax">Duración máxima de tanda (s)</label>
+        <input type="number" class="ox-input" id="mTandaMax" min="0" max="1800"></div>
+      <button class="ox-btn ox-btn--primary" id="mGuardarTandas">Guardar</button>
+    </div>
+    <p class="ox-hint" style="margin-top:var(--s2)">
+      <b>Inicio inmediato</b>: en automático, la tanda de esos minutos corta la canción con fade y sale en su hora exacta
+      (útil para el ID o las noticias en punto). Las demás esperan a que termine la canción.
+      Si una tanda supera la duración máxima, el Studio avisa.
+    </p>
+    <p class="ox-msg" id="mMsgTandas"></p>
+
+    <h3 style="margin-top:var(--s4)">Secciones de la tanda (orden de salida)</h3>
+    <p class="ox-hint">Cada pauta pertenece a una sección y la tanda sale en este orden.
+      <b>Comercial</b>: cuñas de clientes, se reparten entre las tandas de la hora.
+      Las demás (ID, cortinas) salen en <b>cada</b> tanda de sus horas.
+      <b>Opcional</b>: solo sale si la tanda lleva al menos una cuña comercial.</p>
+    <div class="ox-table-wrap">
+      <table class="ox-table">
+        <thead><tr><th>Nº</th><th>Nombre</th><th>Comercial</th><th>Opcional</th><th class="ox-num">Pautas</th><th></th></tr></thead>
+        <tbody id="mSecciones"></tbody>
+      </table>
+    </div>
+    <div class="ox-row" style="margin-top:var(--s2)">
+      <button class="ox-btn" id="mAddSeccion">+ Agregar sección</button>
+      <button class="ox-btn ox-btn--primary" id="mGuardarSecciones">Guardar secciones</button>
+    </div>
+    <p class="ox-msg" id="mMsgSecciones"></p>
+  </section>
+
   <!-- ── Normalización ── -->
   <section class="ox-card">
     <h3>📏 Normalización de volumen (EBU R128)</h3>
@@ -152,6 +187,7 @@
     $("mTol").value = c.tolerancia_tanda_seg; $("mSepDias").value = c.separacion_cancion_dias;
     $("mSepVent").value = c.separacion_cancion_ventana_min;
     $("mNormActiva").value = c.normalizacion_activa ? "1" : "0"; $("mLufs").value = c.normalizacion_lufs;
+    $("mInmediatas").value = c.tandas_inmediatas || ""; $("mTandaMax").value = c.tanda_max_seg;
   }
 
   async function guardar(body, msgId) {
@@ -174,6 +210,60 @@
   $("mGuardarNorm").addEventListener("click", () => guardar({
     normalizacion_activa: $("mNormActiva").value === "1", normalizacion_lufs: parseFloat($("mLufs").value),
   }, "mMsgNorm"));
+
+  $("mGuardarTandas").addEventListener("click", () => guardar({
+    tandas_inmediatas: $("mInmediatas").value.trim(), tanda_max_seg: parseInt($("mTandaMax").value) || 0,
+  }, "mMsgTandas"));
+
+  // ── Secciones de la tanda ────────────────────────────────
+  let secciones = [];
+  function pintarSecciones() {
+    $("mSecciones").innerHTML = secciones.map((s, i) => `<tr data-i="${i}">
+      <td><input type="number" class="ox-input" data-k="numero" min="1" max="99" value="${s.numero}" style="width:60px"></td>
+      <td><input class="ox-input" data-k="nombre" maxlength="60" value="${esc(s.nombre)}"></td>
+      <td><input type="checkbox" data-k="comercial" ${s.comercial ? "checked" : ""}></td>
+      <td><input type="checkbox" data-k="opcional" ${s.opcional ? "checked" : ""}></td>
+      <td class="ox-num">${s.pautas ?? 0}</td>
+      <td><button class="ox-btn ox-btn--sm ox-btn--danger" data-quitar="${i}">✕</button></td></tr>`).join("");
+  }
+  function leerSecciones() {
+    document.querySelectorAll("#mSecciones tr[data-i]").forEach(tr => {
+      const s = secciones[+tr.dataset.i];
+      s.numero = parseInt(tr.querySelector('[data-k="numero"]').value);
+      s.nombre = tr.querySelector('[data-k="nombre"]').value.trim();
+      s.comercial = tr.querySelector('[data-k="comercial"]').checked;
+      s.opcional = tr.querySelector('[data-k="opcional"]').checked;
+    });
+  }
+  async function cargarSecciones() {
+    secciones = await fetch("/api/v1/tandas/secciones").then(r => r.json());
+    pintarSecciones();
+  }
+  $("mSecciones").addEventListener("click", e => {
+    const b = e.target.closest("[data-quitar]");
+    if (!b) return;
+    leerSecciones();
+    const s = secciones[+b.dataset.quitar];
+    if (s.pautas && !confirm(`"${s.nombre}" tiene ${s.pautas} pauta(s). Si la borras, esas pautas pasan a tratarse como comerciales. ¿Seguir?`)) return;
+    secciones.splice(+b.dataset.quitar, 1);
+    pintarSecciones();
+  });
+  $("mAddSeccion").addEventListener("click", () => {
+    leerSecciones();
+    const n = Math.max(0, ...secciones.map(s => s.numero || 0)) + 1;
+    secciones.push({ numero: n, nombre: "Nueva sección", comercial: false, opcional: false, pautas: 0 });
+    pintarSecciones();
+  });
+  $("mGuardarSecciones").addEventListener("click", async () => {
+    leerSecciones();
+    const r = await fetch("/api/v1/tandas/secciones", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(secciones.map(({ numero, nombre, opcional, comercial }) => ({ numero, nombre, opcional, comercial }))),
+    });
+    if (!r.ok) { msg("mMsgSecciones", await errTxt(r), false); return; }
+    secciones = await r.json(); pintarSecciones();
+    msg("mMsgSecciones", "✓ Secciones guardadas");
+  });
 
   async function cargarNorm() {
     const n = await fetch("/api/v1/normalizacion").then(r => r.json());
@@ -212,7 +302,7 @@
   }
 
   function recargarTodo() {
-    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado();
+    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado(); cargarSecciones();
   }
   $("mRecargar").addEventListener("click", recargarTodo);
 

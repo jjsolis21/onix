@@ -66,6 +66,21 @@ SEED_CONFIG = [
     ("tolerancia_tanda_seg", "90"),     # margen para que la tanda caiga en su minuto
     ("separacion_cancion_dias", "1"),   # no repetir la canción N días seguidos…
     ("separacion_cancion_ventana_min", "60"),  # …en la misma franja (± minutos)
+    # Tandas al estilo Jazler
+    ("tandas_inmediatas",    ""),       # minutos cuya tanda corta la canción (p. ej. "0")
+    ("tanda_max_seg",        "240"),    # aviso si una tanda dura más
+]
+
+# Secciones de la tanda (orden dentro del corte). Como las "priorities" de Jazler.
+#   (número, nombre, opcional, comercial)
+#   opcional  → solo sale si la tanda tiene al menos una cuña comercial
+#   comercial → cuñas de clientes: se reparten entre las tandas de la hora;
+#               las demás (ID, cortinas) salen en CADA tanda de sus horas
+SEED_SECCIONES = [
+    (1, "Identificación",     0, 0),
+    (2, "Cortina de entrada", 1, 0),
+    (3, "Comerciales",        0, 1),
+    (4, "Cortina de salida",  1, 0),
 ]
 
 
@@ -449,6 +464,30 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         );
     """)
     logger.info("  → relojes, reloj_filas y reloj_grilla: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 15 — Tandas al estilo Jazler (secciones)
+    #   · tanda_secciones        → orden dentro de la tanda, opcional, comercial
+    #   · pautas.seccion         → a qué sección pertenece (3 = Comerciales)
+    #   · historial_emision.tanda→ minuto de la tanda en que salió
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tanda_secciones (
+            numero    INTEGER PRIMARY KEY,
+            nombre    TEXT    NOT NULL,
+            opcional  INTEGER NOT NULL DEFAULT 0,
+            comercial INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    if cursor.execute("SELECT COUNT(*) FROM tanda_secciones").fetchone()[0] == 0:
+        cursor.executemany("INSERT INTO tanda_secciones VALUES (?, ?, ?, ?)", SEED_SECCIONES)
+    cursor.execute("PRAGMA table_info(pautas)")
+    if "seccion" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE pautas ADD COLUMN seccion INTEGER NOT NULL DEFAULT 3")
+    cursor.execute("PRAGMA table_info(historial_emision)")
+    if "tanda" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE historial_emision ADD COLUMN tanda INTEGER DEFAULT NULL")
+    logger.info("  → tanda_secciones, pautas.seccion e historial_emision.tanda: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")

@@ -842,13 +842,16 @@ const Programa = (() => {
         cab = `<div class="pg-sep">${it.reloj ? `🕐 ${escHtml(it.reloj)}` : "Solo música (sin reloj)"}</div>`;
       }
       if (it.tipo === "tanda") {
-        return `${cab}<div class="pg-item pg-tanda"><span>📢 ${escHtml(it.hora.slice(0, 5))} · TANDA :${String(it.minuto).padStart(2, "0")}</span>
+        const marcas = (it.inmediata ? " ⚡" : "") + (it.excede ? " ⚠" : "");
+        const ayuda = [it.inmediata ? "Inicio inmediato: corta la canción" : "",
+                       it.excede ? "Supera la duración máxima de tanda" : ""].filter(Boolean).join(" · ");
+        return `${cab}<div class="pg-item pg-tanda" title="${escHtml(ayuda)}"><span>📢 ${escHtml(it.hora.slice(0, 5))} · TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</span>
           <span>${it.cunas} cuña(s) · ${fmtSec(it.duracion)}</span></div>`;
       }
       return `${cab}<div class="pg-item" style="border-left-color:${escHtml(it.color || "transparent")}">
         <span class="pg-hora">${escHtml(it.hora.slice(0, 5))}</span>
         <span class="pg-ico" title="${escHtml(it.tipo_audio)}">${ICONOS[it.tipo_audio] ?? "♪"}</span>
-        <div class="pg-info"><div class="pg-tit">${escHtml(it.titulo)}${it.compensacion ? `<span class="pg-comp" title="Elegida para que la tanda caiga a su hora">⚖</span>` : ""}</div>
+        <div class="pg-info"><div class="pg-tit">${escHtml(it.titulo)}${it.compensacion ? `<span class="pg-comp" title="Elegida para que la tanda caiga a su hora">⚖</span>` : ""}${it.cortada ? `<span class="pg-comp" title="Se corta para que la tanda salga en punto">✂</span>` : ""}</div>
           <div class="pg-art">${escHtml(it.artista)}</div></div>
         <span class="pg-dur">${fmtSec(it.duracion_total)}</span>
         <span class="pg-acc">
@@ -1156,6 +1159,14 @@ StudioWS.onEvent("tanda_scheduled", (data) => {
   } else {
     studioToast(`📢 Tanda :${min} — ${n} cuña(s) en cola`, "info", 4000);
   }
+});
+
+// ── Tanda inmediata / demasiado larga ─────────────────────────
+StudioWS.onEvent("tanda_inmediata", (data) => {
+  studioToast(`⚡ Tanda :${String(data?.minuto ?? 0).padStart(2, "0")} en punto: se cortó la canción`, "info", 4000);
+});
+StudioWS.onEvent("tanda_excedida", (data) => {
+  studioToast(`⚠ La tanda :${String(data?.minuto ?? 0).padStart(2, "0")} dura ${fmtSec(data?.duracion)} (máximo ${fmtSec(data?.maximo)})`, "warning", 7000);
 });
 
 // ── Preescucha (salida interna) ───────────────────────────────

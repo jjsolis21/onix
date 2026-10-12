@@ -148,6 +148,10 @@ class Planner:
                   tandas_emitidas, ultimo=None):
         crossfade = self._icfg("crossfade_seg", 4)
         tol = self._icfg("tolerancia_tanda_seg", 90)
+        from backend.audio.audio_engine import parse_minutos
+        inm = (self.cfg.get("tandas_inmediatas") or "").strip()
+        inmediatas = set(parse_minutos(inm)) if inm else set()
+        maximo = self._icfg("tanda_max_seg", 240)
         nuevos: list[dict] = []
         # Lo planificado cuenta como "ya sonó" para las reglas
         previos = list(historial) + [
@@ -173,11 +177,14 @@ class Planner:
         while t < hasta and len(nuevos) < 400:
             # ── Tanda pendiente en esta hora ───────────────────────────────
             tanda = self._proxima_tanda(conn, t, tandas_minutos, tandas_hechas)
-            if tanda and tanda["hora"] <= t + timedelta(seconds=tol):
+            inmediata = bool(tanda and tanda["minuto"] in inmediatas)
+            if tanda and (tanda["hora"] <= t or (not inmediata and tanda["hora"] <= t + timedelta(seconds=tol))):
                 tandas_hechas.add((tanda["slot"], tanda["minuto"]))
                 if tanda["duracion"] > 0:
                     nuevos.append(_item("tanda", t, tanda["duracion"], minuto=tanda["minuto"],
                                         slot=tanda["slot"], cunas=tanda["cunas"],
+                                        inmediata=inmediata,
+                                        excede=bool(maximo and tanda["duracion"] > maximo),
                                         titulo=f"TANDA :{tanda['minuto']:02d}"))
                     t += timedelta(seconds=tanda["duracion"])
                 continue
@@ -220,6 +227,10 @@ class Planner:
                 log.warning("[Planner] El reloj no consigue música: se corta el plan en %s", t.strftime("%H:%M"))
                 break
             dur = duracion_efectiva(audio, crossfade)
+            cortada = False
+            if inmediata and t + timedelta(seconds=dur) > tanda["hora"]:
+                # Tanda con inicio inmediato: esta canción se corta en su minuto
+                dur, cortada = max((tanda["hora"] - t).total_seconds(), 1.0), True
             nuevos.append(_item(
                 "audio", t, dur, audio_id=audio["id"], titulo=audio["titulo"],
                 artista=audio["artista"], tipo_audio=audio["tipo_audio"],
@@ -228,6 +239,7 @@ class Planner:
                 reloj=reloj["nombre"] if reloj else None,
                 color=reloj["color"] if reloj else None,
                 fila=(fila_idx - 1) % len(filas) if reloj else None, compensacion=compensado,
+                cortada=cortada,
             ))
             if audio["tipo_audio"] == "Musica":
                 en_plan.add(audio["id"])
@@ -253,14 +265,20 @@ class Planner:
         return None
 
     def _cunas_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]):
-        """Cuántas cuñas y cuántos segundos tendrá la tanda (mismo reparto que el motor)."""
+        """
+        Cuántas cuñas y cuántos segundos tendrá la tanda, con el mismo reparto
+        que el motor: comerciales repartidas entre las tandas de la hora; ID y
+        cortinas en cada tanda (las opcionales solo si hay comerciales).
+        """
         from backend.audio.audio_engine import planificar_tandas
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
-        pautas = []
+        secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
+            "SELECT numero, opcional, comercial FROM tanda_secciones")}
+        pautas, fijas = [], []
         for r in conn.execute(
             """
-            SELECT p.id, p.rubro, p.matriz, a.duracion FROM pautas p
+            SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
               AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
@@ -272,10 +290,12 @@ class Planner:
             except ValueError:
                 continue
             if isinstance(matriz, dict) and matriz.get(key):
-                pautas.append({"pauta_id": r["id"], "rubro": r["rubro"], "dur": r["duracion"] or 30})
-        if not pautas:
-            return 0, 0.0
-        lista = planificar_tandas(pautas, sorted(minutos)).get(minuto, [])
+                opcional, comercial = secciones.get(r["seccion"], (False, True))
+                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": r["duracion"] or 30,
+                     "opcional": opcional}
+                (pautas if comercial else fijas).append(p)
+        lista = planificar_tandas(pautas, sorted(minutos)).get(minuto, []) if pautas else []
+        lista += [f for f in fijas if lista or not f["opcional"]]
         return len(lista), float(sum(p["dur"] for p in lista))
 
     # ── Selección ───────────────────────────────────────────────────────────

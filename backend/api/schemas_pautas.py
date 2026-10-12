@@ -51,6 +51,8 @@ class PautaIn(BaseModel):
     rubro:        str            = Field("", max_length=200)
     prioridad:    bool           = Field(False, description="¿Es urgente o de alta prioridad?")
     contrato_id:  str            = Field("", max_length=100)
+    seccion:      int            = Field(3, ge=1, le=99,
+                                         description="Sección de la tanda (1 ID, 2 cortina de entrada, 3 comerciales…)")
 
     # ── Normalización de texto ────────────────────────────────────
 
@@ -130,6 +132,7 @@ class PautaIn(BaseModel):
             "rubro":        self.rubro,
             "prioridad":    1 if self.prioridad else 0,
             "contrato_id":  self.contrato_id,
+            "seccion":      self.seccion,
         }
 
 
@@ -158,6 +161,7 @@ class PautaOut(BaseModel):
     rubro:        str
     prioridad:    bool
     contrato_id:  str
+    seccion:      int = 3
     activo:       int
     created_at:   str
     updated_at:   str
@@ -193,6 +197,8 @@ class PautaOut(BaseModel):
         data.setdefault("fecha_fin",    "")
         data.setdefault("rubro",        "")
         data.setdefault("contrato_id",  "")
+        if data.get("seccion") is None:
+            data["seccion"] = 3
         data.setdefault("updated_at",   data.get("created_at", ""))
         
         # Parse boolean properties

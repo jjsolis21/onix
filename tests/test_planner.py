@@ -204,3 +204,35 @@ def test_extender_a_mitad_de_hora_sigue_el_reloj(base):
     tercera = p.extender([], fin, fin + timedelta(minutes=5), [], [],
                          ultimo={"inicio": fin.isoformat(), "reloj_id": rid, "fila": 2})
     assert tercera[0]["fila"] == 3
+
+
+
+def test_tanda_inmediata_corta_la_cancion_en_el_plan(base):
+    _pauta(base)
+    for i in range(10):
+        audio(base, f"LARGA {i}", dur=500)
+    cfg(base, tandas_inmediatas="15", tolerancia_tanda_seg=0)
+    items = planear(base, minutos=30, tandas=(15,))
+    tanda = next(i for i in items if i["tipo"] == "tanda")
+    previa = items[items.index(tanda) - 1]
+    assert tanda["inicio"] == "2026-10-12T10:15:00" and tanda["inmediata"] is True
+    assert previa["cortada"] is True
+
+
+def test_estimacion_de_tanda_incluye_id_y_cortinas(base):
+    _pauta(base, dur=30)                                    # comercial
+    aid = audio(base, "ID", tipo="Cuña", dur=5)
+    ap = audio(base, "APERTURA", tipo="Cuña", dur=7)
+    conn = db(base)
+    for a, sec in ((aid, 1), (ap, 2)):
+        conn.execute("INSERT INTO pautas (cliente, audio_id, matriz, seccion) VALUES ('EST', ?, ?, ?)",
+                     (a, json.dumps({"1-10": True}), sec))
+    conn.commit()
+    conn.close()
+    for i in range(10):
+        audio(base, f"T{i}", dur=200)
+    tandas = [i for i in planear(base, minutos=60, tandas=(15, 45)) if i["tipo"] == "tanda"]
+    t15 = next(t for t in tandas if t["minuto"] == 15)
+    t45 = next(t for t in tandas if t["minuto"] == 45)
+    assert (t15["cunas"], t15["duracion"]) == (3, 42)       # comercial + ID + apertura
+    assert (t45["cunas"], t45["duracion"]) == (1, 5)        # sin comercial: solo el ID

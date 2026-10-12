@@ -103,7 +103,7 @@ ENGINE_EVENTS = (
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
-    "programa_actualizado",
+    "programa_actualizado", "tanda_excedida", "tanda_inmediata",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
 )
 
@@ -1432,12 +1432,12 @@ def create_pauta(
                 (cliente, audio_id, audio_nombre, matriz,
                  fecha_inicio, fecha_fin, notas,
                  cue_intro, cue_outro, menciones_diarias, rubro, prioridad, contrato_id,
-                 activo, created_at, updated_at)
+                 seccion, activo, created_at, updated_at)
             VALUES
                 (:cliente, :audio_id, :audio_nombre, :matriz,
                  :fecha_inicio, :fecha_fin, :notas,
                  :cue_intro, :cue_outro, :menciones_diarias, :rubro, :prioridad, :contrato_id,
-                 1, datetime('now'), datetime('now'))
+                 :seccion, 1, datetime('now'), datetime('now'))
             """,
             db_data,
         )
@@ -1503,6 +1503,7 @@ def update_pauta(
             rubro        = :rubro,
             prioridad    = :prioridad,
             contrato_id  = :contrato_id,
+            seccion      = :seccion,
             updated_at   = datetime('now')
         WHERE id = :id
         """,
@@ -1781,6 +1782,9 @@ class MotorConfig(BaseModel):
     separacion_cancion_dias: Optional[int] = Field(None, ge=0, le=14)
     separacion_cancion_ventana_min: Optional[int] = Field(None, ge=0, le=720)
     normalizacion_lufs:  Optional[float] = Field(None, ge=-30, le=-5)
+    tandas_inmediatas:   Optional[str]   = Field(None, max_length=200,
+                                                 description="Minutos cuya tanda corta la canción, p. ej. '0' (vacío = ninguna)")
+    tanda_max_seg:       Optional[int]   = Field(None, ge=0, le=1800)
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos de las tandas, p. ej. '15,45'")
 
@@ -1794,6 +1798,16 @@ class MotorConfig(BaseModel):
             raise ValueError("tandas_minutos: minutos entre 0 y 59 separados por coma, p. ej. '15,45'")
         return ",".join(str(m) for m in sorted({int(x) for x in partes}))
 
+    @field_validator("tandas_inmediatas")
+    @classmethod
+    def _inmediatas_validas(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None if v is None else ""
+        partes = [x for x in re.split(r"[,;\s]+", v) if x]
+        if any(not x.isdigit() or int(x) > 59 for x in partes):
+            raise ValueError("tandas_inmediatas: minutos entre 0 y 59 separados por coma")
+        return ",".join(str(m) for m in sorted({int(x) for x in partes}))
+
 
 def _read_motor_config(conn: sqlite3.Connection) -> dict:
     valores = {r["clave"]: r["valor"] for r in conn.execute("SELECT clave, valor FROM config")}
@@ -1804,6 +1818,8 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
         "ducking_db":          float(valores.get("ducking_db", -12)),
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
+        "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
+        "tanda_max_seg":       int(float(valores.get("tanda_max_seg", 240) or 0)),
         "normalizacion_activa": valores.get("normalizacion_activa", "1") not in ("0", "false", ""),
         "normalizacion_lufs":  float(valores.get("normalizacion_lufs", -16)),
         "horas_planificadas":  float(valores.get("horas_planificadas", 2)),
@@ -1825,7 +1841,10 @@ def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(ge
     Guarda solo los campos enviados y los aplica al motor en caliente.
     El modo (manual/automático) se cambia con el comando set_mode, no aquí.
     """
-    for clave, valor in body.model_dump(exclude_none=True).items():
+    datos = body.model_dump(exclude_none=True)
+    if body.tandas_inmediatas == "":
+        datos["tandas_inmediatas"] = ""
+    for clave, valor in datos.items():
         if isinstance(valor, bool):
             valor = "1" if valor else "0"
         conn.execute(
@@ -1905,6 +1924,48 @@ def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
     conn.commit()
     engine.reload_config()
     return {"dispositivos": _listar_dispositivos(), "salidas": _read_salidas(conn)}
+
+
+# ===========================================================================
+# SECCIÓN: TANDAS — Secciones del corte (como las prioridades de Jazler)
+# ===========================================================================
+
+class SeccionIn(BaseModel):
+    numero:    int  = Field(..., ge=1, le=99)
+    nombre:    str  = Field(..., min_length=1, max_length=60)
+    opcional:  bool = False
+    comercial: bool = False
+
+
+@app.get("/api/v1/tandas/secciones", tags=["Pautas"], summary="Secciones de la tanda")
+def get_secciones(conn: sqlite3.Connection = Depends(get_db)):
+    """Orden dentro de la tanda. Cada pauta pertenece a una sección."""
+    usos = dict(conn.execute("SELECT COALESCE(seccion, 3), COUNT(*) FROM pautas GROUP BY 1").fetchall())
+    return [{"numero": r["numero"], "nombre": r["nombre"], "opcional": bool(r["opcional"]),
+             "comercial": bool(r["comercial"]), "pautas": usos.get(r["numero"], 0)}
+            for r in conn.execute("SELECT * FROM tanda_secciones ORDER BY numero")]
+
+
+@app.put("/api/v1/tandas/secciones", tags=["Pautas"], summary="Guardar secciones de la tanda")
+def put_secciones(body: List[SeccionIn], conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Reemplaza la lista completa. Debe quedar al menos una sección comercial.
+    Una pauta cuya sección se borra se trata como comercial (nunca se pierde).
+    """
+    numeros = [s.numero for s in body]
+    if len(numeros) != len(set(numeros)):
+        raise HTTPException(status_code=422, detail="Hay números de sección repetidos")
+    if not any(s.comercial for s in body):
+        raise HTTPException(status_code=422, detail="Debe haber al menos una sección comercial")
+    conn.execute("DELETE FROM tanda_secciones")
+    conn.executemany("INSERT INTO tanda_secciones (numero, nombre, opcional, comercial) VALUES (?, ?, ?, ?)",
+                     [(s.numero, s.nombre.strip(), int(s.opcional), int(s.comercial)) for s in body])
+    conn.commit()
+    try:
+        engine.plan_regenerar()
+    except Exception:
+        pass
+    return get_secciones(conn)
 
 
 @app.get("/api/v1/normalizacion", tags=["Config"], summary="Estado de la normalización de volumen")

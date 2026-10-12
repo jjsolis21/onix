@@ -140,6 +140,14 @@ próxima pista, sin cortar lo que suena.
   *LANZAR AHORA* o *AL TERMINAR LA CANCIÓN*. Si no la lanza dentro de su hora, se pierde
   y figura como faltante en el reporte del cliente.
 - La matriz de la pauta marca **qué horas** sale; `tandas_minutos` decide **en qué minuto**.
+- **Secciones** (Admin → 06 → Tandas; como las prioridades de Jazler): la tanda sale en orden de
+  sección, por defecto *1 Identificación → 2 Cortina de entrada → 3 Comerciales → 4 Cortina de salida*.
+  Cada pauta elige su sección. Las **comerciales** se reparten entre las tandas de la hora; las
+  demás (ID, cortinas) salen en **cada** tanda de sus horas. Las **opcionales** solo salen si la
+  tanda lleva al menos una cuña comercial. El reporte por cliente solo cuenta las comerciales.
+- **Inicio inmediato** (`tandas_inmediatas`, p. ej. `0`): en automático esa tanda corta la canción
+  con fade y sale en punto (✂ y ⚡ en el programa). En manual decide el operador.
+- **Duración máxima** (`tanda_max_seg`): si una tanda la supera, el Studio avisa (⚠).
 - Las pautas de cada hora se reparten entre sus tandas separando anunciantes
   del mismo rubro, y dentro de una tanda nunca van dos del mismo rubro seguidas.
 - Una tanda sale completa en el primer cambio de pista después de su minuto.
