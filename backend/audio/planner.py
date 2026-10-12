@@ -118,6 +118,14 @@ class Planner:
                 })
         self.grilla = {(g["dia"], g["hora"]): g["reloj_id"]
                        for g in conn.execute("SELECT dia, hora, reloj_id FROM reloj_grilla")}
+        # Restricciones por canción (si la BD no las tiene aún, no se aplican)
+        try:
+            self._con_tope = {r[0]: r[1] for r in conn.execute(
+                "SELECT id, max_por_dia FROM audios WHERE activo = 1 AND max_por_dia > 0")}
+            self._tiene_restricciones = True
+        except sqlite3.OperationalError:
+            self._con_tope, self._tiene_restricciones = {}, False
+        self._emitidas_dia = {}
         try:
             self.eventos = [dict(e) for e in conn.execute(
                 "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
@@ -170,7 +178,7 @@ class Planner:
         previos = list(historial) + [
             {"audio_id": p.get("audio_id"), "artista": p.get("artista"),
              "genero_vocal": p.get("genero_vocal"), "tipo_audio": p.get("tipo_audio"),
-             "ts": p["inicio"]}
+             "ts": p["inicio"], "plan": True}
             for p in plan if p["tipo"] == "audio"
         ]
         en_plan = {p.get("audio_id") for p in plan if p["tipo"] == "audio"}
@@ -274,7 +282,7 @@ class Planner:
                 en_plan.add(audio["id"])
             previos.append({"audio_id": audio["id"], "artista": audio["artista"],
                             "genero_vocal": audio.get("genero_vocal"),
-                            "tipo_audio": audio["tipo_audio"], "ts": t.isoformat()})
+                            "tipo_audio": audio["tipo_audio"], "ts": t.isoformat(), "plan": True})
             t += timedelta(seconds=dur)
         return nuevos
 
@@ -332,7 +340,7 @@ class Planner:
                 en_plan.add(audio["id"])
             previos.append({"audio_id": audio["id"], "artista": audio["artista"],
                             "genero_vocal": audio.get("genero_vocal"),
-                            "tipo_audio": audio["tipo_audio"], "ts": t.isoformat()})
+                            "tipo_audio": audio["tipo_audio"], "ts": t.isoformat(), "plan": True})
             t += timedelta(seconds=dur)
         if primero:
             log.warning("[Planner] Evento '%s': su reloj no tiene audios disponibles", ev["nombre"])
@@ -418,6 +426,19 @@ class Planner:
             base.append("a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)")
             # Bandeja de entrada: la música sin aprobar no sale al aire sola
             base.append("COALESCE(a.aprobada, 1) = 1")
+        # Restricciones de la canción (Jazler): reglas duras, no se relajan
+        if self._tiene_restricciones:
+            hora, dia = t.hour, (t.weekday() + 1) % 7
+            base.append("(a.restr_desde IS NULL OR a.restr_hasta IS NULL OR a.restr_desde = a.restr_hasta OR"
+                        " (a.restr_desde < a.restr_hasta AND ? >= a.restr_desde AND ? < a.restr_hasta) OR"
+                        " (a.restr_desde > a.restr_hasta AND (? >= a.restr_desde OR ? < a.restr_hasta)))")
+            params += [hora, hora, hora, hora]
+            base.append("(COALESCE(a.restr_dias, '') = '' OR instr(',' || a.restr_dias || ',', ?) > 0)")
+            params.append(f",{dia},")
+            topados = self._topados(conn, t, previos)
+            if topados:
+                base.append(f"a.id NOT IN ({','.join('?' * len(topados))})")
+                params += list(topados)
         fc, fp = self._where_filtros(fila.get("filtros") or {})
         base += fc
         params += fp
@@ -494,6 +515,27 @@ class Planner:
                 if row:
                     return dict(row)
         return None
+
+    def _topados(self, conn, t: datetime, previos: list) -> set:
+        """Canciones con max_por_dia que ya llegaron a su tope ese día (emitidas + planificadas)."""
+        con_tope = self._con_tope
+        if not con_tope:
+            return set()
+        dia = t.date().isoformat()
+        cuenta: dict = {}
+        # Emitidas ese día (historial) + planificadas para ese día (solo las del plan:
+        # `previos` también trae historial y se contaría dos veces)
+        if dia not in self._emitidas_dia:
+            self._emitidas_dia[dia] = {r[0]: r[1] for r in conn.execute(
+                "SELECT audio_id, COUNT(*) FROM historial_emision WHERE substr(iniciado_en, 1, 10) = ?"
+                " AND audio_id IS NOT NULL GROUP BY audio_id", (dia,))}
+        for aid, n in self._emitidas_dia[dia].items():
+            if aid in con_tope:
+                cuenta[aid] = n
+        for p in previos:
+            if p.get("plan") and p.get("audio_id") in con_tope and str(p.get("ts", ""))[:10] == dia:
+                cuenta[p["audio_id"]] = cuenta.get(p["audio_id"], 0) + 1
+        return {aid for aid, n in cuenta.items() if n >= con_tope[aid]}
 
     def _compensar(self, conn, reloj, restante, tol, crossfade, t, previos, en_plan, excluir):
         """Canción que termina cerca del minuto de la tanda (± tolerancia)."""

@@ -68,3 +68,39 @@ def test_ficha_con_relojes_e_historial(client, tmp_path):
     nombres = [r["nombre"] for r in f["relojes"]]
     assert "Solo Pop" in nombres and "Solo Rock" not in nombres
     assert client.get("/api/v1/biblioteca/999999/ficha").status_code == 404
+
+
+def test_papelera_restaurar_y_borrar_definitivo(client, tmp_path):
+    from backend.paths import resolve_media
+    a = subir(client, tmp_path, "Para Borrar", "Artista Papelera")
+    ruta = resolve_media(a["archivo_path"])
+    assert ruta.is_file()
+    client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "accion": "desactivar"})
+    assert any(x["id"] == a["id"] for x in client.get("/api/v1/biblioteca/papelera").json())
+    client.post("/api/v1/biblioteca/restaurar", json={"ids": [a["id"]]})
+    assert not any(x["id"] == a["id"] for x in client.get("/api/v1/biblioteca/papelera").json())
+    # Borrar definitivo solo funciona desde la papelera
+    assert client.post("/api/v1/biblioteca/borrar", json={"ids": [a["id"]]}).json()["borrados"] == 0
+    client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "accion": "desactivar"})
+    r = client.post("/api/v1/biblioteca/borrar", json={"ids": [a["id"]]}).json()
+    assert r["borrados"] == 1 and r["archivos_borrados"] == 1 and not ruta.exists()
+
+
+def test_calidad_detecta_duplicados_y_sin_clasificar(client, tmp_path):
+    a = subir(client, tmp_path, "Doble Uno", "Artista Doble")
+    b = subir(client, tmp_path, "Doble Uno (Remix)", "ARTISTA DOBLE")
+    c = client.get("/api/v1/biblioteca/calidad").json()
+    assert {a["id"], b["id"]} <= set(c["duplicados"]) and a["id"] in c["sin_clasificar"]
+
+
+def test_restricciones_por_lote(client, tmp_path):
+    a = subir(client, tmp_path, "Con Reglas", "Artista Reglas")
+    r = client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "cambios": {
+        "restr_desde": 20, "restr_hasta": 6, "restr_dias": [5, 6], "max_por_dia": 2}})
+    assert r.status_code == 200
+    f = client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()
+    assert (f["restr_desde"], f["restr_hasta"], f["restr_dias"], f["max_por_dia"]) == (20, 6, "5,6", 2)
+    assert a["id"] in client.get("/api/v1/biblioteca/calidad").json()["restringidas"]
+    # Los 7 días = sin restricción de días
+    client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "cambios": {"restr_dias": list(range(7))}})
+    assert client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()["restr_dias"] is None

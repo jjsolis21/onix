@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=3">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=4">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2498,7 +2498,10 @@
         <button class="bv-btn bv-btn--ok" id="bvAprobar" title="Aprobar: pueden salir al aire (necesitan género y rotación)">✓ Aprobar</button>
         <button class="bv-btn" id="bvBandeja" title="Devolver a la Bandeja: no suenan en automático">📥 A la Bandeja</button>
         <button class="bv-btn" id="bvMarcas" title="Volver a detectar inicio y mezcla (no toca las marcadas a mano)">✂ Marcas</button>
-        <button class="bv-btn bv-btn--peligro" id="bvDesactivar">Desactivar</button>
+        <button class="bv-btn" id="bvRestr" title="Horas, días y tope por día en que pueden sonar">⏱ Restricciones</button>
+        <button class="bv-btn bv-btn--peligro" id="bvDesactivar" title="Mandar a la Papelera (Supr). Se puede restaurar">🗑 Eliminar</button>
+        <button class="bv-btn bv-btn--ok" id="bvRestaurar" hidden>♻ Restaurar</button>
+        <button class="bv-btn bv-btn--peligro" id="bvBorrarDef" hidden title="Borra la canción y su archivo. No se puede deshacer">✖ Borrar definitivamente</button>
         <button class="bv-btn bv-btn--x" id="bvDeselect" title="Quitar selección (Esc)">✕</button>
       </div>
       <div class="bv-tabla" id="bvTabla" tabindex="0">
@@ -2523,7 +2526,7 @@
 
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=4"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=5"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)

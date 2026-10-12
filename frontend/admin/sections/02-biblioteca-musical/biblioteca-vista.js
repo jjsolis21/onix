@@ -52,7 +52,10 @@
     visibles: new Set(leer('bv_cols', COLUMNAS.filter(c => !c.oculta).map(c => c.k))),
     sel: new Set(), ancla: null, cursor: -1, sonando: null, abiertos: leer('bv_grupos', {}),
     verFicha: leer('bv_ficha', true), fichaId: null,
+    calidad: {}, papelera: [],
   };
+  const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const enPapelera = () => S.nodo.tipo === 'papelera';
   let audio = null;
 
   // ── Datos ────────────────────────────────────────────────
@@ -68,16 +71,20 @@
   }
 
   async function cargar() {
-    const [lista, schema] = await Promise.all([
+    const [lista, schema, calidad, papelera] = await Promise.all([
       fetch('/api/v1/audios?sin_tipo=Cu%C3%B1a&limit=50000').then(r => r.json()),
       fetch('/api/v1/config/biblioteca/schema').then(r => r.json()).catch(() => ({ categorias: [] })),
+      fetch('/api/v1/biblioteca/calidad').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+      fetch('/api/v1/biblioteca/papelera').then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
     S.todos = (lista.data || []).map(normalizar);
+    S.calidad = Object.fromEntries(Object.entries(calidad).map(([k, v]) => [k, Array.isArray(v) ? new Set(v) : v]));
+    S.papelera = papelera.map(a => normalizar({ ...a, aprobada: 1 }));
     S.schema = schema;
     S.colores = {};
     const c1 = (schema.categorias || []).find(c => c.nombre_interno === 'cat1');
     (c1?.valores || []).forEach((v, i) => { S.colores[String(v.valor).toUpperCase()] = v.color || PALETA[i % PALETA.length]; });
-    const ids = new Set(S.todos.map(a => a.id));
+    const ids = new Set((enPapelera() ? S.papelera : S.todos).map(a => a.id));
     S.sel.forEach(id => { if (!ids.has(id)) S.sel.delete(id); });
     pintarArbol(); filtrar(); pintarMasiva();
   }
@@ -123,7 +130,13 @@
       grupo('voz', 'Voz', nodosCampo('voz')) +
       grupo('origen', 'Origen', nodosCampo('origen')) +
       grupo('energia', 'Energía', nodosCampo('energia', (a, b) => a - b)) +
-      grupo('decada', 'Década', nodosCampo('decada'));
+      grupo('decada', 'Década', nodosCampo('decada')) +
+      grupo('calidad', 'Calidad', [
+        ['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
+        ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'],
+        ['olvidadas', '💤 Olvidadas (30 días)'], ['restringidas', '⏱ Con restricciones'],
+      ].map(([k, t]) => nodo({ tipo: 'ids', clave: k }, t, S.calidad[k]?.size ?? 0, S.calidad[k]?.size ? '' : 'bv-nodo--vacio'))
+        .concat(nodo({ tipo: 'papelera' }, '🗑 Papelera', S.papelera.length, S.papelera.length ? '' : 'bv-nodo--vacio')));
     $('bvResumen').textContent = `${porTipo.get('Musica') || 0} canciones · ${S.todos.length} audios` + (pend ? ` · ${pend} en la Bandeja` : '');
   }
 
@@ -131,6 +144,7 @@
   function pasa(a) {
     const n = S.nodo;
     if (n.tipo === 'bandeja' && !(a.tipo_audio === 'Musica' && !a.aprobada)) return false;
+    if (n.tipo === 'ids' && !S.calidad[n.clave]?.has(a.id)) return false;
     if (n.campo) {
       if (n.campo !== 'tipo_audio' && a.tipo_audio !== 'Musica') return false;
       if ((a[n.campo] ?? '') !== n.valor) return false;
@@ -150,7 +164,7 @@
   }
   function filtrar() {
     const { k, dir } = S.orden;
-    S.filtrados = S.todos.filter(pasa).sort((x, y) => {
+    S.filtrados = (enPapelera() ? S.papelera : S.todos).filter(pasa).sort((x, y) => {
       const a = clave(x, k), b = clave(y, k);
       return a < b ? -dir : a > b ? dir : 0;
     });
@@ -160,6 +174,19 @@
       aviso.innerHTML = S.filtrados.length
         ? `📥 Estas canciones <b>no suenan en automático</b> hasta aprobarlas. Selecciónalas, asígnales género y rotación arriba y presiona <b>✓ Aprobar</b>.`
         : '✓ La Bandeja está vacía: todo lo cargado está clasificado y aprobado.';
+    } else if (enPapelera()) {
+      aviso.hidden = false;
+      aviso.innerHTML = S.filtrados.length
+        ? '🗑 Papelera: estas canciones no aparecen ni suenan. <b>♻ Restaurar</b> las devuelve; <b>✖ Borrar definitivamente</b> borra también el archivo (no se puede deshacer).'
+        : '🗑 La Papelera está vacía.';
+    } else if (S.nodo.tipo === 'ids') {
+      const txt = { duplicados: 'Misma canción (artista + título) cargada más de una vez. Escucha y elimina la que sobre.',
+        sin_clasificar: 'Sin género o sin rotación: los relojes que filtran por categoría no las pueden elegir.',
+        volumen: 'No se pudo medir el volumen o está muy por fuera de lo normal: escúchalas antes de que salgan al aire.',
+        quemadas: 'Sonaron mucho más que el resto esta semana. Revisa su rotación.',
+        olvidadas: 'Aprobadas pero sin sonar en 30 días: quizá ningún reloj las elige (mira su ficha).',
+        restringidas: 'Tienen franja horaria, días o tope por día.' }[S.nodo.clave];
+      aviso.hidden = false; aviso.textContent = txt || '';
     } else aviso.hidden = true;
     pintarCabecera(); pintarFilas();
     $('bvConteo').textContent = `${S.filtrados.length} de ${S.todos.length}`;
@@ -198,6 +225,7 @@
         if (a.marcas_auto === 1) i.push('<span title="Marcas automáticas (inicio y mezcla)">✂</span>');
         else if (a.marcas_auto === 0) i.push('<span title="Marcas puestas a mano">✋</span>');
         else if (a.marcas_auto === -1) i.push('<span title="No se pudieron detectar las marcas">⚠</span>');
+        if (S.calidad.restringidas?.has(a.id)) i.push('<span title="Tiene restricciones (horas, días o tope)">⏱</span>');
         if (a.loudness_estado === 'error') i.push('<span title="No se pudo medir el volumen">🔇</span>');
         else if (a.loudness_estado === 'ok') i.push('<span title="Volumen normalizado">🔊</span>');
         return `<div class="bv-estado">${i.join('')}</div>`;
@@ -255,6 +283,11 @@
     $('bvMasiva').hidden = !n;
     $('bvSelN').textContent = n;
     if (!n) return;
+    // En la papelera solo se restaura o se borra
+    const pap = enPapelera();
+    document.querySelectorAll('#bvMasiva > select, #bvAprobar, #bvBandeja, #bvMarcas, #bvRestr, #bvDesactivar')
+      .forEach(el => { el.hidden = pap; });
+    $('bvRestaurar').hidden = !pap; $('bvBorrarDef').hidden = !pap;
     const etq = Object.fromEntries((S.schema?.categorias || []).map(c => [c.nombre_interno, c.etiqueta_visible]));
     document.querySelectorAll('#bvMasiva select[data-campo]').forEach(s => {
       const c = s.dataset.campo;
@@ -360,6 +393,7 @@
         <button class="bv-btn" data-f="play">${S.sonando === f.id ? '■ Parar' : '▶ Escuchar'}</button>
         <button class="bv-btn" data-f="editar">✎ Editar marcas y datos</button>
         ${f.tipo_audio === 'Musica' && !f.aprobada ? `<button class="bv-btn bv-btn--ok" data-f="aprobar">✓ Aprobar</button>` : ''}
+        <button class="bv-btn bv-btn--peligro" data-f="eliminar" title="Mandar a la Papelera (se puede restaurar)">🗑 Eliminar</button>
       </div>
       <div class="bv-onda" id="bvOnda"></div>
       <div class="bv-onda-ley">
@@ -383,6 +417,10 @@
           <div class="bv-horas-ej"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>` : ''}
         ${f.en_programa.length ? `<p style="font-size:12px;color:var(--gold-1);margin:6px 0">▶ En el programa de hoy: ${f.en_programa.map(esc).join(', ')}</p>` : ''}
         ${h.ultimas.length ? `<div class="bv-f-ultimas">${h.ultimas.map(u => `<div>${esc(u.slice(0, 16).replace('T', ' '))}</div>`).join('')}</div>` : '<p style="font-size:12px;color:var(--text-lo)">Todavía no salió al aire.</p>'}
+      </div>
+      <div class="bv-f-sec"><h4>Restricciones</h4>
+        <p style="font-size:12px;margin:0 0 6px;color:${textoRestr(f) ? 'var(--gold-1)' : 'var(--text-lo)'}">${esc(textoRestr(f) || 'Puede sonar a cualquier hora, todos los días.')}</p>
+        <button class="bv-btn" data-f="restr">⏱ Cambiar restricciones</button>
       </div>
       <div class="bv-f-sec"><h4>Relojes que pueden elegirla</h4>
         ${f.tipo_audio !== 'Musica' ? '<p style="font-size:12px;color:var(--text-lo)">Solo aplica a música.</p>'
@@ -409,6 +447,81 @@
       });
     });
     onda.on('error', () => { cont.innerHTML = '<p class="bv-ficha-vacia" style="margin:22px 0">Sin archivo de audio</p>'; });
+  }
+
+  function textoRestr(f) {
+    const p = [];
+    if (f.restr_desde !== null && f.restr_desde !== undefined && f.restr_hasta !== null && f.restr_hasta !== undefined && f.restr_desde !== f.restr_hasta)
+      p.push(`solo de ${String(f.restr_desde).padStart(2, '0')} a ${String(f.restr_hasta).padStart(2, '0')} h`);
+    if (f.restr_dias) p.push(`solo ${f.restr_dias.split(',').map(d => DIAS[+d]).join(' ')}`);
+    if (f.max_por_dia) p.push(`máximo ${f.max_por_dia} por día`);
+    return p.join(' · ');
+  }
+
+  /** Ventana para editar restricciones de una o varias canciones. */
+  async function editorRestricciones(ids) {
+    if (!ids.length) return;
+    let actual = {};
+    if (ids.length === 1) actual = await fetch(`/api/v1/biblioteca/${ids[0]}/ficha`).then(r => r.json()).catch(() => ({}));
+    const horas = sel => `<option value="">—</option>` + Array.from({ length: 24 }, (_, h) =>
+      `<option value="${h}" ${sel === h ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
+    const dias = actual.restr_dias ? actual.restr_dias.split(',').map(Number) : [0, 1, 2, 3, 4, 5, 6];
+    const fondo = document.createElement('div');
+    fondo.className = 'bv-modal-fondo';
+    fondo.innerHTML = `<div class="bv-modal" role="dialog" aria-label="Restricciones">
+      <h3>⏱ Restricciones ${ids.length > 1 ? `de ${ids.length} canciones` : `· ${esc(actual.titulo || '')}`}</h3>
+      <p class="bv-modal-ayuda">El automático solo las elige dentro de estas reglas (el operador igual puede ponerlas a mano).</p>
+      <label>Puede sonar entre las <select data-r="desde">${horas(actual.restr_desde)}</select>
+        y las <select data-r="hasta">${horas(actual.restr_hasta)}</select></label>
+      <p class="bv-modal-ayuda">Ej.: 20 → 06 = solo de noche. Vacío = a cualquier hora.</p>
+      <div class="bv-modal-dias">${[1, 2, 3, 4, 5, 6, 0].map(d =>
+        `<label><input type="checkbox" value="${d}" ${dias.includes(d) ? 'checked' : ''}> ${DIAS[d]}</label>`).join('')}</div>
+      <label>Máximo de veces por día <input type="number" min="0" max="48" data-r="max" value="${actual.max_por_dia || ''}" placeholder="sin tope"></label>
+      <div class="bv-modal-pie">
+        <button class="bv-btn" data-r="quitar">Quitar restricciones</button>
+        <button class="bv-btn" data-r="cancelar">Cancelar</button>
+        <button class="bv-btn bv-btn--pri" data-r="guardar">Guardar</button>
+      </div></div>`;
+    document.body.appendChild(fondo);
+    const val = k => fondo.querySelector(`[data-r="${k}"]`).value;
+    const cerrar = () => fondo.remove();
+    fondo.addEventListener('click', async e => {
+      const r = e.target.dataset?.r;
+      if (e.target === fondo || r === 'cancelar') return cerrar();
+      if (r !== 'guardar' && r !== 'quitar') return;
+      const cambios = r === 'quitar'
+        ? { restr_desde: null, restr_hasta: null, restr_dias: null, max_por_dia: null }
+        : { restr_desde: val('desde') === '' ? null : +val('desde'), restr_hasta: val('hasta') === '' ? null : +val('hasta'),
+            restr_dias: [...fondo.querySelectorAll('.bv-modal-dias input:checked')].map(i => +i.value),
+            max_por_dia: val('max') === '' ? null : +val('max') };
+      if (r === 'guardar' && !cambios.restr_dias.length) { aviso('Elige al menos un día', 'error'); return; }
+      if (r === 'guardar' && (cambios.restr_desde === null) !== (cambios.restr_hasta === null)) { aviso('Elige las dos horas (desde y hasta) o ninguna', 'error'); return; }
+      const antes = new Set(S.sel); S.sel = new Set(ids);
+      const ok = await lote({ cambios }, n => r === 'quitar' ? `${n} sin restricciones` : `⏱ Restricciones guardadas en ${n} canción(es)`);
+      S.sel = ids.length > 1 ? S.sel : antes; pintarMasiva();
+      if (ok) { cerrar(); if (S.fichaId) mostrarFicha(S.fichaId, true); }
+    });
+  }
+
+  function eliminarSeleccion() {
+    const n = S.sel.size;
+    if (!n || !confirm(`¿Eliminar ${n} canción(es)? Van a la Papelera: dejan de aparecer y de sonar, y se pueden restaurar.`)) return;
+    lote({ accion: 'desactivar' }, k => `🗑 ${k} en la Papelera`).then(d => { if (d) { S.sel.clear(); pintarMasiva(); } });
+  }
+
+  async function papeleraAccion(accion) {
+    const ids = [...S.sel];
+    if (!ids.length) return;
+    if (accion === 'borrar' && !confirm(`¿Borrar DEFINITIVAMENTE ${ids.length} canción(es)?\n\nSe borra también el archivo de audio del disco. No se puede deshacer.\n(El historial de emisión conserva título y artista.)`)) return;
+    const r = await fetch(`/api/v1/biblioteca/${accion === 'borrar' ? 'borrar' : 'restaurar'}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { aviso(typeof d.detail === 'string' ? d.detail : `Error ${r.status}`, 'error'); return; }
+    if (accion === 'borrar') aviso(`✖ ${d.borrados} borrada(s) definitivamente${d.omitidos?.length ? ` · ${d.omitidos.length} no (están en una pauta)` : ''}`, d.omitidos?.length ? 'error' : 'success');
+    else aviso(`♻ ${d.restaurados} restaurada(s)`, 'success');
+    S.sel.clear();
+    await cargar();
+    if (typeof loadAudios === 'function') loadAudios();
   }
 
   /** Ir a otra canción (desde "posibles duplicados"). */
@@ -441,7 +554,9 @@
       }
       const n = e.target.closest('.bv-nodo');
       if (!n) return;
+      const eraPapelera = enPapelera();
       S.nodo = JSON.parse(n.dataset.nodo);
+      if (eraPapelera !== enPapelera()) { S.sel.clear(); pintarMasiva(); }   // no mezclar papelera con biblioteca
       S.cursor = -1; $('bvScroll').scrollTop = 0;
       document.querySelectorAll('.bv-nodo').forEach(x => x.classList.toggle('activo', x === n));
       filtrar();
@@ -493,6 +608,10 @@
       } else if (e.key === ' ' && S.cursor >= 0) { e.preventDefault(); seleccionar(S.cursor, e); }
       else if (e.key === 'Enter' && S.cursor >= 0) editar(S.filtrados[S.cursor].id);
       else if (e.key === 'Escape') { S.sel.clear(); pintarFilas(); pintarCabecera(); pintarMasiva(); }
+      else if (e.key === 'Delete' && !enPapelera()) {
+        if (!S.sel.size && S.cursor >= 0) S.sel.add(S.filtrados[S.cursor].id);
+        if (S.sel.size) eliminarSeleccion();
+      }
     });
     document.addEventListener('keydown', e => {
       if (e.key === '/' && $('bv-root')?.offsetParent && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
@@ -511,11 +630,10 @@
     $('bvAprobar').addEventListener('click', () => lote({ cambios: { aprobada: 1 } }, n => `✓ ${n} aprobada(s): ya pueden salir al aire`));
     $('bvBandeja').addEventListener('click', () => lote({ cambios: { aprobada: 0 } }, n => `📥 ${n} devuelta(s) a la Bandeja`));
     $('bvMarcas').addEventListener('click', () => lote({ accion: 'redetectar_marcas' }, n => `✂ ${n} se volverán a analizar en segundo plano`));
-    $('bvDesactivar').addEventListener('click', () => {
-      if (confirm(`¿Desactivar ${S.sel.size} audio(s)? Dejan de aparecer y de sonar.`)) {
-        lote({ accion: 'desactivar' }, n => `${n} desactivado(s)`).then(d => { if (d) S.sel.clear(); pintarMasiva(); });
-      }
-    });
+    $('bvDesactivar').addEventListener('click', eliminarSeleccion);
+    $('bvRestaurar').addEventListener('click', () => papeleraAccion('restaurar'));
+    $('bvBorrarDef').addEventListener('click', () => papeleraAccion('borrar'));
+    $('bvRestr').addEventListener('click', () => editorRestricciones([...S.sel]));
     $('bvDeselect').addEventListener('click', () => { S.sel.clear(); pintarFilas(); pintarCabecera(); pintarMasiva(); });
 
     // Botones de cabecera (ventanas de admin-app.js)
@@ -539,6 +657,8 @@
       if (b.dataset.f === 'aprobar') { const antes = new Set(S.sel); S.sel = new Set([id]);
         lote({ cambios: { aprobada: 1 } }, () => '✓ Aprobada: ya puede salir al aire').then(() => { S.sel = antes; pintarMasiva(); mostrarFicha(id, true); }); }
       if (b.dataset.f === 'ir') irA(+b.dataset.id);
+      if (b.dataset.f === 'eliminar') { S.sel = new Set([id]); eliminarSeleccion(); }
+      if (b.dataset.f === 'restr') editorRestricciones([id]);
     });
     $('bvColumnas').addEventListener('click', e => {
       const m = $('bvMenuCols');

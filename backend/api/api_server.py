@@ -1355,7 +1355,7 @@ def list_audios(
                cue_final_coro, cue_mezcla, fade_in, fade_out,
                tipo_audio, veces_reproducido, ultima_reproduccion,
                loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia,
-               marcas_auto, aprobada
+               marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia
         FROM audios
         WHERE activo = 1
     """
@@ -1427,7 +1427,9 @@ class LoteAudiosRequest(BaseModel):
 
 
 _LOTE_COLUMNAS = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal",
-                  "origen": "origen", "energia": "energia", "tipo_audio": "tipo_audio"}
+                  "origen": "origen", "energia": "energia", "tipo_audio": "tipo_audio",
+                  "restr_desde": "restr_desde", "restr_hasta": "restr_hasta",
+                  "restr_dias": "restr_dias", "max_por_dia": "max_por_dia"}
 
 
 @app.post("/api/v1/biblioteca/lote", tags=["Audios"], summary="Edición masiva de la Biblioteca")
@@ -1464,6 +1466,19 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
                 raise HTTPException(status_code=422, detail="La energía va de 1 a 5")
         elif clave == "tipo_audio":
             v = _validate_tipo_audio(v)
+        elif clave in ("restr_desde", "restr_hasta"):
+            v = int(v) if v not in (None, "") else None
+            if v is not None and not 0 <= v <= 24:
+                raise HTTPException(status_code=422, detail="Las horas van de 0 a 24")
+        elif clave == "max_por_dia":
+            v = int(v) if v not in (None, "", 0, "0") else None
+            if v is not None and not 1 <= v <= 48:
+                raise HTTPException(status_code=422, detail="Máximo por día: de 1 a 48")
+        elif clave == "restr_dias":
+            dias = sorted({int(d) for d in (v if isinstance(v, list) else str(v or "").split(",")) if str(d).strip() != ""})
+            if any(not 0 <= d <= 6 for d in dias):
+                raise HTTPException(status_code=422, detail="Días: 0 (Dom) a 6 (Sáb)")
+            v = ",".join(map(str, dias)) if dias and len(dias) < 7 else None   # los 7 = sin restricción
         sets.append(f"{col} = ?")
         valores.append(v)
     hechos = 0

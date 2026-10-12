@@ -302,3 +302,25 @@ def test_musica_sin_aprobar_no_sale_al_aire(base):
         audio(base, f"BANDEJA {i}", artista=f"B{i}", aprobada=0)
     titulos = [i["titulo"] for i in planear(base, tandas=())]
     assert titulos and not any(t.startswith("BANDEJA") for t in titulos)
+
+
+def test_restricciones_por_cancion(base):
+    for i in range(12):
+        audio(base, f"LIBRE {i}", artista=f"L{i}")
+    audio(base, "SOLO NOCHE", artista="N", restr_desde=20, restr_hasta=6)      # 20 h → 6 h
+    audio(base, "SOLO SABADO", artista="S", restr_dias="6")
+    audio(base, "MAÑANERA", artista="M", restr_desde=6, restr_hasta=12)
+    titulos = [i["titulo"] for i in planear(base, minutos=120, tandas=())]      # lunes 10–12 h
+    assert "SOLO NOCHE" not in titulos and "SOLO SABADO" not in titulos and "MAÑANERA" in titulos
+    from datetime import datetime as dt
+    noche = [i["titulo"] for i in planear(base, desde=dt(2026, 10, 12, 22, 0), minutos=60, tandas=())]
+    assert "SOLO NOCHE" in noche and "MAÑANERA" not in noche
+
+
+def test_maximo_por_dia(base):
+    cfg(base, separacion_cancion_dias=0, ventana_artista_min=0)
+    audio(base, "TOPE 2", artista="T", max_por_dia=2)
+    for i in range(3):
+        audio(base, f"OTRA {i}", artista=f"O{i}")
+    titulos = [i["titulo"] for i in planear(base, minutos=180, tandas=())]
+    assert 1 <= titulos.count("TOPE 2") <= 2

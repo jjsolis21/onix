@@ -168,3 +168,15 @@
 .bv-f-dup { font-size: 12px; padding: 4px 6px; border: 1px solid #ff5a5f; border-radius: 4px; margin-top: 4px; cursor: pointer; }
 .bv-f-dup:hover { background: rgba(255, 90, 95, .1); }
 .bv-f-ultimas { font-family: var(--font-data); font-size: 11px; color: var(--text-mid); columns: 2; }
+
+/* ── Ventana de restricciones (fase C) ── */
+.bv-modal-fondo { position: fixed; inset: 0; z-index: 10060; background: rgba(0, 0, 0, .65); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.bv-modal { background: var(--choc-2); border: 1px solid var(--gold-0); border-radius: 10px; padding: 18px 20px; width: min(460px, 100%);
+  color: var(--text-mid); display: grid; gap: 10px; font-family: var(--font-ui), sans-serif; font-size: 14px; }
+.bv-modal h3 { margin: 0; color: var(--text-hi); font-size: 17px; }
+.bv-modal select, .bv-modal input[type=number] { background: var(--choc-0); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 4px; padding: 4px 6px; margin: 0 4px; }
+.bv-modal-ayuda { margin: 0; font-size: 12px; color: var(--text-lo); }
+.bv-modal-dias { display: flex; flex-wrap: wrap; gap: 5px; }
+.bv-modal-dias label { border: 1px solid var(--choc-5); border-radius: 4px; padding: 3px 7px; font-size: 12px; cursor: pointer; }
+.bv-modal-pie { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap; }
+.bv-masiva [hidden] { display: none; }

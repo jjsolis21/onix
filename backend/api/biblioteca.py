@@ -2,6 +2,15 @@
 biblioteca.py — Ónix FM
 Biblioteca musical, fase B: ficha de cada canción y carga inteligente.
 
+    GET  /api/v1/biblioteca/calidad     → grupos para revisar: duplicados, sin
+                                          clasificar, volumen raro, quemadas,
+                                          olvidadas, con restricciones
+    GET  /api/v1/biblioteca/papelera    → lo eliminado (se puede restaurar)
+    POST /api/v1/biblioteca/restaurar   → {"ids": [...]}
+    POST /api/v1/biblioteca/borrar      → {"ids": [...]} borra DEFINITIVAMENTE
+                                          (fila y archivo) lo que está en la
+                                          papelera; el historial de emisión
+                                          conserva título y artista
     GET  /api/v1/biblioteca/{id}/ficha  → datos, historial de emisión, relojes
                                           que pueden elegirla, si está en el
                                           programa de hoy y posibles duplicados
@@ -26,8 +35,9 @@ import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
-from backend.paths import DB_PATH
+from backend.paths import DB_PATH, MEDIA_ROOT, resolve_media
 
 router = APIRouter(tags=["Biblioteca"])
 
@@ -202,9 +212,131 @@ def ficha(audio_id: int):
             "loudness_lufs": a["loudness_lufs"], "loudness_estado": a["loudness_estado"],
             "ganancia_db": a["ganancia_db"], "archivo_path": a["archivo_path"],
             "creado": a["created_at"],
+            "restr_desde": a["restr_desde"] if "restr_desde" in claves else None,
+            "restr_hasta": a["restr_hasta"] if "restr_hasta" in claves else None,
+            "restr_dias": a["restr_dias"] if "restr_dias" in claves else None,
+            "max_por_dia": a["max_por_dia"] if "max_por_dia" in claves else None,
             "historial": {"total": total, "ultimos_30_dias": ult30, "ultimas": ultimas, "por_hora_30d": por_hora},
             "relojes": relojes, "en_programa": en_programa,
             "duplicados": duplicados(conn, a["artista"], a["titulo"], excluir=audio_id),
         }
+    finally:
+        conn.close()
+
+
+# ── Papelera ─────────────────────────────────────────────────────────────────
+
+class IdsIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=20000)
+
+
+@router.get("/api/v1/biblioteca/papelera", summary="Audios eliminados (restaurables)")
+def papelera():
+    conn = _conn()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, titulo, artista, tipo_audio, duracion, updated_at FROM audios"
+            " WHERE activo = 0 AND tipo_audio != 'Cuña' ORDER BY updated_at DESC, id DESC")]
+    finally:
+        conn.close()
+
+
+@router.post("/api/v1/biblioteca/restaurar", summary="Sacar de la papelera")
+def restaurar(body: IdsIn):
+    conn = _conn()
+    try:
+        ph = ",".join("?" * len(body.ids))
+        n = conn.execute(f"UPDATE audios SET activo = 1, updated_at = datetime('now') WHERE id IN ({ph})"
+                         " AND activo = 0", body.ids).rowcount
+        conn.commit()
+        return {"restaurados": n}
+    finally:
+        conn.close()
+
+
+@router.post("/api/v1/biblioteca/borrar", summary="Borrar definitivamente (solo desde la papelera)")
+def borrar_definitivo(body: IdsIn):
+    """
+    Solo lo que ya está en la papelera. Se borra la fila y el archivo del disco
+    (si está dentro de la carpeta de medios). No se borra lo que use una pauta.
+    """
+    conn = _conn()
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        ph = ",".join("?" * len(body.ids))
+        filas = conn.execute(f"SELECT id, titulo, archivo_path FROM audios WHERE id IN ({ph}) AND activo = 0",
+                             body.ids).fetchall()
+        en_pauta = {r[0] for r in conn.execute(
+            f"SELECT DISTINCT audio_id FROM pautas WHERE audio_id IN ({ph})", body.ids)}
+        borrados, archivos, omitidos = 0, 0, []
+        raiz = MEDIA_ROOT.resolve()
+        for f in filas:
+            if f["id"] in en_pauta:
+                omitidos.append({"id": f["id"], "titulo": f["titulo"], "motivo": "está en una pauta"})
+                continue
+            conn.execute("DELETE FROM audios WHERE id = ?", (f["id"],))
+            borrados += 1
+            try:
+                ruta = resolve_media(f["archivo_path"] or "").resolve()
+                if raiz in ruta.parents and ruta.is_file():      # nunca fuera de la carpeta de medios
+                    ruta.unlink()
+                    archivos += 1
+            except OSError:
+                pass
+        conn.commit()
+        return {"borrados": borrados, "archivos_borrados": archivos, "omitidos": omitidos}
+    finally:
+        conn.close()
+
+
+# ── Calidad de la biblioteca ─────────────────────────────────────────────────
+
+@router.get("/api/v1/biblioteca/calidad", summary="Qué revisar en la biblioteca")
+def calidad():
+    """
+    Grupos de ids para filtrar la tabla. Solo música activa.
+      duplicados   misma canción (artista + título normalizados) más de una vez
+      sin_clasificar  sin género o sin rotación
+      volumen      no se pudo medir, o muy por fuera de lo normal (LUFS < -24 o > -7)
+      quemadas     sonaron mucho más que el resto en los últimos 7 días
+      olvidadas    aprobadas, cargadas hace más de 30 días y sin sonar en 30 días
+      restringidas con franja, días o tope por día
+    """
+    conn = _conn()
+    try:
+        musica = conn.execute(
+            "SELECT id, titulo, artista, subgenero, categoria, loudness_estado, loudness_lufs, aprobada,"
+            " created_at, restr_desde, restr_hasta, restr_dias, max_por_dia FROM audios"
+            " WHERE activo = 1 AND tipo_audio = 'Musica'").fetchall()
+        grupos = {}
+        for r in musica:
+            grupos.setdefault((normalizar(r["artista"]), normalizar(r["titulo"])), []).append(r["id"])
+        duplicados = [i for ids in grupos.values() if len(ids) > 1 for i in ids]
+        sin_clas = [r["id"] for r in musica if not (r["subgenero"] or "").strip() or not (r["categoria"] or "").strip()]
+        volumen = [r["id"] for r in musica if r["loudness_estado"] == "error" or
+                   (r["loudness_lufs"] is not None and not -24 <= r["loudness_lufs"] <= -7)]
+        semana = {r[0]: r[1] for r in conn.execute(
+            "SELECT audio_id, COUNT(*) FROM historial_emision WHERE audio_id IS NOT NULL"
+            " AND iniciado_en >= datetime('now', 'localtime', '-7 days') GROUP BY audio_id")}
+        ids_musica = {r["id"] for r in musica}
+        cuentas = [semana.get(i, 0) for i in ids_musica]
+        quemadas = []
+        if cuentas:
+            media = sum(cuentas) / len(cuentas)
+            var = sum((c - media) ** 2 for c in cuentas) / len(cuentas)
+            umbral = max(media + 2 * var ** 0.5, media * 2, 3)
+            quemadas = sorted((i for i in ids_musica if semana.get(i, 0) >= umbral),
+                              key=lambda i: -semana.get(i, 0))
+        ult30 = {r[0] for r in conn.execute(
+            "SELECT DISTINCT audio_id FROM historial_emision WHERE audio_id IS NOT NULL"
+            " AND iniciado_en >= datetime('now', 'localtime', '-30 days')")}
+        olvidadas = [r["id"] for r in musica if r["aprobada"] and r["id"] not in ult30
+                     and (r["created_at"] or "") < conn.execute("SELECT datetime('now', '-30 days')").fetchone()[0]]
+        restringidas = [r["id"] for r in musica if r["restr_dias"] or r["max_por_dia"]
+                        or (r["restr_desde"] is not None and r["restr_hasta"] is not None
+                            and r["restr_desde"] != r["restr_hasta"])]
+        return {"duplicados": duplicados, "sin_clasificar": sin_clas, "volumen": volumen,
+                "quemadas": quemadas, "olvidadas": olvidadas, "restringidas": restringidas,
+                "papelera": conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 0 AND tipo_audio != 'Cuña'").fetchone()[0]}
     finally:
         conn.close()

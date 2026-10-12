@@ -570,6 +570,21 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE audios ADD COLUMN aprobada INTEGER NOT NULL DEFAULT 1")
     logger.info("  → audios.aprobada: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 21 — Restricciones por canción (como Jazler)
+    #   restr_desde / restr_hasta: horas en que PUEDE sonar (0–23, hasta
+    #     excluida; si desde > hasta cruza la medianoche: 20→6 = de noche)
+    #   restr_dias: días en que puede sonar "0,1,…" (0=Dom); NULL = todos
+    #   max_por_dia: tope de veces por día; NULL = sin tope
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    for col, tipo in (("restr_desde", "INTEGER"), ("restr_hasta", "INTEGER"),
+                      ("restr_dias", "TEXT"), ("max_por_dia", "INTEGER")):
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE audios ADD COLUMN {col} {tipo} DEFAULT NULL")
+    logger.info("  → restricciones por canción: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 
