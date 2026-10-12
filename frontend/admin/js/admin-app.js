@@ -637,7 +637,7 @@ function renderLoteFiles() {
       <td><div>${e(f.name)}</div>${f.tags && !f.tags.error ? `<div style="font-size:11px;color:#9ab">${e(f.tags.artista || '¿artista?')} — ${e(f.tags.titulo)}${f.tags.anio ? ` · ${e(f.tags.anio)}` : ''}</div>` : ''}</td>
       <td style="font-size:12px">${loteEstado(f)}</td>
       <td style="font-family: var(--font-mono); font-size: 11px; color:#666;">${f.size}</td>
-      <td><button class="lote-player-btn lote-play-row" data-idx="${i}">${lotePlayerIdx === i ? '■' : '▶'}</button></td>
+      <td><button class="lote-player-btn lote-play-row" data-idx="${i}">${ICO(lotePlayerIdx === i ? 'stop2' : 'play2')}</button></td>
     </tr>
   `).join('');
 
@@ -663,15 +663,15 @@ function loteSelectAll(val) {
 function loteResetPlayer() {
   if (lotePlayer) { lotePlayer.pause(); lotePlayer = null; }
   lotePlayerIdx = -1;
-  if ($('lote-p-toggle')) $('lote-p-toggle').textContent = '▶';
+  if ($('lote-p-toggle')) $('lote-p-toggle').innerHTML = ICO('play2');
   if ($('lote-p-title')) $('lote-p-title').textContent = 'Sin audio...';
   if ($('lote-p-bar')) $('lote-p-bar').style.width = '0%';
 }
 
 function lotePlayerToggle() {
   if (!lotePlayer) return;
-  if (lotePlayer.paused) { lotePlayer.play(); $('lote-p-toggle').textContent = '■'; }
-  else { lotePlayer.pause(); $('lote-p-toggle').textContent = '▶'; }
+  if (lotePlayer.paused) { lotePlayer.play(); $('lote-p-toggle').innerHTML = ICO('pause2'); }
+  else { lotePlayer.pause(); $('lote-p-toggle').innerHTML = ICO('play2'); }
 }
 
 function lotePlayerPlay(idx) {
@@ -681,7 +681,7 @@ function lotePlayerPlay(idx) {
   const file = loteFiles[idx].file;
   lotePlayer = new Audio(URL.createObjectURL(file));
   $('lote-p-title').textContent = file.name;
-  $('lote-p-toggle').textContent = '■';
+  $('lote-p-toggle').innerHTML = ICO('pause2');
   lotePlayer.play();
 
   lotePlayer.ontimeupdate = () => {

@@ -656,7 +656,7 @@
       a.addEventListener('timeupdate', () => {
         $('cmPreviaT').textContent = `${_mmss(a.currentTime)} / ${_mmss(a.duration)}`;
       });
-      const icono = () => { $('cmPlay').textContent = a.paused ? '▶' : '❚❚'; };
+      const icono = () => { $('cmPlay').innerHTML = ICO(a.paused ? 'play2' : 'pause2'); };
       a.addEventListener('play', icono);
       a.addEventListener('pause', icono);
       a.addEventListener('ended', icono);

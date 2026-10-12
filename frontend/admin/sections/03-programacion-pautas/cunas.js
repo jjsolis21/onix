@@ -77,12 +77,12 @@
     audio.src = `/api/v1/audios/${id}/stream`;
     audio.play().catch(() => { });
     sonando = id;
-    if (boton) boton.textContent = '■';
+    if (boton) boton.innerHTML = ICO('stop2');
   }
   function parar() {
     if (audio) audio.pause();
     sonando = null;
-    document.querySelectorAll('.cunas-play').forEach(b => { b.textContent = '▶'; });
+    document.querySelectorAll('.cunas-play').forEach(b => { b.innerHTML = ICO('play2'); });
   }
 
   // ── Pestañas y biblioteca ───────────────────────────────
@@ -178,7 +178,7 @@
     $('cunasFilas').innerHTML = lista.length ? lista.map(c => {
       const u = usos[c.id] || { total: 0, vigentes: 0 };
       return `<tr>
-        <td><button class="cunas-play" data-acc="play" data-id="${c.id}" title="Escuchar">${sonando === c.id ? '■' : '▶'}</button></td>
+        <td><button class="cunas-play" data-acc="play" data-id="${c.id}" title="Escuchar">${ICO(sonando === c.id ? 'stop2' : 'play2')}</button></td>
         <td><b>${esc(c.titulo)}</b></td><td>${esc(c.artista)}</td>
         <td class="mono">${fmt(c.duracion)}</td>
         <td>${u.vigentes ? `<span class="cunas-uso">${u.vigentes} vigente${u.vigentes !== 1 ? 's' : ''}</span>` : (u.total ? `${u.total} vencida${u.total !== 1 ? 's' : ''}` : '<span class="cunas-libre">sin pauta</span>')}</td>
@@ -233,7 +233,7 @@
         const l = cunas.filter(c => !q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q));
         lista.innerHTML = l.length ? l.map(c => `
           <div class="cunas-op" data-id="${c.id}">
-            <button class="cunas-play" data-play="${c.id}" title="Escuchar">▶</button>
+            <button class="cunas-play" data-play="${c.id}" title="Escuchar">${ICO('play2')}</button>
             <div><b>${esc(c.titulo)}</b><small>${esc(c.artista)} · ${fmt(c.duracion)}</small></div>
           </div>`).join('') : '<p class="cunas-vacio">Ninguna cuña coincide.</p>';
       };

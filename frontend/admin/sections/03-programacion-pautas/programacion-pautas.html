@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=8">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=9">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=2">
 
 <div class="pautas-root" id="pautasRoot">
@@ -146,10 +146,10 @@
       <!-- Vista previa (clic en una fila = escuchar, doble clic = editar) -->
       <div class="cm-previa" id="cmPrevia">
         <div class="cm-previa-btns">
-          <button class="cm-previa-play" id="cmAtras" type="button" title="Atrás 5 s (←)" disabled>⏪</button>
-          <button class="cm-previa-play cm-previa-play--grande" id="cmPlay" type="button" title="Escuchar / pausar (Espacio)" disabled>▶</button>
-          <button class="cm-previa-play" id="cmStop" type="button" title="Detener" disabled>■</button>
-          <button class="cm-previa-play" id="cmAdelante" type="button" title="Adelante 5 s (→)" disabled>⏩</button>
+          <button class="cm-previa-play" id="cmAtras" type="button" title="Atrás 5 s (←)" disabled><img class="ico" src="/static/studio/icons/atras2.svg" alt=""></button>
+          <button class="cm-previa-play cm-previa-play--grande" id="cmPlay" type="button" title="Escuchar / pausar (Espacio)" disabled><img class="ico" src="/static/studio/icons/play2.svg" alt=""></button>
+          <button class="cm-previa-play" id="cmStop" type="button" title="Detener" disabled><img class="ico" src="/static/studio/icons/stop2.svg" alt=""></button>
+          <button class="cm-previa-play" id="cmAdelante" type="button" title="Adelante 5 s (→)" disabled><img class="ico" src="/static/studio/icons/avanzar2.svg" alt=""></button>
         </div>
         <div class="cm-previa-info">
           <div class="cm-previa-tit"><b id="cmPreviaTit">Seleccione un spot para obtener una vista previa…</b>
@@ -432,7 +432,7 @@
                 <input class="cue-input" id="cue-intro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del INTRO">
                 <span class="cue-unit">s</span>
               </div>
-              <button class="cue-escuchar" data-wf-escuchar="intro" title="Ir a INTRO y reproducir">▶ Escuchar</button>
+              <button class="cue-escuchar" data-wf-escuchar="intro" title="Ir a INTRO y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
               <button class="cue-reset-btn" data-wf-reiniciar="intro" title="Resetear INTRO">↺</button>
             </div>
 
@@ -446,7 +446,7 @@
                 <input class="cue-input" id="cue-outro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del OUTRO">
                 <span class="cue-unit">s</span>
               </div>
-              <button class="cue-escuchar" data-wf-escuchar="outro" title="Ir a OUTRO y reproducir">▶ Escuchar</button>
+              <button class="cue-escuchar" data-wf-escuchar="outro" title="Ir a OUTRO y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
               <button class="cue-reset-btn" data-wf-reiniciar="outro" title="Resetear OUTRO">↺</button>
             </div>
 
@@ -460,7 +460,7 @@
                 <input class="cue-input" id="cue-mezcla" type="number" step="0.1" min="0" value="0" aria-label="Segundos de MEZCLA">
                 <span class="cue-unit">s</span>
               </div>
-              <button class="cue-escuchar" data-wf-escuchar="mezcla" title="Ir a MEZCLA y reproducir">▶ Escuchar</button>
+              <button class="cue-escuchar" data-wf-escuchar="mezcla" title="Ir a MEZCLA y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
               <button class="cue-reset-btn" data-wf-reiniciar="mezcla" title="Resetear MEZCLA">↺</button>
             </div>
 

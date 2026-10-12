@@ -93,8 +93,8 @@
 
         <section class="ec-sec ec-onda-sec">
           <div class="ec-barra">
-            <button class="ec-play" data-acc="play" title="Reproducir / pausar (Espacio)">▶</button>
-            <button class="ec-btn" data-acc="stop" title="Parar y volver al inicio">■</button>
+            <button class="ec-play" data-acc="play" title="Reproducir / pausar (Espacio)">${ICO('play2')}</button>
+            <button class="ec-btn" data-acc="stop" title="Parar y volver al inicio">${ICO('stop2')}</button>
             <span class="ec-tiempo"><b id="ecT">0:00.0</b> / <span id="ecDur">${fmt(f.duracion)}</span></span>
             <label class="ec-zoom">🔍 <input type="range" id="ecZoom" min="0" max="300" value="0" title="Zoom de la onda"></label>
             <button class="ec-btn" data-acc="autocue" ${nueva ? 'disabled title="Guarda primero la canción"' : 'title="Detectar inicio y mezcla automáticamente"'}>✨ AutoCue</button>
@@ -175,7 +175,7 @@
         <div class="ec-marca-btns">
           <button data-acc="menos" title="Atrás 0,1 s (Mayús: 1 s) — el audio salta ahí">«</button>
           <button data-acc="mas" title="Adelante 0,1 s (Mayús: 1 s) — el audio salta ahí">»</button>
-          <button data-acc="escuchar" title="Escuchar desde ${m.antes ? m.antes + ' s antes' : 'la marca'}">▶</button>
+          <button data-acc="escuchar" title="Escuchar desde ${m.antes ? m.antes + ' s antes' : 'la marca'}">${ICO('play2')}</button>
           <button data-acc="quitar" title="Quitar la marca">✕</button>
         </div>
       </div>`).join('');
@@ -201,8 +201,8 @@
       dibujarMarcas();
     });
     E.ws.on('timeupdate', t => { const el = E.raiz?.querySelector('#ecT'); if (el) el.textContent = fmt(t); });
-    E.ws.on('play', () => { const b = E.raiz?.querySelector('.ec-play'); if (b) b.textContent = '❚❚'; });
-    E.ws.on('pause', () => { const b = E.raiz?.querySelector('.ec-play'); if (b) b.textContent = '▶'; });
+    E.ws.on('play', () => { const b = E.raiz?.querySelector('.ec-play'); if (b) b.innerHTML = ICO('pause2'); });
+    E.ws.on('pause', () => { const b = E.raiz?.querySelector('.ec-play'); if (b) b.innerHTML = ICO('play2'); });
     E.ws.on('error', () => { cont.innerHTML = '<p class="ec-onda-vacia">No se pudo cargar el audio</p>'; });
     if (E.rp) {
       E.rp.on('region-updated', r => {

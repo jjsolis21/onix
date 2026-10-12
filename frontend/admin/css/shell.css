@@ -1204,3 +1204,13 @@ body:not(.sidebar-expanded) .nav-btn:hover::after {
 /* Iconos propios (SVG) en el menú y en las migas de pan */
 .nav-ico { width: 22px; height: 22px; display: block; margin: 0 auto; }
 .breadcrumb__section-icon .nav-ico { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; margin: 0; }
+
+/* Iconos de reproducción propios (ICO en js/iconos.js) */
+.ico { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -.22em; pointer-events: none; }
+.cm-previa-play .ico, .pl-mini button .ico, .ec-btn .ico { width: 22px; height: 22px; vertical-align: middle; }
+.cm-previa-play--grande .ico, .ec-play .ico { width: 30px; height: 30px; vertical-align: middle; }
+.cunas-play .ico, .bv-playbtn .ico, .lote-player-btn .ico, .ec-marca-btns button .ico { width: 17px; height: 17px; vertical-align: middle; }
+.cue-escuchar .ico, .bv-btn .ico { width: 15px; height: 15px; }
+/* El icono ya trae su color: el botón no lleva fondo */
+.cm-previa-play--grande, .cm-previa-play--grande:not(:disabled):hover, .ec-play, .bv-playbtn.sonando { background: transparent !important; border-color: transparent !important; }
+.cm-previa-play--grande:disabled .ico, .cm-previa-play:disabled .ico { opacity: .4; filter: grayscale(1); }

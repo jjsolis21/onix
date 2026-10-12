@@ -302,7 +302,7 @@
       const color = a.cat1 ? (S.colores[String(a.cat1).toUpperCase()] || '') : '';
       html += `<div class="bv-fila ${color ? 'tenida' : ''} ${S.sel.has(a.id) ? 'sel' : ''} ${i === S.cursor ? 'cursor' : ''}" data-i="${i}" style="--bv-color:${esc(color)}">
         <div><input type="checkbox" class="bv-chk" ${S.sel.has(a.id) ? 'checked' : ''} tabindex="-1"></div>
-        <div><button class="bv-playbtn ${S.sonando === a.id ? 'sonando' : ''}" data-play="${a.id}" tabindex="-1">${S.sonando === a.id ? '■' : '▶'}</button></div>
+        <div><button class="bv-playbtn ${S.sonando === a.id ? 'sonando' : ''}" data-play="${a.id}" tabindex="-1">${ICO(S.sonando === a.id ? 'stop2' : 'play2')}</button></div>
         ${cols.map(c => celda(a, c)).join('')}</div>`;
     }
     $('bvFilas').innerHTML = html;
@@ -492,7 +492,7 @@
       <div class="bv-f-art">${esc(f.artista)}${f.album ? ` · <span style="color:var(--text-lo)">${esc(f.album)}</span>` : ''}</div>
       ${f.tipo_audio === 'Musica' && !f.aprobada ? `<div class="bv-f-bandeja">📥 En la Bandeja: no suena en automático hasta aprobarla.</div>` : ''}
       <div class="bv-f-acc">
-        <button class="bv-btn" data-f="play">${S.sonando === f.id ? '■ Parar' : '▶ Escuchar'}</button>
+        <button class="bv-btn" data-f="play">${S.sonando === f.id ? ICO('stop2') + ' Parar' : ICO('play2') + ' Escuchar'}</button>
         <button class="bv-btn" data-f="editar">✎ Editar marcas y datos</button>
         ${f.tipo_audio === 'Musica' && !f.aprobada ? `<button class="bv-btn bv-btn--ok" data-f="aprobar">✓ Aprobar</button>` : ''}
         <button class="bv-btn bv-btn--peligro" data-f="eliminar" title="Mandar a la Papelera (se puede restaurar)">🗑 Eliminar</button>
