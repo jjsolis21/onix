@@ -193,3 +193,37 @@ def test_operador_puede_lanzar_playlists():
     assert permiso("operador", "POST", "/api/v1/playlists/3/lanzar")
     assert not permiso("operador", "POST", "/api/v1/playlists")
     assert permiso("programacion", "POST", "/api/v1/playlists/generar")
+
+
+def test_importar_m3u_y_pls_busca_en_la_biblioteca(client, tmp_path):
+    a = subir(client, tmp_path, "Camino Al Sol", seconds=10)
+    b = subir(client, tmp_path, "Noche Larga", seconds=10)
+    m3u = ("#EXTM3U\n"
+           f"#EXTINF:10,ART Camino Al Sol - Camino Al Sol\nC:\\Musica\\Camino Al Sol.wav\n"
+           "#EXTINF:200,Nadie - No Existe\nD:/otra/no_existe.mp3\n"
+           "#EXTINF:10,ART NOCHE LARGA - Noche Larga\n\\\\SERVIDOR\\temas\\nóche_larga_remix.mp3\n")
+    r = client.post("/api/v1/playlists/importar", data={"nombre": "Importada M3U"},
+                    files={"archivo": ("lista.m3u", m3u.encode("cp1252"), "audio/x-mpegurl")})
+    assert r.status_code == 201, r.text
+    d = r.json()
+    assert [i["audio_id"] for i in d["items"]] == [a, b] and d["encontradas"] == 2
+    assert d["no_encontradas"] == ["Nadie - No Existe"] and d["total_lista"] == 3
+    pls = "[playlist]\nFile1=/x/Noche Larga.mp3\nTitle1=Noche Larga\nNumberOfEntries=1\n"
+    r = client.post("/api/v1/playlists/importar", files={"archivo": ("otra.pls", pls.encode(), "text/plain")})
+    assert r.status_code == 201 and r.json()["nombre"] == "otra" and r.json()["items"][0]["audio_id"] == b
+    r = client.post("/api/v1/playlists/importar", files={"archivo": ("vacia.m3u", b"#EXTM3U\n/x/zzz.mp3\n", "text/plain")})
+    assert r.status_code == 422
+
+
+def test_memos_viajan_con_la_cancion_hasta_el_studio(client, tmp_path):
+    a = subir(client, tmp_path, "Con Memo", seconds=30)
+    r = client.post("/api/v1/playlists", json={"nombre": "Con memos",
+                                                "items": [{"audio_id": a, "nota": "Saludar a Maracay"}, a]})
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert [i["nota"] for i in p["items"]] == ["Saludar a Maracay", ""]
+    client.post("/api/v1/player/clear_queue")
+    assert client.post(f"/api/v1/playlists/{p['id']}/lanzar", json={"reemplazar": True}).json()["encoladas"] == 2
+    cola = client.get("/api/v1/programa").json()["cola"]
+    assert cola[0]["nota"] == "Saludar a Maracay"
+    client.post("/api/v1/player/clear_queue")

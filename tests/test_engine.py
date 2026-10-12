@@ -765,3 +765,10 @@ def test_spot_con_versiones_rota_en_cada_salida(engine, media):
         salieron.append(item["track"]["id"])
         engine._log_emision(item["track"], item, tipo="pauta")
     assert salieron == [a, b]
+
+
+def test_memo_de_la_cola_llega_al_aire(engine, media):
+    aid = add_audio(engine, media, "con_memo")
+    assert engine.queue_track(aid, "  Saludar a Valencia  ")
+    item = engine._pick_next()
+    assert item["origen"] == "cola" and item["nota"] == "Saludar a Valencia"

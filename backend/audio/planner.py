@@ -170,8 +170,9 @@ class Planner:
         try:
             for p in conn.execute("SELECT id, nombre, programada, inmediato FROM playlists"
                                   " WHERE activo = 1 AND COALESCE(programada, '') <> ''"):
-                filas = [{"tipo_audio": r[1], "filtros": {}, "audio_id": r[0]} for r in conn.execute(
-                    "SELECT a.id, a.tipo_audio FROM playlist_items i JOIN audios a ON a.id = i.audio_id"
+                filas = [{"tipo_audio": r[1], "filtros": {}, "audio_id": r[0], "nota": r[2] or ""}
+                         for r in conn.execute(
+                    "SELECT a.id, a.tipo_audio, i.nota FROM playlist_items i JOIN audios a ON a.id = i.audio_id"
                     " WHERE i.playlist_id = ? ORDER BY i.posicion", (p["id"],))]
                 if filas:
                     self.playlists_prog.append({**dict(p), "filas": filas})
@@ -493,7 +494,7 @@ class Planner:
                 genero_vocal=audio.get("genero_vocal"), duracion_total=audio.get("duracion") or 0,
                 reloj_id=reloj["id"], reloj=reloj["nombre"], color=reloj["color"],
                 fila=None, compensacion=False, cortada=False,
-                evento=ev["nombre"], evento_key=ev["key"],
+                evento=ev["nombre"], evento_key=ev["key"], nota=fila.get("nota") or "",
                 # Solo el primero lleva la hora fija (el motor corta en punto si es inmediato)
                 evento_hora=ev["hora"].isoformat(timespec="seconds") if primero else None,
                 inmediato=ev["inmediato"] if primero else False,

@@ -12,6 +12,10 @@ cola del operador.
     PUT    /api/v1/playlists/{id}            → guardar nombre, audios en orden y programación
     DELETE /api/v1/playlists/{id}
     POST   /api/v1/playlists/{id}/lanzar     → {reemplazar: bool} a la cola del Studio
+    POST   /api/v1/playlists/importar        → archivo M3U/M3U8/PLS/TXT: busca cada línea en la biblioteca
+
+MEMOS: cada audio de la playlist puede llevar una nota para el locutor
+(items: [{audio_id, nota}]). El Studio la muestra cuando ese audio está al aire.
 
 PROGRAMADA: con fecha y hora ('YYYY-MM-DDTHH:MM') entra sola al aire como un
 evento a hora fija (una vez). inmediato = corta lo que suena y entra en punto.
@@ -20,11 +24,14 @@ La cola del operador suena antes que el programa automático; las tandas
 siguen saliendo a su hora (tienen prioridad sobre la cola).
 """
 
+import re
 import sqlite3
+import unicodedata
 from datetime import datetime
-from typing import Optional
+from pathlib import PureWindowsPath
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.paths import DB_PATH
@@ -58,9 +65,14 @@ class GenerarIn(BaseModel):
     inmediato: bool = False
 
 
+class ItemIn(BaseModel):
+    audio_id: int
+    nota:     str = Field("", max_length=500)
+
+
 class PlaylistIn(BaseModel):
     nombre:     str = Field(..., min_length=1, max_length=80)
-    items:      list[int] = Field(default_factory=list, max_length=2000)
+    items:      list[Union[int, ItemIn]] = Field(default_factory=list, max_length=2000)   # id o {audio_id, nota}
     programada: str = Field("", pattern=_FECHA_HORA)
     inmediato:  bool = False
 
@@ -115,15 +127,17 @@ def _insertar(conn, nombre: str, descripcion: str, reloj_id, horas, programada: 
         raise HTTPException(status_code=409, detail=f"Ya existe una playlist llamada '{nombre}'")
 
 
-def _guardar_items(conn, pid: int, ids: list[int]):
+def _guardar_items(conn, pid: int, items: list):
+    pares = [(it, "") if isinstance(it, int) else (it.audio_id, (it.nota or "").strip()) for it in items]
+    ids = [a for a, _ in pares]
     existentes = {r[0] for r in conn.execute(
         f"SELECT id FROM audios WHERE id IN ({','.join('?' * len(set(ids)))})", list(set(ids)))} if ids else set()
     faltan = [i for i in ids if i not in existentes]
     if faltan:
         raise HTTPException(status_code=422, detail=f"Audios inexistentes: {faltan[:5]}")
     conn.execute("DELETE FROM playlist_items WHERE playlist_id = ?", (pid,))
-    conn.executemany("INSERT INTO playlist_items (playlist_id, posicion, audio_id) VALUES (?, ?, ?)",
-                     [(pid, i, a) for i, a in enumerate(ids)])
+    conn.executemany("INSERT INTO playlist_items (playlist_id, posicion, audio_id, nota) VALUES (?, ?, ?, ?)",
+                     [(pid, i, a, n) for i, (a, n) in enumerate(pares)])
 
 
 @router.post("/api/v1/playlists", status_code=201, summary="Crear playlist a mano")
@@ -179,7 +193,7 @@ def detalle(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Playlist no encontrada")
     items = [dict(r) for r in conn.execute(
-        "SELECT i.posicion, a.id AS audio_id, a.titulo, a.artista, a.tipo_audio, a.duracion,"
+        "SELECT i.posicion, i.nota, a.id AS audio_id, a.titulo, a.artista, a.tipo_audio, a.duracion,"
         " a.cue_intro, a.cue_outro, a.ultima_reproduccion,"
         " COALESCE(a.categoria, '') AS rotacion FROM playlist_items i JOIN audios a ON a.id = i.audio_id"
         " WHERE i.playlist_id = ? ORDER BY i.posicion", (playlist_id,))]
@@ -199,15 +213,107 @@ def borrar(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
 def lanzar(playlist_id: int, body: LanzarIn = LanzarIn(), conn: sqlite3.Connection = Depends(get_db)):
     if engine is None:
         raise HTTPException(status_code=503, detail="Motor no disponible")
-    ids = [r[0] for r in conn.execute(
-        "SELECT i.audio_id FROM playlist_items i JOIN audios a ON a.id = i.audio_id AND a.activo = 1"
-        " WHERE i.playlist_id = ? ORDER BY i.posicion", (playlist_id,))]
-    if not ids:
+    filas = conn.execute(
+        "SELECT i.audio_id, i.nota FROM playlist_items i JOIN audios a ON a.id = i.audio_id AND a.activo = 1"
+        " WHERE i.playlist_id = ? ORDER BY i.posicion", (playlist_id,)).fetchall()
+    if not filas:
         raise HTTPException(status_code=404, detail="La playlist está vacía o no existe")
+    ids = [f[0] for f in filas]
     try:
         if body.reemplazar:
             engine.clear_queue()
-        encoladas = sum(1 for aid in ids if engine.queue_track(aid))
+        encoladas = sum(1 for aid, nota in filas if engine.queue_track(aid, nota or ""))
     except (ConnectionError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     return {"ok": True, "encoladas": encoladas, "total": len(ids)}
+
+
+# ── Importar M3U / M3U8 / PLS / TXT ──────────────────────────────────────────
+
+def _norm(txt: str) -> str:
+    """Para comparar: sin tildes, minúsculas, solo letras y números."""
+    t = unicodedata.normalize("NFKD", txt or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def _stem(ruta: str) -> str:
+    """Nombre del archivo sin carpeta ni extensión (rutas de Windows o Linux)."""
+    nombre = PureWindowsPath(ruta.replace("/", "\\")).name
+    return nombre.rsplit(".", 1)[0] if "." in nombre else nombre
+
+
+def leer_lista(texto: str) -> list[dict]:
+    """[{ruta, titulo}] en orden, desde M3U/M3U8 (#EXTINF), PLS (FileN/TitleN) o una ruta por línea."""
+    lineas = [l.strip() for l in texto.splitlines() if l.strip()]
+    if lineas and lineas[0].lower() == "[playlist]":
+        rutas, titulos = {}, {}
+        for l in lineas[1:]:
+            k, _, v = l.partition("=")
+            m = re.match(r"(file|title)(\d+)$", k.strip().lower())
+            if m:
+                (rutas if m.group(1) == "file" else titulos)[int(m.group(2))] = v.strip()
+        return [{"ruta": rutas[n], "titulo": titulos.get(n, "")} for n in sorted(rutas)]
+    out, titulo = [], ""
+    for l in lineas:
+        if l.upper().startswith("#EXTINF"):
+            titulo = l.split(",", 1)[1].strip() if "," in l else ""
+        elif l.startswith("#"):
+            continue
+        else:
+            out.append({"ruta": l, "titulo": titulo})
+            titulo = ""
+    return out
+
+
+def emparejar(conn, entradas: list[dict]) -> tuple[list[int], list[str]]:
+    """Busca cada entrada en la biblioteca: por nombre de archivo y, si no, por 'Artista - Título'."""
+    por_archivo, por_nombre, por_titulo = {}, {}, {}
+    for r in conn.execute("SELECT id, titulo, artista, archivo_path FROM audios WHERE activo = 1"):
+        por_archivo.setdefault(_norm(_stem(r["archivo_path"] or "")), r["id"])
+        por_nombre.setdefault(_norm(f"{r['artista']} {r['titulo']}"), r["id"])
+        por_titulo.setdefault(_norm(r["titulo"]), []).append(r["id"])
+    ids, faltan = [], []
+    for e in entradas:
+        stem = _stem(e["ruta"])
+        candidatos = [_norm(stem), _norm(e["titulo"])]
+        aid = next((por_archivo[c] for c in candidatos if c and c in por_archivo), None) \
+            or next((por_nombre[c] for c in candidatos if c and c in por_nombre), None)
+        if aid is None:
+            # "Título" solo, si en la biblioteca hay una única canción con ese título
+            for c in candidatos:
+                unicos = por_titulo.get(c) or []
+                if len(unicos) == 1:
+                    aid = unicos[0]
+                    break
+        if aid is None:
+            faltan.append(e["titulo"] or stem)
+        else:
+            ids.append(aid)
+    return ids, faltan
+
+
+@router.post("/api/v1/playlists/importar", status_code=201, summary="Importar una playlist M3U/PLS/TXT")
+async def importar(request: Request, archivo: UploadFile = File(...), nombre: str = Form(""),
+                   conn: sqlite3.Connection = Depends(get_db)):
+    crudo = await archivo.read()
+    if len(crudo) > 5_000_000:
+        raise HTTPException(status_code=413, detail="El archivo es demasiado grande (máx. 5 MB)")
+    for cod in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            texto = crudo.decode(cod)
+            break
+        except UnicodeDecodeError:
+            continue
+    entradas = leer_lista(texto)
+    if not entradas:
+        raise HTTPException(status_code=422, detail="El archivo no tiene canciones (¿es una lista M3U, PLS o TXT?)")
+    ids, faltan = emparejar(conn, entradas)
+    if not ids:
+        raise HTTPException(status_code=422, detail={"msg": "Ninguna canción de la lista está en la biblioteca",
+                                                     "no_encontradas": faltan[:200]})
+    nombre = (nombre or "").strip() or (archivo.filename or "Importada").rsplit(".", 1)[0]
+    pid = _insertar(conn, nombre[:80], f"Importada de {archivo.filename}", None, None, "", False, _autor(request))
+    _guardar_items(conn, pid, ids)
+    conn.commit()
+    return {**detalle(pid, conn), "encontradas": len(ids), "no_encontradas": faltan[:200],
+            "total_lista": len(entradas)}

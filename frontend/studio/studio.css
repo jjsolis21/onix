@@ -457,3 +457,7 @@ kbd {
 .lib-tabla td:first-child .lib-tit { flex: 0 1 auto; white-space: nowrap; }
 .lib-tabla td:first-child .lib-art { flex: 1 1 0; white-space: nowrap; }
 .lib-acc button { padding-top: 2px !important; padding-bottom: 2px !important; }
+/* Memos de playlist para el locutor */
+.pl-memo { margin-top: 6px; display: inline-block; max-width: 100%; background: #f5c400; color: #111; font-weight: 700;
+  font-size: 15px; padding: 4px 10px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-memo { font-size: 12px; color: #f5c400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

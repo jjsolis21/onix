@@ -42,6 +42,11 @@
   .pl-it small { font-family: var(--font-data); font-size: .66rem; color: var(--text-lo); display: flex; gap: 10px; }
   .pl-it small .d { color: #52b788; } .pl-it small .i { color: #ff6b6b; } .pl-it small .o { color: #ffa94d; }
   .pl-it div { color: var(--text-hi); font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-memo { margin-top: 3px; font-size: .78rem; color: #f5c400; white-space: normal; }
+  .pl-ed-items .pl-it .pl-acc { display: flex; gap: 2px; }
+  .pl-ed-items .pl-it .pl-acc button[data-memo] { color: #f5c400; }
+  .pl-ed-items .pl-it .pl-acc button[data-memo].vacio { color: var(--text-lo); }
+  .pl-imp-faltan { max-height: 240px; overflow-y: auto; background: var(--choc-0); border-radius: 5px; padding: 6px 10px; font-size: .8rem; color: var(--text-mid); }
   .pl-vacio { color: var(--text-lo); font-size: .85rem; text-align: center; margin: 30px 0; }
   .pl-total { font-family: var(--font-data); font-size: 1.6rem; color: var(--text-hi); text-align: center; }
   /* Modales */
@@ -96,6 +101,8 @@
     <aside class="pl-panel pl-lado">
       <button class="pl-btn pl-btn--pri" id="plNueva">＋ Nueva playlist (a mano)</button>
       <button class="pl-btn" id="plAuto">⚡ Auto Playlist (desde reloj)</button>
+      <button class="pl-btn" id="plImportar" title="Listas M3U, M3U8, PLS o TXT de otro programa">📥 Importar playlist (M3U)</button>
+      <input type="file" id="plArchivo" accept=".m3u,.m3u8,.pls,.txt" hidden>
       <button class="pl-btn" id="plEditar" disabled>✎ Editar la elegida</button>
       <button class="pl-btn pl-btn--peligro" id="plEliminar" disabled>🗑 Eliminar</button>
       <h3>Buscar</h3>
@@ -144,6 +151,15 @@
     </div>
     <div class="pl-pie"><span class="msg ox-msg" id="paMsg"></span>
       <button class="pl-btn" data-cerrar>Cancelar</button><button class="pl-btn pl-btn--pri" id="paCrear">☰ Crear playlist</button></div>
+  </div>
+</div>
+
+<!-- ── Resultado de importar ── -->
+<div class="pl-modal" id="plImpModal" hidden>
+  <div class="pl-caja pl-auto">
+    <div class="pl-caja-cab"><h3>📥 Playlist importada</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <div class="pl-auto-cuerpo"><div class="sec" id="plImpRes"></div></div>
+    <div class="pl-pie"><button class="pl-btn pl-btn--pri" data-cerrar>Listo</button></div>
   </div>
 </div>
 
@@ -230,7 +246,7 @@
       <div class="pl-items">${p.items.map(it => { const a = t; t += it.duracion || 0;
         return `<div class="pl-it ${it.tipo_audio !== "Musica" ? "no-musica" : ""}">
           <small><span>${hms(a)}</span><span class="d">Dur: ${mmss(it.duracion)}</span>${it.cue_intro ? `<span class="i">INTRO: ${Number(it.cue_intro).toFixed(1)}s</span>` : ""}${it.cue_outro ? `<span class="o">OUTRO: ${Number(it.cue_outro).toFixed(1)}s</span>` : ""}</small>
-          <div>${esc(it.artista || "")} - ${esc(it.titulo)}</div></div>`; }).join("")}</div>
+          <div>${esc(it.artista || "")} - ${esc(it.titulo)}</div>${it.nota ? `<div class="pl-memo">📝 ${esc(it.nota)}</div>` : ""}</div>`; }).join("")}</div>
       <button class="pl-btn" id="plDetEditar">✎ Editar esta playlist</button>`;
     $("plDetX").onclick = () => { sel = null; pintarLista(); pintarDetalle(null); };
     $("plDetEditar").onclick = () => editor(sel);
@@ -247,6 +263,27 @@
   $("plEditar").addEventListener("click", () => sel && editor(sel));
   document.querySelectorAll("#plRoot ~ .pl-modal [data-cerrar], .pl-modal [data-cerrar]").forEach(b =>
     b.addEventListener("click", () => { b.closest(".pl-modal").hidden = true; pararPrevia(); }));
+
+  // ── Importar M3U / PLS / TXT ────────────────────────────
+  $("plImportar").addEventListener("click", () => { $("plArchivo").value = ""; $("plArchivo").click(); });
+  $("plArchivo").addEventListener("change", async () => {
+    const f = $("plArchivo").files[0];
+    if (!f) return;
+    const nombre = prompt("Nombre de la playlist:", f.name.replace(/\.[^.]+$/, ""));
+    if (nombre === null) return;
+    const fd = new FormData();
+    fd.append("archivo", f); fd.append("nombre", nombre.trim());
+    const r = await fetch("/api/v1/playlists/importar", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    const faltan = r.ok ? d.no_encontradas : (d.detail?.no_encontradas || []);
+    $("plImpRes").innerHTML = (r.ok
+      ? `<b>✓ "${esc(d.nombre)}": ${d.encontradas} de ${d.total_lista} canciones encontradas en tu biblioteca.</b>`
+      : `<b style="color:var(--red-live)">⚠ ${esc(d.detail?.msg || d.detail || "No se pudo importar")}</b>`) +
+      (faltan.length ? `<p class="ox-hint">No están en la biblioteca (súbelas y vuelve a importar, o agrégalas a mano):</p>
+        <div class="pl-imp-faltan">${faltan.map(x => `<div>• ${esc(x)}</div>`).join("")}</div>` : "");
+    $("plImpModal").hidden = false;
+    if (r.ok) cargar(d.id);
+  });
 
   // ── Auto Playlist ───────────────────────────────────────
   $("paHoras").innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1} h</option>`).join("");
@@ -280,7 +317,9 @@
       const ops = (campo, nombre) => `<option value="">${nombre}</option>` + [...new Set(audios.filter(a => a.tipo_audio === "Musica").map(a => a[campo]).filter(Boolean))].sort().map(v => `<option>${esc(v)}</option>`).join("");
       $("edCat1").innerHTML = ops("cat1", "Género (todos)"); $("edCat2").innerHTML = ops("cat2", "Rotación (todas)");
     }
-    ed = { id: p?.id ?? null, items: (p?.items || []).map(it => audios.find(a => a.id === it.audio_id) || { id: it.audio_id, titulo: it.titulo, artista: it.artista, duracion: it.duracion, tipo_audio: it.tipo_audio }), cursor: -1 };
+    ed = { id: p?.id ?? null, cursor: -1, items: (p?.items || []).map(it => ({
+      ...(audios.find(a => a.id === it.audio_id) || { id: it.audio_id, titulo: it.titulo, artista: it.artista, duracion: it.duracion, tipo_audio: it.tipo_audio }),
+      nota: it.nota || "" })) };
     $("edTitulo").textContent = p ? `Editar playlist: ${p.nombre}` : "Nueva playlist";
     $("edNombre").value = p?.nombre || ""; $("edProg").value = p?.programada || ""; $("edInm").checked = !!p?.inmediato;
     $("edMsg").textContent = "";
@@ -307,7 +346,9 @@
     $("edItems").innerHTML = ed.items.length ? ed.items.map((a, i) => { const ini = t; t += a.duracion || 0;
       return `<div class="pl-it ${a.tipo_audio !== "Musica" ? "no-musica" : ""} ${i === ed.cursor ? "sel" : ""}" draggable="true" data-i="${i}">
         <span style="min-width:0"><small><span>A: ${hms(ini)}</span><span class="d">Dur: ${mmss(a.duracion)}</span>${a.cue_intro ? `<span class="i">INTRO: ${Number(a.cue_intro).toFixed(1)}s</span>` : ""}</small>
-        <div>${esc(a.artista || "")} - ${esc(a.titulo)}</div></span><button data-quitar="${i}" title="Quitar">✕</button></div>`; }).join("")
+        <div>${esc(a.artista || "")} - ${esc(a.titulo)}</div>${a.nota ? `<div class="pl-memo">📝 ${esc(a.nota)}</div>` : ""}</span>
+        <span class="pl-acc"><button data-memo="${i}" class="${a.nota ? "" : "vacio"}" title="Memo para el locutor (sale en el Studio cuando suena)">📝</button>
+        <button data-quitar="${i}" title="Quitar">✕</button></span></div>`; }).join("")
       : '<p class="pl-vacio">Agrega audios desde la biblioteca (doble clic o ＋).</p>';
     $("edTotal").textContent = hms(t);
   }
@@ -315,7 +356,7 @@
     const a = audios.find(x => x.id === id);
     if (!a) return;
     const pos = ed.cursor >= 0 ? ed.cursor + 1 : ed.items.length;
-    ed.items.splice(pos, 0, a);
+    ed.items.splice(pos, 0, { ...a, nota: "" });
     if (ed.cursor >= 0) ed.cursor = pos;
     pintarItems();
     // ¿Sonó hace poco? (como "Última reproducción" de Jazler)
@@ -336,6 +377,13 @@
   $("edItems").addEventListener("click", e => {
     const q = e.target.closest("[data-quitar]");
     if (q) { ed.items.splice(+q.dataset.quitar, 1); ed.cursor = -1; pintarItems(); return; }
+    const m = e.target.closest("[data-memo]");
+    if (m) {
+      const it = ed.items[+m.dataset.memo];
+      const t = prompt(`Memo para el locutor cuando suene:\n${it.artista || ""} - ${it.titulo}\n\n(vacío = sin memo)`, it.nota || "");
+      if (t !== null) { it.nota = t.trim().slice(0, 500); pintarItems(); }
+      return;
+    }
     const it = e.target.closest(".pl-it");
     if (it) { ed.cursor = ed.cursor === +it.dataset.i ? -1 : +it.dataset.i; pintarItems(); }
   });
@@ -353,7 +401,8 @@
   $("edSinProg").addEventListener("click", () => { $("edProg").value = ""; $("edInm").checked = false; });
 
   async function guardarEd(salir) {
-    const body = { nombre: $("edNombre").value.trim(), items: ed.items.map(a => a.id), programada: $("edProg").value || "", inmediato: $("edInm").checked };
+    const body = { nombre: $("edNombre").value.trim(), items: ed.items.map(a => ({ audio_id: a.id, nota: a.nota || "" })),
+      programada: $("edProg").value || "", inmediato: $("edInm").checked };
     if (!body.nombre) { msg("edMsg", "Ponle un nombre", false); return; }
     if (!body.items.length) { msg("edMsg", "La playlist está vacía", false); return; }
     const r = await fetch(ed.id ? `/api/v1/playlists/${ed.id}` : "/api/v1/playlists", {

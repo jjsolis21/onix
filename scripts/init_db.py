@@ -713,6 +713,16 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             cursor.execute(f"ALTER TABLE playlists ADD COLUMN {col} {ddl}")
     logger.info("  → playlists.programada/inmediato/autor: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 31 — Memos para el locutor en las playlists (Jazler "Memos")
+    #   Nota pegada a un audio de la playlist: el Studio la muestra cuando
+    #   ese audio está al aire.
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(playlist_items)")
+    if "nota" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE playlist_items ADD COLUMN nota TEXT NOT NULL DEFAULT ''")
+    logger.info("  → playlist_items.nota: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

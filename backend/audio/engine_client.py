@@ -183,8 +183,8 @@ class RemoteEngine:
     def play_next(self):
         self._call("play_next")
 
-    def queue_track(self, audio_id: int) -> bool:
-        return bool(self._call("queue_track", audio_id))
+    def queue_track(self, audio_id: int, nota: str = "") -> bool:
+        return bool(self._call("queue_track", audio_id, nota))
 
     def clear_queue(self):
         self._call("clear_queue")

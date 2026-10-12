@@ -134,6 +134,9 @@ const Estado = (() => {
     $("nowTipo").textContent = ct ? (TIPO_NOMBRE[tipo] ?? tipo) : "—";
     $("nowTipo").dataset.tipo = tipo ?? "";
     $("nowReloj").textContent = ct?.reloj ? `🕐 ${ct.reloj}` : (ct?.origen === "cola" ? "COLA" : "");
+    // Memo de la playlist para el locutor (Jazler "Memos")
+    $("nowMemo").hidden = !ct?.nota;
+    $("nowMemo").textContent = ct?.nota ? `📝 ${ct.nota}` : "";
     $("nowTitulo").textContent = ct ? ct.titulo : (st.retenido ? "Aire libre" : "Sin reproducción");
     $("nowArtista").textContent = ct ? (ct.cliente ? `📢 ${ct.cliente}` : ct.artista) : " ";
     const total = ct ? (ct.fin ?? st.duration_sec) : 0;
@@ -386,7 +389,8 @@ const Decks = (() => {
       html += `<div class="deck-sep"><i style="background:var(--cyan)"></i>Cola del operador</div>`;
       html += cola.map(q => `<div class="deck cola">
         <span class="deck-hora">${esc(q.hora.slice(0, 5))}</span>
-        <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div></div>
+        <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div>
+          ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}</div>
         <span class="deck-dur">COLA</span></div>`).join("");
     }
     let reloj;

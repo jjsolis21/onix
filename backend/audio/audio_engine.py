@@ -1193,13 +1193,16 @@ class AudioEngine:
         """Arranca lo siguiente de la cola (o de la rotacion en modo automatico)."""
         self._cmds.put(("play_next",))
 
-    def queue_track(self, audio_id: int) -> bool:
+    def queue_track(self, audio_id: int, nota: str = "") -> bool:
+        """A la cola del operador. `nota` = memo para el locutor (sale en el
+        Studio cuando esta canción está al aire)."""
         track = self._fetch_track(audio_id)
         if not track:
             return False
         self._playlist_queue.append({
             "id": track["id"], "titulo": track["titulo"], "artista": track["artista"],
             "duracion_efectiva": duracion_efectiva(track, self._crossfade_secs),
+            "nota": (nota or "").strip()[:500],
         })
         self._replanificar = True
         self._emit_queue()
@@ -1351,7 +1354,7 @@ class AudioEngine:
                 self._emit_queue()
                 track = self._fetch_track(queued["id"])
                 if track:
-                    return {"track": track, "origen": "cola"}
+                    return {"track": track, "origen": "cola", "nota": queued.get("nota") or ""}
 
             if not permitir_plan:
                 return None
@@ -1376,7 +1379,7 @@ class AudioEngine:
             if track and it["audio_id"] not in self._failed_ids:
                 return {"track": track, "origen": "auto", "reloj": it.get("reloj"),
                         "reloj_id": it.get("reloj_id"), "fila": it.get("fila"),
-                        "plan_uid": it["uid"]}
+                        "plan_uid": it["uid"], "nota": it.get("nota") or ""}
 
         if self._mode == "automatico":
             return self._pick_respaldo()
@@ -2367,6 +2370,7 @@ class AudioEngine:
                 "tipo_audio":   track.get("tipo_audio") or TIPO_MUSICA,
                 "genero_vocal": track.get("genero_vocal"),
                 "reloj":        item.get("reloj"),
+                "nota":         item.get("nota") or "",     # memo para el locutor (playlists)
                 # Marcas en segundos del archivo (como position_sec)
                 "cue_inicio":   self._cue_range(item)[0] if item.get("track") else 0,
                 "cue_intro":    float(track.get("cue_intro") or track.get("intro") or 0),
