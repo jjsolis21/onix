@@ -94,6 +94,8 @@
     <div class="ox-row">
       <div class="ox-field"><label for="mInmediatas">Inicio inmediato (minutos)</label>
         <input class="ox-input" id="mInmediatas" placeholder="p. ej. 0  (vacío = ninguna)"></div>
+      <div class="ox-field"><label for="mCierre">Terminan en su minuto (al cierre)</label>
+        <input class="ox-input" id="mCierre" placeholder="p. ej. 0  (vacío = ninguna)"></div>
       <div class="ox-field"><label for="mTandaMax">Duración máxima de tanda (s)</label>
         <input type="number" class="ox-input" id="mTandaMax" min="0" max="1800"></div>
       <button class="ox-btn ox-btn--primary" id="mGuardarTandas">Guardar</button>
@@ -101,7 +103,10 @@
     <p class="ox-hint" style="margin-top:var(--s2)">
       <b>Inicio inmediato</b>: en automático, la tanda de esos minutos corta la canción con fade y sale en su hora exacta
       (útil para el ID o las noticias en punto). Las demás esperan a que termine la canción.
-      Si una tanda supera la duración máxima, el Studio avisa.
+      Si una tanda supera la duración máxima, el Studio avisa.<br>
+      <b>Al cierre</b>: la tanda de esos minutos <b>termina</b> en ese minuto en vez de empezar.
+      Con tandas en <b>0</b> y al cierre en <b>0</b>, si hay 10 min de cuñas el bloque arranca a las 3:50 y termina 4:00 en punto.
+      La música de antes se elige para llegar justo.
     </p>
     <p class="ox-msg" id="mMsgTandas"></p>
 
@@ -259,7 +264,7 @@
     $("mSepVent").value = c.separacion_cancion_ventana_min;
     $("mNormActiva").value = c.normalizacion_activa ? "1" : "0"; $("mLufs").value = c.normalizacion_lufs;
     $("mMarcasAuto").value = c.marcas_auto === false ? "0" : "1";
-    $("mInmediatas").value = c.tandas_inmediatas || ""; $("mTandaMax").value = c.tanda_max_seg;
+    $("mInmediatas").value = c.tandas_inmediatas || ""; $("mCierre").value = c.tandas_cierre || ""; $("mTandaMax").value = c.tanda_max_seg;
   }
 
   async function guardar(body, msgId) {
@@ -285,7 +290,7 @@
   }, "mMsgNorm"));
 
   $("mGuardarTandas").addEventListener("click", () => guardar({
-    tandas_inmediatas: $("mInmediatas").value.trim(), tanda_max_seg: parseInt($("mTandaMax").value) || 0,
+    tandas_inmediatas: $("mInmediatas").value.trim(), tandas_cierre: $("mCierre").value.trim(), tanda_max_seg: parseInt($("mTandaMax").value) || 0,
   }, "mMsgTandas"));
 
   // ── Secciones de la tanda ────────────────────────────────

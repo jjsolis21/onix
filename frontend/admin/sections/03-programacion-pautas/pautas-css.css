@@ -1331,3 +1331,30 @@
 }
 .cm-rep-rapido button:hover { border-color: var(--p-accent); color: var(--p-accent); }
 .cm-rep-ayuda { margin: 0; font-size: 12px; color: var(--p-text-muted); }
+
+/* Versiones que rotan */
+.cm-versiones { margin-top: 10px; border: 1px dashed var(--p-border); border-radius: 6px; padding: 8px 10px; }
+.cm-versiones-cab { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: var(--p-text); }
+.cm-ver-add { background: transparent; border: 1px solid var(--p-accent); color: var(--p-accent); border-radius: 12px; padding: 3px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.cm-ver-lista { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cm-ver { display: flex; align-items: center; gap: 8px; background: var(--choc-2, #111); border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+.cm-ver b { width: 20px; height: 20px; border-radius: 50%; background: var(--p-accent); color: #000; display: grid; place-items: center; font-size: 11px; flex: none; }
+.cm-ver span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text); }
+.cm-ver small { color: var(--p-text-muted); }
+.cm-ver button { background: transparent; border: 0; color: var(--p-text-muted); cursor: pointer; }
+.cm-ver button:hover { color: #ff5a5f; }
+
+/* Orden del bloque */
+.cm-ord { width: min(560px, 94vw); }
+.cm-ord-lista { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.cm-ord-item { display: flex; align-items: center; gap: 8px; background: var(--choc-2, #111); border: 1px solid var(--p-border); border-radius: 6px; padding: 7px 8px; cursor: grab; font-size: 13px; }
+.cm-ord-item.arrastrando { opacity: .4; }
+.cm-ord-item--fija { cursor: default; border-style: dashed; opacity: .85; }
+.cm-ord-n { width: 22px; text-align: center; font-weight: 800; color: var(--p-accent); }
+.cm-ord-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text-muted); }
+.cm-ord-t b { color: var(--p-text); }
+.cm-ord-item button { background: var(--choc-3, #1a1a1a); border: 1px solid var(--p-border); color: var(--p-text); border-radius: 4px; width: 28px; height: 26px; cursor: pointer; }
+.cm-ord-item button:hover { border-color: var(--p-accent); color: var(--p-accent); }
+.cm-ord-item small { color: var(--p-accent); font-weight: 700; }
+.cm-ord-pie { display: flex; justify-content: space-between; gap: 8px; }
+.cm-sub--ver { color: var(--p-accent); font-weight: 700; }

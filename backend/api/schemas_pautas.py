@@ -53,6 +53,9 @@ class PautaIn(BaseModel):
     contrato_id:  str            = Field("", max_length=100)
     agencia:      str            = Field("", max_length=200)
     posicion:     int            = Field(0, ge=0, le=2, description="0 libre · 1 primero · 2 último en la tanda")
+    # Varias versiones del spot que rotan en cada salida (incluye la principal).
+    # None = no tocar las que ya tiene; [] = una sola versión (audio_id)
+    versiones:    Optional[list[int]] = Field(None, max_length=20)
     seccion:      int            = Field(3, ge=1, le=99,
                                          description="Sección de la tanda (1 ID, 2 cortina de entrada, 3 comerciales…)")
 
@@ -175,6 +178,8 @@ class PautaOut(BaseModel):
     contrato_id:  str
     agencia:      str = ""
     posicion:     int = 0
+    orden:        Optional[int] = None
+    versiones:    list[dict] = []
     seccion:      int = 3
     activo:       int
     created_at:   str

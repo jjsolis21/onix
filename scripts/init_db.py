@@ -623,6 +623,25 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE pautas ADD COLUMN posicion INTEGER DEFAULT 0")
     logger.info("  → pautas.agencia y posicion: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 25 — Spot con varias versiones y orden manual en el bloque
+    #   pauta_audios: versiones que rotan (A, B, C…) de un mismo spot.
+    #     Sin filas, la pauta usa su audio_id de siempre.
+    #   pautas.orden: lugar fijo dentro del bloque (NULL = el sistema decide)
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pauta_audios (
+            pauta_id INTEGER NOT NULL REFERENCES pautas(id) ON DELETE CASCADE,
+            audio_id INTEGER NOT NULL REFERENCES audios(id) ON DELETE CASCADE,
+            orden    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (pauta_id, audio_id)
+        )
+    """)
+    cursor.execute("PRAGMA table_info(pautas)")
+    if "orden" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE pautas ADD COLUMN orden INTEGER DEFAULT NULL")
+    logger.info("  → pauta_audios y pautas.orden: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

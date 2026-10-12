@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=4">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=5">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=2">
 
 <div class="pautas-root" id="pautasRoot">
@@ -109,6 +109,7 @@
         <select id="filtPosicion"><option value="">Todas</option>
           <option value="1">📌 Primero</option><option value="2">📌 Último</option><option value="0">Libre</option></select></label>
       <button class="cm-reiniciar" id="btnFilterClear" type="button">Reiniciar filtros</button>
+      <button class="cm-reiniciar" id="btnOrdenBloque" type="button">↕ Ordenar bloque</button>
       <button class="cm-reiniciar cm-reporte" id="btnReporte" type="button">🖨 Reporte por cliente</button>
       <p class="cm-cuenta" id="cmCuenta">—</p>
     </aside>
@@ -158,6 +159,22 @@
 
 </div><!-- /pautas-root -->
 
+
+<!-- Orden manual de las cuñas dentro del bloque -->
+<div class="modal-overlay hidden" id="ordenModal" role="dialog" aria-modal="true" aria-labelledby="ordTitulo">
+  <div class="cm-rep cm-ord">
+    <div class="cm-rep-cab"><h3 id="ordTitulo">↕ Orden del bloque</h3>
+      <button class="modal-close" id="ordCerrar" type="button" aria-label="Cerrar">✕</button></div>
+    <p class="cm-rep-ayuda">Arrastra o usa ▲ ▼. Así sonarán dentro de cada tanda (solo las que tocan a esa hora).
+      Las 📌 fijadas como primero/último siempre abren o cierran.</p>
+    <ol class="cm-ord-lista" id="ordLista"></ol>
+    <div class="cm-ord-pie">
+      <button class="cm-reiniciar" id="ordAuto" type="button" title="Quita el orden manual: prioridad y rubro deciden">Que decida el sistema</button>
+      <button class="btn-primary" id="ordGuardar" type="button">Guardar orden</button>
+    </div>
+    <p class="cm-rep-ayuda" id="ordMsg"></p>
+  </div>
+</div>
 
 <!-- Reporte imprimible por cliente (certificado de emisión) -->
 <div class="modal-overlay hidden" id="reporteModal" role="dialog" aria-modal="true" aria-labelledby="repTitulo">
@@ -227,6 +244,16 @@
           <!-- Input file oculto, disparado por el botón -->
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
           <span class="field-hint" id="audioHint">Clic en el campo para elegir una cuña ya cargada, o «Subir archivo» para cargar una nueva</span>
+
+          <!-- Versiones que rotan (spot con varios audios) -->
+          <div class="cm-versiones">
+            <div class="cm-versiones-cab">
+              <span>Versiones que rotan</span>
+              <button type="button" class="cm-ver-add" id="btnAddVersion">＋ Agregar versión</button>
+            </div>
+            <ol class="cm-ver-lista" id="cmVersiones"></ol>
+            <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
+          </div>
 
           <!-- Barra de progreso de subida -->
           <div class="upload-progress hidden" id="uploadProgress">

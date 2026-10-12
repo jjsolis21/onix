@@ -104,6 +104,24 @@ def parse_minutos(valor: str) -> list[int]:
     return sorted(minutos) or [0]
 
 
+def inicio_tanda(minuto: int, duracion: float, cierre: bool) -> float:
+    """
+    Segundos desde el inicio de la hora en que arranca la tanda.
+    Normal: arranca en su minuto. Al cierre (costumbre venezolana): el bloque
+    TERMINA en su minuto (0 = en punto de la hora siguiente) y arranca antes
+    según lo que dure, p. ej. 10 min de cuñas → 3:50.
+    """
+    if not cierre:
+        return minuto * 60.0
+    fin = (60 if minuto == 0 else minuto) * 60.0
+    return max(0.0, fin - max(0.0, duracion))
+
+
+def version_rotada(versiones: list[int], emitidas: int) -> Optional[int]:
+    """Spot con varias versiones: A, B, C, A, B… según cuántas veces ya salió."""
+    return versiones[emitidas % len(versiones)] if versiones else None
+
+
 def _rubro(pauta: dict) -> str:
     return (pauta.get("rubro") or "").strip().upper()
 
@@ -111,14 +129,17 @@ def _rubro(pauta: dict) -> str:
 def ordenar_tanda(pautas: list[dict]) -> list[dict]:
     """
     Orden de salida dentro de una tanda: las fijadas "primero" abren y las
-    fijadas "último" cierran (como el alfiler de Jazler); el resto respeta el
+    fijadas "último" cierran (como el alfiler de Jazler); después van las de
+    orden manual (el que armó programación, tal cual) y el resto respeta el
     orden recibido (prioridad primero) evitando dos cuñas seguidas del mismo
     rubro.
     """
     pos = lambda p: int(p.get("posicion") or 0)
     primeras = [p for p in pautas if pos(p) == 1]
     ultimas = [p for p in pautas if pos(p) == 2]
-    pendientes, orden = [p for p in pautas if pos(p) not in (1, 2)], []
+    medio = [p for p in pautas if pos(p) not in (1, 2)]
+    primeras += sorted((p for p in medio if p.get("orden") is not None), key=lambda p: p["orden"])
+    pendientes, orden = [p for p in medio if p.get("orden") is None], []
     previo_ini = _rubro(primeras[-1]) if primeras else ""
     while pendientes:
         previo = _rubro(orden[-1]) if orden else previo_ini
@@ -909,6 +930,7 @@ class AudioEngine:
 
         # Tandas de la hora en curso: {minuto: [pauta_id, ...]}
         self._tandas_minutos:  list[int] = [15, 45]
+        self._tandas_cierre:   list[int] = []   # tandas que TERMINAN en su minuto
         self._plan_slot:       Optional[str] = None
         self._plan:            dict[int, list[int]] = {}
         self._tandas_lanzadas: set[int] = set()
@@ -992,6 +1014,8 @@ class AudioEngine:
             # Compatibilidad: ONIX_AUDIO_DEVICE fuerza la tarjeta del aire
             if os.getenv("ONIX_AUDIO_DEVICE") not in (None, ""):
                 self._devices["aire"] = int(os.environ["ONIX_AUDIO_DEVICE"])
+            cie = self._cfg("tandas_cierre", "")
+            self._tandas_cierre = parse_minutos(cie) if cie.strip() else []
             inm = self._cfg("tandas_inmediatas", "")
             self._tandas_inmediatas = parse_minutos(inm) if inm.strip() else []
             self._tanda_max_seg = int(float(self._cfg("tanda_max_seg", "240") or 0))
@@ -1894,7 +1918,7 @@ class AudioEngine:
                     SELECT p.id, p.cliente, p.audio_id, p.matriz, p.rubro,
                            p.menciones_diarias, p.cue_intro, p.cue_outro,
                            COALESCE(p.seccion, 3) AS seccion, a.duracion,
-                           COALESCE(p.posicion, 0) AS posicion
+                           COALESCE(p.posicion, 0) AS posicion, p.orden
                     FROM pautas p
                     JOIN audios a ON a.id = p.audio_id AND a.activo = 1
                     WHERE p.activo = 1
@@ -1920,6 +1944,18 @@ class AudioEngine:
                     r[0]: {"opcional": bool(r[1]), "comercial": bool(r[2])}
                     for r in conn.execute("SELECT numero, opcional, comercial FROM tanda_secciones")
                 }
+                versiones: dict[int, list[int]] = {}
+                for pa in conn.execute(
+                        "SELECT pa.pauta_id, pa.audio_id FROM pauta_audios pa"
+                        " JOIN audios a ON a.id = pa.audio_id AND a.activo = 1"
+                        " ORDER BY pa.pauta_id, pa.orden"):
+                    versiones.setdefault(pa[0], []).append(pa[1])
+                total_emitidas = dict(conn.execute(
+                    "SELECT pauta_id, COUNT(*) FROM historial_emision"
+                    " WHERE pauta_id IS NOT NULL GROUP BY pauta_id").fetchall())
+                durs = {r[0]: r[1] or 0 for r in conn.execute(
+                    "SELECT id, duracion FROM audios WHERE id IN"
+                    " (SELECT audio_id FROM pauta_audios)")}
                 del_dia = dict(conn.execute(
                     "SELECT pauta_id, COUNT(*) FROM historial_emision"
                     " WHERE slot LIKE ? AND pauta_id IS NOT NULL GROUP BY pauta_id",
@@ -1938,12 +1974,17 @@ class AudioEngine:
             except (TypeError, ValueError):
                 continue
             if isinstance(matriz, dict) and matriz.get(key):
+                # Varias versiones: rotan en cada salida (A, B, C, A…)
+                audio_id = version_rotada(versiones.get(row["id"], []),
+                                          total_emitidas.get(row["id"], 0)) or row["audio_id"]
                 de_la_hora[row["id"]] = {
                     "pauta_id": row["id"], "cliente": row["cliente"],
-                    "audio_id": row["audio_id"], "rubro": row["rubro"] or "",
+                    "audio_id": audio_id, "rubro": row["rubro"] or "", "orden": row["orden"],
                     "menciones_diarias": row["menciones_diarias"],
                     "cue_intro": row["cue_intro"], "cue_outro": row["cue_outro"],
-                    "seccion": row["seccion"], "duracion": row["duracion"] or 0,
+                    "seccion": row["seccion"],
+                    "duracion": durs.get(audio_id, row["duracion"]) if audio_id != row["audio_id"]
+                                else (row["duracion"] or 0),
                     "posicion": row["posicion"], "slot": slot,
                 }
 
@@ -1952,6 +1993,12 @@ class AudioEngine:
         comerciales = {pid: p for pid, p in de_la_hora.items() if es_comercial(p)}
         fijas = [p for p in de_la_hora.values() if not es_comercial(p)]
         self._plan_hour(slot, now.minute, list(comerciales.values()))
+        # El orden del bloque (posición fija u orden manual) se aplica en vivo,
+        # sin mover cuñas de una tanda a otra
+        for m, ids in self._plan.items():
+            conocidas = [comerciales[i] for i in ids if i in comerciales]
+            self._plan[m] = ([p["pauta_id"] for p in ordenar_tanda(conocidas)]
+                             + [i for i in ids if i not in comerciales])
 
         # forzar=(slot, minuto): el programa llego al marcador de esa tanda
         # unos segundos antes de su minuto; sale ya.
@@ -1960,9 +2007,18 @@ class AudioEngine:
             limite = max(limite, forzar[1])
         en_cola = {p["pauta_id"] for p in self._priority_queue}
         en_cola_tanda = {(p["pauta_id"], p.get("tanda")) for p in self._priority_queue}
+        seg_hora = now.minute * 60 + now.second
         for minuto in sorted(self._plan):
-            if minuto > limite:
-                break
+            if minuto in self._tandas_cierre:
+                # Bloque al cierre: arranca cuando falta lo que dura
+                dur = sum(float(comerciales[pid]["duracion"] or 0)
+                          for pid in self._plan[minuto] if pid in comerciales)
+                dur += sum(float(f["duracion"] or 0) for f in fijas)
+                forzada = bool(forzar and forzar == (slot, minuto))
+                if not forzada and inicio_tanda(minuto, dur, True) > seg_hora:
+                    continue
+            elif minuto > limite:
+                continue
             lanzadas = []
             for pid in self._plan[minuto]:
                 pauta = comerciales.get(pid)
@@ -2324,6 +2380,7 @@ class AudioEngine:
             "queue_length":      len(self._playlist_queue),
             "pautas_pendientes": len(self._priority_queue),
             "tandas_minutos":    list(self._tandas_minutos),
+            "tandas_cierre":     list(self._tandas_cierre),
             # Modo manual: cuñas esperando a que el operador lance la tanda
             "tanda_en_espera":   (len(self._priority_queue)
                                   if self._mode == "manual" and not self._tanda_liberada else 0),

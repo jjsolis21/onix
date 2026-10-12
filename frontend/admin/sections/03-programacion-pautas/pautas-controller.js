@@ -189,6 +189,8 @@
       prioridad:    Number(data.prioridad ?? (data.matriz?.__meta?.urgente ? 1 : 0)) || 0,
       agencia:      data.agencia           ?? '',
       posicion:     Number(data.posicion   ?? 0) || 0,
+      orden:        data.orden             ?? null,
+      versiones:    data.versiones         ?? [],
       menciones:    data.menciones_diarias ?? data.matriz?.__meta?.menciones ?? 4,
       seccion:      data.seccion           ?? 3,
       cue_intro:    data.cue_intro         ?? data.matriz?.__meta?.cue_intro   ?? 0,
@@ -470,6 +472,7 @@
       tr.innerHTML = `
         <td class="cm-pin" title="${p.posicion ? 'Siempre ' + POSICION[p.posicion].toLowerCase() + ' en la tanda' : ''}">${p.posicion ? '📌<small>' + (p.posicion === 1 ? '1º' : 'ÚLT') + '</small>' : ''}</td>
         <td><span class="cm-spot" title="${_esc(p.audio_nombre)}">${_esc(_truncate(p.audio_nombre, 34))}</span>
+          ${(p.versiones || []).length > 1 ? `<small class="cm-sub cm-sub--ver">🔁 ${p.versiones.length} versiones</small>` : ''}
           ${contrato ? `<small class="cm-sub">${_esc(contrato)}</small>` : ''}</td>
         <td><strong>${_esc(p.cliente)}</strong></td>
         <td>${_esc(p.agencia || '—')}</td>
@@ -550,6 +553,68 @@
   // ──────────────────────────────────────────────────────────
 
   const _previa = { id: null, audio: null };
+
+  // ──────────────────────────────────────────────────────────
+  // 10c. VERSIONES QUE ROTAN (spot con varios audios)
+  // ──────────────────────────────────────────────────────────
+
+  let _versiones = [];   // versiones extra (sin la principal): [{id, titulo, emitidas}]
+
+  function _pintarVersiones() {
+    const ol = $('cmVersiones');
+    if (!ol) return;
+    const f = $('fAudio');
+    const principal = f?._selectedId
+      ? `<li class="cm-ver cm-ver--principal"><b>A</b><span>${_esc(f._selectedNombre || f.value)}</span><small>principal</small></li>` : '';
+    ol.innerHTML = principal + _versiones.map((v, i) => `
+      <li class="cm-ver"><b>${String.fromCharCode(66 + i)}</b><span>${_esc(v.titulo)}</span>
+        ${v.emitidas ? `<small>${v.emitidas} salidas</small>` : ''}
+        <button type="button" data-quitar="${i}" title="Quitar esta versión">✕</button></li>`).join('');
+  }
+
+  async function _agregarVersion() {
+    if (!$('fAudio')?._selectedId) { _showModalError('Primero elige la cuña principal.'); return; }
+    if (!global.CunasBiblioteca) return;
+    const c = await global.CunasBiblioteca.elegir(($('fCliente')?.value || '').trim());
+    if (!c || c.id === $('fAudio')._selectedId || _versiones.some(v => v.id === c.id)) return;
+    _versiones.push({ id: c.id, titulo: c.titulo });
+    _pintarVersiones();
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 10d. ORDEN MANUAL DEL BLOQUE
+  // ──────────────────────────────────────────────────────────
+
+  function _abrirOrden() {
+    const comerciales = _pautas.filter(p => _isActiva(p) && !p.posicion && (p.seccion ?? 3) === 3);
+    const fijas1 = _pautas.filter(p => _isActiva(p) && p.posicion === 1);
+    const fijas2 = _pautas.filter(p => _isActiva(p) && p.posicion === 2);
+    comerciales.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999) || b.prioridad - a.prioridad || a.id - b.id);
+    const fila = (p, fija) => `<li class="cm-ord-item ${fija ? 'cm-ord-item--fija' : ''}" data-id="${p.id}" ${fija ? '' : 'draggable="true"'}>
+      <span class="cm-ord-n"></span><span class="cm-ord-t"><b>${_esc(p.cliente)}</b> ${_esc(p.audio_nombre)}</span>
+      ${fija ? `<small>📌 ${fija}</small>` : '<button type="button" data-mover="-1" title="Subir">▲</button><button type="button" data-mover="1" title="Bajar">▼</button>'}</li>`;
+    $('ordLista').innerHTML = fijas1.map(p => fila(p, 'primero')).join('') +
+      comerciales.map(p => fila(p)).join('') + fijas2.map(p => fila(p, 'último')).join('');
+    $('ordMsg').textContent = comerciales.some(p => p.orden != null) ? '' : 'Ahora decide el sistema (prioridad y rubro). Si guardas, manda este orden.';
+    _numerarOrden();
+    _showEl($('ordenModal'));
+  }
+
+  function _numerarOrden() {
+    $('ordLista').querySelectorAll('.cm-ord-item').forEach((li, i) => { li.querySelector('.cm-ord-n').textContent = i + 1; });
+  }
+
+  async function _guardarOrden(ids) {
+    try {
+      const r = await fetch('/api/v1/pautas/orden', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      _pautas.forEach(p => { const i = ids.indexOf(p.id); p.orden = i >= 0 ? i : null; });
+      _hideEl($('ordenModal'));
+    } catch (e) {
+      $('ordMsg').textContent = '⚠ No se pudo guardar: ' + e.message;
+    }
+  }
 
   function _mmss(t) {
     t = Math.max(0, Math.floor(t || 0));
@@ -984,6 +1049,8 @@
       _val('fPrioridad', String(p.prioridad ?? 0));
       _val('fPosicion',  String(p.posicion ?? 0));
       _val('fAgencia',   p.agencia || '');
+      _versiones = (p.versiones || []).filter(v => v.id !== p.audio_id);
+      _pintarVersiones();
       _cargarSecciones(p.seccion ?? 3);
       $('btnSaveText').textContent = 'Actualizar Pauta';
 
@@ -1035,6 +1102,8 @@
       _val('fPrioridad', '0');
       _val('fPosicion',  '0');
       _val('fAgencia',   '');
+      _versiones = [];
+      _pintarVersiones();
       _cargarSecciones(3);
       $('btnSaveText').textContent = 'Guardar Pauta';
 
@@ -1192,6 +1261,7 @@
       prioridad,
       agencia,
       posicion,
+      versiones: _versiones.map(v => v.id),
       menciones_diarias: menciones,
       seccion,
       // cue_intro / cue_outro are top-level fields in PautaIn (not just __meta).
@@ -1250,6 +1320,8 @@
     if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
     if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;
     if (typeof global.wfLoadUrl === 'function') global.wfLoadUrl(`/api/v1/audios/${c.id}/stream`, {});
+    _versiones = _versiones.filter(v => v.id !== c.id);
+    _pintarVersiones();
   }
 
   /** "＋ Pauta" desde la Biblioteca de cuñas: pauta nueva con esa cuña ya elegida. */
@@ -1536,6 +1608,39 @@
       if (a) a.paused ? a.play().catch(() => {}) : a.pause();
     });
     $('cmStop')?.addEventListener('click', _pararPrevia);
+
+    // ── Versiones que rotan ──
+    $('btnAddVersion')?.addEventListener('click', _agregarVersion);
+    $('cmVersiones')?.addEventListener('click', e => {
+      const b = e.target.closest('[data-quitar]');
+      if (b) { _versiones.splice(+b.dataset.quitar, 1); _pintarVersiones(); }
+    });
+
+    // ── Orden del bloque ──
+    $('btnOrdenBloque')?.addEventListener('click', _abrirOrden);
+    $('ordCerrar')?.addEventListener('click', () => _hideEl($('ordenModal')));
+    $('ordAuto')?.addEventListener('click', () => _guardarOrden([]));
+    $('ordGuardar')?.addEventListener('click', () => _guardarOrden(
+      [...$('ordLista').querySelectorAll('.cm-ord-item:not(.cm-ord-item--fija)')].map(li => +li.dataset.id)));
+    $('ordLista')?.addEventListener('click', e => {
+      const b = e.target.closest('[data-mover]');
+      if (!b) return;
+      const li = b.closest('li');
+      const otro = b.dataset.mover === '-1' ? li.previousElementSibling : li.nextElementSibling;
+      if (!otro || otro.classList.contains('cm-ord-item--fija')) return;
+      b.dataset.mover === '-1' ? otro.before(li) : otro.after(li);
+      _numerarOrden();
+    });
+    let _arrastrado = null;
+    $('ordLista')?.addEventListener('dragstart', e => { _arrastrado = e.target.closest('li'); _arrastrado?.classList.add('arrastrando'); });
+    $('ordLista')?.addEventListener('dragend', () => { _arrastrado?.classList.remove('arrastrando'); _arrastrado = null; _numerarOrden(); });
+    $('ordLista')?.addEventListener('dragover', e => {
+      const li = e.target.closest('li');
+      if (!_arrastrado || !li || li === _arrastrado || li.classList.contains('cm-ord-item--fija')) return;
+      e.preventDefault();
+      const r = li.getBoundingClientRect();
+      e.clientY < r.top + r.height / 2 ? li.before(_arrastrado) : li.after(_arrastrado);
+    });
 
     // ── Reporte por cliente ──
     $('btnReporte')?.addEventListener('click', () => _abrirReporte());

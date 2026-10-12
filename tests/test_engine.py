@@ -719,3 +719,49 @@ def test_audio_mudo_queda_fuera_del_programa_un_rato(engine, media):
     engine._vigilar_silencio(0.0, 11.0)
     assert a in engine._failed_ids
     assert not any(i.get("audio_id") == a for i in engine.programa()["items"])
+
+
+def _config(engine, **kv):
+    conn = db(engine)
+    for k, v in kv.items():
+        conn.execute("INSERT INTO config (clave, valor) VALUES (?, ?)"
+                     " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (k, v))
+    conn.commit()
+    conn.close()
+    engine._load_config()
+
+
+def test_bloque_al_cierre_arranca_segun_lo_que_dura(engine, media):
+    _config(engine, tandas_minutos="0", tandas_cierre="0")
+    for c in ("UNO", "DOS"):
+        pid = add_pauta(engine, media, c)
+        conn = db(engine)
+        conn.execute("UPDATE audios SET duracion = 300 WHERE id = (SELECT audio_id FROM pautas WHERE id = ?)", (pid,))
+        conn.commit()
+        conn.close()
+    # 2 cuñas de 5 min = 10 min → el bloque arranca 10:50 para terminar a las 11:00
+    engine._now.dt = datetime(2026, 10, 12, 10, 49, 30)
+    engine._check_pautas()
+    assert en_cola(engine) == []
+    engine._now.dt = datetime(2026, 10, 12, 10, 50, 0)
+    engine._check_pautas()
+    assert sorted(en_cola(engine)) == ["DOS", "UNO"]
+
+
+def test_spot_con_versiones_rota_en_cada_salida(engine, media):
+    pid = add_pauta(engine, media, "ROTA", horas=(LUNES_10, "1-11"))
+    b = add_audio(engine, media, "version_b", tipo="Cuña")
+    conn = db(engine)
+    a = conn.execute("SELECT audio_id FROM pautas WHERE id = ?", (pid,)).fetchone()[0]
+    conn.executemany("INSERT INTO pauta_audios (pauta_id, audio_id, orden) VALUES (?, ?, ?)",
+                     [(pid, a, 0), (pid, b, 1)])
+    conn.commit()
+    conn.close()
+    salieron = []
+    for hora in (10, 11):
+        engine._now.dt = datetime(2026, 10, 12, hora, 50)
+        engine._check_pautas()
+        item = engine._pick_next()
+        salieron.append(item["track"]["id"])
+        engine._log_emision(item["track"], item, tipo="pauta")
+    assert salieron == [a, b]

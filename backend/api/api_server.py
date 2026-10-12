@@ -1591,6 +1591,44 @@ def delete_audio(
 # ===========================================================================
 
 
+def _guardar_versiones(conn: sqlite3.Connection, pauta_id: int, body: PautaIn) -> None:
+    """Versiones que rotan: la principal (audio_id) siempre va primera."""
+    if body.versiones is None:
+        return
+    ids = list(dict.fromkeys(([body.audio_id] if body.audio_id else []) + body.versiones))
+    existentes = {r[0] for r in conn.execute(
+        f"SELECT id FROM audios WHERE id IN ({','.join('?' * len(ids))})", ids)} if ids else set()
+    conn.execute("DELETE FROM pauta_audios WHERE pauta_id = ?", (pauta_id,))
+    if len(ids) > 1:
+        conn.executemany("INSERT INTO pauta_audios (pauta_id, audio_id, orden) VALUES (?, ?, ?)",
+                         [(pauta_id, a, i) for i, a in enumerate(ids) if a in existentes])
+
+
+def _con_versiones(conn: sqlite3.Connection, pauta: dict) -> dict:
+    """Agrega las versiones (con cuántas veces salió cada una)."""
+    pauta["versiones"] = [dict(r) for r in conn.execute(
+        """SELECT a.id, a.titulo, a.duracion,
+                  (SELECT COUNT(*) FROM historial_emision h
+                    WHERE h.pauta_id = pa.pauta_id AND h.audio_id = a.id) AS emitidas
+           FROM pauta_audios pa JOIN audios a ON a.id = pa.audio_id
+           WHERE pa.pauta_id = ? ORDER BY pa.orden""", (pauta["id"],))]
+    return pauta
+
+
+class OrdenBloque(BaseModel):
+    ids: list[int] = Field(..., max_length=500, description="Pautas en el orden en que deben sonar")
+
+
+@app.put("/api/v1/pautas/orden", tags=["Pautas"], summary="Orden manual de las cuñas en el bloque")
+def ordenar_bloque(body: OrdenBloque, conn: sqlite3.Connection = Depends(get_db)):
+    """Guarda el orden armado por programación. Lista vacía = el sistema decide."""
+    conn.execute("UPDATE pautas SET orden = NULL")
+    conn.executemany("UPDATE pautas SET orden = ? WHERE id = ?",
+                     [(i, pid) for i, pid in enumerate(body.ids)])
+    conn.commit()
+    return {"ok": True, "ordenadas": len(body.ids)}
+
+
 @app.get(
     "/api/v1/pautas/notificaciones",
     summary="Obtener notificaciones de pautas",
@@ -1660,7 +1698,7 @@ def list_pautas(
     params.extend([limit, offset])
 
     rows = conn.execute(sql, params).fetchall()
-    data = [PautaOut.from_row(r).model_dump() for r in rows]
+    data = [_con_versiones(conn, PautaOut.from_row(r).model_dump()) for r in rows]
 
     logger.info(f"  → {len(data)} pauta(s) encontradas")
     return data
@@ -1713,10 +1751,11 @@ def create_pauta(
         )
 
     new_id = cur.lastrowid
+    _guardar_versiones(conn, new_id, body)
     row    = conn.execute("SELECT * FROM pautas WHERE id = ?", (new_id,)).fetchone()
 
     logger.info(f"  → Pauta creada con id={new_id}")
-    return PautaOut.from_row(row).model_dump()
+    return _con_versiones(conn, PautaOut.from_row(row).model_dump())
 
 
 @app.put(
@@ -1775,9 +1814,10 @@ def update_pauta(
         {**db_data, "id": pauta_id},
     )
 
+    _guardar_versiones(conn, pauta_id, body)
     row = conn.execute("SELECT * FROM pautas WHERE id = ?", (pauta_id,)).fetchone()
     logger.info(f"  → Pauta id={pauta_id} actualizada")
-    return PautaOut.from_row(row).model_dump()
+    return _con_versiones(conn, PautaOut.from_row(row).model_dump())
 
 
 @app.delete(
@@ -2085,6 +2125,8 @@ class MotorConfig(BaseModel):
                                                  description="Aire muerto: segundos de silencio antes de actuar (0 = apagado)")
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos de las tandas, p. ej. '15,45'")
+    tandas_cierre:       Optional[str]   = Field(None, max_length=200,
+                                                 description="Tandas que TERMINAN en su minuto (0 = en punto), p. ej. '0'")
 
     @field_validator("tandas_minutos")
     @classmethod
@@ -2094,6 +2136,16 @@ class MotorConfig(BaseModel):
         partes = [x for x in re.split(r"[,;\s]+", v) if x]
         if not partes or any(not x.isdigit() or int(x) > 59 for x in partes):
             raise ValueError("tandas_minutos: minutos entre 0 y 59 separados por coma, p. ej. '15,45'")
+        return ",".join(str(m) for m in sorted({int(x) for x in partes}))
+
+    @field_validator("tandas_cierre")
+    @classmethod
+    def _cierre_valido(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None if v is None else ""
+        partes = [x for x in re.split(r"[,;\s]+", v) if x]
+        if any(not x.isdigit() or int(x) > 59 for x in partes):
+            raise ValueError("tandas_cierre: minutos entre 0 y 59 separados por coma")
         return ",".join(str(m) for m in sorted({int(x) for x in partes}))
 
     @field_validator("tandas_inmediatas")
@@ -2117,6 +2169,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "ducking_db":          float(valores.get("ducking_db", -12)),
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
         "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
+        "tandas_cierre":       valores.get("tandas_cierre", ""),
         "tanda_max_seg":       int(float(valores.get("tanda_max_seg", 240) or 0)),
         "silencio_seg":        int(float(valores.get("silencio_seg", 10) or 0)),
         "marcas_auto":         valores.get("marcas_auto", "1") not in ("0", "false", ""),

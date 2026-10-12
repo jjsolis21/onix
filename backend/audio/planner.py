@@ -366,16 +366,29 @@ class Planner:
     # ── Tandas ──────────────────────────────────────────────────────────────
 
     def _proxima_tanda(self, conn, t: datetime, minutos: list[int], hechas: set) -> Optional[dict]:
-        """Próxima tanda (de esta hora o la siguiente) aún no planificada."""
+        """
+        Próxima tanda (de esta hora o la siguiente) aún no planificada.
+        Las tandas "al cierre" (config tandas_cierre) terminan en su minuto:
+        su hora de arranque depende de cuánto duran sus cuñas.
+        """
+        from backend.audio.audio_engine import inicio_tanda, parse_minutos
+        fila = conn.execute("SELECT valor FROM config WHERE clave = 'tandas_cierre'").fetchone()
+        cierre = set(parse_minutos(fila[0])) if fila and (fila[0] or "").strip() else set()
         for base in (t.replace(minute=0, second=0, microsecond=0),
                      t.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)):
             slot = base.strftime("%Y-%m-%d-%H")
-            for m in sorted(minutos):
-                hora = base + timedelta(minutes=m)
-                if (slot, m) in hechas or hora < t - timedelta(minutes=30):
+            candidatas = []
+            for m in minutos:
+                if (slot, m) in hechas:
                     continue
                 cunas, dur = self._cunas_tanda(conn, base, m, minutos)
-                return {"hora": hora, "minuto": m, "slot": slot, "cunas": cunas, "duracion": dur}
+                hora = base + timedelta(seconds=inicio_tanda(m, dur, m in cierre))
+                if hora < t - timedelta(minutes=30):
+                    continue
+                candidatas.append({"hora": hora, "minuto": m, "slot": slot, "cunas": cunas,
+                                   "duracion": dur, "cierre": m in cierre})
+            if candidatas:
+                return min(candidatas, key=lambda c: c["hora"])
         return None
 
     def _cunas_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]):

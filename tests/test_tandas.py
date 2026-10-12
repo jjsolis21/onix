@@ -50,3 +50,24 @@ def test_fijadas_abren_y_cierran_la_tanda():
     assert ids[0] == 3 and ids[-1] == 1
     # tras la fijada BANCO no viene otro BANCO
     assert ids == [3, 2, 4, 1]
+
+
+def test_orden_manual_va_despues_de_las_fijadas_primero():
+    from backend.audio.audio_engine import ordenar_tanda
+    orden = ordenar_tanda([P(1), {**P(2), "orden": 1}, {**P(3), "orden": 0},
+                           {**P(4), "posicion": 1}, {**P(5), "posicion": 2}])
+    assert [p["pauta_id"] for p in orden] == [4, 3, 2, 1, 5]
+
+
+def test_bloque_al_cierre_termina_en_punto():
+    from backend.audio.audio_engine import inicio_tanda
+    assert inicio_tanda(0, 600, True) == 50 * 60      # 10 min de cuñas → :50
+    assert inicio_tanda(30, 120, True) == 28 * 60     # termina a la media
+    assert inicio_tanda(15, 600, False) == 15 * 60    # normal: arranca en su minuto
+    assert inicio_tanda(5, 900, True) == 0            # nunca antes del inicio de la hora
+
+
+def test_versiones_rotan():
+    from backend.audio.audio_engine import version_rotada
+    assert [version_rotada([7, 8, 9], n) for n in range(5)] == [7, 8, 9, 7, 8]
+    assert version_rotada([], 3) is None

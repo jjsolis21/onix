@@ -210,3 +210,21 @@ def test_bandeja_de_entrada_y_edicion_masiva(client, tmp_path):
     r = client.post("/api/v1/biblioteca/lote", json={"ids": [b["id"]], "accion": "desactivar"})
     assert r.json()["actualizados"] == 1
     assert b["id"] not in {x["id"] for x in client.get("/api/v1/audios", params={"limit": 50000}).json()["data"]}
+
+
+def test_pauta_con_versiones_y_orden_de_bloque(client, tmp_path):
+    a = subir_cancion(client, tmp_path, "Version A")["id"]
+    b = subir_cancion(client, tmp_path, "Version B")["id"]
+    r = client.post("/api/v1/pautas", json={"cliente": "tienda", "audio_id": a, "versiones": [b],
+                                             "matriz": {"1-10": True}})
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert [v["id"] for v in p["versiones"]] == [a, b]
+    # Sin "versiones" en el PUT no se tocan
+    r = client.put(f"/api/v1/pautas/{p['id']}", json={"cliente": "tienda", "audio_id": a, "matriz": {"1-10": True}})
+    assert len(r.json()["versiones"]) == 2
+    assert client.put("/api/v1/pautas/orden", json={"ids": [p["id"]]}).json()["ordenadas"] == 1
+    lista = client.get("/api/v1/pautas").json()
+    assert next(x for x in lista if x["id"] == p["id"])["orden"] == 0
+    r = client.put("/api/v1/config/motor", json={"tandas_cierre": "0"})
+    assert r.status_code == 200 and r.json()["tandas_cierre"] == "0"
