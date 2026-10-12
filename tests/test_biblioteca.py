@@ -104,3 +104,22 @@ def test_restricciones_por_lote(client, tmp_path):
     # Los 7 días = sin restricción de días
     client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "cambios": {"restr_dias": list(range(7))}})
     assert client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()["restr_dias"] is None
+
+
+def test_caratula_y_difusion(client, tmp_path):
+    from mutagen.id3 import ID3, APIC
+    a = subir(client, tmp_path, "Sin Portada", "Artista Portada")
+    assert client.get(f"/api/v1/audios/{a['id']}/caratula").status_code == 404
+    # MP3 con carátula embebida
+    import shutil, subprocess
+    if shutil.which("ffmpeg"):
+        mp3 = tmp_path / "con_portada.mp3"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=d=2", str(mp3)], check=True)
+        t = ID3(); t.add(APIC(encoding=3, mime="image/png", type=3, desc="", data=b"\x89PNG\r\n\x1a\nFAKE")); t.save(str(mp3))
+        with open(mp3, "rb") as fh:
+            b = client.post("/api/v1/audios", data={"titulo": "Con Portada", "artista": "X"},
+                            files={"file": ("con_portada.mp3", fh, "audio/mpeg")}).json()["data"]
+        r = client.get(f"/api/v1/audios/{b['id']}/caratula")
+        assert r.status_code == 200 and r.content.startswith(b"\x89PNG")
+    f = client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()
+    assert len(f["historial"]["difusion"]) == 35 and len(f["historial"]["difusion"][0]["horas"]) == 24

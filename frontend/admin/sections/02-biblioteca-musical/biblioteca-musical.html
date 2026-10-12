@@ -2460,28 +2460,50 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=4">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=5">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
       <h2>Biblioteca musical</h2>
       <span id="bvResumen">Cargando…</span>
     </div>
-    <div class="bv-buscar">
-      <input type="search" id="bvBuscar" placeholder="Buscar título, artista o álbum…  ( / )" autocomplete="off">
-    </div>
     <div class="bv-acciones">
-      <button class="bv-btn bv-btn--pri" id="bvNueva">＋ Nueva canción</button>
-      <button class="bv-btn" id="bvLote">⬆ Cargar lote</button>
-      <button class="bv-btn" id="bvCategorias">🏷 Categorías</button>
       <button class="bv-btn" id="bvColumnas" title="Elegir columnas">☰ Columnas</button>
-      <button class="bv-btn" id="bvVerFicha" title="Mostrar u ocultar la ficha de la canción">ⓘ Ficha</button>
-      <button class="bv-btn" id="bvExportar" title="Exportar lo que se ve a CSV (Excel)">⬇ CSV</button>
+      <button class="bv-btn" id="bvVerFicha" title="Mostrar u ocultar la ficha y el análisis de difusión">ⓘ Ficha</button>
     </div>
   </header>
 
   <div class="bv-cuerpo">
-    <nav class="bv-arbol" id="bvArbol" aria-label="Navegar la biblioteca"></nav>
+    <!-- Panel izquierdo al estilo Jazler SoHo -->
+    <nav class="bv-arbol bv-panel" id="bvArbol" aria-label="Buscar y filtrar la biblioteca">
+      <div class="bv-p-botones">
+        <button class="bv-btn bv-btn--pri" id="bvNueva">＋ Agregar</button>
+        <button class="bv-btn" id="bvLote">⬆ Agregar en lote</button>
+        <button class="bv-btn" id="bvEliminar" title="Eliminar la marcada o las seleccionadas (Supr)">🗑 Eliminar</button>
+      </div>
+      <label class="bv-p-chk" title="Cambiar género, rotación, voz y energía directo en la tabla"><input type="checkbox" id="bvRapida"> Edición rápida</label>
+      <label class="bv-p-chk"><input type="checkbox" id="bvSoloMarcados"> Solo marcados</label>
+      <h3>Buscar</h3>
+      <input type="search" id="bvBuscar" placeholder="Buscar…  ( / )" autocomplete="off">
+      <select id="bvCampoQ" title="Dónde buscar">
+        <option value="todos">Todos los campos</option><option value="artista">Artista</option>
+        <option value="titulo">Título</option><option value="album">Álbum</option>
+      </select>
+      <h3>Mostrar</h3>
+      <select id="bvVista"></select>
+      <h3>Filtrar</h3>
+      <div id="bvFiltros"></div>
+      <button class="bv-btn bv-p-ancho" id="bvReiniciar">Reiniciar</button>
+      <h3>Tareas</h3>
+      <div class="bv-p-tareas">
+        <button id="bvCategorias">✎ Editar categorías</button>
+        <button id="bvEstad">📊 Estadísticas musicales</button>
+        <button id="bvImprimir">🖨 Imprimir esta lista</button>
+        <button id="bvExportar">⬇ Exportar esta lista (Excel)</button>
+        <button id="bvExportarBD">💾 Exportar base de datos</button>
+        <button id="bvIntegridad">🩺 Chequeo de integridad</button>
+      </div>
+    </nav>
 
     <section class="bv-centro">
       <div class="bv-aviso" id="bvAviso" hidden></div>
@@ -2514,6 +2536,7 @@
           <button id="bvPlay" title="Escuchar / parar">▶</button>
           <span id="bvPlayTxt">Clic en ▶ de una canción para escucharla</span>
           <div class="bv-prog" id="bvProg"><i id="bvProgFill"></i></div>
+          <label class="bv-p-chk" title="Al recorrer la lista con las flechas, suena cada canción"><input type="checkbox" id="bvAutoPlay"> AutoPlay</label>
         </div>
         <span class="bv-ayuda">Doble clic = editar · Mayús+clic = rango · Ctrl+A = todas</span>
       </footer>
@@ -2526,7 +2549,7 @@
 
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=5"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=6"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)

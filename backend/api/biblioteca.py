@@ -155,6 +155,20 @@ def ficha(audio_id: int):
                              " AND iniciado_en >= datetime('now', 'localtime', '-30 days')", (audio_id,)).fetchone()[0]
         ultimas = [r[0] for r in conn.execute(
             "SELECT iniciado_en FROM historial_emision WHERE audio_id = ? ORDER BY id DESC LIMIT 8", (audio_id,))]
+        # Análisis de difusión (como Jazler): días × horas de las últimas 5 semanas
+        from datetime import date, timedelta
+        hoy = date.today()
+        matriz = {}
+        for (d, h, n) in conn.execute(
+                "SELECT substr(iniciado_en, 1, 10), CAST(strftime('%H', iniciado_en) AS INTEGER), COUNT(*)"
+                " FROM historial_emision WHERE audio_id = ? AND iniciado_en >= date('now', 'localtime', '-34 days')"
+                " GROUP BY 1, 2", (audio_id,)):
+            if d and h is not None:
+                matriz.setdefault(d, [0] * 24)[int(h)] = n
+        difusion = [{"fecha": (hoy - timedelta(days=k)).isoformat(),
+                     "dia": ((hoy - timedelta(days=k)).weekday() + 1) % 7,
+                     "horas": matriz.get((hoy - timedelta(days=k)).isoformat(), [0] * 24)} for k in range(35)]
+        primera = conn.execute("SELECT MIN(iniciado_en) FROM historial_emision WHERE audio_id = ?", (audio_id,)).fetchone()[0]
         por_hora = [0] * 24
         for (h, n) in conn.execute(
                 "SELECT CAST(strftime('%H', iniciado_en) AS INTEGER), COUNT(*) FROM historial_emision"
@@ -216,7 +230,8 @@ def ficha(audio_id: int):
             "restr_hasta": a["restr_hasta"] if "restr_hasta" in claves else None,
             "restr_dias": a["restr_dias"] if "restr_dias" in claves else None,
             "max_por_dia": a["max_por_dia"] if "max_por_dia" in claves else None,
-            "historial": {"total": total, "ultimos_30_dias": ult30, "ultimas": ultimas, "por_hora_30d": por_hora},
+            "historial": {"total": total, "ultimos_30_dias": ult30, "ultimas": ultimas, "por_hora_30d": por_hora,
+                          "desde": primera, "difusion": difusion},
             "relojes": relojes, "en_programa": en_programa,
             "duplicados": duplicados(conn, a["artista"], a["titulo"], excluir=audio_id),
         }
@@ -340,3 +355,65 @@ def calidad():
                 "papelera": conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 0 AND tipo_audio != 'Cuña'").fetchone()[0]}
     finally:
         conn.close()
+
+
+# ── Carátula (imagen del disco guardada dentro del archivo) ─────────────────
+
+def _extraer_caratula(ruta) -> Optional[tuple[bytes, str]]:
+    """(bytes, tipo) de la carátula embebida en MP3 (ID3 APIC), M4A (covr) o FLAC."""
+    try:
+        import mutagen
+        f = mutagen.File(str(ruta))
+        if f is None:
+            return None
+        tags = getattr(f, "tags", None)
+        if tags is not None and hasattr(tags, "getall"):               # MP3
+            pics = tags.getall("APIC")
+            if pics:
+                return pics[0].data, pics[0].mime or "image/jpeg"
+        if tags is not None and "covr" in tags:                         # M4A
+            c = tags["covr"][0]
+            return bytes(c), "image/png" if getattr(c, "imageformat", 13) == 14 else "image/jpeg"
+        pics = getattr(f, "pictures", None)                             # FLAC
+        if pics:
+            return pics[0].data, pics[0].mime or "image/jpeg"
+    except Exception:
+        return None
+    return None
+
+
+@router.get("/api/v1/audios/{audio_id}/caratula", summary="Carátula del disco (si el archivo la trae)")
+def caratula(audio_id: int):
+    """
+    Se extrae una vez y se guarda en media/.caratulas/ (también el "no tiene",
+    para no volver a leer el archivo). 404 = sin carátula.
+    """
+    from fastapi.responses import FileResponse
+    cache = MEDIA_ROOT / ".caratulas"
+    for ext in ("jpg", "png"):
+        p = cache / f"{audio_id}.{ext}"
+        if p.is_file():
+            return FileResponse(p, headers={"Cache-Control": "max-age=86400"})
+    if (cache / f"{audio_id}.none").exists():
+        raise HTTPException(status_code=404, detail="Sin carátula")
+    conn = _conn()
+    try:
+        r = conn.execute("SELECT archivo_path FROM audios WHERE id = ?", (audio_id,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="Audio no encontrado")
+    res = None
+    try:
+        ruta = resolve_media(r["archivo_path"] or "")
+        res = _extraer_caratula(ruta) if ruta.is_file() else None
+    except OSError:
+        pass
+    cache.mkdir(parents=True, exist_ok=True)
+    if not res:
+        (cache / f"{audio_id}.none").write_text("")
+        raise HTTPException(status_code=404, detail="Sin carátula")
+    datos, mime = res
+    p = cache / f"{audio_id}.{'png' if 'png' in mime else 'jpg'}"
+    p.write_bytes(datos)
+    return FileResponse(p, headers={"Cache-Control": "max-age=86400"})

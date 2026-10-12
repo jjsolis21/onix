@@ -50,10 +50,19 @@
     todos: [], filtrados: [], schema: null, colores: {},
     nodo: { tipo: 'todo' }, q: '', orden: leer('bv_orden', { k: 'artista', dir: 1 }),
     visibles: new Set(leer('bv_cols', COLUMNAS.filter(c => !c.oculta).map(c => c.k))),
-    sel: new Set(), ancla: null, cursor: -1, sonando: null, abiertos: leer('bv_grupos', {}),
+    sel: new Set(), ancla: null, cursor: -1, sonando: null,
     verFicha: leer('bv_ficha', true), fichaId: null,
     calidad: {}, papelera: [],
+    f: {}, campoQ: 'todos', rapida: false, soloMarcados: false, autoplay: leer('bv_autoplay', false),
   };
+  // Filtros combinables del panel izquierdo (como Jazler SoHo)
+  const FILTROS = [
+    ['tipo_audio', 'Tipo'], ['cat1', null], ['cat2', null], ['cat3', null], ['voz', 'Voz'],
+    ['origen', 'Origen'], ['energia', 'Energía'], ['decada', 'Década'],
+  ];
+  const CALIDAD = [['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
+    ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'], ['olvidadas', '💤 Olvidadas (30 días)'],
+    ['restringidas', '⏱ Con restricciones']];
   const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const enPapelera = () => S.nodo.tipo === 'papelera';
   let audio = null;
@@ -89,17 +98,9 @@
     pintarArbol(); filtrar(); pintarMasiva();
   }
 
-  // ── Árbol ────────────────────────────────────────────────
-  function grupo(clave, titulo, nodos) {
-    const cerrado = S.abiertos[clave] === false;
-    return `<div class="bv-grupo ${cerrado ? 'cerrado' : ''}" data-grupo="${clave}">
-      <button type="button">${titulo}</button><div>${nodos.join('')}</div></div>`;
-  }
-  function nodo(n, txt, cuenta, extra = '', color = '') {
-    const activo = JSON.stringify(n) === JSON.stringify(S.nodo);
-    return `<button type="button" class="bv-nodo ${extra} ${activo ? 'activo' : ''}" data-nodo='${esc(JSON.stringify(n))}'>
-      ${color ? `<i style="background:${esc(color)}"></i>` : ''}<span>${esc(txt)}</span><small>${cuenta}</small></button>`;
-  }
+  // ── Panel izquierdo ─────────────────────────────────────
+
+
   function contar(campo, soloMusica = true) {
     const m = new Map();
     S.todos.forEach(a => {
@@ -109,40 +110,52 @@
     });
     return m;
   }
-  function nodosCampo(campo, orden, colorear = false) {
-    const m = contar(campo);
-    const valores = [...m.keys()].filter(v => v !== '').sort((a, b) => orden ? orden(a, b) : String(a).localeCompare(String(b)));
-    const out = valores.map(v => nodo({ campo, valor: v }, String(v), m.get(v), '', colorear ? (S.colores[String(v).toUpperCase()] || '#555') : ''));
-    if (m.get('')) out.push(nodo({ campo, valor: '' }, '(sin asignar)', m.get(''), 'bv-nodo--vacio'));
-    return out;
-  }
+
   function pintarArbol() {
     const pend = S.todos.filter(a => a.tipo_audio === 'Musica' && !a.aprobada).length;
     const porTipo = contar('tipo_audio', false);
-    const etiquetas = Object.fromEntries((S.schema?.categorias || []).map(c => [c.nombre_interno, c.etiqueta_visible]));
-    $('bvArbol').innerHTML =
-      nodo({ tipo: 'todo' }, 'Toda la biblioteca', S.todos.length) +
-      nodo({ tipo: 'bandeja' }, '📥 Bandeja de entrada', pend, pend ? 'bv-nodo--bandeja' : '') +
-      grupo('tipo', 'Tipo', Object.entries(TIPOS).map(([k, t]) => nodo({ campo: 'tipo_audio', valor: k }, t, porTipo.get(k) || 0))) +
-      grupo('cat1', etiquetas.cat1 || 'Género', nodosCampo('cat1', null, true)) +
-      grupo('cat2', etiquetas.cat2 || 'Rotación', nodosCampo('cat2')) +
-      grupo('cat3', etiquetas.cat3 || 'Subgénero', nodosCampo('cat3')) +
-      grupo('voz', 'Voz', nodosCampo('voz')) +
-      grupo('origen', 'Origen', nodosCampo('origen')) +
-      grupo('energia', 'Energía', nodosCampo('energia', (a, b) => a - b)) +
-      grupo('decada', 'Década', nodosCampo('decada')) +
-      grupo('calidad', 'Calidad', [
-        ['duplicados', '⧉ Posibles duplicados'], ['sin_clasificar', '🏷 Sin género o rotación'],
-        ['volumen', '🔇 Volumen raro'], ['quemadas', '🔥 Quemadas (7 días)'],
-        ['olvidadas', '💤 Olvidadas (30 días)'], ['restringidas', '⏱ Con restricciones'],
-      ].map(([k, t]) => nodo({ tipo: 'ids', clave: k }, t, S.calidad[k]?.size ?? 0, S.calidad[k]?.size ? '' : 'bv-nodo--vacio'))
-        .concat(nodo({ tipo: 'papelera' }, '🗑 Papelera', S.papelera.length, S.papelera.length ? '' : 'bv-nodo--vacio')));
+    // "Mostrar": vistas especiales
+    const vistas = [['{"tipo":"todo"}', `Toda la biblioteca (${S.todos.length})`],
+      ['{"tipo":"bandeja"}', `📥 Bandeja de entrada (${pend})`],
+      ...CALIDAD.map(([k, t]) => [JSON.stringify({ tipo: 'ids', clave: k }), `${t} (${S.calidad[k]?.size ?? 0})`]),
+      ['{"tipo":"papelera"}', `🗑 Papelera (${S.papelera.length})`]];
+    $('bvVista').innerHTML = vistas.map(([v, t]) => `<option value='${esc(v)}'>${esc(t)}</option>`).join('');
+    $('bvVista').value = JSON.stringify(S.nodo);
+    $('bvVista').classList.toggle('bv-vista-alerta', S.nodo.tipo !== 'todo');
+    pintarFiltros();
     $('bvResumen').textContent = `${porTipo.get('Musica') || 0} canciones · ${S.todos.length} audios` + (pend ? ` · ${pend} en la Bandeja` : '');
   }
 
+  /** Desplegables combinables; cada opción dice cuántas quedan con los demás filtros puestos. */
+  function pintarFiltros() {
+    const etq = Object.fromEntries((S.schema?.categorias || []).map(c => [c.nombre_interno, c.etiqueta_visible]));
+    const base = (enPapelera() ? S.papelera : S.todos);
+    $('bvFiltros').innerHTML = FILTROS.map(([campo, titulo]) => {
+      const nombre = titulo || etq[campo] || campo;
+      const cuenta = new Map();
+      base.forEach(a => { if (pasa(a, campo)) { const v = a[campo] ?? ''; cuenta.set(v, (cuenta.get(v) || 0) + 1); } });
+      const orden = campo === 'energia' ? (x, y) => x - y : (x, y) => String(x).localeCompare(String(y));
+      const valores = [...cuenta.keys()].filter(v => v !== '' && v !== null).sort(orden);
+      const actual = S.f[campo];
+      const etiquetaValor = v => campo === 'tipo_audio' ? (TIPOS[v] || v) : (campo === 'energia' ? '●'.repeat(v) : v);
+      return `<select data-filtro="${campo}" class="${actual !== undefined ? 'bv-filtro-activo' : ''}">
+        <option value="">${esc(nombre)} (Todo)</option>
+        ${valores.map(v => `<option value="${esc(v)}" ${String(actual) === String(v) ? 'selected' : ''}>${esc(etiquetaValor(v))} (${cuenta.get(v)})</option>`).join('')}
+        ${cuenta.get('') ? `<option value="__vacio" ${actual === '' ? 'selected' : ''}>(sin asignar) (${cuenta.get('')})</option>` : ''}
+      </select>`;
+    }).join('');
+  }
+
+
+
   // ── Filtro y orden ───────────────────────────────────────
-  function pasa(a) {
+  function pasa(a, ignorar = null) {
     const n = S.nodo;
+    for (const [campo, valor] of Object.entries(S.f)) {
+      if (campo === ignorar) continue;
+      if (String(a[campo] ?? '') !== String(valor)) return false;
+    }
+    if (S.soloMarcados && !S.sel.has(a.id)) return false;
     if (n.tipo === 'bandeja' && !(a.tipo_audio === 'Musica' && !a.aprobada)) return false;
     if (n.tipo === 'ids' && !S.calidad[n.clave]?.has(a.id)) return false;
     if (n.campo) {
@@ -150,7 +163,8 @@
       if ((a[n.campo] ?? '') !== n.valor) return false;
     }
     if (S.q) {
-      const t = `${a.titulo} ${a.artista} ${a.album || ''}`.toUpperCase();
+      const t = (S.campoQ === 'todos' ? `${a.titulo} ${a.artista} ${a.album || ''} ${a.cat1} ${a.cat2} ${a.anio ?? ''}`
+                                      : String(a[S.campoQ] ?? '')).toUpperCase();
       if (!S.q.split(/\s+/).every(p => t.includes(p))) return false;
     }
     return true;
@@ -188,7 +202,7 @@
         restringidas: 'Tienen franja horaria, días o tope por día.' }[S.nodo.clave];
       aviso.hidden = false; aviso.textContent = txt || '';
     } else aviso.hidden = true;
-    pintarCabecera(); pintarFilas();
+    pintarCabecera(); pintarFilas(); pintarFiltros();
     $('bvConteo').textContent = `${S.filtrados.length} de ${S.todos.length}`;
   }
 
@@ -209,9 +223,24 @@
       }).join('');
   }
 
+  function selectRapido(a, campo) {
+    let opciones;
+    if (campo === 'energia') opciones = ['', '1', '2', '3', '4', '5'];
+    else {
+      const cat = (S.schema?.categorias || []).find(x => x.nombre_interno === campo);
+      opciones = [''].concat((cat?.valores || []).map(v => String(v.valor).toUpperCase()));
+      if (a[campo] && !opciones.includes(a[campo])) opciones.push(a[campo]);
+    }
+    return `<div><select class="bv-rapido" data-rapido="${campo}" data-id="${a.id}">${opciones.map(o =>
+      `<option value="${esc(o)}" ${String(a[campo] ?? '') === o ? 'selected' : ''}>${o === '' ? '—' : esc(campo === 'energia' ? '●'.repeat(+o) : o)}</option>`).join('')}</select></div>`;
+  }
+
   function celda(a, c) {
+    if (S.rapida && !enPapelera() && ['cat1', 'cat2', 'voz', 'energia'].includes(c.k)) return selectRapido(a, c.k);
     switch (c.k) {
-      case 'titulo': return `<div class="bv-c-tit" title="${esc(a.titulo)} — ${esc(a.artista)}"><b>${esc(a.titulo)}</b><small>${esc(a.artista)}</small></div>`;
+      case 'titulo': return `<div class="bv-c-tit" title="${esc(a.titulo)} — ${esc(a.artista)}">
+        <span class="bv-tapa" data-tapa="${a.id}">${S.sinTapa?.has(a.id) ? '♪' : `<img loading="lazy" src="/api/v1/audios/${a.id}/caratula" alt="" onerror="this.parentNode.textContent='♪';window.BibliotecaVista&&window.BibliotecaVista.sinTapa(${a.id})">`}</span>
+        <b>${esc(a.titulo)}</b><small>${esc(a.artista)}</small></div>`;
       case 'cat1': return `<div>${a.cat1 ? `<span class="bv-chip" style="background:${esc(S.colores[String(a.cat1).toUpperCase()] || '#777')}">${esc(a.cat1)}</span>` : ''}</div>`;
       case 'energia': return `<div class="bv-energia" title="Energía ${a.energia ?? '—'}">${a.energia ? '●'.repeat(a.energia) : ''}</div>`;
       case 'duracion': return `<div class="bv-num">${fmt(a.duracion)}</div>`;
@@ -251,7 +280,7 @@
     for (let i = desde; i < hasta; i++) {
       const a = S.filtrados[i];
       const color = a.cat1 ? (S.colores[String(a.cat1).toUpperCase()] || '') : '';
-      html += `<div class="bv-fila ${S.sel.has(a.id) ? 'sel' : ''} ${i === S.cursor ? 'cursor' : ''}" data-i="${i}" style="--bv-color:${esc(color)}">
+      html += `<div class="bv-fila ${color ? 'tenida' : ''} ${S.sel.has(a.id) ? 'sel' : ''} ${i === S.cursor ? 'cursor' : ''}" data-i="${i}" style="--bv-color:${esc(color)}">
         <div><input type="checkbox" class="bv-chk" ${S.sel.has(a.id) ? 'checked' : ''} tabindex="-1"></div>
         <div><button class="bv-playbtn ${S.sonando === a.id ? 'sonando' : ''}" data-play="${a.id}" tabindex="-1">${S.sonando === a.id ? '■' : '▶'}</button></div>
         ${cols.map(c => celda(a, c)).join('')}</div>`;
@@ -412,9 +441,8 @@
       </dl></div>
       <div class="bv-f-sec"><h4>Al aire</h4>
         <div class="bv-f-kpi"><div><b>${h.total}</b><span>veces en total</span></div><div><b>${h.ultimos_30_dias}</b><span>últimos 30 días</span></div></div>
-        ${h.ultimos_30_dias ? `<div class="bv-horas" title="A qué hora sonó (30 días)">${h.por_hora_30d.map((n, i) =>
-          `<i style="height:${Math.round(n / max * 100)}%" title="${String(i).padStart(2, '0')}h: ${n}"></i>`).join('')}</div>
-          <div class="bv-horas-ej"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>` : ''}
+        ${h.desde ? `<p style="font-size:11px;color:var(--text-lo);margin:0 0 6px">Desde ${esc(h.desde.slice(0, 10))}</p>` : ''}
+        ${difusion(h.difusion)}
         ${f.en_programa.length ? `<p style="font-size:12px;color:var(--gold-1);margin:6px 0">▶ En el programa de hoy: ${f.en_programa.map(esc).join(', ')}</p>` : ''}
         ${h.ultimas.length ? `<div class="bv-f-ultimas">${h.ultimas.map(u => `<div>${esc(u.slice(0, 16).replace('T', ' '))}</div>`).join('')}</div>` : '<p style="font-size:12px;color:var(--text-lo)">Todavía no salió al aire.</p>'}
       </div>
@@ -447,6 +475,19 @@
       });
     });
     onda.on('error', () => { cont.innerHTML = '<p class="bv-ficha-vacia" style="margin:22px 0">Sin archivo de audio</p>'; });
+  }
+
+  /** Análisis de difusión como Jazler: últimos 35 días (filas) × 24 horas (columnas). */
+  function difusion(dias) {
+    if (!dias?.length) return '';
+    const cab = `<div class="bv-dif-f bv-dif-cab"><span></span>${Array.from({ length: 24 }, (_, hh) =>
+      `<b>${hh % 3 === 0 ? String(hh).padStart(2, '0') : ''}</b>`).join('')}<em>Tot</em></div>`;
+    return `<div class="bv-dif" title="Cada cuadro = una hora de un día; encendido = sonó">${cab}${dias.map(d => {
+      const tot = d.horas.reduce((x, y) => x + y, 0);
+      const finde = d.dia === 0 || d.dia === 6;
+      return `<div class="bv-dif-f ${finde ? 'finde' : ''}"><span>${d.fecha.slice(8, 10)}/${d.fecha.slice(5, 7)} ${DIAS[d.dia].slice(0, 2)}</span>${
+        d.horas.map((n, hh) => `<i class="${n ? 'on' : ''}" title="${d.fecha} ${String(hh).padStart(2, '0')}h${n ? `: ${n} vez/veces` : ''}"></i>`).join('')}<em>${tot || ''}</em></div>`;
+    }).join('')}</div>`;
   }
 
   function textoRestr(f) {
@@ -543,24 +584,53 @@
       clearTimeout(t);
       t = setTimeout(() => { S.q = e.target.value.trim().toUpperCase(); S.cursor = -1; $('bvScroll').scrollTop = 0; filtrar(); }, 120);
     });
-    $('bvArbol').addEventListener('click', e => {
-      const g = e.target.closest('.bv-grupo > button');
-      if (g) {
-        const div = g.parentElement;
-        div.classList.toggle('cerrado');
-        S.abiertos[div.dataset.grupo] = !div.classList.contains('cerrado');
-        guardar('bv_grupos', S.abiertos);
-        return;
-      }
-      const n = e.target.closest('.bv-nodo');
-      if (!n) return;
+    const cambiarVista = v => {
       const eraPapelera = enPapelera();
-      S.nodo = JSON.parse(n.dataset.nodo);
-      if (eraPapelera !== enPapelera()) { S.sel.clear(); pintarMasiva(); }   // no mezclar papelera con biblioteca
+      S.nodo = JSON.parse(v);
+      if (eraPapelera !== enPapelera()) { S.sel.clear(); pintarMasiva(); }
       S.cursor = -1; $('bvScroll').scrollTop = 0;
-      document.querySelectorAll('.bv-nodo').forEach(x => x.classList.toggle('activo', x === n));
-      filtrar();
+      pintarArbol(); filtrar();
+    };
+    $('bvVista').addEventListener('change', e => cambiarVista(e.target.value));
+    $('bvFiltros').addEventListener('change', e => {
+      const s = e.target.closest('select[data-filtro]');
+      if (!s) return;
+      if (s.value === '') delete S.f[s.dataset.filtro];
+      else S.f[s.dataset.filtro] = s.value === '__vacio' ? '' : (s.dataset.filtro === 'energia' ? +s.value : s.value);
+      S.cursor = -1; $('bvScroll').scrollTop = 0; filtrar();
     });
+    $('bvReiniciar').addEventListener('click', () => {
+      S.f = {}; S.q = ''; $('bvBuscar').value = ''; S.soloMarcados = false; $('bvSoloMarcados').checked = false;
+      cambiarVista('{"tipo":"todo"}');
+    });
+    $('bvCampoQ').addEventListener('change', e => { S.campoQ = e.target.value; filtrar(); });
+    $('bvRapida').addEventListener('change', e => { S.rapida = e.target.checked; pintarFilas(); });
+    $('bvSoloMarcados').addEventListener('change', e => { S.soloMarcados = e.target.checked; filtrar(); });
+    $('bvAutoPlay').checked = S.autoplay;
+    $('bvAutoPlay').addEventListener('change', e => { S.autoplay = e.target.checked; guardar('bv_autoplay', S.autoplay); });
+    $('bvEliminar').addEventListener('click', () => {
+      if (enPapelera()) { aviso('En la Papelera usa ♻ Restaurar o ✖ Borrar definitivamente', 'info'); return; }
+      if (!S.sel.size && S.cursor >= 0) S.sel.add(S.filtrados[S.cursor].id);
+      if (!S.sel.size) { aviso('Marca una canción (clic) o selecciónalas primero', 'info'); return; }
+      eliminarSeleccion();
+    });
+    $('bvEstad').addEventListener('click', () => window.ShellNav?.activate('07-estadisticas'));
+    $('bvImprimir').addEventListener('click', imprimir);
+    $('bvExportarBD').addEventListener('click', () => typeof exportarBD === 'function' && exportarBD());
+    $('bvIntegridad').addEventListener('click', () => typeof chequeoIntegridad === 'function' && chequeoIntegridad());
+    $('bvFilas').addEventListener('change', async e => {
+      const s = e.target.closest('select.bv-rapido');
+      if (!s) return;
+      const id = +s.dataset.id, campo = s.dataset.rapido, valor = s.value === '' ? null : s.value;
+      const r = await fetch('/api/v1/biblioteca/lote', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id], cambios: { [campo]: valor } }) });
+      if (!r.ok) { aviso('No se pudo guardar', 'error'); return; }
+      const a = S.todos.find(x => x.id === id);
+      if (a) a[campo] = campo === 'energia' ? (valor ? +valor : null) : (valor || '');
+      pintarFiltros();
+      if (S.fichaId === id) mostrarFicha(id, true);
+    });
+
     $('bvScroll').addEventListener('scroll', () => requestAnimationFrame(pintarFilas));
     window.addEventListener('resize', () => pintarFilas());
     $('bvThead').addEventListener('click', e => {
@@ -589,6 +659,7 @@
       document.querySelectorAll('.bv-fila.cursor').forEach(x => x.classList.remove('cursor'));
       f.classList.add('cursor');
       mostrarFicha(S.filtrados[S.cursor]?.id);
+      if (S.autoplay && S.sonando !== S.filtrados[S.cursor]?.id && !e.target.closest('select')) escuchar(S.filtrados[S.cursor].id);
     });
     $('bvFilas').addEventListener('dblclick', e => {
       const f = e.target.closest('.bv-fila');
@@ -605,6 +676,7 @@
         if ((S.cursor + 1) * alto > sc.scrollTop + sc.clientHeight) sc.scrollTop = (S.cursor + 1) * alto - sc.clientHeight;
         pintarFilas();
         mostrarFicha(S.filtrados[S.cursor]?.id);
+        if (S.autoplay && S.filtrados[S.cursor] && S.sonando !== S.filtrados[S.cursor].id) escuchar(S.filtrados[S.cursor].id);
       } else if (e.key === ' ' && S.cursor >= 0) { e.preventDefault(); seleccionar(S.cursor, e); }
       else if (e.key === 'Enter' && S.cursor >= 0) editar(S.filtrados[S.cursor].id);
       else if (e.key === 'Escape') { S.sel.clear(); pintarFilas(); pintarCabecera(); pintarMasiva(); }
@@ -703,6 +775,24 @@
     enlazar();
     cargar().catch(err => aviso(`No se pudo cargar la biblioteca: ${err.message}`, 'error'));
   }
-  window.BibliotecaVista = { init, recargar: () => cargar() };
+  /** Imprimir esta lista (como Jazler): lo que se ve, en una hoja limpia. */
+  function imprimir() {
+    const etq = Object.fromEntries((S.schema?.categorias || []).map(c => [c.nombre_interno, c.etiqueta_visible]));
+    const filas = S.filtrados.map((a, i) => `<tr><td>${i + 1}</td><td>${esc(a.artista)}</td><td>${esc(a.titulo)}</td>
+      <td>${esc(a.cat1)}</td><td>${esc(a.cat2)}</td><td>${a.anio ?? ''}</td><td>${fmt(a.duracion)}</td><td>${a.veces || ''}</td></tr>`).join('');
+    const w = window.open('', '_blank');
+    if (!w) { aviso('El navegador bloqueó la ventana de impresión', 'error'); return; }
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>Biblioteca ONIX FM</title>
+      <style>body{font:12px Arial,sans-serif;margin:20px}h1{font-size:18px;margin:0 0 4px}p{color:#555;margin:0 0 12px}
+      table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #ccc;padding:3px 6px;text-align:left}
+      th{background:#eee}tr:nth-child(even) td{background:#fafafa}</style>
+      <h1>ONIX FM · Biblioteca musical</h1><p>${S.filtrados.length} canciones · ${new Date().toLocaleString('es')}</p>
+      <table><thead><tr><th>#</th><th>Artista</th><th>Título</th><th>${esc(etq.cat1 || 'Género')}</th><th>${esc(etq.cat2 || 'Rotación')}</th>
+      <th>Año</th><th>Dur.</th><th>Sonó</th></tr></thead><tbody>${filas}</tbody></table>`);
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
+  }
+
+  window.BibliotecaVista = { init, recargar: () => cargar(),
+    sinTapa: id => { (S.sinTapa ??= new Set()).add(id); } };
   init();
 })();
