@@ -6,7 +6,9 @@
 .bv-root {
   --bv-fila: 34px;
   display: flex; flex-direction: column; gap: 10px;
-  height: calc(100vh - 150px); min-height: 520px;
+  /* Ocupa justo el alto del panel (antes 100vh - 150px: con Windows al 125 %
+     o pantallas chicas se cortaba el panel de Tareas y el reproductor) */
+  height: 100%; min-height: 440px; padding-bottom: 4px;
   color: var(--text-mid); font-family: var(--font-ui), "Segoe UI", sans-serif;
 }
 .bv-root *, .bv-root *::before, .bv-root *::after { box-sizing: border-box; }
@@ -34,7 +36,7 @@
 .bv-btn--x { padding: 7px 9px; }
 
 /* ── Cuerpo: árbol + centro ── */
-.bv-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 10px; }
+.bv-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 10px; }
 @media (max-width: 900px) { .bv-cuerpo { grid-template-columns: 1fr; } .bv-arbol { max-height: 220px; } }
 
 .bv-arbol {
@@ -118,11 +120,6 @@
 
 /* ── Pie: conteo y reproductor ── */
 .bv-pie { display: flex; align-items: center; gap: 14px; font-family: var(--font-data); font-size: 11px; color: var(--text-lo); flex-wrap: wrap; }
-.bv-player { flex: 1 1 300px; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.bv-player button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--gold-0); background: transparent; color: var(--gold-0); cursor: pointer; }
-.bv-player span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-mid); max-width: 40%; }
-.bv-prog { flex: 1; height: 6px; background: var(--choc-4); border-radius: 3px; cursor: pointer; overflow: hidden; }
-.bv-prog i { display: block; height: 100%; width: 0; background: var(--gold-0); }
 .bv-ayuda { margin-left: auto; }
 
 /* ── Menú de columnas ── */
@@ -245,3 +242,41 @@
 .bv-energia.e-3 { color: var(--gold-1); }
 .bv-energia.e-4 { color: #ffa94d; }
 .bv-energia.e-5 { color: #ff6b6b; }
+
+/* ── Reproductor de preescucha (pro) ── */
+.bv-player {
+  flex: none; display: grid; grid-template-columns: auto 52px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  background: linear-gradient(180deg, var(--choc-2), var(--choc-0)); border: 1px solid var(--choc-5);
+  border-radius: 10px; padding: 8px 12px; box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+}
+.bv-player.sonando { border-color: color-mix(in srgb, var(--gold-0) 55%, var(--choc-5)); }
+.bvp-mandos { display: flex; align-items: center; gap: 4px; }
+.bvp-b {
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--choc-5); background: var(--choc-3);
+  color: var(--text-hi); font-size: 13px; cursor: pointer; display: grid; place-items: center;
+}
+.bvp-b:hover { border-color: var(--gold-0); color: var(--gold-1); }
+.bvp-play { width: 50px; height: 50px; border-radius: 50%; background: var(--gold-0); color: #000; border: 0; font-size: 18px; font-weight: 800; }
+.bvp-play:hover { background: var(--gold-1); color: #000; }
+.bv-player.sonando .bvp-play { box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold-0) 25%, transparent); }
+.bvp-tapa {
+  width: 52px; height: 52px; border-radius: 6px; background: var(--choc-4); overflow: hidden;
+  display: grid; place-items: center; font-size: 22px; color: var(--text-lo);
+}
+.bvp-tapa img { width: 100%; height: 100%; object-fit: cover; }
+.bvp-centro { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.bvp-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.bvp-txt { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
+.bvp-txt b { color: var(--text-hi); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bvp-txt span { color: var(--text-lo); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bvp-tiempos { font-family: var(--font-data); font-size: 12px; color: var(--text-lo); white-space: nowrap; display: flex; gap: 6px; align-items: baseline; }
+.bvp-tiempos b { color: var(--gold-2, var(--gold-1)); font-size: 16px; font-weight: 600; }
+.bvp-tiempos em { font-style: normal; color: var(--text-mid); min-width: 42px; text-align: right; }
+.bvp-onda { position: relative; height: 40px; background: #000; border: 1px solid var(--choc-5); border-radius: 6px; cursor: pointer; overflow: hidden; }
+.bvp-onda > div { position: absolute; inset: 0; }
+.bvp-onda > i { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--gold-0); pointer-events: none; }
+.bvp-marca { position: absolute; top: 0; bottom: 0; width: 2px; z-index: 3; pointer-events: none; }
+.bvp-lado { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.bvp-vol { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.bvp-vol input { width: 90px; accent-color: var(--gold-0); }
+@media (max-width: 1100px) { .bvp-tapa { display: none; } .bv-player { grid-template-columns: auto minmax(0, 1fr) auto; } }

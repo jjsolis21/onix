@@ -2460,7 +2460,7 @@
 <!-- Vista principal (Fase A): árbol + tabla + edición masiva + Bandeja de entrada.
      La lógica está en biblioteca-vista.js; el editor de canción, el lote y las
      categorías siguen siendo las ventanas de más abajo (admin-app.js). -->
-<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=7">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/biblioteca-vista.css?v=8">
 <div id="bv-root" class="bv-root">
   <header class="bv-cab">
     <div class="bv-titulo">
@@ -2532,15 +2532,30 @@
         <div class="bv-thead" id="bvThead"></div>
         <div class="bv-scroll" id="bvScroll"><div class="bv-alto" id="bvAlto"><div class="bv-filas" id="bvFilas"></div></div></div>
       </div>
-      <footer class="bv-pie">
+      <div class="bv-pie">
         <span id="bvConteo"></span>
-        <div class="bv-player" id="bvPlayer">
-          <button id="bvPlay" title="Escuchar / parar">▶</button>
-          <span id="bvPlayTxt">Clic en ▶ de una canción para escucharla</span>
-          <div class="bv-prog" id="bvProg"><i id="bvProgFill"></i></div>
+        <span class="bv-ayuda">Doble clic = editar · Mayús+clic = rango · Ctrl+A = todas · P = escuchar · Mayús+← → = saltar 5 s</span>
+      </div>
+      <!-- Reproductor de preescucha -->
+      <footer class="bv-player" id="bvPlayer">
+        <div class="bvp-mandos">
+          <button class="bvp-b" id="bvAtras" title="Atrás 5 s (Mayús+←)">⏪</button>
+          <button class="bvp-b bvp-play" id="bvPlay" title="Escuchar / pausar (Espacio)">▶</button>
+          <button class="bvp-b" id="bvStop" title="Detener">■</button>
+          <button class="bvp-b" id="bvAdelante" title="Adelante 5 s (Mayús+→)">⏩</button>
+        </div>
+        <div class="bvp-tapa" id="bvpTapa">♪</div>
+        <div class="bvp-centro">
+          <div class="bvp-fila">
+            <div class="bvp-txt"><b id="bvPlayTxt">Elige una canción y pulsa ▶</b><span id="bvPlayArt"></span></div>
+            <div class="bvp-tiempos"><b id="bvpPos">0:00</b><span id="bvpDur">/ 0:00</span><em id="bvpResta"></em></div>
+          </div>
+          <div class="bvp-onda" id="bvProg" title="Clic o arrastra para ir a ese punto"><div id="bvpOnda"></div><i id="bvProgFill"></i></div>
+        </div>
+        <div class="bvp-lado">
+          <label class="bvp-vol" title="Volumen de la preescucha">🔊<input type="range" id="bvpVol" min="0" max="100" value="85"></label>
           <label class="bv-p-chk" title="Al recorrer la lista con las flechas, suena cada canción"><input type="checkbox" id="bvAutoPlay"> AutoPlay</label>
         </div>
-        <span class="bv-ayuda">Doble clic = editar · Mayús+clic = rango · Ctrl+A = todas</span>
       </footer>
     </section>
 
@@ -2553,7 +2568,7 @@
 </div>
 <link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=2">
 <script src="sections/02-biblioteca-musical/editor-cancion.js?v=2"></script>
-<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=9"></script>
+<script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=10"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
      MODAL — NUEVA CANCIÓN (replica Jazler Soho)
