@@ -10,10 +10,14 @@
 # Para reiniciar solo la API: Ctrl+C en esta ventana y volver a ejecutar el
 # script (si el motor ya está corriendo, el segundo motor se cierra solo y
 # la API se conecta al que ya suena).
+#
+# Después de un "git pull" hay que reiniciar TAMBIÉN el motor (corta el aire):
+#   powershell -ExecutionPolicy Bypass -File scripts\iniciar_onix.ps1 -ReiniciarMotor
 
 param(
     [int]$Puerto = 8001,
-    [int]$PuertoMotor = 8766
+    [int]$PuertoMotor = 8766,
+    [switch]$ReiniciarMotor    # cierra el motor en marcha para cargar el código nuevo
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +27,15 @@ Set-Location $raiz
 $env:ONIX_PORT        = "$Puerto"
 $env:ONIX_ENGINE      = "remoto"
 $env:ONIX_ENGINE_PORT = "$PuertoMotor"
+
+if ($ReiniciarMotor) {
+    $viejo = Get-NetTCPConnection -LocalPort $PuertoMotor -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($viejo) {
+        Write-Host "Cerrando el motor anterior (PID $($viejo.OwningProcess)) para cargar el código nuevo..." -ForegroundColor Yellow
+        Stop-Process -Id $viejo.OwningProcess -Force
+        Start-Sleep -Seconds 2
+    }
+}
 
 $motorActivo = Test-NetConnection -ComputerName 127.0.0.1 -Port $PuertoMotor `
     -InformationLevel Quiet -WarningAction SilentlyContinue
