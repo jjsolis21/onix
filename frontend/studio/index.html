@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=1" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=2" />
 </head>
 <body>
 
@@ -45,7 +45,10 @@
         <div class="barra-fill" id="nowFill"></div>
         <div class="marca marca-intro" id="marcaIntro" hidden title="Fin del intro"></div>
         <div class="marca marca-mezcla" id="marcaMezcla" hidden title="Punto de mezcla"></div>
+        <div class="barra-hover" id="barraHover" hidden><span></span></div>
+        <div class="marca marca-salto" id="marcaSalto" hidden></div>
         <div class="barra-tiempos"><span id="nowTranscurrido">0:00</span><span id="nowTotal">0:00</span></div>
+        <button class="btn-saltar" id="btnSaltar" hidden>⏩ IR A 0:00</button>
       </div>
     </div>
 
@@ -94,9 +97,16 @@
         <span class="panel-sub" id="decksFin"></span>
         <button class="icon-btn" id="btnRegenerar" title="Volver a planificar desde ahora">↻</button>
       </div>
-      <div class="decks-lista" id="decksLista"></div>
+      <div class="decks-lista" id="decksLista" tabindex="0"></div>
+      <div class="decks-barra" role="toolbar" aria-label="Acciones sobre el ítem seleccionado">
+        <button id="dkSubir" title="Subir (Alt+↑)">▲<small>SUBIR</small></button>
+        <button id="dkBajar" title="Bajar (Alt+↓)">▼<small>BAJAR</small></button>
+        <button id="dkPrimero" title="Que suene a continuación">⤒<small>PRIMERO</small></button>
+        <button id="dkCue" title="Preescuchar (salida interna)">🎧<small>ESCUCHAR</small></button>
+        <button id="dkQuitar" class="peligro" title="Quitar del programa (Supr)">✕<small>QUITAR</small></button>
+      </div>
       <div class="panel-foot">
-        <span id="decksInfo">Arrastra para reordenar · suelta canciones desde la biblioteca</span>
+        <span id="decksInfo">Clic para elegir · arrastra para reordenar · suelta canciones desde la biblioteca</span>
         <button class="icon-btn" id="btnVaciarCola" title="Vaciar la cola del operador">✕ COLA</button>
       </div>
     </section>
@@ -143,6 +153,6 @@
   </main>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=1"></script>
+  <script src="/static/studio/studio.js?v=2"></script>
 </body>
 </html>

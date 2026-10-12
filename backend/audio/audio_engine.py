@@ -1097,6 +1097,8 @@ class AudioEngine:
             elif name == "skip":
                 if not self._advance(permitir_plan=True):
                     self._do_stop("skip_sin_siguiente")
+            elif name == "seek":
+                self._do_seek(cmd[1])
             elif name == "detener_al_terminar":
                 self._detener_al_terminar = bool(cmd[1])
                 self.bus.emit("detener_al_terminar", {"activo": self._detener_al_terminar,
@@ -1259,6 +1261,19 @@ class AudioEngine:
         return {"inicio": self._now().isoformat(timespec="seconds"),
                 "reloj_id": it.get("reloj_id"), "fila": it.get("fila")}
 
+    def _do_seek(self, segundos: float):
+        if not self._current_track or (self._current_item or {}).get("origen") == "pauta":
+            return
+        self._finish_crossfade(force=True)
+        cue_in = self._cue_range(self._current_item)[0]
+        fin = self._hard_end if self._hard_end != float("inf") else self._duration
+        destino = max(cue_in, min(float(segundos), max(cue_in, fin - 1.0)))
+        if self._audio.set_position_sec(self._active_canal, destino):
+            # Si se salta mas alla del punto de mezcla, la siguiente entra enseguida
+            self._mix_fired = False
+            log.info("[Engine] Operador salta a %.1fs", destino)
+            self.bus.emit("seek", {"posicion": round(destino, 2)})
+
     def _plan_insertar(self, track: dict, posicion: int):
         from backend.audio.planner import _item
         it = _item("audio", self._now(), duracion_efectiva(track, self._crossfade_secs),
@@ -1318,6 +1333,18 @@ class AudioEngine:
             t += timedelta(seconds=it["duracion"])
         return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
                 "items": items, "fin": t.strftime("%H:%M:%S")}
+
+    def seek(self, segundos: float):
+        """
+        Adelanta o atrasa lo que suena al aire. No se permite con una cuña
+        de pauta: acortarla falsearia lo que se le reporta al cliente.
+        """
+        item = self._current_item
+        if not self._current_track or not item:
+            raise ValueError("No hay nada sonando")
+        if item.get("origen") == "pauta" or item["track"].get("tipo_audio") == TIPO_CUNA:
+            raise ValueError("No se puede adelantar una cuña de pauta")
+        self._cmds.put(("seek", float(segundos)))
 
     def detener_al_terminar(self, activo: bool = True):
         """Stop-next: la pista actual termina y no entra nada mas (ni en automatico)."""

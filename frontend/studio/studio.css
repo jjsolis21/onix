@@ -129,8 +129,21 @@ button { font-family: inherit; }
 .entra b { font-family: var(--f-display); font-size: 40px; line-height: 1; color: var(--cyan); font-weight: 400; }
 .entra.detenido b { color: var(--ambar); font-size: 24px; }
 
-.barra { grid-column: 2 / span 2; position: relative; height: 26px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
-.barra-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--rojo-osc), var(--ambar)); transition: width .25s linear; }
+.barra { grid-column: 2 / span 2; position: relative; height: 30px; background: var(--bg-3); border-radius: 4px; cursor: pointer; }
+.barra.bloqueada { cursor: not-allowed; }
+.barra-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 4px 0 0 4px; background: linear-gradient(90deg, var(--rojo-osc), var(--ambar)); transition: width .25s linear; }
+.barra-hover { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--txt-hi); opacity: .7; pointer-events: none; }
+.barra-hover span {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px;
+  font-family: var(--f-data); font-size: 11px; color: var(--txt-hi); background: var(--bg-0);
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; white-space: nowrap;
+}
+.marca-salto { width: 3px; background: var(--ambar-vivo); box-shadow: 0 0 8px var(--ambar-vivo); z-index: 2; }
+.btn-saltar {
+  position: absolute; right: 4px; top: 3px; bottom: 3px; z-index: 3; border: none; border-radius: 3px;
+  background: var(--ambar-vivo); color: var(--bg-0); font-family: var(--f-data); font-size: 12px; font-weight: 600;
+  padding: 0 10px; cursor: pointer; animation: pulso 1s ease-in-out infinite;
+}
 .marca { position: absolute; top: 0; bottom: 0; width: 3px; }
 .marca-intro { background: var(--verde); }
 .marca-mezcla { background: var(--cyan); }
@@ -226,10 +239,19 @@ button { font-family: inherit; }
 .deck.tanda .deck-tit, .deck.tanda .deck-art { color: #fff; }
 .deck-dur { font-family: var(--f-data); font-size: 12px; color: var(--txt-mid); text-align: right; }
 .deck-marcas { font-size: 11px; color: var(--ambar); }
-.deck-acc { position: absolute; right: 6px; top: 4px; display: none; gap: 4px; }
-.deck:hover .deck-acc { display: flex; }
-.deck-acc button { background: var(--bg-0); border: 1px solid var(--line); color: var(--txt-mid); border-radius: 3px; cursor: pointer; font-size: 11px; padding: 1px 6px; }
-.deck-acc button:hover { color: var(--ambar); border-color: var(--ambar); }
+.deck.sel { outline: 2px solid var(--ambar); outline-offset: -2px; background: var(--bg-4); }
+.decks-lista:focus { outline: none; }
+/* Barra de herramientas fija del programa (como la de Jazler SoHo) */
+.decks-barra { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 6px; background: var(--bg-2); border-top: 1px solid var(--line); }
+.decks-barra button {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 0;
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: 4px; color: var(--txt-hi);
+  font-size: 15px; cursor: pointer;
+}
+.decks-barra button small { font-family: var(--f-data); font-size: 9px; letter-spacing: .08em; color: var(--txt-mid); }
+.decks-barra button:hover:not(:disabled) { border-color: var(--ambar); }
+.decks-barra button.peligro:hover:not(:disabled) { border-color: var(--rojo); color: var(--rojo); }
+.decks-barra button:disabled { opacity: .3; cursor: default; }
 .deck.arrastrando { opacity: .4; }
 .deck.drop-antes { box-shadow: 0 -3px 0 var(--ambar); }
 .deck.drop-despues { box-shadow: 0 3px 0 var(--ambar); }

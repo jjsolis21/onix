@@ -47,7 +47,7 @@ METHODS = {
     "stop_playback", "fire_effect", "set_mode", "reload_config",
     "lanzar_tanda", "cue_play", "cue_stop", "list_devices",
     "programa", "plan_quitar", "plan_mover", "plan_regenerar",
-    "plan_insertar", "detener_al_terminar",
+    "plan_insertar", "detener_al_terminar", "seek",
 }
 
 

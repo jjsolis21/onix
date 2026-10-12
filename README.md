@@ -113,10 +113,15 @@ anterior sigue en `http://localhost:8001/`.
 - **Reproductor**: cuenta regresiva grande de lo que suena, **cuenta del intro** (cuánto
   queda para hablar encima; cambia a VOZ cuando entra la voz), barra con marcas de intro
   y mezcla, y **SIGUE** con su cuenta "entra en".
+- **Adelantar lo que suena**: clic en la barra para marcar el punto y **⏩ IR A m:ss** para
+  confirmar (Esc o 5 s cancela). Dos pasos a propósito: un clic accidental no salta el aire.
+  No se puede con una cuña de pauta.
 - **DETENER AL TERMINAR**: la canción suena completa y no entra nada más, ni en automático.
   El aire queda libre hasta que el operador presiona **REPRODUCIR**.
 - **Programa a la izquierda**: tarjetas con color por tipo (tanda en rojo); se **reordena
   arrastrando** y se **sueltan canciones desde la biblioteca** en la posición exacta (✋).
+  Clic elige una tarjeta y la barra fija de abajo actúa sobre ella: **▲ Subir · ▼ Bajar ·
+  ⤒ Primero · 🎧 Escuchar · ✕ Quitar**. Teclado: ↑/↓ elegir, Alt+↑/↓ mover, Supr quitar.
 - **Biblioteca** por tipo (música, jingles, sweepers, cuñas, programas, tips), con búsqueda
   y filtros. Doble clic = a la cola.
 - **Derecha**: próxima tanda con cuenta regresiva, historial y cartuchera.

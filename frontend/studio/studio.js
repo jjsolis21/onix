@@ -212,6 +212,67 @@ const Estado = (() => {
   return { poll, cargarPrograma, refrescarTodo, iniciar, get st() { return st; } };
 })();
 
+/* ─────────────────────── adelantar lo que suena ───────────────────────
+   Dos pasos a propósito: un clic accidental en la barra no debe saltar el
+   audio que escucha la gente. Clic = marcar el punto · botón = confirmar.
+   No se permite con una cuña de pauta (se acortaría lo que paga el cliente). */
+const Salto = (() => {
+  const barra = $("nowBarra"), hover = $("barraHover"), marca = $("marcaSalto"), boton = $("btnSaltar");
+  let destino = null, vence = null;
+
+  function geometria() {
+    const st = Estado.st, ct = st?.current_track;
+    if (!ct) return null;
+    const ini = ct.cue_inicio ?? 0, fin = ct.fin ?? st.duration_sec;
+    return { ct, ini, fin, largo: Math.max(1, fin - ini) };
+  }
+  const bloqueada = g => !g || g.ct.origen === "pauta" || g.ct.tipo_audio === "Cuña";
+  function segundoEn(e, g) {
+    const r = barra.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    return g.ini + f * g.largo;
+  }
+  function cancelar() {
+    destino = null; clearTimeout(vence);
+    marca.hidden = true; boton.hidden = true;
+  }
+
+  barra.addEventListener("mousemove", e => {
+    const g = geometria();
+    barra.classList.toggle("bloqueada", bloqueada(g));
+    barra.title = !g ? "" : (bloqueada(g) ? "No se puede adelantar una cuña" : "Clic para elegir a dónde adelantar");
+    if (bloqueada(g) || e.target === boton) { hover.hidden = true; return; }
+    const seg = segundoEn(e, g);
+    hover.hidden = false;
+    hover.style.left = `${((seg - g.ini) / g.largo) * 100}%`;
+    hover.querySelector("span").textContent = fmt(seg - g.ini);
+  });
+  barra.addEventListener("mouseleave", () => { hover.hidden = true; });
+  barra.addEventListener("click", e => {
+    if (e.target === boton) return;
+    const g = geometria();
+    if (bloqueada(g)) {
+      if (g) toast("No se puede adelantar una cuña de pauta", "aviso", 3000);
+      return;
+    }
+    destino = segundoEn(e, g);
+    marca.hidden = false;
+    marca.style.left = `${((destino - g.ini) / g.largo) * 100}%`;
+    boton.textContent = `⏩ IR A ${fmt(destino - g.ini)}`;
+    boton.hidden = false;
+    clearTimeout(vence);
+    vence = setTimeout(cancelar, 5000);
+  });
+  boton.addEventListener("click", e => {
+    e.stopPropagation();
+    if (destino !== null) WS.send({ cmd: "seek", posicion: destino });
+    cancelar();
+    setTimeout(Estado.poll, 200);
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && destino !== null) cancelar(); });
+  return { cancelar };
+})();
+
 /* ─────────────────────────── controles ─────────────────────────── */
 document.querySelectorAll(".modo-btn").forEach(b =>
   b.addEventListener("click", () => WS.send({ cmd: "set_mode", mode: b.dataset.modo })));
@@ -244,7 +305,7 @@ $("btnRegenerar").addEventListener("click", async () => {
 /* ─────────────────────────── decks (programa) ─────────────────────────── */
 const Decks = (() => {
   const lista = $("decksLista");
-  let items = [];
+  let items = [], sel = null;     // sel = uid de la tarjeta elegida
 
   function pintar(prog) {
     items = prog?.items ?? [];
@@ -270,7 +331,7 @@ const Decks = (() => {
       }
       if (it.tipo === "tanda") {
         const marcas = (it.inmediata ? " ⚡ EN PUNTO" : "") + (it.excede ? " ⚠ LARGA" : "");
-        html += `<div class="deck tanda" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="Tanda">
+        html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="Tanda">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
           <div class="deck-txt"><div class="deck-tit">📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
             <div class="deck-art">${it.cunas} cuña(s)</div></div>
@@ -278,23 +339,92 @@ const Decks = (() => {
         return;
       }
       const marcas = [it.compensacion ? "⚖" : "", it.cortada ? "✂" : "", it.operador ? "✋" : ""].join(" ").trim();
-      html += `<div class="deck" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="${esc(it.tipo_audio)}"
+      html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="${esc(it.tipo_audio)}"
           title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
         <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(it.titulo)}</div>
           <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div></div>
         <span class="deck-dur">${fmt(it.duracion_total)}<br><span class="deck-marcas">${marcas}</span></span>
-        <span class="deck-acc"><button data-cue="${it.audio_id}" title="Preescuchar">🎧</button><button data-quitar="${it.uid}" title="Quitar">✕</button></span>
       </div>`;
     });
     lista.innerHTML = html;
+    if (sel !== null && !items.some(x => x.uid === sel)) sel = null;   // ya sonó o se quitó
+    barra();
+  }
+
+  // ── Selección + barra de herramientas fija (como Jazler SoHo) ──
+  const indiceSel = () => items.findIndex(x => x.uid === sel);
+  function barra() {
+    const i = indiceSel(), it = items[i];
+    $("dkSubir").disabled = !it || i === 0;
+    $("dkBajar").disabled = !it || i === items.length - 1;
+    $("dkPrimero").disabled = !it || i === 0;
+    $("dkCue").disabled = !it || it.tipo !== "audio";
+    $("dkQuitar").disabled = !it;
+  }
+  function elegir(uid, enfocar = true) {
+    sel = uid;
+    lista.querySelectorAll(".deck.sel").forEach(d => d.classList.remove("sel"));
+    const d = lista.querySelector(`.deck[data-uid="${uid}"]`);
+    d?.classList.add("sel");
+    if (d && enfocar) d.scrollIntoView({ block: "nearest" });
+    barra();
+  }
+  function mover(posicion) {
+    const i = indiceSel();
+    if (i < 0) return;
+    posicion = Math.max(0, Math.min(items.length - 1, posicion));
+    if (posicion === i) return;
+    // Respuesta inmediata en pantalla; el servidor confirma con programa_actualizado
+    const [it] = items.splice(i, 1);
+    items.splice(posicion, 0, it);
+    WS.send({ cmd: "plan_mover", uid: it.uid, posicion });
+  }
+  function quitar() {
+    const i = indiceSel();
+    if (i < 0) return;
+    WS.send({ cmd: "plan_quitar", uid: sel });
+    sel = items[i + 1]?.uid ?? items[i - 1]?.uid ?? null;   // la selección pasa a la vecina
   }
 
   lista.addEventListener("click", e => {
-    const b = e.target.closest("button");
-    if (!b) return;
-    if (b.dataset.cue) WS.send({ cmd: "cue", audio_id: +b.dataset.cue });
-    if (b.dataset.quitar) { WS.send({ cmd: "plan_quitar", uid: +b.dataset.quitar }); }
+    const d = e.target.closest(".deck[data-uid]");
+    if (d) { elegir(+d.dataset.uid, false); lista.focus({ preventScroll: true }); }
+  });
+  lista.addEventListener("dblclick", e => {
+    const d = e.target.closest(".deck[data-uid]");
+    const it = d && items.find(x => x.uid === +d.dataset.uid);
+    if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
+  });
+  $("dkSubir").addEventListener("click", () => mover(indiceSel() - 1));
+  $("dkBajar").addEventListener("click", () => mover(indiceSel() + 1));
+  $("dkPrimero").addEventListener("click", () => mover(0));
+  $("dkCue").addEventListener("click", () => {
+    const it = items[indiceSel()];
+    if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
+  });
+  $("dkQuitar").addEventListener("click", quitar);
+  // Tras usar la barra, el foco vuelve al programa para seguir con el teclado
+  document.querySelectorAll(".decks-barra button").forEach(b =>
+    b.addEventListener("click", () => lista.focus({ preventScroll: true })));
+
+  // Teclado (con el foco en el panel del programa, también tras usar su barra):
+  // ↑/↓ elegir · Alt+↑/↓ mover · Supr quitar · Esc soltar la selección
+  lista.closest(".decks").addEventListener("keydown", e => {
+    if (!items.length) return;
+    const i = indiceSel();
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const delta = e.key === "ArrowUp" ? -1 : 1;
+      if (e.altKey) { mover(i + delta); return; }
+      const j = i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + delta));
+      elegir(items[j].uid);
+    } else if (e.key === "Delete" && i >= 0) {
+      e.preventDefault();
+      quitar();
+    } else if (e.key === "Escape") {
+      sel = null; lista.querySelectorAll(".deck.sel").forEach(d => d.classList.remove("sel")); barra();
+    }
   });
 
   // ── Arrastrar y soltar ──
@@ -550,7 +680,8 @@ const Derecha = (() => {
 let _tProg;
 const programaPronto = () => { clearTimeout(_tProg); _tProg = setTimeout(Estado.cargarPrograma, 250); };
 
-WS.on("track_started", d => { Estado.poll(); programaPronto(); Derecha.agregarHistorial(d); });
+WS.on("track_started", d => { Salto.cancelar(); Estado.poll(); programaPronto(); Derecha.agregarHistorial(d); });
+WS.on("seek", () => Estado.poll());
 WS.on("playback_stopped", () => Estado.poll());
 WS.on("programa_actualizado", programaPronto);
 WS.on("queue_updated", programaPronto);

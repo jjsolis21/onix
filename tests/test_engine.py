@@ -540,3 +540,23 @@ def test_status_trae_las_marcas_de_la_pista(engine, media):
     assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
     ct = engine.status["current_track"]
     assert ct["cue_intro"] == 3.5 and ct["mezcla"] == 8.0 and ct["tipo_audio"] == "Musica"
+
+
+def test_operador_adelanta_la_cancion(engine, media):
+    aid = add_audio(engine, media, "LARGA", seconds=60.0)
+    assert engine._start({"track": engine._fetch_track(aid), "origen": "manual"})
+    engine.seek(30)
+    engine._drain_commands()
+    assert engine._audio.get_position_sec(engine._active_canal) >= 30
+    engine.seek(500)                                   # más allá del final: queda 1 s antes
+    engine._drain_commands()
+    assert engine._audio.get_position_sec(engine._active_canal) <= 60
+
+
+def test_no_se_adelanta_una_cuna(engine, media):
+    add_pauta(engine, media, "CLIENTE")
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert engine._advance() and engine._current_item["origen"] == "pauta"
+    with pytest.raises(ValueError):
+        engine.seek(1)
