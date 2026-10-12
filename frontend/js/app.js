@@ -734,6 +734,7 @@ const MotorConfig = (() => {
     crossfade_seg:       "#cfgCrossfade",
     ventana_artista_min: "#cfgVentana",
     max_mismo_genero:    "#cfgMaxGenero",
+    normalizacion_lufs:  "#cfgLufs",
   };
   const TEXT_FIELDS = { tandas_minutos: "#cfgTandas" };
 

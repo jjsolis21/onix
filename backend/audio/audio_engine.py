@@ -75,6 +75,7 @@ log = logging.getLogger("AudioEngine")
 
 # Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
 from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
+from backend.audio.loudness import ganancia_db
 
 _THIS_FILE = Path(__file__).resolve()
 
@@ -83,9 +84,9 @@ _THIS_FILE = Path(__file__).resolve()
 TIPO_MUSICA = "Musica"
 TIPO_CUNA   = "Cuña"
 
-# Normalizacion: la ganancia por audio (audios.ganancia_db) se aplica como
-# volumen del canal. Se permite subir hasta +6 dB (volumen 2.0); el analisis
-# ya limita la ganancia para que el pico no pase de -1 dBFS.
+# Normalizacion: la ganancia de cada audio (ver loudness.py) se aplica como
+# volumen del canal. Se permite subir hasta +6 dB (volumen 2.0) y nunca por
+# encima de un pico de -1 dBTP.
 MAX_BOOST_DB = 6.0
 VOL_MAX      = 10 ** (MAX_BOOST_DB / 20)
 
@@ -820,6 +821,8 @@ class AudioEngine:
         self._master_volume    = 1.0
         self._effect_ducking   = False
         self._ducking_vol      = 0.25
+        self._norm_activa      = True
+        self._norm_lufs        = -16.0
         self._duck_until       = 0.0
 
         self._duration         = 0.0
@@ -892,6 +895,8 @@ class AudioEngine:
             modo = self._cfg("modo", "manual")
             self._mode = modo if modo in ("manual", "automatico") else "manual"
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
+            self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
+            self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             minutos = parse_minutos(self._cfg("tandas_minutos", "15,45"))
             if minutos != self._tandas_minutos:
                 self._tandas_minutos = minutos
@@ -1264,14 +1269,25 @@ class AudioEngine:
         if item.get("origen") == "pauta":
             self._pautas_fallidas.add((item.get("slot"), item.get("pauta_id")))
 
-    @staticmethod
-    def _gain_of(track: Optional[dict]) -> float:
-        """Factor lineal de la ganancia de normalizacion guardada en el audio."""
+    def _gain_of(self, track: Optional[dict]) -> float:
+        """
+        Factor lineal de volumen del audio: normalizacion al objetivo LUFS
+        (si esta activa y el audio ya fue medido) mas el ajuste manual
+        ganancia_db, sin pasar el pico de -1 dBTP ni +6 dB.
+        """
+        track = track or {}
         try:
-            db = float((track or {}).get("ganancia_db") or 0)
+            manual = float(track.get("ganancia_db") or 0)
+            lufs   = track.get("loudness_lufs")
+            pico   = track.get("pico_db")
+            if self._norm_activa and lufs is not None:
+                db = ganancia_db(float(lufs), None if pico is None else float(pico),
+                                 self._norm_lufs + manual, max_boost=MAX_BOOST_DB)
+            else:
+                db = max(-30.0, min(MAX_BOOST_DB, manual))
         except (TypeError, ValueError):
             return 1.0
-        return 10 ** (max(-30.0, min(MAX_BOOST_DB, db)) / 20)
+        return 10 ** (db / 20)
 
     def _target_volume(self, track: Optional[dict] = None) -> float:
         track = track if track is not None else self._current_track

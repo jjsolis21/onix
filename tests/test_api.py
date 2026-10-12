@@ -92,3 +92,26 @@ def test_error_de_validacion_devuelve_422_no_500(client):
         "cliente": "x", "fecha_inicio": "2026-12-01", "fecha_fin": "2026-01-01",
     })
     assert r.status_code == 422
+
+
+@pytest.mark.skipif(not __import__("backend.audio.loudness", fromlist=["x"]).find_ffmpeg(),
+                    reason="ffmpeg no instalado")
+def test_normalizador_mide_lo_subido(client, tmp_path):
+    data = subir_cancion(client, tmp_path, "Para Medir", seconds=2.0)
+    for _ in range(100):
+        audio = client.get("/api/v1/audios", params={"busqueda": "PARA MEDIR"}).json()["data"][0]
+        if audio["loudness_estado"]:
+            break
+        time.sleep(0.05)
+    assert audio["id"] == data["id"]
+    assert audio["loudness_estado"] == "ok"
+    assert audio["loudness_lufs"] == pytest.approx(-9.0, abs=1.0)   # tono 440 Hz, pico -6 dBFS
+    estado = client.get("/api/v1/normalizacion").json()
+    assert estado["ffmpeg"] and estado["config"]["normalizacion_lufs"] == -16
+
+
+def test_config_normalizacion(client):
+    r = client.put("/api/v1/config/motor", json={"normalizacion_activa": False, "normalizacion_lufs": -18})
+    assert r.status_code == 200
+    assert r.json()["normalizacion_activa"] is False and r.json()["normalizacion_lufs"] == -18
+    client.put("/api/v1/config/motor", json={"normalizacion_activa": True, "normalizacion_lufs": -16})

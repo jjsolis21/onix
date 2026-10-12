@@ -53,6 +53,9 @@ SEED_CONFIG = [
     ("ducking_db",          "-12"),
     # Minutos de cada hora en que salen las tandas de pautas
     ("tandas_minutos",      "15,45"),
+    # Normalización de volumen (EBU R128)
+    ("normalizacion_activa", "1"),
+    ("normalizacion_lufs",   "-16"),
 ]
 
 
@@ -363,6 +366,25 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         )
     """)
     logger.info("  → tipo_audio y cartuchera: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 12 — Normalización de volumen
+    #   · loudness_lufs / pico_db → medidos con ffmpeg (backend/audio/loudness.py)
+    #   · loudness_estado         → NULL pendiente | 'ok' | 'error'
+    #   · ganancia_db             → ajuste manual extra del operador (dB)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    columnas_audios_v4 = {row["name"] for row in cursor.fetchall()}
+    for col_name, col_def in (
+        ("loudness_lufs",   "REAL DEFAULT NULL"),
+        ("pico_db",         "REAL DEFAULT NULL"),
+        ("loudness_estado", "TEXT DEFAULT NULL"),
+        ("ganancia_db",     "REAL DEFAULT NULL"),
+    ):
+        if col_name not in columnas_audios_v4:
+            cursor.execute(f"ALTER TABLE audios ADD COLUMN {col_name} {col_def}")
+            logger.info(f"  → Columna {col_name} añadida a audios: OK")
+    logger.info("  → Columnas de normalización: OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")

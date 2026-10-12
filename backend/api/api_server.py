@@ -53,6 +53,8 @@ try:
 except ImportError:
     from backend.api.schemas_pautas import PautaIn, PautaOut
 
+from backend.audio.loudness import NormalizadorWorker
+
 # Importar el motor de audio (singleton)
 try:
     from backend.audio.audio_engine import engine
@@ -85,6 +87,9 @@ DB_PATH      = str(_DB_PATH)
 STAGING_DIR  = MEDIA_ROOT / "staging"
 LIBRARY_DIR  = MEDIA_ROOT / "library"
 MUSICA_DIR   = LIBRARY_DIR / "musica"   # destino para archivos subidos via /upload
+
+# Medición de sonoridad (LUFS) para la normalización de volumen
+_normalizador = NormalizadorWorker(DB_PATH, resolve_media)
 
 # Eventos del motor que se retransmiten a los clientes WebSocket
 ENGINE_EVENTS = (
@@ -126,6 +131,7 @@ async def lifespan(app: FastAPI):
     MUSICA_DIR.mkdir(parents=True, exist_ok=True)
     _normalize_media_paths()
     _backfill_durations()
+    _normalizador.start()     # mide en segundo plano los audios sin LUFS
 
     # Puente EventBus (hilos del motor) -> WebSocket (event loop de Uvicorn).
     # Los callbacks del EventBus corren en hilos del motor, así que el
@@ -153,6 +159,7 @@ async def lifespan(app: FastAPI):
     # ── SHUTDOWN ─────────────────────────────────────────────────────────
     logger.info("Apagando Ónix FM API.")
     engine.stop()
+    _normalizador.stop()
     for ev in ENGINE_EVENTS:
         engine.bus.unsubscribe(ev, _on_engine_event)
 
@@ -593,6 +600,8 @@ class AudioUpdateRequest(BaseModel):
     cat3:  Optional[str] = Field(default=None)
     voz:   Optional[str] = Field(default=None)
     tipo_audio: Optional[str] = Field(default=None, description="Musica | Cuña | Efecto | Sweeper | Programa | Tips")
+    ganancia_db: Optional[float] = Field(default=None, ge=-20, le=6,
+                                         description="Ajuste manual de volumen sobre la normalización (dB)")
     # Cue points retrocompatibles
     intro: Optional[float] = Field(default=None)
     outro: Optional[float] = Field(default=None)
@@ -756,6 +765,7 @@ async def upload_audio_file(
         )
         audio_id = cursor.lastrowid
         conn.commit()
+        _normalizador.avisar()
         await _manager.broadcast(_ws_message(
             "library_updated", {"action": "create", "id": audio_id, "titulo": titulo},
         ))
@@ -1008,6 +1018,7 @@ async def create_audio(
     # Confirmar ANTES de avisar: los clientes recargan la biblioteca al recibir
     # el evento y la dependencia get_db hace commit después de responder.
     conn.commit()
+    _normalizador.avisar()
 
     # Broadcast WebSocket — notificar a todos los módulos
     await _manager.broadcast(_ws_message(
@@ -1102,6 +1113,7 @@ async def update_audio(
     if body.voz  is not None: campos_update["genero_vocal"] = body.voz.upper()
     tipo_final = _validate_tipo_audio(body.tipo_audio)
     if tipo_final is not None: campos_update["tipo_audio"] = tipo_final
+    if body.ganancia_db is not None: campos_update["ganancia_db"] = body.ganancia_db
     # Cue points extendidos (6 marcadores Jazler)
     if body.cue_inicio      is not None: campos_update["cue_inicio"]      = body.cue_inicio
     if body.cue_intro       is not None: campos_update["cue_intro"]       = body.cue_intro
@@ -1191,7 +1203,8 @@ def list_audios(
                intro, outro, hook,
                cue_inicio, cue_intro, cue_inicio_coro,
                cue_final_coro, cue_mezcla, fade_in, fade_out,
-               tipo_audio, veces_reproducido, ultima_reproduccion
+               tipo_audio, veces_reproducido, ultima_reproduccion,
+               loudness_lufs, pico_db, loudness_estado, ganancia_db
         FROM audios
         WHERE activo = 1
     """
@@ -1223,10 +1236,7 @@ def list_audios(
         params.extend([f"%{busqueda}%", f"%{busqueda}%"])
 
     # Contar total
-    count_query = query.replace(
-        "SELECT id, titulo, artista, album, duracion, archivo_path,\n               subgenero as cat1, categoria as cat2, cat3, genero_vocal as voz,\n               bpm, fecha_lanzamiento, activo, created_at, updated_at",
-        "SELECT COUNT(*) as total"
-    )
+    count_query = "SELECT COUNT(*) AS total " + query[query.index("FROM audios"):]
     total = conn.execute(count_query, params).fetchone()["total"]
 
     query += " ORDER BY artista ASC, titulo ASC LIMIT ? OFFSET ?"
@@ -1708,6 +1718,8 @@ class MotorConfig(BaseModel):
     ventana_artista_min: Optional[int]   = Field(None, ge=0, le=1440)
     max_mismo_genero:    Optional[int]   = Field(None, ge=1, le=10)
     ducking_db:          Optional[float] = Field(None, ge=-40, le=0)
+    normalizacion_activa: Optional[bool] = None
+    normalizacion_lufs:  Optional[float] = Field(None, ge=-30, le=-5)
     tandas_minutos:      Optional[str]   = Field(None, max_length=200,
                                                  description="Minutos de las tandas, p. ej. '15,45'")
 
@@ -1731,6 +1743,8 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
         "ducking_db":          float(valores.get("ducking_db", -12)),
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
+        "normalizacion_activa": valores.get("normalizacion_activa", "1") not in ("0", "false", ""),
+        "normalizacion_lufs":  float(valores.get("normalizacion_lufs", -16)),
     }
 
 
@@ -1746,6 +1760,8 @@ def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(ge
     El modo (manual/automático) se cambia con el comando set_mode, no aquí.
     """
     for clave, valor in body.model_dump(exclude_none=True).items():
+        if isinstance(valor, bool):
+            valor = "1" if valor else "0"
         conn.execute(
             "INSERT INTO config (clave, valor) VALUES (?, ?)"
             " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
@@ -1766,6 +1782,34 @@ def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
     if not path or not path.is_file():
         raise HTTPException(status_code=404, detail=f"Archivo del audio id={audio_id} no encontrado")
     return FileResponse(path)
+
+
+@app.get("/api/v1/normalizacion", tags=["Config"], summary="Estado de la normalización de volumen")
+def get_normalizacion(conn: sqlite3.Connection = Depends(get_db)):
+    """Cuántos audios están medidos, pendientes o con error, y si hay ffmpeg."""
+    cuenta = {"ok": 0, "error": 0, "pendiente": 0}
+    for r in conn.execute(
+        "SELECT COALESCE(loudness_estado, 'pendiente') AS e, COUNT(*) AS n"
+        " FROM audios WHERE activo = 1 GROUP BY e"
+    ):
+        cuenta[r["e"]] = r["n"]
+    return {
+        **cuenta,
+        "ffmpeg": _normalizador.ffmpeg,
+        "config": {k: v for k, v in _read_motor_config(conn).items() if k.startswith("normalizacion")},
+    }
+
+
+@app.post("/api/v1/normalizacion/remedir", tags=["Config"], summary="Volver a medir audios")
+def remedir_normalizacion(solo_errores: bool = True, conn: sqlite3.Connection = Depends(get_db)):
+    """Marca como pendientes los audios con error (o todos) y despierta al medidor."""
+    sql = "UPDATE audios SET loudness_estado = NULL WHERE activo = 1"
+    if solo_errores:
+        sql += " AND loudness_estado = 'error'"
+    n = conn.execute(sql).rowcount
+    conn.commit()
+    _normalizador.avisar()
+    return {"pendientes": n}
 
 
 @app.get("/api/v1/historial", tags=["Sistema"], summary="Historial de emisión")
