@@ -76,28 +76,45 @@ def _parse_fecha(valor: Optional[str], defecto: date) -> date:
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/api/v1/stats/top40", summary="Top 40 de emisiones")
-def top40(period: str = "week", limit: int = 40, conn: sqlite3.Connection = Depends(get_db)):
+def top40(period: str = "week", limit: int = 40, tipo: str = "musica",
+          conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Más emitidos del período. tipo: musica (por defecto) · pauta · todo.
+    `previos` = toques en el período anterior de igual largo (para la tendencia).
+    """
     dias = PERIODOS.get(period)
     if dias is None:
         raise HTTPException(status_code=422, detail="period debe ser day, week o month")
-    desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    tipos = {"musica": ("musica",), "pauta": ("pauta",), "todo": ("musica", "pauta")}.get(tipo)
+    if tipos is None:
+        raise HTTPException(status_code=422, detail="tipo debe ser musica, pauta o todo")
+    ahora = datetime.now()
+    desde = (ahora - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    antes = (ahora - timedelta(days=2 * dias)).strftime("%Y-%m-%d %H:%M:%S")
+    ph = ",".join("?" * len(tipos))
     rows = conn.execute(
-        """
+        f"""
         SELECT a.id, a.titulo, a.artista, a.tipo_audio, a.duracion,
-               COALESCE(a.subgenero, '') AS categoria, COUNT(*) AS toques,
-               MAX(h.iniciado_en) AS ultima_emision
+               COALESCE(a.subgenero, '') AS categoria,
+               COUNT(*) AS toques, MAX(h.iniciado_en) AS ultima_emision
         FROM historial_emision h
         JOIN audios a ON a.id = h.audio_id
-        WHERE h.iniciado_en >= ? AND h.tipo IN ('musica', 'pauta')
+        WHERE h.iniciado_en >= ? AND h.tipo IN ({ph})
         GROUP BY a.id
         ORDER BY toques DESC, ultima_emision DESC
         LIMIT ?
         """,
-        (desde, max(1, min(limit, 200))),
+        (desde, *tipos, max(1, min(limit, 200))),
     ).fetchall()
+    ids = [r["id"] for r in rows]
+    previos = dict(conn.execute(
+        f"SELECT audio_id, COUNT(*) FROM historial_emision WHERE iniciado_en >= ? AND iniciado_en < ?"
+        f" AND audio_id IN ({','.join('?' * len(ids))}) GROUP BY audio_id",
+        (antes, desde, *ids)).fetchall()) if ids else {}
     return [{
         "id": r["id"], "tipo": _tipo_reporte(r["tipo_audio"]), "titulo": r["titulo"],
         "artista": r["artista"], "categoria": r["categoria"], "toques": r["toques"],
+        "previos": previos.get(r["id"], 0),
         "duracion": r["duracion"] or 0, "ultima_emision": r["ultima_emision"],
         "audio_url": f"/api/v1/audios/{r['id']}/stream",
     } for r in rows]
@@ -540,3 +557,88 @@ def analisis(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
                       "pct": round(100 * emit / prog, 1) if prog else None})
         y, m = (y - 1, 12) if m == 1 else (y, m - 1)
     return {"horas": horas, "artistas": artistas, "pautas_mes": list(reversed(meses))}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Rotación real vs planeada · canciones quemadas
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _peso_planeado(conn) -> dict[str, float]:
+    """
+    Qué parte de la música piden los relojes para cada rotación (cat2):
+    filas de música con ese filtro × horas de la semana en que su reloj está
+    en la grilla. Las filas sin filtro de rotación van a "(cualquiera)".
+    """
+    horas_reloj = dict(conn.execute("SELECT reloj_id, COUNT(*) FROM reloj_grilla GROUP BY reloj_id").fetchall())
+    filas_reloj: dict[int, list[str]] = {}
+    for rid, filtros in conn.execute("SELECT reloj_id, filtros FROM reloj_filas WHERE tipo_audio = 'Musica'"):
+        try:
+            f = json.loads(filtros or "{}")
+        except ValueError:
+            f = {}
+        filas_reloj.setdefault(rid, []).append(((f.get("cat2") or "").strip().upper()) or "(cualquiera)")
+    peso: dict[str, float] = {}
+    for rid, filas in filas_reloj.items():
+        horas = horas_reloj.get(rid, 0)
+        for v in filas:
+            peso[v] = peso.get(v, 0) + horas / len(filas)
+    total = sum(peso.values()) or 1
+    return {k: v / total for k, v in peso.items()}
+
+
+@router.get("/api/v1/stats/rotacion", summary="Rotación real frente a la planeada por los relojes")
+def rotacion(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
+    dias = PERIODOS.get(period)
+    if dias is None:
+        raise HTTPException(status_code=422, detail="period debe ser day, week o month")
+    desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    toques = dict(conn.execute(
+        "SELECT audio_id, COUNT(*) FROM historial_emision WHERE iniciado_en >= ? AND tipo = 'musica'"
+        " GROUP BY audio_id", (desde,)).fetchall())
+    grupos: dict[str, list[int]] = {}
+    for aid, cat in conn.execute(
+            "SELECT id, UPPER(COALESCE(NULLIF(TRIM(categoria), ''), '(sin rotación)')) FROM audios"
+            " WHERE activo = 1 AND tipo_audio = 'Musica' AND COALESCE(aprobada, 1) = 1"):
+        grupos.setdefault(cat, []).append(toques.get(aid, 0))
+    total = sum(sum(v) for v in grupos.values())
+    planeado = _peso_planeado(conn)
+    filas = []
+    for cat, lista in grupos.items():
+        n, t = len(lista), sum(lista)
+        filas.append({
+            "rotacion": cat, "canciones": n, "toques": t,
+            "promedio": round(t / n, 1) if n else 0, "maximo": max(lista) if lista else 0,
+            "sin_sonar": sum(1 for x in lista if x == 0),
+            "pct_real": round(100 * t / total, 1) if total else 0,
+            "pct_planeado": round(100 * planeado[cat], 1) if cat in planeado else None,
+        })
+    filas.sort(key=lambda f: -f["toques"])
+    return {"total": total, "libre_pct": round(100 * planeado.get("(cualquiera)", 0), 1), "data": filas}
+
+
+@router.get("/api/v1/stats/quemadas", summary="Canciones que suenan mucho más que su rotación")
+def quemadas(dias: int = 7, factor: float = 2.0, minimo: int = 5, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Quemada = sonó al menos `minimo` veces en `dias` días y más de `factor`
+    veces el promedio de su rotación en ese lapso.
+    """
+    dias = max(1, min(dias, 90))
+    desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = conn.execute(
+        """
+        SELECT a.id, a.titulo, a.artista,
+               UPPER(COALESCE(NULLIF(TRIM(a.categoria), ''), '(sin rotación)')) AS rot,
+               (SELECT COUNT(*) FROM historial_emision h
+                 WHERE h.audio_id = a.id AND h.iniciado_en >= ? AND h.tipo = 'musica') AS n
+        FROM audios a WHERE a.activo = 1 AND a.tipo_audio = 'Musica'
+        """, (desde,)).fetchall()
+    por_rot: dict[str, list[int]] = {}
+    for r in rows:
+        por_rot.setdefault(r["rot"], []).append(r["n"])
+    prom = {k: sum(v) / len(v) for k, v in por_rot.items()}
+    out = [{"id": r["id"], "titulo": r["titulo"], "artista": r["artista"], "rotacion": r["rot"],
+            "toques": r["n"], "promedio_rotacion": round(prom[r["rot"]], 1),
+            "veces_promedio": round(r["n"] / prom[r["rot"]], 1) if prom[r["rot"]] else None}
+           for r in rows if r["n"] >= minimo and r["n"] > factor * prom[r["rot"]]]
+    out.sort(key=lambda x: -(x["veces_promedio"] or 0))
+    return {"dias": dias, "data": out[:100]}

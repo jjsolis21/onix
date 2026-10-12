@@ -61,6 +61,9 @@
           <span class="stats-panel__badge" aria-hidden="true">40</span>
           Top Reproducidos
         </h3>
+        <select id="top40-tipo" class="stats-tipo" title="Qué contar en el Top">
+          <option value="musica">Música</option><option value="pauta">Cuñas</option><option value="todo">Todo</option>
+        </select>
         <div class="stats-panel__meta" id="top40-period-label" aria-live="polite">Hoy</div>
       </div>
 
@@ -69,9 +72,9 @@
         <span role="columnheader" class="col-rank">#</span>
         <span role="columnheader" class="col-type">Tipo</span>
         <span role="columnheader" class="col-title">Título / Artista</span>
-        <span role="columnheader" class="col-category">Categoría</span>
+        <span role="columnheader" class="col-category">Género</span>
         <span role="columnheader" class="col-plays">Toques</span>
-        <span role="columnheader" class="col-trend">Tendencia</span>
+        <span role="columnheader" class="col-trend" title="Comparado con el período anterior">Tendencia</span>
       </div>
 
       <!-- Filas generadas dinámicamente por JS -->
@@ -122,15 +125,15 @@
       </div>
 
       <p class="stats-panel__subtitle">
-        Temas y pautas sin emisión en los últimos <strong>30 días</strong>.
+        Canciones activas sin sonar en los últimos <strong>30 días</strong>.
         Doble clic en una fila para auditar.
       </p>
 
       <div class="stats-table-head stats-table-head--forgotten" role="row" aria-label="Encabezados olvido">
         <span role="columnheader" class="col-type">Tipo</span>
         <span role="columnheader" class="col-title">Título / Artista</span>
-        <span role="columnheader" class="col-days">Días sin sonar</span>
-        <span role="columnheader" class="col-last">Última emisión</span>
+        <span role="columnheader" class="col-days">Días</span>
+        <span role="columnheader" class="col-last">Última vez</span>
       </div>
 
       <div id="forgotten-list" class="stats-table-body stats-table-body--forgotten" role="table"
@@ -172,6 +175,23 @@
       <div class="an-meses" id="anMeses" role="img" aria-label="Porcentaje de cuñas emitidas frente a contratadas por mes"></div>
     </article>
   </div>
+  <div class="an-grid an-grid--3">
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Rotación: planeada vs real</h3><span class="an-meta" id="anRotMeta">—</span></header>
+      <div class="an-ley"><span><i class="plan"></i>Planeado por los relojes</span><span><i class="real"></i>Lo que sonó</span></div>
+      <div class="an-rot" id="anRot"></div>
+      <p class="an-nota" id="anRotNota"></p>
+    </article>
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Canciones quemadas</h3><span class="an-meta">últimos 7 días</span></header>
+      <p class="an-nota">Suenan más del doble que el promedio de su rotación. Bájalas de rotación para que descansen.</p>
+      <div class="an-quem" id="anQuem"></div>
+    </article>
+    <article class="stats-panel an-panel">
+      <header class="an-cab"><h3>Cumplimiento por cliente</h3><span class="an-meta">este mes</span></header>
+      <div class="an-cli" id="anCli"></div>
+    </article>
+  </div>
   <script>
   (function () {
     const $ = id => document.getElementById(id);
@@ -205,9 +225,78 @@
           <span class="an-mes-n">${MES[+mm - 1]}</span></div>`;
       }).join('');
     }
+    // ── Rotación planeada vs real (dos series: gris = plan, dorado = real) ──
+    async function cargarRotacion(period) {
+      let d;
+      try { d = await fetch(`/api/v1/stats/rotacion?period=${period}`).then(r => r.json()); } catch (_) { return; }
+      if (!d?.data) return;
+      const max = Math.max(1, ...d.data.map(f => Math.max(f.pct_real, f.pct_planeado ?? 0)));
+      $('anRot').innerHTML = d.data.length ? d.data.map(f => {
+        const desvio = f.pct_planeado == null ? '' : Math.abs(f.pct_real - f.pct_planeado) >= 10
+          ? `<em class="${f.pct_real > f.pct_planeado ? 'mas' : 'menos'}">${f.pct_real > f.pct_planeado ? 'suena de más' : 'suena de menos'}</em>` : '';
+        return `<div class="an-rot-f" title="${esc(f.rotacion)}: ${f.canciones} canciones · ${f.toques} toques · promedio ${f.promedio} por canción · ${f.sin_sonar} sin sonar">
+          <div class="an-rot-n"><b>${esc(f.rotacion)}</b><small>${f.canciones} canc. · ${f.promedio}/canc.${f.sin_sonar ? ` · ${f.sin_sonar} sin sonar` : ''}</small>${desvio}</div>
+          <div class="an-rot-b"><span class="plan" style="width:${(f.pct_planeado ?? 0) / max * 100}%"></span><b>${f.pct_planeado == null ? '—' : f.pct_planeado + '%'}</b></div>
+          <div class="an-rot-b"><span class="real" style="width:${f.pct_real / max * 100}%"></span><b>${f.pct_real}%</b></div></div>`;
+      }).join('') : '<p class="an-nota">Sin música aprobada.</p>';
+      $('anRotMeta').textContent = `${d.total} toques ${NOMBRE[period]}`;
+      $('anRotNota').textContent = d.libre_pct ? `${d.libre_pct}% de las filas de los relojes no filtran por rotación (cualquier canción).` : '';
+    }
+
+    // ── Quemadas, con cambio de rotación directo ──
+    let rotaciones = [];
+    async function cargarQuemadas() {
+      let d;
+      try {
+        if (!rotaciones.length) {
+          const sc = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json());
+          rotaciones = (sc.categorias.find(c => c.nombre_interno === 'cat2')?.valores || []).map(v => v.valor);
+        }
+        d = await fetch('/api/v1/stats/quemadas').then(r => r.json());
+      } catch (_) { return; }
+      const lista = d?.data || [];
+      $('anQuem').innerHTML = lista.length ? lista.slice(0, 12).map(q => `<div class="an-q" data-id="${q.id}">
+        <div class="an-q-t"><b>${esc(q.titulo)}</b><small>${esc(q.artista)}</small></div>
+        <span class="an-q-n" title="Promedio de su rotación: ${q.promedio_rotacion}">${q.toques}× <em>${q.veces_promedio}× prom.</em></span>
+        <select title="Pasar a otra rotación"><option value="">${esc(q.rotacion)}</option>${rotaciones.filter(r => r.toUpperCase() !== q.rotacion).map(r => `<option>${esc(r)}</option>`).join('')}</select>
+      </div>`).join('') : '<p class="an-nota an-ok">✓ Ninguna canción quemada.</p>';
+    }
+    $('anQuem')?.addEventListener('change', async e => {
+      const sel = e.target.closest('select'), fila = e.target.closest('.an-q');
+      if (!sel || !sel.value) return;
+      sel.disabled = true;
+      const r = await fetch('/api/v1/biblioteca/lote', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [+fila.dataset.id], cambios: { cat2: sel.value } }) });
+      if (r.ok) { fila.classList.add('hecha'); fila.querySelector('.an-q-n').textContent = `→ ${sel.value}`; }
+      else { sel.disabled = false; alert('No se pudo cambiar la rotación'); }
+    });
+
+    // ── Cumplimiento por cliente (peor primero) ──
+    async function cargarClientes() {
+      let d;
+      try { d = await fetch('/api/v1/reportes/pautas').then(r => r.json()); } catch (_) { return; }
+      const por = {};
+      (d?.data || []).forEach(p => {
+        const c = por[p.cliente] ||= { cliente: p.cliente, prog: 0, emit: 0 };
+        c.prog += p.programadas; c.emit += Math.min(p.emitidas, p.programadas);
+      });
+      const lista = Object.values(por).filter(c => c.prog).map(c => ({ ...c, pct: Math.round(100 * c.emit / c.prog) }))
+        .sort((a, b) => a.pct - b.pct);
+      $('anCli').innerHTML = lista.length ? lista.map(c => {
+        const nivel = c.pct >= 95 ? 'ok' : c.pct >= 80 ? 'medio' : 'mal';
+        const q = new URLSearchParams({ cliente: c.cliente, desde: d.desde, hasta: d.hasta });
+        return `<div class="an-c"><span class="an-c-n">${esc(c.cliente)}</span>
+          <span class="an-barra"><i class="${nivel}" style="width:${c.pct}%"></i></span>
+          <b class="${nivel}">${c.pct}%</b><small>${c.emit}/${c.prog}</small>
+          <a href="/api/v1/reportes/certificado?${q}" target="_blank" title="Abrir certificado">🖨</a></div>`;
+      }).join('') : '<p class="an-nota">Sin pautas con salidas programadas este mes.</p>';
+    }
+
     const actual = () => document.querySelector('.stats-period-btn--active')?.dataset.period || 'day';
-    document.querySelectorAll('.stats-period-btn').forEach(b => b.addEventListener('click', () => setTimeout(() => cargar(actual()), 0)));
-    cargar(actual());
+    document.querySelectorAll('.stats-period-btn').forEach(b => b.addEventListener('click', () => setTimeout(() => {
+      cargar(actual()); cargarRotacion(actual());
+    }, 0)));
+    cargar(actual()); cargarRotacion(actual()); cargarQuemadas(); cargarClientes();
   })();
   </script>
 

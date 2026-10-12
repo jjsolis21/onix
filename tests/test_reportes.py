@@ -229,3 +229,31 @@ def test_analisis_por_hora_y_artistas(client):
     assert d["horas"][datetime.now().hour] >= 3
     assert any(a["artista"] == "SOLIS" and a["toques"] >= 3 for a in d["artistas"])
     assert len(d["pautas_mes"]) == 6
+
+
+def test_top40_por_tipo_y_tendencia(client):
+    for tipo in ("musica", "pauta", "todo"):
+        r = client.get("/api/v1/stats/top40", params={"period": "week", "tipo": tipo})
+        assert r.status_code == 200, r.text
+        assert all("previos" in x for x in r.json())
+    assert client.get("/api/v1/stats/top40", params={"tipo": "x"}).status_code == 422
+
+
+def test_rotacion_y_quemadas(client):
+    import sqlite3
+    from datetime import datetime
+    from backend.paths import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    ids = [conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, categoria, aprobada)"
+                        " VALUES (?, 'X', ?, 'Musica', 'ROTQ', 1)", (f"q{i}", f"q{i}.mp3")).lastrowid for i in range(5)]
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for _ in range(12):
+        conn.execute("INSERT INTO historial_emision (audio_id, titulo, tipo, iniciado_en) VALUES (?, 'q0', 'musica', ?)", (ids[0], ahora))
+    conn.execute("INSERT INTO historial_emision (audio_id, titulo, tipo, iniciado_en) VALUES (?, 'q1', 'musica', ?)", (ids[1], ahora))
+    conn.commit()
+    conn.close()
+    rot = client.get("/api/v1/stats/rotacion", params={"period": "week"}).json()
+    f = next(x for x in rot["data"] if x["rotacion"] == "ROTQ")
+    assert (f["canciones"], f["toques"], f["sin_sonar"]) == (5, 13, 3)
+    q = client.get("/api/v1/stats/quemadas").json()["data"]
+    assert any(x["id"] == ids[0] for x in q) and not any(x["id"] == ids[1] for x in q)

@@ -219,7 +219,8 @@
   /** Carga el Top 40 para el período activo. */
   async function fetchTop40(period) {
     try {
-      return await apiFetch(`/top40?period=${period}`);
+      const tipo = document.getElementById('top40-tipo')?.value || 'musica';
+      return await apiFetch(`/top40?period=${period}&tipo=${tipo}`);
     } catch (err) {
       if (err.name === 'AbortError') return null; // solicitud cancelada, ignorar
       avisarError(err);
@@ -301,7 +302,13 @@
     row.style.setProperty('--row-delay', `${Math.min(rank * 18, 600)}ms`);
 
     const tipoBadge = buildTypeBadge(item.tipo);
-    const trendPct = Math.round((item.toques / maxToques) * 100);
+    // Tendencia real: contra el período anterior de igual largo
+    const prev = item.previos ?? 0, delta = item.toques - prev;
+    const tendencia = !prev
+      ? '<span class="tend tend--nuevo" title="No sonó en el período anterior">NUEVO</span>'
+      : delta > 0 ? `<span class="tend tend--sube" title="Período anterior: ${prev}">▲ ${delta}</span>`
+        : delta < 0 ? `<span class="tend tend--baja" title="Período anterior: ${prev}">▼ ${-delta}</span>`
+          : `<span class="tend" title="Igual que el período anterior">= ${prev}</span>`;
     const rankClass = rank <= 3 ? 'stats-row__rank--top3' : '';
     const rankDisplay = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : `${rank}`;
 
@@ -312,13 +319,9 @@
         <div class="stats-row__title">${escapeHTML(item.titulo)}</div>
         <div class="stats-row__artist">${escapeHTML(item.artista)}</div>
       </span>
-      <span class="stats-row__category" role="cell">${escapeHTML(item.categoria)}</span>
+      <span class="stats-row__category" role="cell">${escapeHTML(item.categoria || '—')}</span>
       <span class="stats-row__plays" role="cell">${item.toques.toLocaleString('es-AR')}</span>
-      <span class="stats-row__trend" role="cell">
-        <span class="trend-bar" aria-label="${trendPct}% de tendencia">
-          <span class="trend-bar__fill" style="width:${trendPct}%"></span>
-        </span>
-      </span>`;
+      <span class="stats-row__trend" role="cell">${tendencia}</span>`;
 
     // Doble clic → abrir modal de auditoría
     attachDoubleClickHandler(row, item.id);
@@ -755,8 +758,8 @@
    * Cambia el período activo, actualiza el indicador visual
    * y recarga el Top 40 con los nuevos datos.
    */
-  async function changePeriod(newPeriod) {
-    if (newPeriod === STATE.period) return;
+  async function changePeriod(newPeriod, forzar = false) {
+    if (newPeriod === STATE.period && !forzar) return;
     STATE.period = newPeriod;
 
     // Actualizar botones
@@ -997,6 +1000,9 @@
     }
 
     // Cargar más en el Top 40
+    // Música / Cuñas / Todo en el Top: recarga el mismo período
+    document.getElementById('top40-tipo')?.addEventListener('change', () => changePeriod(STATE.period, true));
+
     DOM.btnLoadMore?.addEventListener('click', () => {
       STATE.top40Page++;
       renderTop40(STATE.top40Filtered);
