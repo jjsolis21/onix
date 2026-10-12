@@ -777,7 +777,14 @@
        INICIALIZACIÓN
        Carga la primera sección (Estado Global) al arrancar el shell.
     ════════════════════════════════════════════════════════════ */
-    loadSection("01-estado-global");
+    // Enlace directo a una sección: /admin/#02-biblioteca-musical (lo usa el Studio)
+    const inicial = decodeURIComponent(location.hash.slice(1));
+    if (SECTIONS[inicial]) activateSection(inicial);
+    else loadSection("01-estado-global");
+    window.addEventListener("hashchange", () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (SECTIONS[id]) activateSection(id);
+    });
 
     /* Exponer la función de navegación globalmente para que las secciones
        puedan usarla para redirigir al usuario (ej: un CTA en Estado Global

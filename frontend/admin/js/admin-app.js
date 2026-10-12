@@ -188,6 +188,7 @@ const loadAudios = async () => {
       id: a.id, title: a.titulo || '—', artist: a.artista || '—', album: a.album || '',
       duration: a.duracion || 0, bpm: a.bpm || null, year: a.fecha_lanzamiento || null,
       soundCode: a.cat1 || '', popularity: a.cat2 || '', voz: a.voz || '',
+      origen: a.origen || '', energia: a.energia ?? '',
       tipo: a.tipo_audio || 'Musica',
       codigoAuto: a.id ? String(a.id).padStart(6, '0') : '—', archivo_path: a.archivo_path || '',
       cue_inicio: a.cue_inicio ?? a.intro ?? 0, cue_intro: a.cue_intro ?? a.intro ?? 0,
@@ -232,6 +233,8 @@ async function openModal(id = null) {
     if ($('modal-popularity')) $('modal-popularity').value = t.popularity || '';
     if ($('modal-voz')) $('modal-voz').value = t.voz || '';
     if ($('modal-tipo')) $('modal-tipo').value = t.tipo || 'Musica';
+    if ($('modal-origen')) $('modal-origen').value = t.origen || '';
+    if ($('modal-energia')) $('modal-energia').value = t.energia ?? '';
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'none';
     if ($('modal-archivo-path')) $('modal-archivo-path').value = t.archivo_path || '';
     if (typeof window.wfLoadUrl === 'function' && t.archivo_path) {
@@ -245,6 +248,8 @@ async function openModal(id = null) {
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
     if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
     if ($('modal-tipo')) $('modal-tipo').value = 'Musica';
+    if ($('modal-origen')) $('modal-origen').value = '';
+    if ($('modal-energia')) $('modal-energia').value = '';
     if ($('modal-activado')) $('modal-activado').checked = true;
     if ($('modal-congelado')) $('modal-congelado').checked = false;
   }
@@ -274,6 +279,8 @@ async function saveModal() {
       const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
       const payload = { titulo: titleVal, artista: artistVal, album: $('modal-album')?.value.trim() || null, fecha_lanzamiento: $('modal-year')?.value.trim() || null, bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null, cat1: toUpper($('modal-sc1')?.value || $('modal-sc2')?.value) || null, cat2: toUpper($('modal-popularity')?.value) || null, voz: toUpper($('modal-voz')?.value) || null, cue_inicio: markers.inicio ?? 0, cue_intro: markers.intro ?? 0, cue_inicio_coro: markers.inicio_coro ?? 0, cue_final_coro: markers.final_coro ?? 0, cue_mezcla: markers.mezcla ?? 0, fade_in: markers.fade_in ?? 0, fade_out: markers.fade_out ?? 0, intro: markers.intro ?? 0, outro: markers.mezcla ?? 0 };
       payload.tipo_audio = $('modal-tipo')?.value || null;
+      payload.origen = $('modal-origen')?.value || null;
+      payload.energia = $('modal-energia')?.value ? Number($('modal-energia').value) : null;
       Object.keys(payload).forEach(k => { if (payload[k] === null || payload[k] === '') delete payload[k]; });
       res = await fetch(`${API_BASE}/api/v1/audios/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
@@ -281,6 +288,8 @@ async function saveModal() {
       formData.append('titulo', titleVal); formData.append('artista', artistVal);
       const opt = { album: $('modal-album')?.value.trim(), bpm: $('modal-bpm')?.value, fecha_lanzamiento: $('modal-year')?.value.trim(), cat1: $('modal-sc1')?.value || $('modal-sc2')?.value, cat2: $('modal-popularity')?.value, voz: $('modal-voz')?.value };
       opt.tipo_audio = $('modal-tipo')?.value;
+      opt.origen = $('modal-origen')?.value;
+      opt.energia = $('modal-energia')?.value;
       Object.entries(opt).forEach(([k, v]) => { if (v) formData.append(k, v); });
       formData.append('cue_inicio', markers.inicio ?? 0); formData.append('cue_intro', markers.intro ?? 0); formData.append('cue_inicio_coro', markers.inicio_coro ?? 0); formData.append('cue_final_coro', markers.final_coro ?? 0); formData.append('cue_mezcla', markers.mezcla ?? 0); formData.append('fade_in', markers.fade_in ?? 0); formData.append('fade_out', markers.fade_out ?? 0); formData.append('intro', markers.intro ?? 0); formData.append('outro', markers.mezcla ?? 0); formData.append('file', selectedFile);
       res = await fetch(`${API_BASE}/api/v1/audios`, { method: 'POST', body: formData });

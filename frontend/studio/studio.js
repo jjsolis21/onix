@@ -831,6 +831,13 @@ const Problemas = (() => {
   const UMBRAL = 0.003, VUELVE_MS = 3000;
   let sonandoDesde = null, datos = null;
   const NIVEL = { critico: "CRÍTICO", error: "ERROR", aviso: "AVISO" };
+  // "Admin › Relojes" → enlace a esa sección del Admin
+  const SECCION = { Biblioteca: "02-biblioteca-musical", Pautas: "03-programacion-pautas",
+                    "Motor de audio": "06-motor-audio", Relojes: "08-relojes" };
+  function enlace(donde) {
+    const nombre = Object.keys(SECCION).find(k => donde.includes(`› ${k}`));
+    return nombre ? `<a href="/admin/#${SECCION[nombre]}" target="onix-admin">→ ${esc(donde)}</a>` : `→ ${esc(donde)}`;
+  }
 
   // ── Aire muerto ──
   function aireMuerto(d) {
@@ -868,7 +875,7 @@ const Problemas = (() => {
         ${p.detalle ? `<div class="prob-det">${esc(p.detalle)}</div>` : ""}
         ${p.ejemplos.length ? `<details><summary>Ver ${p.ejemplos.length === 15 ? "los primeros 15" : p.ejemplos.length}</summary>
           <ul>${p.ejemplos.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}
-        ${p.donde ? `<div class="prob-donde">→ ${esc(p.donde)}</div>` : ""}
+        ${p.donde ? `<div class="prob-donde">${enlace(p.donde)}</div>` : ""}
       </div>`).join("")
       : `<div class="prob-ok">✓ No hay nada pendiente.</div>`;
     $("problemasRecTxt").textContent = datos.recientes.length ? `(${datos.no_vistos} sin ver)` : "";

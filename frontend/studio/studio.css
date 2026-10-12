@@ -425,3 +425,11 @@ kbd {
 .rec.visto { opacity: .55; }
 .problemas-pie { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .atajos-caja button.sec { background: transparent; color: var(--txt-mid); border: 1px solid var(--line); }
+
+.lib-cargar {
+  font-family: var(--f-data); font-size: 11px; letter-spacing: .1em; color: var(--ambar);
+  border: 1px solid var(--ambar); border-radius: 4px; padding: 3px 9px; text-decoration: none;
+}
+.lib-cargar:hover { background: var(--ambar); color: var(--bg-0); }
+.prob-donde a { color: var(--ambar); text-decoration: none; }
+.prob-donde a:hover { text-decoration: underline; }

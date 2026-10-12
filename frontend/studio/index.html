@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=5" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=6" />
 </head>
 <body>
 
@@ -28,7 +28,7 @@
     </div>
     <button class="top-link problemas-btn" id="btnProblemas" title="Problemas (P)">⚠ PROBLEMAS <b id="problemasN" hidden>0</b></button>
     <button class="top-link" id="btnAtajos" title="Atajos de teclado (?)">⌨ ATAJOS</button>
-    <a class="top-link" href="/admin/" target="_blank" rel="noopener">ADMIN</a>
+    <a class="top-link" href="/admin/" target="onix-admin">ADMIN</a>
     <div class="reloj">
       <div class="reloj-hora" id="relojHora">--:--:--</div>
       <div class="reloj-fecha" id="relojFecha"></div>
@@ -140,7 +140,9 @@
           <tbody id="libFilas"><tr><td colspan="6" class="vacio">Cargando biblioteca…</td></tr></tbody>
         </table>
       </div>
-      <div class="panel-foot"><span id="libInfo"></span><span>Doble clic = a la cola · arrastra al programa</span></div>
+      <div class="panel-foot"><span id="libInfo"></span>
+        <a class="lib-cargar" href="/admin/#02-biblioteca-musical" target="onix-admin" title="Subir canciones, cuñas o jingles (se abre el Admin)">＋ CARGAR AUDIOS</a>
+        <span>Doble clic = a la cola · arrastra al programa</span></div>
     </section>
 
     <!-- ── Derecha: próxima tanda, historial, cartuchera ── -->
@@ -204,6 +206,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=5"></script>
+  <script src="/static/studio/studio.js?v=6"></script>
 </body>
 </html>

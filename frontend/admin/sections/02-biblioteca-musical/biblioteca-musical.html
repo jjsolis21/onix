@@ -2878,13 +2878,24 @@
               </select>
             </div>
             <div class="jz-field">
-              <label>Prioridad</label>
-              <select class="jz-select" id="modal-prioridad" style="width:100%">
-                <option value="1">1</option>
+              <label>Origen</label>
+              <select class="jz-select" id="modal-origen" style="width:100%"
+                title="Filtro de los relojes (p. ej. una fila solo de música nacional)">
+                <option value="">—</option>
+                <option value="NACIONAL">Nacional</option>
+                <option value="INTERNACIONAL">Internacional</option>
+              </select>
+            </div>
+            <div class="jz-field">
+              <label>Energía</label>
+              <select class="jz-select" id="modal-energia" style="width:100%"
+                title="1 = muy suave · 5 = muy movida. Los relojes pueden filtrar por energía">
+                <option value="">—</option>
+                <option value="1">1 · suave</option>
                 <option value="2">2</option>
-                <option value="3">3</option>
+                <option value="3">3 · media</option>
                 <option value="4">4</option>
-                <option value="5">5</option>
+                <option value="5">5 · movida</option>
               </select>
             </div>
             <div class="jz-field">

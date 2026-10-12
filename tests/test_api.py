@@ -147,3 +147,11 @@ def test_config_tandas_inmediatas(client):
 def test_status_trae_version_de_motor_y_servidor(client):
     st = client.get("/api/v1/status").json()
     assert st["version"] == st["version_api"]
+
+
+def test_raiz_sirve_el_studio_y_studio_redirige(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "ONIX FM — Studio" in r.text and "/static/studio/studio.js" in r.text
+    r = client.get("/studio", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/"
+    assert client.get("/static/studio/studio.js").status_code == 200

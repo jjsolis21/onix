@@ -25,7 +25,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 import sys
@@ -2305,19 +2305,16 @@ ADMIN_DIR    = FRONTEND_DIR / "admin"
 
 @app.get("/")
 async def read_index():
-    """Sirve la consola de emisión (Studio) en la raíz."""
-    index_path = FRONTEND_DIR / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="index.html no encontrado en frontend/")
-    return FileResponse(index_path)
+    """Studio: la consola del operador (estilo Jazler SoHo)."""
+    return FileResponse(FRONTEND_DIR / "studio" / "index.html")
 
 @app.get("/studio")
 async def read_studio():
-    """Studio nuevo (estilo Jazler SoHo). Mientras se prueba, el anterior sigue en "/"."""
-    return FileResponse(FRONTEND_DIR / "studio" / "index.html")
+    """Dirección anterior del Studio: se mantiene para accesos guardados."""
+    return RedirectResponse("/", status_code=307)
 
 # Montar carpetas estáticas
-# /static -> frontend/ (para main.css, app.js, etc.)
+# /static -> frontend/ (studio/studio.js, studio/studio.css)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 # /admin -> frontend/admin/ (para la administración)

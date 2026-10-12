@@ -105,10 +105,11 @@ Corren en cualquier sistema (motor simulado, BD y audios temporales).
 | `normalizacion_activa` | 1 | Normalizar volumen |
 | `normalizacion_lufs` | -16 | Sonoridad objetivo (LUFS) |
 
-## 🎛️ Studio nuevo (en prueba): `http://localhost:8001/studio`
+## 🎛️ Studio: `http://localhost:8001/`
 
-Pantalla del operador al estilo Jazler SoHo. Mientras se prueba al aire, el Studio
-anterior sigue en `http://localhost:8001/`.
+Pantalla del operador al estilo Jazler SoHo (`/studio` redirige aquí). Solo opera el aire:
+cargar audios, relojes, pautas y la configuración están en el **Admin** (`/admin/`).
+**＋ CARGAR AUDIOS** abre el Admin en la Biblioteca.
 
 - **Reproductor**: cuenta regresiva grande de lo que suena, **cuenta del intro** (cuánto
   queda para hablar encima; cambia a VOZ cuando entra la voz), barra con marcas de intro
@@ -128,7 +129,14 @@ anterior sigue en `http://localhost:8001/`.
 - **Vúmetro** de la salida del AIRE (picos en dBFS, verde/ámbar/rojo, retención de pico),
   medido por el motor 10 veces por segundo; incluye fades y cartuchera.
 - **Atajos** (ayuda con `?` o el botón ⌨): Espacio siguiente · 1–8 cartuchera · D detener al
-  terminar · L lanzar tanda · Ctrl+F o / buscar · Esc cancelar. No funcionan mientras se escribe.
+  terminar · L lanzar tanda · P problemas · Ctrl+F o / buscar · Esc cancelar. No funcionan
+  mientras se escribe.
+- **Aire muerto**: si lo que suena queda `silencio_seg` segundos (10) en silencio, en
+  automático pasa a lo siguiente y aparta ese audio 10 min; en manual avisa. Tres saltos en
+  10 min = falla de equipo: deja de saltar y solo avisa. Mide lo que ONIX entrega a la
+  tarjeta: un cable suelto después de la tarjeta no lo detecta.
+- **⚠ PROBLEMAS** (tecla P): lo que está mal ahora (motor, archivos que faltan, relojes sin
+  audios, cuñas sin audio, tandas largas, respaldo vacío) y lo que pasó al aire.
 - Solo avisa lo importante (errores, tandas, respaldo). Si se pierde la conexión aparece un
   aviso rojo fijo; lo que suena no se corta.
 
