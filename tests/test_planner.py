@@ -332,3 +332,16 @@ def test_prioridad_alta_sale_antes(base):
     audio(base, "ALTA", artista="A", ultima_reproduccion="2026-10-10 18:00:00", prioridad=1)   # sonó 8 h después
     primero = [i for i in planear(base, minutos=10, tandas=()) if i["tipo"] == "audio"][0]["titulo"]
     assert primero == "ALTA"             # 18:00 − 12 h = 06:00: va antes que la normal de las 10:00
+
+
+def test_tiempo_de_repeticion_por_cancion(base):
+    cfg(base, separacion_cancion_dias=0, ventana_artista_min=0)
+    audio(base, "CADA 2 HORAS", artista="R", repeticion_horas=2)
+    for i in range(3):
+        audio(base, f"RELLENO {i}", artista=f"F{i}")
+    titulos = [i["titulo"] for i in planear(base, minutos=180, tandas=())]
+    assert titulos.count("CADA 2 HORAS") <= 2
+    items = [i for i in planear(base, minutos=180, tandas=()) if i["titulo"] == "CADA 2 HORAS"]
+    from datetime import datetime as dt
+    for x, y in zip(items, items[1:]):
+        assert (dt.fromisoformat(y["inicio"]) - dt.fromisoformat(x["inicio"])).total_seconds() >= 7200

@@ -126,6 +126,18 @@ class Planner:
         except sqlite3.OperationalError:
             self._con_tope, self._tiene_restricciones = {}, False
         self._emitidas_dia = {}
+        self._repeticion, self._repeticion_ult = {}, {}
+        try:
+            for r in conn.execute("SELECT id, repeticion_horas, ultima_reproduccion FROM audios"
+                                  " WHERE activo = 1 AND repeticion_horas > 0"):
+                self._repeticion[r[0]] = r[1]
+                try:
+                    ult = datetime.fromisoformat(str(r[2]).replace(" ", "T")) if r[2] else None
+                except ValueError:
+                    ult = None
+                self._repeticion_ult[r[0]] = (r[1], ult)
+        except sqlite3.OperationalError:
+            pass
         try:
             conn.execute("SELECT prioridad FROM audios LIMIT 1")
             self._tiene_prioridad = True
@@ -440,6 +452,24 @@ class Planner:
             params += [hora, hora, hora, hora]
             base.append("(COALESCE(a.restr_dias, '') = '' OR instr(',' || a.restr_dias || ',', ?) > 0)")
             params.append(f",{dia},")
+            # Tiempo de repetición propio de la canción (Jazler): N horas sin repetir
+            if self._repeticion:
+                bloqueadas = set()
+                for p in previos:
+                    h = self._repeticion.get(p.get("audio_id"))
+                    if h:
+                        try:
+                            ts = datetime.fromisoformat(str(p["ts"]).replace(" ", "T"))
+                        except ValueError:
+                            continue
+                        if abs(t - ts) < timedelta(hours=h):
+                            bloqueadas.add(p["audio_id"])
+                for aid, (h, ult) in self._repeticion_ult.items():
+                    if ult and t - ult < timedelta(hours=h):
+                        bloqueadas.add(aid)
+                if bloqueadas:
+                    base.append(f"a.id NOT IN ({','.join('?' * len(bloqueadas))})")
+                    params += list(bloqueadas)
             topados = self._topados(conn, t, previos)
             if topados:
                 base.append(f"a.id NOT IN ({','.join('?' * len(topados))})")

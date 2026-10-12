@@ -736,6 +736,10 @@ class AudioUpdateRequest(BaseModel):
     cue_mezcla:      Optional[float] = Field(default=None)
     fade_in:         Optional[float] = Field(default=None)
     fade_out:        Optional[float] = Field(default=None)
+    cue_outro:       Optional[float] = Field(default=None, description="Fin de la voz (no es la mezcla)")
+    prioridad:       Optional[int]   = Field(default=None, ge=1, le=3)
+    repeticion_horas: Optional[int]  = Field(default=None, ge=0, le=24 * 30,
+                                              description="No repetir hasta N horas después (0 = sin regla)")
 
 
 # Tipos de audio válidos (audios.tipo_audio). Solo 'Musica' entra en rotación.
@@ -999,6 +1003,17 @@ def _move_to_library(staging_path: str, titulo: str, artista: str) -> str:
     return str(dest)
 
 
+def _categoria_canonica(conn: sqlite3.Connection, nombre_interno: str, valor: Optional[str]) -> Optional[str]:
+    """La escritura ya registrada ("Pop") en vez de otra ("POP"): una sola categoría, no dos."""
+    if not valor:
+        return valor
+    fila = conn.execute(
+        "SELECT cv.valor FROM config_categorias_valores cv JOIN config_categorias_def cd ON cd.id = cv.cat_id"
+        " WHERE cd.nombre_interno = ? AND UPPER(cv.valor) = UPPER(?) AND cv.activo = 1",
+        (nombre_interno, valor.strip())).fetchone()
+    return fila[0] if fila else valor.strip()
+
+
 def _validate_all_categorias(
     conn: sqlite3.Connection,
     cat1: Optional[str],
@@ -1061,10 +1076,11 @@ async def create_audio(
     titulo  = titulo.upper()
     artista = artista.upper()
     if album: album = album.upper()
-    if cat1:  cat1  = cat1.upper()
-    if cat2:  cat2  = cat2.upper()
-    if cat3:  cat3  = cat3.upper()
-    if voz:   voz   = voz.upper()
+    # Categorías con la escritura ya registrada ("Pop", no "POP")
+    cat1 = _categoria_canonica(conn, "cat1", cat1)
+    cat2 = _categoria_canonica(conn, "cat2", cat2)
+    cat3 = _categoria_canonica(conn, "cat3", cat3)
+    voz  = _categoria_canonica(conn, "voz", voz)
 
     # PASO 1: Validación dinámica de categorías
     _validate_all_categorias(conn, cat1, cat2, cat3, voz)
@@ -1224,6 +1240,10 @@ async def update_audio(
         )
 
     # Determinar valores finales (nuevo o el existente si no se envía)
+    if body.cat1 is not None: body.cat1 = _categoria_canonica(conn, "cat1", body.cat1)
+    if body.cat2 is not None: body.cat2 = _categoria_canonica(conn, "cat2", body.cat2)
+    if body.cat3 is not None: body.cat3 = _categoria_canonica(conn, "cat3", body.cat3)
+    if body.voz  is not None: body.voz  = _categoria_canonica(conn, "voz", body.voz)
     cat1_final = body.cat1 if body.cat1 is not None else audio["subgenero"]
     cat2_final = body.cat2 if body.cat2 is not None else audio["categoria"]
     cat3_final = body.cat3 if body.cat3 is not None else audio["cat3"]
@@ -1248,10 +1268,12 @@ async def update_audio(
     if body.fecha_lanzamiento is not None:
         campos_update["fecha_lanzamiento"] = body.fecha_lanzamiento.upper() if body.fecha_lanzamiento else None
     
-    if body.cat1 is not None: campos_update["subgenero"]    = body.cat1.upper()
-    if body.cat2 is not None: campos_update["categoria"]    = body.cat2.upper()
-    if body.cat3 is not None: campos_update["cat3"]         = body.cat3.upper()
-    if body.voz  is not None: campos_update["genero_vocal"] = body.voz.upper()
+    # Categorías con la escritura ya registrada (antes se forzaban a MAYÚSCULAS y
+    # "Pop" y "POP" quedaban como dos categorías)
+    if body.cat1 is not None: campos_update["subgenero"]    = body.cat1
+    if body.cat2 is not None: campos_update["categoria"]    = body.cat2
+    if body.cat3 is not None: campos_update["cat3"]         = body.cat3
+    if body.voz  is not None: campos_update["genero_vocal"] = body.voz
     tipo_final = _validate_tipo_audio(body.tipo_audio)
     if tipo_final is not None: campos_update["tipo_audio"] = tipo_final
     if body.ganancia_db is not None: campos_update["ganancia_db"] = body.ganancia_db
@@ -1265,6 +1287,9 @@ async def update_audio(
     if body.cue_mezcla      is not None: campos_update["cue_mezcla"]      = body.cue_mezcla
     if body.fade_in         is not None: campos_update["fade_in"]         = body.fade_in
     if body.fade_out        is not None: campos_update["fade_out"]        = body.fade_out
+    if body.cue_outro       is not None: campos_update["cue_outro"]       = body.cue_outro or None
+    if body.prioridad       is not None: campos_update["prioridad"]       = body.prioridad
+    if body.repeticion_horas is not None: campos_update["repeticion_horas"] = body.repeticion_horas or None
 
     if not campos_update:
         return {"mensaje": "Sin cambios que aplicar", "data": {"id": audio_id}}
@@ -1355,7 +1380,8 @@ def list_audios(
                cue_final_coro, cue_mezcla, fade_in, fade_out,
                tipo_audio, veces_reproducido, ultima_reproduccion,
                loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia,
-               marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia, prioridad
+               marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia, prioridad,
+               cue_outro, repeticion_horas
         FROM audios
         WHERE activo = 1
     """
@@ -1450,14 +1476,7 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
         v = c[clave]
         if clave in ("cat1", "cat2", "cat3", "voz"):
             v = (str(v).strip() or None) if v is not None else None
-            if v:
-                # Usar la escritura que ya existe ("Pop", no "POP"): si no, la
-                # misma categoría aparece dos veces
-                existe = conn.execute(
-                    "SELECT cv.valor FROM config_categorias_valores cv JOIN config_categorias_def cd"
-                    " ON cd.id = cv.cat_id WHERE cd.nombre_interno = ? AND UPPER(cv.valor) = UPPER(?)"
-                    " AND cv.activo = 1", (clave, v)).fetchone()
-                v = existe[0] if existe else v
+            v = _categoria_canonica(conn, clave, v)
             _validate_categoria_valor(conn, clave, v, clave)
         elif clave == "origen":
             v = _validate_origen(v) if v else None

@@ -594,6 +594,20 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE audios ADD COLUMN prioridad INTEGER DEFAULT NULL")
     logger.info("  → audios.prioridad: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 23 — Editor de canción (como Jazler)
+    #   cue_outro: dónde termina la voz (aviso al locutor). NO es el punto de
+    #     mezcla: la columna vieja `outro` sigue siendo respaldo de la mezcla.
+    #   repeticion_horas: no repetir esta canción hasta N horas después de sonar
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    if "cue_outro" not in cols:
+        cursor.execute("ALTER TABLE audios ADD COLUMN cue_outro REAL DEFAULT NULL")
+    if "repeticion_horas" not in cols:
+        cursor.execute("ALTER TABLE audios ADD COLUMN repeticion_horas INTEGER DEFAULT NULL")
+    logger.info("  → audios.cue_outro y repeticion_horas: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

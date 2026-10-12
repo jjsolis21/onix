@@ -225,6 +225,10 @@ def ficha(audio_id: int):
             "coro": [a["cue_inicio_coro"] or 0, a["cue_final_coro"] or 0],
             "duracion": a["duracion"] or 0, "cue_inicio": a["cue_inicio"] or 0, "cue_intro": a["cue_intro"] or 0,
             "cue_mezcla": a["cue_mezcla"] or 0,
+            "cue_outro": (a["cue_outro"] if "cue_outro" in claves else None) or 0,
+            "repeticion_horas": a["repeticion_horas"] if "repeticion_horas" in claves else None,
+            "cue_inicio_coro": a["cue_inicio_coro"] or 0, "cue_final_coro": a["cue_final_coro"] or 0,
+            "fade_in": a["fade_in"] or 0, "fade_out": a["fade_out"] or 0, "ganancia_db": a["ganancia_db"],
             "marcas_auto": a["marcas_auto"] if "marcas_auto" in claves else None,
             "aprobada": a["aprobada"] if "aprobada" in claves else 1,
             "loudness_lufs": a["loudness_lufs"], "loudness_estado": a["loudness_estado"],
@@ -421,3 +425,59 @@ def caratula(audio_id: int):
     p = cache / f"{audio_id}.{'png' if 'png' in mime else 'jpg'}"
     p.write_bytes(datos)
     return FileResponse(p, headers={"Cache-Control": "max-age=86400"})
+
+
+# ── Editor de canción: AutoCue y carátula ───────────────────────────────────
+
+@router.post("/api/v1/biblioteca/{audio_id}/autocue", summary="Detectar inicio y mezcla ahora (no guarda)")
+def autocue(audio_id: int):
+    """El editor muestra las marcas propuestas; se guardan al presionar Guardar."""
+    from backend.audio import marcas
+    from backend.audio.loudness import find_ffmpeg
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise HTTPException(status_code=503, detail="ffmpeg no está instalado: no se pueden detectar marcas")
+    conn = _conn()
+    try:
+        r = conn.execute("SELECT archivo_path FROM audios WHERE id = ?", (audio_id,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="Audio no encontrado")
+    ruta = resolve_media(r["archivo_path"] or "")
+    res = marcas.detectar(ruta, ffmpeg) if ruta.is_file() else None
+    if not res:
+        raise HTTPException(status_code=422, detail="No se pudo analizar el audio")
+    return res
+
+
+@router.post("/api/v1/audios/{audio_id}/caratula", summary="Poner carátula: subir imagen o leerla de la etiqueta")
+async def poner_caratula(audio_id: int, file: Optional[UploadFile] = File(None)):
+    """Con archivo: esa imagen. Sin archivo: se vuelve a leer de la etiqueta del audio."""
+    cache = MEDIA_ROOT / ".caratulas"
+    cache.mkdir(parents=True, exist_ok=True)
+    datos = await file.read(5 * 1024 * 1024) if file is not None else None
+    if datos is not None:
+        if datos[:3] == b"\xff\xd8\xff":
+            ext = "jpg"
+        elif datos[:8] == b"\x89PNG\r\n\x1a\n":
+            ext = "png"
+        else:
+            raise HTTPException(status_code=422, detail="La imagen debe ser JPG o PNG")
+    for e in ("jpg", "png", "none"):
+        (cache / f"{audio_id}.{e}").unlink(missing_ok=True)
+    if datos is None:
+        caratula(audio_id)                              # extrae de nuevo de la etiqueta (o 404)
+        return {"ok": True}
+    (cache / f"{audio_id}.{ext}").write_bytes(datos)
+    return {"ok": True}
+
+
+@router.delete("/api/v1/audios/{audio_id}/caratula", summary="Quitar la carátula")
+def quitar_caratula(audio_id: int):
+    cache = MEDIA_ROOT / ".caratulas"
+    cache.mkdir(parents=True, exist_ok=True)
+    for ext in ("jpg", "png"):
+        (cache / f"{audio_id}.{ext}").unlink(missing_ok=True)
+    (cache / f"{audio_id}.none").write_text("")
+    return {"ok": True}

@@ -123,3 +123,20 @@ def test_caratula_y_difusion(client, tmp_path):
         assert r.status_code == 200 and r.content.startswith(b"\x89PNG")
     f = client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()
     assert len(f["historial"]["difusion"]) == 35 and len(f["historial"]["difusion"][0]["horas"]) == 24
+
+
+def test_editor_guarda_outro_prioridad_y_caratula(client, tmp_path):
+    a = subir(client, tmp_path, "Editor Uno", "Artista Editor")
+    r = client.put(f"/api/v1/audios/{a['id']}", json={"cue_outro": 1.5, "prioridad": 1, "repeticion_horas": 6,
+                                                       "ganancia_db": -2, "fade_in": 0.5})
+    assert r.status_code == 200, r.text
+    f = client.get(f"/api/v1/biblioteca/{a['id']}/ficha").json()
+    assert (f["cue_outro"], f["prioridad"], f["repeticion_horas"], f["fade_in"]) == (1.5, 1, 6, 0.5)
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 50
+    assert client.post(f"/api/v1/audios/{a['id']}/caratula", files={"file": ("x.png", png, "image/png")}).status_code == 200
+    assert client.get(f"/api/v1/audios/{a['id']}/caratula").content == png
+    assert client.post(f"/api/v1/audios/{a['id']}/caratula", files={"file": ("x.txt", b"hola", "text/plain")}).status_code == 422
+    client.delete(f"/api/v1/audios/{a['id']}/caratula")
+    assert client.get(f"/api/v1/audios/{a['id']}/caratula").status_code == 404
+    ac = client.post(f"/api/v1/biblioteca/{a['id']}/autocue")
+    assert ac.status_code in (200, 422, 503)

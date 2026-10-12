@@ -391,6 +391,8 @@
 
   // ── Editor (admin-app.js) ────────────────────────────────
   async function editar(id) {
+    // Editor nuevo (editor-cancion.js); si no cargó, el anterior
+    if (window.EditorCancion) { parar(); window.EditorCancion.abrir(id); return; }
     if (typeof openModal !== 'function') return;
     if (typeof library !== 'undefined' && !library.some(t => t.id === id) && typeof loadAudios === 'function') await loadAudios();
     parar();
@@ -730,7 +732,8 @@
     $('bvDeselect').addEventListener('click', () => { S.sel.clear(); pintarFilas(); pintarCabecera(); pintarMasiva(); });
 
     // Botones de cabecera (ventanas de admin-app.js)
-    $('bvNueva').addEventListener('click', () => typeof openModal === 'function' && openModal());
+    $('bvNueva').addEventListener('click', () => window.EditorCancion ? window.EditorCancion.abrir(null)
+                                                                        : (typeof openModal === 'function' && openModal()));
     $('bvLote').addEventListener('click', () => typeof openLoteModal === 'function' && openLoteModal());
     $('bvCategorias').addEventListener('click', () => window.onixCategories?.open?.());
     $('bvExportar').addEventListener('click', exportar);
@@ -813,7 +816,7 @@
     w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
   }
 
-  window.BibliotecaVista = { init, recargar: () => cargar(),
+  window.BibliotecaVista = { init, recargar: () => cargar(), restricciones: ids => editorRestricciones(ids),
     sinTapa: id => { (S.sinTapa ??= new Set()).add(id); } };
   init();
 })();
