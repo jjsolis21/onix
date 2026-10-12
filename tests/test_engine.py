@@ -772,3 +772,47 @@ def test_memo_de_la_cola_llega_al_aire(engine, media):
     assert engine.queue_track(aid, "  Saludar a Valencia  ")
     item = engine._pick_next()
     assert item["origen"] == "cola" and item["nota"] == "Saludar a Valencia"
+
+
+# ── PAUSA del operador ──
+def test_pausa_congela_la_pista_y_no_es_falla(engine, media):
+    import time
+    add_audio(engine, media, "TEMA P1", seconds=60.0, artista="A1")
+    add_audio(engine, media, "TEMA P2", seconds=60.0, artista="A2")
+    assert engine._advance()
+    pista = engine._current_track["id"]
+    time.sleep(0.2)
+    engine.pausar(True); engine._drain_commands()
+    assert engine.status["pausado"]
+    pos = engine._audio.get_position_sec(engine._active_canal)
+    assert pos > 0
+    time.sleep(0.3)
+    engine._tick()
+    # sigue la misma pista, sin avanzar, y el vigilante no la ve como caída
+    assert engine._current_track["id"] == pista
+    assert engine._audio.get_position_sec(engine._active_canal) == pytest.approx(pos)
+    assert engine._watchdog_state()["should_be_playing"] is False
+    engine._do_recover()
+    assert engine._audio.get_position_sec(engine._active_canal) == pytest.approx(pos)
+    # reanudar: continúa desde donde quedó
+    engine.pausar(False); engine._drain_commands()
+    assert not engine.status["pausado"]
+    time.sleep(0.2)
+    assert engine._audio.get_position_sec(engine._active_canal) > pos + 0.1
+    assert engine._watchdog_state()["should_be_playing"] is True
+
+
+def test_siguiente_en_pausa_sale_de_la_pausa(engine, media):
+    add_audio(engine, media, "TEMA S1", seconds=60.0, artista="B1")
+    add_audio(engine, media, "TEMA S2", seconds=60.0, artista="B2")
+    assert engine._advance()
+    primero = engine._current_track["id"]
+    engine._do_pausar(True)
+    assert engine._advance()
+    assert engine._current_track["id"] != primero
+    assert not engine._pausado
+
+
+def test_pausa_sin_pista_no_hace_nada(engine):
+    engine._do_pausar(True)
+    assert not engine._pausado

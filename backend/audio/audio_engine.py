@@ -311,6 +311,8 @@ class BASSBackend:
 
         b.BASS_ChannelPlay.restype  = c_bool
         b.BASS_ChannelPlay.argtypes = [c_uint32, c_bool]
+        b.BASS_ChannelPause.restype  = c_bool
+        b.BASS_ChannelPause.argtypes = [c_uint32]
 
         b.BASS_ChannelStop.restype  = c_bool
         b.BASS_ChannelStop.argtypes = [c_uint32]
@@ -460,6 +462,11 @@ class BASSBackend:
         if handle:
             self._bass.BASS_ChannelStop(handle)
         self._free_channel(channel_idx)
+
+    def pause(self, channel_idx: int) -> bool:
+        """Congela el canal donde está (BASS_ChannelPlay sin restart lo reanuda)."""
+        handle = self._handles.get(channel_idx)
+        return bool(handle and self._bass.BASS_ChannelPause(handle))
 
     def set_volume(self, channel_idx: int, vol: float):
         handle = self._handles.get(channel_idx)
@@ -631,13 +638,24 @@ class MockBackend:
     def stop(self, channel_idx: int):
         self._ch.pop(channel_idx, None)
 
+    def pause(self, channel_idx: int) -> bool:
+        """Guarda la posición y deja de avanzar; play() continúa desde ahí."""
+        ch = self._ch.get(channel_idx)
+        if not ch or ch["started"] is None:
+            return False
+        ch["offset"] = self.get_position_sec(channel_idx)
+        ch["started"] = None
+        return True
+
     def set_volume(self, channel_idx: int, vol: float): pass
     def slide_volume(self, channel_idx: int, vol: float, ms: int): pass
 
     def get_position_sec(self, channel_idx: int) -> float:
         ch = self._ch.get(channel_idx)
-        if not ch or ch["started"] is None:
+        if not ch:
             return 0.0
+        if ch["started"] is None:              # sin arrancar o en pausa: donde quedó
+            return ch["offset"]
         return min(ch["dur"], ch["offset"] + time.monotonic() - ch["started"])
 
     def set_position_sec(self, channel_idx: int, sec: float) -> bool:
@@ -914,6 +932,9 @@ class AudioEngine:
         # hasta que el operador pida reproducir (para hablar en vivo).
         self._detener_al_terminar = False
         self._retenido            = False
+        self._pausado             = False      # PAUSA del operador (lo que suena quedó congelado)
+        self._pausado_desde: Optional[float] = None
+        self._pausa_avisada       = False
 
         # Programa: lo que sonara las proximas horas (ver planner.py).
         # Solo el hilo del motor lo modifica; el lock protege las lecturas de la API.
@@ -1081,6 +1102,17 @@ class AudioEngine:
         if not self._silencio_seg or not self._running:
             self._silencio_desde = None
             return
+        if self._pausado:
+            # Pausa del operador: no es una falla. Si se olvida, avisar (una vez)
+            self._silencio_desde = None
+            espera = max(self._silencio_seg * 3, 30)
+            if not self._pausa_avisada and self._pausado_desde and ahora - self._pausado_desde >= espera:
+                self._pausa_avisada = True
+                seg = round(ahora - self._pausado_desde)
+                log.error("[Engine] El aire lleva %ss en PAUSA", seg)
+                self.bus.emit("aire_muerto", {"motivo": "pausa", "accion": "aviso", "segundos": seg,
+                                              "msg": f"El aire lleva {seg}s en PAUSA: pulsa REANUDAR"})
+            return
         sonando = self._current_track is not None
         vacio_inesperado = (not sonando and self._mode == "automatico" and not self._retenido)
         # En un crossfade suenan dos canales: no hay silencio que vigilar
@@ -1142,7 +1174,7 @@ class AudioEngine:
         if self._cue_track and not self._audio.is_active(CANAL_CUE):
             self._do_cue_stop()
 
-        if self._xfade:
+        if self._xfade or self._pausado:
             return
 
         track = self._current_track
@@ -1290,6 +1322,8 @@ class AudioEngine:
                     self._do_stop("skip_sin_siguiente")
             elif name == "seek":
                 self._do_seek(cmd[1])
+            elif name == "pausar":
+                self._do_pausar(cmd[1])
             elif name == "detener_al_terminar":
                 self._detener_al_terminar = bool(cmd[1])
                 self.bus.emit("detener_al_terminar", {"activo": self._detener_al_terminar,
@@ -1458,6 +1492,27 @@ class AudioEngine:
         return {"inicio": self._now().isoformat(timespec="seconds"),
                 "reloj_id": it.get("reloj_id"), "fila": it.get("fila")}
 
+    def _do_pausar(self, activo: bool):
+        if activo == self._pausado:
+            return
+        if activo:
+            if not self._current_track:
+                return
+            self._finish_crossfade(force=True)     # que no quede la anterior sonando
+            if not self._audio.pause(self._active_canal):
+                self._emit_error(self._current_track.get("id"), "pausa_fallida", "No se pudo pausar el audio")
+                return
+            self._pausado, self._pausado_desde, self._pausa_avisada = True, time.monotonic(), False
+            log.info("[Engine] PAUSA en %.1fs de '%s'",
+                     self._audio.get_position_sec(self._active_canal), self._current_track.get("titulo"))
+        else:
+            self._pausado, self._pausado_desde = False, None
+            if self._current_track and not self._audio.play(self._active_canal):
+                self._emit_error(self._current_track.get("id"), "error_play_backend", "No se pudo reanudar el audio")
+            self._silencio_desde = None
+            log.info("[Engine] Se reanuda '%s'", (self._current_track or {}).get("titulo"))
+        self.bus.emit("pausa", {"activo": self._pausado})
+
     def _do_seek(self, segundos: float):
         if not self._current_track or (self._current_item or {}).get("origen") == "pauta":
             log.warning("[Engine] Salto ignorado: nada sonando o es una cuña de pauta")
@@ -1568,6 +1623,14 @@ class AudioEngine:
         """Stop-next: la pista actual termina y no entra nada mas (ni en automatico)."""
         self._cmds.put(("detener_al_terminar", bool(activo)))
 
+    def pausar(self, activo: bool = True):
+        """
+        PAUSA (operador): congela lo que suena donde está; activo=False lo
+        reanuda. Mientras dura no corre el fin de pista, ni el vigilante, ni
+        las tandas o eventos en punto; el aire muerto solo avisa.
+        """
+        self._cmds.put(("pausar", bool(activo)))
+
     def plan_insertar(self, audio_id: int, posicion: int = 0) -> bool:
         """Mete un audio en el programa en esa posicion (arrastrar desde la biblioteca)."""
         track = self._fetch_track(audio_id)
@@ -1628,6 +1691,12 @@ class AudioEngine:
             return False
 
         self._finish_crossfade(force=True)
+
+        if self._pausado:
+            # Lo que estaba en pausa sale sin mezcla: la nueva entra limpia
+            self._audio.stop(self._active_canal)
+            self._pausado, self._pausado_desde = False, None
+            self.bus.emit("pausa", {"activo": False})
 
         outgoing_active = (self._current_track is not None
                            and self._audio.is_active(self._active_canal))
@@ -1722,6 +1791,9 @@ class AudioEngine:
 
     def _do_stop(self, reason: str):
         self._finish_crossfade(force=True)
+        if self._pausado:
+            self._pausado, self._pausado_desde = False, None
+            self.bus.emit("pausa", {"activo": False})
         track = self._current_track
         self._audio.stop(CANAL_A)
         self._audio.stop(CANAL_B)
@@ -2087,7 +2159,7 @@ class AudioEngine:
         llegar el minuto de una tanda marcada, la cancion que suena sale con
         fade y la tanda empieza a su hora exacta. En manual decide el operador.
         """
-        if not self._tandas_inmediatas or self._mode != "automatico":
+        if not self._tandas_inmediatas or self._mode != "automatico" or self._pausado:
             return
         now = self._now()
         if now.minute not in self._tandas_inmediatas:
@@ -2111,7 +2183,7 @@ class AudioEngine:
         y lo que suena sale con fade. Si el evento se atrasó más de 15 min
         (p. ej. el sistema estuvo en manual) ya no corta nada.
         """
-        if self._mode != "automatico":
+        if self._mode != "automatico" or self._pausado:
             return
         now = self._now()
         with self._programa_lock:
@@ -2198,6 +2270,8 @@ class AudioEngine:
 
     def _do_recover(self):
         """Canal pausado o atascado: intenta reanudar; si no puede, salta."""
+        if self._pausado:
+            return                                 # pausa del operador, no una falla
         log.warning("[Engine] Watchdog recovery (silencio): intentando reanudar...")
         if self._current_track and self._audio.play(self._active_canal):
             self.bus.emit("watchdog_recovered", {"method": "resume"})
@@ -2208,6 +2282,8 @@ class AudioEngine:
 
     def _do_restart(self):
         """Posicion congelada: recarga la pista actual desde cero o salta."""
+        if self._pausado:
+            return
         log.error("[Engine] Watchdog stall: reiniciando stream desde cero...")
         item = self._current_item
         self._finish_crossfade(force=True)
@@ -2223,7 +2299,7 @@ class AudioEngine:
     def _watchdog_state(self) -> dict:
         """Estado que el Watchdog necesita para sus dos verificaciones."""
         return {
-            "should_be_playing":    self._should_be_playing,
+            "should_be_playing":    self._should_be_playing and not self._pausado,
             "is_playing":           self._audio.is_playing(self._active_canal),
             "current_track":        self._current_track,
             "mode":                 self._mode,
@@ -2382,6 +2458,7 @@ class AudioEngine:
             "duration_sec":      round(self._duration, 2) if track else 0,
             "queue":             list(self._playlist_queue),
             "queue_length":      len(self._playlist_queue),
+            "pausado":           self._pausado,
             "pautas_pendientes": len(self._priority_queue),
             "tandas_minutos":    list(self._tandas_minutos),
             "tandas_cierre":     list(self._tandas_cierre),

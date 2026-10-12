@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=11" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=12" />
 </head>
 <body>
 
@@ -67,6 +67,7 @@
       <!-- Iconos propios en /static/studio/icons/ (play2, avanzar2, stop2, .svg): si no están, queda el símbolo -->
       <button class="ctl ctl-play" id="btnPlay" title="Reproducir lo siguiente"><img class="ctl-ico" src="/static/studio/icons/play2.svg" alt="" onerror="this.remove()"><i class="glifo">▶</i><small>REPRODUCIR</small></button>
       <button class="ctl ctl-next" id="btnNext" title="Pasar a lo siguiente (con crossfade)"><img class="ctl-ico" src="/static/studio/icons/avanzar2.svg" alt="" onerror="this.remove()"><i class="glifo">⏭</i><small>SIGUIENTE</small></button>
+      <button class="ctl ctl-pausa" id="btnPausa" title="Congela lo que suena; otra vez para seguir (P)"><img class="ctl-ico" src="/static/studio/icons/pause2.svg" alt="" onerror="this.remove()"><i class="glifo">❚❚</i><small>PAUSA</small></button>
       <button class="ctl ctl-detener" id="btnDetener" title="La pista actual termina y no entra nada más">⏹<small>DETENER AL TERMINAR</small></button>
       <button class="ctl ctl-stop" id="btnStop" title="Corta el aire ahora"><img class="ctl-ico" src="/static/studio/icons/stop2.svg" alt="" onerror="this.remove()"><i class="glifo">■</i><small>PARAR</small></button>
     </div>
@@ -196,6 +197,7 @@
         <tr><td><kbd>L</kbd></td><td>Lanzar la tanda en espera (modo manual)</td></tr>
         <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd> o <kbd>/</kbd></td><td>Buscar en la biblioteca</td></tr>
         <tr><td><kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Supr</kbd></td><td>En el programa: elegir · mover · quitar</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Pausa / reanudar lo que suena</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>Cancelar salto, soltar selección o detener la preescucha</td></tr>
         <tr><td><kbd>P</kbd></td><td>Panel de problemas</td></tr>
         <tr><td><kbd>?</kbd></td><td>Esta ayuda</td></tr>
@@ -207,6 +209,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=12"></script>
+  <script src="/static/studio/studio.js?v=13"></script>
 </body>
 </html>

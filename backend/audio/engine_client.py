@@ -231,6 +231,9 @@ class RemoteEngine:
     def detener_al_terminar(self, activo: bool = True):
         self._call("detener_al_terminar", activo)
 
+    def pausar(self, activo: bool = True):
+        self._call("pausar", activo)
+
     def seek(self, segundos: float):
         self._call("seek", segundos)
 

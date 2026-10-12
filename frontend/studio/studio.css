@@ -166,9 +166,15 @@ button { font-family: inherit; }
 .ctl:hover { border-color: var(--ambar); }
 .ctl-play { color: var(--verde); }
 .ctl-next { color: var(--cyan); }
-.ctl-stop { color: var(--rojo); }
+.ctl-stop { color: var(--rojo); grid-column: 1 / -1; }
 .ctl-detener.activo { background: var(--ambar); color: var(--bg-0); border-color: var(--ambar-vivo); animation: pulso 1.2s ease-in-out infinite; }
 .ctl-detener.activo small { color: var(--bg-0); font-weight: 600; }
+.ctl-pausa { color: var(--ambar); }
+.ctl:disabled { opacity: .4; cursor: default; }
+.ctl-pausa.activo { background: var(--ambar); color: var(--bg-0); border-color: var(--ambar-vivo); animation: pulso 1.2s ease-in-out infinite; }
+.ctl-pausa.activo small { color: var(--bg-0); font-weight: 600; }
+/* En pausa la barra y el tiempo quedan congelados y parpadean */
+body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease-in-out infinite; }
 
 /* ═══════════ AVISOS ═══════════ */
 .aviso {

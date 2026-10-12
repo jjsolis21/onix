@@ -109,7 +109,7 @@ ENGINE_EVENTS = (
     "playback_error", "mode_changed", "effect_fired", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
-    "programa_actualizado", "tanda_excedida", "tanda_inmediata", "evento_inmediato", "detener_al_terminar", "seek",
+    "programa_actualizado", "tanda_excedida", "tanda_inmediata", "evento_inmediato", "detener_al_terminar", "seek", "pausa",
     "aire_muerto",
     "vu",
     "watchdog_recovery", "watchdog_stall", "watchdog_recovered",
@@ -1929,7 +1929,7 @@ def get_status():
 # ===========================================================================
 
 PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue",
-                   "lanzar_tanda", "cue", "cue_stop", "detener_al_terminar",
+                   "lanzar_tanda", "cue", "cue_stop", "detener_al_terminar", "pausar",
                    "plan_insertar", "plan_mover", "plan_quitar", "seek"}
 
 
@@ -1986,6 +1986,8 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
         engine.cue_stop()
     elif cmd == "detener_al_terminar":
         engine.detener_al_terminar(bool(msg.get("activo", True)))
+    elif cmd == "pausar":
+        engine.pausar(bool(msg.get("activo", True)))
     elif cmd == "seek":
         try:
             engine.seek(float(msg["posicion"]))
@@ -2014,7 +2016,7 @@ class PlayerCommand(BaseModel):
     mode:         Optional[str] = None
     ahora:        Optional[bool] = False    # lanzar_tanda: ya, sin esperar el cambio de pista
     desde:        Optional[float] = 0.0     # cue: segundo desde el que se preescucha
-    activo:       Optional[bool] = True     # detener_al_terminar
+    activo:       Optional[bool] = True     # detener_al_terminar / pausar
     posicion:     Optional[float] = 0       # plan_insertar / plan_mover (índice) · seek (segundos)
     uid:          Optional[int] = None      # plan_mover / plan_quitar
 

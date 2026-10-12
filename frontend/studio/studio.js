@@ -104,7 +104,7 @@ const Estado = (() => {
 
   /** Posición actual interpolada entre dos respuestas del servidor */
   function posicion() {
-    if (!st?.current_track || !st.is_playing) return st?.position_sec ?? 0;
+    if (!st?.current_track || !st.is_playing || st.pausado) return st?.position_sec ?? 0;
     return (st.position_sec ?? 0) + (performance.now() - recibido) / 1000;
   }
 
@@ -152,6 +152,14 @@ const Estado = (() => {
 
     // Controles y avisos
     $("btnDetener").classList.toggle("activo", !!st.detener_al_terminar);
+    const bp = $("btnPausa"), pausa = !!st.pausado;
+    bp.classList.toggle("activo", pausa);
+    bp.disabled = !ct;
+    bp.querySelector("small").textContent = pausa ? "REANUDAR" : "PAUSA";
+    const ico = bp.querySelector(".ctl-ico");
+    if (ico) ico.src = `/static/studio/icons/${pausa ? "play2" : "pause2"}.svg`;
+    bp.querySelector(".glifo").textContent = pausa ? "▶" : "❚❚";
+    document.body.classList.toggle("en-pausa", pausa);
     $("avisoRetenido").hidden = !st.retenido;
     const n = st.tanda_en_espera ?? 0;
     $("avisoTanda").hidden = n === 0;
@@ -342,7 +350,13 @@ const Salto = (() => {
 /* ─────────────────────────── controles ─────────────────────────── */
 document.querySelectorAll(".modo-btn").forEach(b =>
   b.addEventListener("click", () => WS.send({ cmd: "set_mode", mode: b.dataset.modo })));
-$("btnPlay").addEventListener("click", () => WS.send({ cmd: "play" }));
+$("btnPlay").addEventListener("click", () =>
+  WS.send(Estado.st?.pausado ? { cmd: "pausar", activo: false } : { cmd: "play" }));
+$("btnPausa").addEventListener("click", () => {
+  if (!Estado.st?.current_track) return;
+  WS.send({ cmd: "pausar", activo: !Estado.st.pausado });
+  setTimeout(Estado.poll, 150);
+});
 $("btnNext").addEventListener("click", () => WS.send({ cmd: "skip" }));
 $("btnDetener").addEventListener("click", () => {
   const activo = !Estado.st?.detener_al_terminar;
@@ -871,6 +885,8 @@ const Atajos = (() => {
     } else if (/^Digit[1-9]$/.test(e.code)) {
       e.preventDefault();
       Derecha.dispararSlot(+e.code.slice(5));
+    } else if (e.key.toLowerCase() === "p") {
+      $("btnPausa").click();
     } else if (e.key.toLowerCase() === "d") {
       $("btnDetener").click();
     } else if (e.key.toLowerCase() === "l") {
@@ -1010,6 +1026,7 @@ WS.on("programa_actualizado", programaPronto);
 WS.on("queue_updated", programaPronto);
 WS.on("mode_changed", () => { Estado.poll(); programaPronto(); });
 WS.on("detener_al_terminar", () => Estado.poll());
+WS.on("pausa", () => Estado.poll());
 WS.on("cue_started", () => Estado.poll());
 WS.on("cue_stopped", () => Estado.poll());
 WS.on("cartuchera_updated", () => Derecha.cartuchera());
