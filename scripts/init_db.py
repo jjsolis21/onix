@@ -550,6 +550,15 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE audios ADD COLUMN marcas_auto INTEGER DEFAULT NULL")
     logger.info("  → audios.marcas_auto: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 19 — Color de los valores de categoría (antes vivía solo en
+    # el navegador de cada PC; ahora lo comparten todas)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(config_categorias_valores)")
+    if "color" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE config_categorias_valores ADD COLUMN color TEXT DEFAULT NULL")
+    logger.info("  → config_categorias_valores.color: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

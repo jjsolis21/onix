@@ -181,7 +181,9 @@ const playTrack = track => {
 
 const loadAudios = async () => {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/audios?limit=500&offset=0`);
+    // Toda la biblioteca (antes solo las primeras 500) y sin cuñas: las
+    // publicidades tienen su propia biblioteca en Programación de Pautas.
+    const res = await fetch(`${API_BASE}/api/v1/audios?sin_tipo=Cu%C3%B1a&limit=50000&offset=0`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     library = (data.data || []).map(a => ({
@@ -208,6 +210,48 @@ const loadAudios = async () => {
   }
 };
 
+/* Exportar BD = hacer una copia de respaldo ahora y descargarla (solo administrador) */
+async function exportarBD() {
+  const r = await fetch(`${API_BASE}/api/v1/respaldos`, { method: 'POST' });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    showToast(r.status === 403 ? 'Solo el administrador puede exportar la base de datos' : (d.detail || `Error ${r.status}`), 'error');
+    return;
+  }
+  const c = await r.json();
+  location.href = `${API_BASE}/api/v1/respaldos/${encodeURIComponent(c.archivo)}`;
+  showToast(`✓ Copia ${c.archivo} descargándose`, 'success');
+}
+
+/* Chequeo de integridad = las revisiones del panel de problemas, hechas ahora */
+async function chequeoIntegridad() {
+  showToast('Revisando la biblioteca…', 'info');
+  try {
+    const d = await fetch(`${API_BASE}/api/v1/problemas?forzar=true`).then(r => r.json());
+    const lista = d.activos.filter(p => ['archivos', 'relojes', 'pautas', 'biblioteca', 'respaldo'].includes(p.clave));
+    if (!lista.length) { showToast('✓ Biblioteca en orden: no faltan archivos ni hay relojes o pautas sin audio', 'success'); return; }
+    alert('Chequeo de integridad\n\n' + lista.map(p =>
+      `• ${p.titulo}${p.detalle ? `\n  ${p.detalle}` : ''}${p.ejemplos.length ? `\n  - ${p.ejemplos.slice(0, 8).join('\n  - ')}` : ''}`).join('\n\n'));
+  } catch (e) { showToast('No se pudo hacer el chequeo', 'error'); }
+}
+
+/* Autocompletar del artista con los ya cargados (como Jazler) */
+async function cargarArtistas() {
+  const input = $('modal-artist');
+  if (!input) return;
+  let dl = $('bm-artistas');
+  if (!dl) {
+    dl = document.createElement('datalist'); dl.id = 'bm-artistas';
+    input.parentNode.appendChild(dl);
+    input.setAttribute('list', 'bm-artistas');
+    input.setAttribute('autocomplete', 'off');
+  }
+  try {
+    const lista = await fetch(`${API_BASE}/api/v1/artistas?tipo=Musica`).then(r => r.ok ? r.json() : []);
+    dl.innerHTML = lista.map(a => `<option value="${String(a.artista).replace(/"/g, '&quot;')}">${a.audios} tema(s)</option>`).join('');
+  } catch { /* sin lista: se escribe a mano */ }
+}
+
 async function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
@@ -215,10 +259,11 @@ async function openModal(id = null) {
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
   overlay.classList.add('active'); overlay.style.display = 'flex'; overlay.style.zIndex = '9000';
   if (typeof window.wfInit === 'function') {
-    try { await window.wfInit(); } catch (e) { console.error('[Ónix] Error waveform:', e); }
+    try { await window.wfInit('bm-waveform'); } catch (e) { console.error('[Ónix] Error waveform:', e); }
   }
   const p = $('wf-panel'); if (p) p.style.display = 'block';
   editingId = id;
+  cargarArtistas();
   const fechaEl = $('modal-fecha');
   if (fechaEl) fechaEl.textContent = id ? '—' : new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   if (id) {
@@ -341,7 +386,7 @@ const initApp = async () => {
   if (!window._waitWFStarted) {
     window._waitWFStarted = true;
     const waitWF = () => {
-      if (document.getElementById('waveform') && typeof window.wfInit === 'function') { window.wfInit(); console.log('[BM] WaveSurfer inicializado'); }
+      if (document.getElementById('bm-waveform') && typeof window.wfInit === 'function') { window.wfInit('bm-waveform'); console.log('[BM] WaveSurfer inicializado'); }
       else { setTimeout(waitWF, 80); }
     };
     waitWF();
@@ -378,12 +423,12 @@ document.addEventListener('click', e => {
   if (e.target.closest('#jz-modal-save')) { saveModal(); return; }
   if (e.target.closest('#jz-sb-lote')) { openLoteModal(); return; }
   if (e.target.closest('#jz-sb-eliminar')) { showToast('Selecciona una canción de la lista para eliminarla', 'info'); return; }
-  if (e.target.closest('#jz-task-artistas')) { showToast('Editar Artistas: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-artistas')) { $('jz-search')?.focus(); showToast('Busca el artista y edita sus canciones (doble clic)', 'info'); return; }
   if (e.target.closest('#jz-task-categorias')) { if (window.onixCategories?.open) window.onixCategories.open(); else showToast('Editar Categorías: módulo no cargado', 'error'); return; }
   if (e.target.closest('#jz-task-estadisticas')) { window.ShellNav.activate('07-estadisticas'); return; }
-  if (e.target.closest('#jz-task-exportar')) { showToast('Exportar BD: próximamente', 'info'); return; }
-  if (e.target.closest('#jz-task-integridad')) { showToast('Chequeo de integridad: próximamente', 'info'); return; }
-  if (e.target.closest('#jz-task-difusion')) { showToast('Análisis de difusión: próximamente', 'info'); return; }
+  if (e.target.closest('#jz-task-exportar')) { exportarBD(); return; }
+  if (e.target.closest('#jz-task-integridad')) { chequeoIntegridad(); return; }
+  if (e.target.closest('#jz-task-difusion')) { window.ShellNav.activate('07-estadisticas'); return; }
   const overlay = getOverlay();
   /* Bloqueo del cierre por clic en el overlay (Desactivado por seguridad) */
   /* if (overlay && e.target === overlay) { closeModal(); return; } */
@@ -409,6 +454,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#lote-next-step')) { loteNextStep(); return; }
   if (e.target.closest('#lote-next-prev')) { lotePrevStep(); return; }
   if (e.target.closest('#lote-btn-finish')) { closeLoteModal(); loadAudios(); return; }
+  if (e.target.closest('#lote-close')) { pedirCerrarLote(); return; }
   if (e.target.closest('#lote-btn-again')) { loteReset(); return; }
   if (e.target.closest('#lote-sel-all')) { loteSelectAll(true); return; }
   if (e.target.closest('#lote-sel-none')) { loteSelectAll(false); return; }
@@ -468,6 +514,17 @@ function openLoteModal() {
 function closeLoteModal() {
   $('lote-overlay').classList.remove('active');
   loteResetPlayer();
+}
+
+/* Cerrar con la X o Esc: no a mitad de una subida, y preguntando si ya se eligieron archivos */
+let loteProcesando = false;
+function pedirCerrarLote() {
+  if (loteProcesando) { showToast('Espera a que termine la carga en curso', 'info'); return; }
+  if (loteStep > 1 && loteStep < 4 && loteFiles.length &&
+      !confirm('¿Cerrar sin cargar los archivos elegidos?')) return;
+  const cargo = loteStep === 4;
+  closeLoteModal();
+  if (cargo) loadAudios();
 }
 
 function loteUpdateUI() {
@@ -590,10 +647,7 @@ function syncLoteSelects() {
     // Llenaremos manualmente.
     const cats = ['soundCode', 'popularity', 'voz'];
     const targets = [s1, pop, voz];
-    cats.forEach((k, i) => {
-      const items = JSON.parse(localStorage.getItem('onix_categories'))?.[k]?.items || [];
-      fill(targets[i], items);
-    });
+    cats.forEach((k, i) => fill(targets[i], getItems(k)));   // del servidor (antes, del navegador)
   }
 }
 
@@ -602,6 +656,7 @@ async function processLote() {
   if (selected.length === 0) return;
 
   loteStep = 3; // Stay here during processing
+  loteProcesando = true;
   loteUpdateUI();
   $('lote-next-step').disabled = true;
   $('lote-next-prev').disabled = true;
@@ -662,6 +717,7 @@ async function processLote() {
   }
 
   loteStep = 4;
+  loteProcesando = false;
   loteUpdateUI();
   $('lote-success-msg').innerHTML = `Se han procesado <strong>${selected.length}</strong> archivos.<br>
     <span style="color:#00ff88">✓ ${success} Éxitos</span> | <span style="color:#ff6666">✕ ${error} Errores</span>`;
@@ -703,6 +759,8 @@ document.addEventListener('keydown', e => {
   const isOpen = getOverlay()?.classList.contains('active') || $('lote-overlay')?.classList.contains('active');
   /* Bloqueo del cierre por tecla Escape (Desactivado por seguridad) */
   /* if (e.key === 'Escape' && isOpen) { closeModal(); closeLoteModal(); return; } */
+  // El lote sí se cierra con Esc (con las mismas protecciones que la X)
+  if (e.key === 'Escape' && $('lote-overlay')?.classList.contains('active')) { pedirCerrarLote(); return; }
   if (e.key === 'n' && e.ctrlKey && !isOpen) { e.preventDefault(); openModal(); return; }
 });
 
@@ -718,7 +776,6 @@ window.populateUploadSelects = populateUploadSelects;
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 
 const CategoriesModule = (function () {
-  const LS_KEY = 'onix_categories';
   const CATEGORY_KEYS = ['soundCode', 'popularity', 'era', 'voz', 'propiedades'];
   const DEFAULTS = {
     soundCode: { name: 'Categoría 1', canRename: true, items: [{ label: 'POP', color: '#8e44ad' }, { label: 'ROCK', color: '#6b7a1e' }, { label: 'DANCE', color: '#cc0000' }, { label: 'ALTERNATIVE', color: '#808080' }] },
@@ -728,9 +785,34 @@ const CategoriesModule = (function () {
     propiedades: { name: 'Propiedades', canRename: false, items: [] }
   };
   let categories = {}, activeKey = 'soundCode', selectedIdx = -1;
-  function load() { try { const stored = localStorage.getItem(LS_KEY); if (stored) { const parsed = JSON.parse(stored); CATEGORY_KEYS.forEach(k => { categories[k] = Object.assign({}, DEFAULTS[k], parsed[k] || {}); if (!Array.isArray(categories[k].items)) categories[k].items = []; }); } else { reset(); } } catch (e) { reset(); } }
-  function save() { localStorage.setItem(LS_KEY, JSON.stringify(categories)); }
+  /* Las categorías viven en el SERVIDOR (/api/v1/config/biblioteca): así la
+     PC del estudio y la del jefe de programación ven las mismas. Antes se
+     guardaban en el navegador de cada PC y cada una tenía las suyas. */
+  const SERVIDOR = { soundCode: 'cat1', popularity: 'cat2', era: 'cat3', voz: 'voz' };
+  const PALETA = ['#8e44ad', '#cc0000', '#d35400', '#2980b9', '#16a085', '#6b7a1e', '#c0392b', '#7f8c8d'];
   function reset() { CATEGORY_KEYS.forEach(k => { categories[k] = JSON.parse(JSON.stringify(DEFAULTS[k])); }); }
+  async function load() {
+    reset();
+    try {
+      const schema = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json());
+      for (const [key, interno] of Object.entries(SERVIDOR)) {
+        const c = (schema.categorias || []).find(x => x.nombre_interno === interno);
+        if (!c) continue;
+        categories[key] = { name: c.etiqueta_visible, canRename: false,
+          items: c.valores.map((v, i) => ({ id: v.id, label: v.valor, color: v.color || PALETA[i % PALETA.length] })) };
+      }
+    } catch (e) { showToast('No se pudieron cargar las categorías del servidor', 'error'); }
+  }
+  async function api(url, metodo, body) {
+    const r = await fetch(url, { method: metodo, headers: { 'Content-Type': 'application/json' },
+                                 body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(typeof d.detail === 'string' ? d.detail : `Error ${r.status}`);
+    }
+    return r.json().catch(() => ({}));
+  }
+  async function recargar() { await load(); sync(); renderSidebar(); renderItems(); }
   const SELECT_MAP = { soundCode: ['modal-sc1', 'modal-sc2', 'modal-sc3', 'jz-filter-sc'], popularity: ['modal-popularity', 'jz-filter-pop'], era: ['modal-era', 'jz-filter-cat3'], voz: ['modal-voz', 'jz-filter-voz'], propiedades: [] };
   const SELECT_LABELS = { 'modal-sc1': '— CAT 1 —', 'modal-sc2': '— CAT 2 —', 'modal-sc3': '— CAT 3 —', 'jz-filter-sc': 'Categoría 1', 'modal-popularity': '— —', 'jz-filter-pop': 'Categoría 2', 'modal-era': '—', 'jz-filter-cat3': 'Categoría 3', 'modal-voz': '—', 'jz-filter-voz': 'Voz' };
   function sync() { CATEGORY_KEYS.forEach(key => { const ids = SELECT_MAP[key] || [], items = categories[key]?.items || []; ids.forEach(id => { const el = document.getElementById(id); if (!el) return; const cur = el.value; el.innerHTML = `<option value="">${SELECT_LABELS[id] || '—'}</option>`; items.forEach(it => { const o = document.createElement('option'); o.value = it.label; o.textContent = it.label; el.appendChild(o); }); if (cur && [...el.options].some(o => o.value === cur)) el.value = cur; }); }); }
@@ -746,17 +828,48 @@ const CategoriesModule = (function () {
     if (c2) c2.style.display = isCat1 ? 'inline-block' : 'none';
   }
   const publicApi = {
-    init() { load(); sync(); },
+    init() { load().then(sync); },
     syncSelects() { sync(); },
     getCategories() { return categories; },
     open() { const overlay = document.getElementById('cat-overlay'); if (!overlay) return; activeKey = 'soundCode'; selectedIdx = -1; overlay.classList.add('active'); renderSidebar(); renderItems(); updateHeader(); },
     close() { document.getElementById('cat-overlay')?.classList.remove('active'); },
     select(key) { activeKey = key; selectedIdx = -1; renderSidebar(); renderItems(); updateHeader(); },
-    add() { const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase(); if (!label) return; if (categories[activeKey].items.some(i => i.label === label)) return; categories[activeKey].items.push({ label, color: document.getElementById('cat-new-color')?.value || '#8e44ad' }); save(); sync(); renderItems(); document.getElementById('cat-add-form')?.classList.remove('visible'); },
+    async add() {
+      const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase();
+      if (!label || !SERVIDOR[activeKey]) return;
+      if (categories[activeKey].items.some(i => i.label.toUpperCase() === label)) { showToast('Ya existe', 'error'); return; }
+      try {
+        const r = await api('/api/v1/config/biblioteca/valores', 'POST', { nombre_interno: SERVIDOR[activeKey], valor: label });
+        const color = document.getElementById('cat-new-color')?.value;
+        if (color && r.data?.id) await api(`/api/v1/config/biblioteca/valores/${r.data.id}`, 'PUT', { color });
+        document.getElementById('cat-add-form')?.classList.remove('visible');
+        await recargar();
+      } catch (e) { showToast(e.message, 'error'); }
+    },
     openEdit() { if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; document.getElementById('cat-add-form')?.classList.remove('visible'); const nameEl = document.getElementById('cat-edit-name'), colorEl = document.getElementById('cat-edit-color'); if (nameEl) nameEl.value = item.label; if (colorEl) colorEl.value = item.color || '#8e44ad'; document.getElementById('cat-edit-form')?.classList.add('visible'); if (nameEl) nameEl.focus(); },
-    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } item.label = newLabel; item.color = document.getElementById('cat-edit-color')?.value || item.color; save(); sync(); renderItems(); document.getElementById('cat-edit-form')?.classList.remove('visible'); showToast(`✓ Ítem actualizado: ${newLabel}`, 'success'); },
-    delete() { if (selectedIdx < 0) return; categories[activeKey].items.splice(selectedIdx, 1); selectedIdx = -1; save(); sync(); renderItems(); },
-    move(dir) { const items = categories[activeKey].items; if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;[items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]]; selectedIdx += dir; save(); sync(); renderItems(); }
+    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } const color = document.getElementById('cat-edit-color')?.value || item.color;
+      api(`/api/v1/config/biblioteca/valores/${item.id}`, 'PUT', { valor: newLabel, color })
+        .then(async r => {
+          document.getElementById('cat-edit-form')?.classList.remove('visible');
+          await recargar(); loadAudios();
+          showToast(`✓ ${newLabel}${r.audios_actualizados ? ` · ${r.audios_actualizados} canción(es) actualizadas` : ''}`, 'success');
+        })
+        .catch(e => showToast(e.message, 'error'));
+    },
+    async delete() {
+      const item = categories[activeKey].items[selectedIdx];
+      if (!item || !confirm(`¿Quitar "${item.label}" de la lista? Las canciones que ya lo tienen lo conservan.`)) return;
+      try { await api(`/api/v1/config/biblioteca/valores/${item.id}`, 'DELETE'); selectedIdx = -1; await recargar(); }
+      catch (e) { showToast(e.message, 'error'); }
+    },
+    async move(dir) {
+      const items = categories[activeKey].items;
+      if (selectedIdx < 0 || selectedIdx + dir < 0 || selectedIdx + dir >= items.length) return;
+      [items[selectedIdx], items[selectedIdx + dir]] = [items[selectedIdx + dir], items[selectedIdx]];
+      selectedIdx += dir; renderItems();
+      try { await Promise.all(items.map((it, i) => api(`/api/v1/config/biblioteca/valores/${it.id}`, 'PUT', { orden: i + 1 }))); sync(); }
+      catch (e) { showToast(e.message, 'error'); recargar(); }
+    }
   };
   document.addEventListener('click', e => {
     const t = e.target;

@@ -20,7 +20,7 @@ from typing import List, Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile
+from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
@@ -415,7 +415,7 @@ def get_biblioteca_schema(conn: sqlite3.Connection = Depends(get_db)):
     resultado = []
     for cat in categorias:
         valores = conn.execute("""
-            SELECT id, valor, orden
+            SELECT id, valor, orden, color
             FROM config_categorias_valores
             WHERE cat_id = ? AND activo = 1
             ORDER BY orden ASC, valor ASC
@@ -427,13 +427,70 @@ def get_biblioteca_schema(conn: sqlite3.Connection = Depends(get_db)):
             "etiqueta_visible": cat["etiqueta_visible"],
             "orden": cat["orden"],
             "valores": [
-                {"id": v["id"], "valor": v["valor"], "orden": v["orden"]}
+                {"id": v["id"], "valor": v["valor"], "orden": v["orden"], "color": v["color"]}
                 for v in valores
             ],
         })
 
     logger.info(f"  → Retornando {len(resultado)} categorías")
     return {"categorias": resultado}
+
+
+# Columna de audios que guarda cada categoría
+_COLUMNA_CATEGORIA = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal"}
+
+
+class ValorUpdateRequest(BaseModel):
+    valor: Optional[str] = Field(None, min_length=1, max_length=100)
+    orden: Optional[int] = None
+    color: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+@app.put("/api/v1/config/biblioteca/valores/{valor_id}", tags=["Config Biblioteca"],
+         summary="Renombrar, reordenar o colorear un valor de categoría")
+def update_categoria_valor(valor_id: int, body: ValorUpdateRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Renombrar también actualiza los audios que tenían el nombre viejo (si no,
+    las canciones quedarían con una categoría que ya no existe).
+    """
+    v = conn.execute(
+        "SELECT cv.id, cv.valor, cd.nombre_interno FROM config_categorias_valores cv"
+        " JOIN config_categorias_def cd ON cd.id = cv.cat_id WHERE cv.id = ? AND cv.activo = 1",
+        (valor_id,)).fetchone()
+    if not v:
+        raise HTTPException(status_code=404, detail="Valor no encontrado")
+    actualizados = 0
+    if body.valor is not None and body.valor.strip() != v["valor"]:
+        nuevo = body.valor.strip()
+        if conn.execute(
+                "SELECT 1 FROM config_categorias_valores WHERE cat_id = (SELECT cat_id FROM config_categorias_valores"
+                " WHERE id = ?) AND valor = ? AND activo = 1 AND id != ?", (valor_id, nuevo, valor_id)).fetchone():
+            raise HTTPException(status_code=409, detail=f"Ya existe '{nuevo}' en esa categoría")
+        conn.execute("UPDATE config_categorias_valores SET valor = ? WHERE id = ?", (nuevo, valor_id))
+        col = _COLUMNA_CATEGORIA.get(v["nombre_interno"])
+        if col:
+            actualizados = conn.execute(f"UPDATE audios SET {col} = ? WHERE UPPER({col}) = UPPER(?)",
+                                        (nuevo, v["valor"])).rowcount
+    if body.orden is not None:
+        conn.execute("UPDATE config_categorias_valores SET orden = ? WHERE id = ?", (body.orden, valor_id))
+    if body.color is not None:
+        conn.execute("UPDATE config_categorias_valores SET color = ? WHERE id = ?", (body.color, valor_id))
+    conn.commit()
+    return {"id": valor_id, "audios_actualizados": actualizados}
+
+
+class CategoriaUpdateRequest(BaseModel):
+    etiqueta_visible: str = Field(..., min_length=1, max_length=60)
+
+
+@app.put("/api/v1/config/biblioteca/categorias/{nombre_interno}", tags=["Config Biblioteca"],
+         summary="Renombrar una categoría (p. ej. 'Categoría 1' → 'Género')")
+def update_categoria(nombre_interno: str, body: CategoriaUpdateRequest, conn: sqlite3.Connection = Depends(get_db)):
+    if not conn.execute("UPDATE config_categorias_def SET etiqueta_visible = ? WHERE nombre_interno = ? AND activo = 1",
+                        (body.etiqueta_visible.strip(), nombre_interno)).rowcount:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    conn.commit()
+    return {"nombre_interno": nombre_interno, "etiqueta_visible": body.etiqueta_visible.strip()}
 
 
 @app.post(
@@ -483,12 +540,21 @@ def add_categoria_valor(
     else:
         orden = body.orden
 
+    # Un valor borrado antes (soft-delete) se reactiva en vez de chocar con él
+    borrado = conn.execute(
+        "SELECT id FROM config_categorias_valores WHERE cat_id = ? AND valor = ? AND activo = 0",
+        (cat["id"], body.valor)).fetchone()
     try:
-        cursor = conn.execute("""
-            INSERT INTO config_categorias_valores (cat_id, valor, orden)
-            VALUES (?, ?, ?)
-        """, (cat["id"], body.valor, orden))
-        nuevo_id = cursor.lastrowid
+        if borrado:
+            conn.execute("UPDATE config_categorias_valores SET activo = 1, orden = ? WHERE id = ?",
+                         (orden, borrado["id"]))
+            nuevo_id = borrado["id"]
+        else:
+            cursor = conn.execute("""
+                INSERT INTO config_categorias_valores (cat_id, valor, orden)
+                VALUES (?, ?, ?)
+            """, (cat["id"], body.valor, orden))
+            nuevo_id = cursor.lastrowid
         logger.info(
             f"  → Valor '{body.valor}' añadido a '{body.nombre_interno}' "
             f"(id={nuevo_id}, orden={orden})"
@@ -1265,9 +1331,10 @@ def list_audios(
     cat3: Optional[str] = None,
     voz: Optional[str]  = None,
     tipo: Optional[str] = None,   # Musica | Cuña | Efecto | Sweeper | Programa | Tips
+    sin_tipo: Optional[str] = None,   # excluir un tipo (la Biblioteca musical no muestra cuñas)
     busqueda: Optional[str] = None,
-    limit: int = 500,   # subido de 50 → 500 para el selector de pautas
-    offset: int = 0,
+    limit: int = Query(500, ge=1, le=50000),
+    offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """
@@ -1309,6 +1376,9 @@ def list_audios(
     if tipo:
         query += " AND tipo_audio = ?"
         params.append(_validate_tipo_audio(tipo))
+    if sin_tipo:
+        query += " AND tipo_audio != ?"
+        params.append(_validate_tipo_audio(sin_tipo))
     if busqueda:
         query += " AND (titulo LIKE ? OR artista LIKE ?)"
         params.extend([f"%{busqueda}%", f"%{busqueda}%"])
@@ -1328,6 +1398,18 @@ def list_audios(
         "offset": offset,
         "data": [dict(a) for a in audios],
     }
+
+
+@app.get("/api/v1/artistas", tags=["Audios"], summary="Artistas ya cargados (para autocompletar)")
+def listar_artistas(tipo: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+    """Nombres distintos de artista (o anunciante, con tipo=Cuña), con cuántos audios tiene cada uno."""
+    sql = "SELECT artista, COUNT(*) AS n FROM audios WHERE activo = 1 AND COALESCE(artista, '') != ''"
+    params = []
+    if tipo:
+        sql += " AND tipo_audio = ?"
+        params.append(_validate_tipo_audio(tipo))
+    sql += " GROUP BY artista ORDER BY artista"
+    return [{"artista": r["artista"], "audios": r["n"]} for r in conn.execute(sql, params)]
 
 
 # ---- DELETE (soft) /api/v1/audios/{audio_id} ----

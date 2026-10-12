@@ -182,17 +182,24 @@
 
   /**
    * wfInit — Crea la instancia de WaveSurfer (Versión Sincronizada)
+   * @param {string} idContenedor — 'bm-waveform' (Biblioteca) o 'waveform' (Pautas).
+   *   El editor es uno solo: si se pide en otro contenedor, se vuelve a crear allí
+   *   (antes dibujaba en el primero que encontraba, a veces el de la otra sección).
    * @returns {Promise} — Se resuelve cuando el motor está listo para cargar audio
    */
-  function wfInit() {
+  var _contenedor = null;
+  function wfInit(idContenedor) {
+    idContenedor = idContenedor || 'bm-waveform';
     return new Promise(function (resolve, reject) {
-      if (_inited && _ws) return resolve(_ws);
+      if (_inited && _ws && _contenedor === idContenedor) return resolve(_ws);
+      if (_inited && _ws) wfDestroy();
 
-      var container = _id('waveform');
+      var container = _id(idContenedor);
       if (!container) {
-        console.warn('[ÓnixWF] Contenedor #waveform no encontrado.');
+        console.warn('[ÓnixWF] Contenedor #' + idContenedor + ' no encontrado.');
         return reject('No container');
       }
+      _contenedor = idContenedor;
 
       /* LIMPIEZA FINA: Solo borrar canvas previo, no el nodo padre */
       if (container.replaceChildren) {
@@ -203,7 +210,7 @@
 
       if (typeof WaveSurfer === 'undefined') {
         if (_tries++ < 50) {
-          setTimeout(function () { wfInit().then(resolve).catch(reject); }, 100);
+          setTimeout(function () { wfInit(idContenedor).then(resolve).catch(reject); }, 100);
           return;
         }
         return reject('WaveSurfer not found');
@@ -215,7 +222,7 @@
 
       if (!RP) {
         if (_tries++ < 50) {
-          setTimeout(function () { wfInit().then(resolve).catch(reject); }, 100);
+          setTimeout(function () { wfInit(idContenedor).then(resolve).catch(reject); }, 100);
           return;
         }
         return reject('Regions not found');
@@ -227,7 +234,7 @@
       try {
         _rp = RP.create();
         _ws = WaveSurfer.create({
-          container: '#waveform',
+          container: container,   // id propio: Pautas también tiene un #waveform
           waveColor: '#333',
           progressColor: '#ff6600',
           cursorColor: '#ffffff',
@@ -246,7 +253,9 @@
           var ec = _id('wf-time-cur'); if (ec) ec.textContent = _fmtLED(0);
           var et = _id('wf-time-total'); if (et) et.textContent = _fmtLED(_dur);
           _autoCue();
-          _ws.zoom(60);
+          // Sin zoom fijo: la canción completa entra en el ancho (como SoHo).
+          // zoom(60) ensanchaba el contenedor y la onda entraba en un ciclo
+          // de agrandarse y achicarse sola.
           console.info('[ÓnixWF] Audio cargado.');
         });
 

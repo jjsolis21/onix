@@ -189,7 +189,7 @@
               <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
               <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
             </svg>
-            <input type="text" id="fAudio" placeholder="Seleccionar audio del spot desde la biblioteca…" readonly>
+            <input type="text" id="fAudio" placeholder="Clic para elegir la cuña de la biblioteca…" readonly>
             <button class="btn-icon" id="btnSelectAudio" type="button" title="Subir nuevo archivo desde tu PC">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.8"/>
@@ -199,7 +199,7 @@
           </div>
           <!-- Input file oculto, disparado por el botón -->
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
-          <span class="field-hint" id="audioHint">Seleccioná un audio de la biblioteca haciendo clic en el campo, o subí uno nuevo con el botón</span>
+          <span class="field-hint" id="audioHint">Clic en el campo para elegir una cuña ya cargada, o «Subir archivo» para cargar una nueva</span>
 
           <!-- Barra de progreso de subida -->
           <div class="upload-progress hidden" id="uploadProgress">
@@ -408,7 +408,24 @@
           <div class="matrix-header">
             <h4 class="section-label">Matriz de Horarios</h4>
           </div>
-          <p class="matrix-hint">Clic para activar · Arrastre para selección múltiple</p>
+          <!-- Cómo se eligen las horas de las menciones diarias -->
+          <div class="menc-modo">
+            <div class="menc-toggle" role="group" aria-label="Cómo elegir las horas">
+              <button type="button" class="menc-btn activo" data-modo="auto">⚡ Automático</button>
+              <button type="button" class="menc-btn" data-modo="manual">✋ Manual</button>
+            </div>
+            <div class="menc-auto" id="mencAuto">
+              <div class="menc-dias" id="mencDias"></div>
+              <div class="menc-franja">
+                <span>Entre las</span>
+                <select id="mencDesde" aria-label="Desde la hora"></select>
+                <span>y las</span>
+                <select id="mencHasta" aria-label="Hasta la hora"></select>
+              </div>
+            </div>
+            <p class="menc-info" id="mencInfo"></p>
+          </div>
+          <p class="matrix-hint" id="matrixHint">Clic para activar · Arrastre para selección múltiple</p>
 
           <!-- Leyenda -->
           <div class="matrix-legend">

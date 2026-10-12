@@ -72,7 +72,7 @@
   }
 
   /* Waveform region overrides */
-  #waveform .wavesurfer-region {
+  #bm-waveform .wavesurfer-region {
     width: 2px !important;
     z-index: 10 !important;
     border-left: 2px solid currentColor;
@@ -80,7 +80,7 @@
     background: none !important;
   }
 
-  #waveform .wavesurfer-region:after {
+  #bm-waveform .wavesurfer-region:after {
     content: '';
     position: absolute;
     top: 0;
@@ -90,7 +90,7 @@
     cursor: ew-resize;
   }
 
-  #waveform .wavesurfer-region div {
+  #bm-waveform .wavesurfer-region div {
     background: rgba(0, 0, 0, .88) !important;
     color: #fff !important;
     font-family: var(--font-mono);
@@ -101,7 +101,7 @@
     white-space: nowrap;
   }
 
-  #waveform canvas {
+  #bm-waveform canvas {
     z-index: 1 !important;
   }
 
@@ -1695,11 +1695,16 @@
 
   .wf-canvas-wrap {
     position: relative;
+    min-width: 0;            /* que el contenido no pueda ensanchar la ventana */
+    max-width: 100%;
+    overflow: hidden;
     background: #020408;
     cursor: crosshair;
   }
 
-  #waveform {
+  #bm-waveform {
+    overflow: hidden;
+    max-width: 100%;
     height: 120px !important;
     min-height: 120px !important;
     display: block !important;
@@ -2953,7 +2958,7 @@
 
               <!-- Canvas de la onda -->
               <div class="wf-canvas-wrap">
-                <div id="waveform"></div>
+                <div id="bm-waveform"></div>
                 <div class="wf-spinner-wrap" id="wf-loading">
                   <div class="wf-spinner"></div>
                   ANALIZANDO AUDIO…
@@ -3839,6 +3844,12 @@
     justify-content: space-between;
   }
 
+  .lote-cerrar {
+    background: transparent; border: 1px solid #333; color: #aaa; width: 32px; height: 32px;
+    border-radius: 6px; font-size: 16px; cursor: pointer; line-height: 1;
+  }
+  .lote-cerrar:hover { color: #fff; border-color: #e63946; background: rgba(230, 57, 70, .15); }
+
   .lote-header h2 {
     margin: 0;
     font-family: var(--font-ui);
@@ -4065,7 +4076,10 @@
   <div class="lote-modal">
     <div class="lote-header">
       <h2><i>📁</i> CARGAR LOTE DE MÚSICA</h2>
-      <div id="lote-step-indicator" style="color: #666; font-size: 12px; font-family: var(--font-mono);">PASO 1 DE 4
+      <div style="display:flex;align-items:center;gap:14px">
+        <div id="lote-step-indicator" style="color: #666; font-size: 12px; font-family: var(--font-mono);">PASO 1 DE 4
+        </div>
+        <button type="button" class="lote-cerrar" id="lote-close" title="Cerrar (Esc)" aria-label="Cerrar">✕</button>
       </div>
     </div>
 

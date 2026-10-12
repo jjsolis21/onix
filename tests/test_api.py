@@ -155,3 +155,26 @@ def test_raiz_sirve_el_studio_y_studio_redirige(client):
     r = client.get("/studio", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/"
     assert client.get("/static/studio/studio.js").status_code == 200
+
+
+def test_biblioteca_sin_cunas_artistas_y_renombrar_categoria(client, tmp_path):
+    cancion = subir_cancion(client, tmp_path, "Tema Categoria", artista="ARTISTA CAT")
+    wav = make_wav(tmp_path / "spot.wav", seconds=2.0)
+    with open(wav, "rb") as fh:
+        r = client.post("/api/v1/audios", data={"titulo": "SPOT", "artista": "ANUNCIANTE", "tipo_audio": "Cuña"},
+                        files={"file": ("spot.wav", fh, "audio/wav")})
+    assert r.status_code == 201
+    musica = client.get("/api/v1/audios", params={"sin_tipo": "Cuña", "limit": 50000}).json()["data"]
+    assert all(a["tipo_audio"] != "Cuña" for a in musica) and any(a["id"] == cancion["id"] for a in musica)
+    assert any(a["artista"] == "ARTISTA CAT" for a in client.get("/api/v1/artistas", params={"tipo": "Musica"}).json())
+    assert not any(a["artista"] == "ANUNCIANTE" for a in client.get("/api/v1/artistas", params={"tipo": "Musica"}).json())
+    # Renombrar un valor de categoría actualiza las canciones que lo usan
+    v = client.post("/api/v1/config/biblioteca/valores", json={"nombre_interno": "cat1", "valor": "VIEJO"}).json()["data"]
+    client.put(f"/api/v1/audios/{cancion['id']}", json={"cat1": "VIEJO"})
+    r = client.put(f"/api/v1/config/biblioteca/valores/{v['id']}", json={"valor": "NUEVO", "color": "#123456"})
+    assert r.status_code == 200 and r.json()["audios_actualizados"] == 1
+    a = next(x for x in client.get("/api/v1/audios", params={"limit": 50000}).json()["data"] if x["id"] == cancion["id"])
+    assert a["cat1"] == "NUEVO"
+    # Borrar y volver a agregar el mismo valor no choca
+    assert client.delete(f"/api/v1/config/biblioteca/valores/{v['id']}").status_code in (200, 204)
+    assert client.post("/api/v1/config/biblioteca/valores", json={"nombre_interno": "cat1", "valor": "NUEVO"}).status_code == 201

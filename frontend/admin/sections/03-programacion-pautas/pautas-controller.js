@@ -226,18 +226,10 @@
 
   async function fetchAudios() {
     try {
-      const params = new URLSearchParams();
-      AUDIO_CATEGORIAS.forEach(cat => params.append('categoria_1', cat));
-      let raw = await _apiFetch(`/api/v1/audios?${params.toString()}`);
-      const normalized = _normalizeAudios(
-        Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? [])
-      );
-      // Si el filtro devuelve 0, cargar todos como fallback
-      if (!normalized.length) {
-        raw = await _apiFetch('/api/v1/audios');
-        return _normalizeAudios(Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? []));
-      }
-      return normalized;
+      // Solo cuñas (antes, si no encontraba la categoría COMERCIAL, mostraba
+      // toda la biblioteca, canciones incluidas)
+      const raw = await _apiFetch(`/api/v1/audios?tipo=${encodeURIComponent('Cuña')}&limit=50000`);
+      return _normalizeAudios(Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? []));
     } catch (err) {
       console.warn('[PautasController] No se pudo cargar catálogo de audios:', err.message);
       return [];
@@ -628,6 +620,10 @@
   function _onCellMouseDown(e) {
     e.preventDefault();
     const cell = e.currentTarget;
+    if (_menc.modo === 'auto') {
+      // Tocar la matriz a mano = pasar a modo manual con lo que ya está marcado
+      _setModoMenciones('manual');
+    }
     _drag.active     = true;
     _drag.startState = cell.dataset.state === 'on' ? 'off' : 'on';
     _toggleCell(cell, _drag.startState);
@@ -639,6 +635,96 @@
     _toggleCell(e.currentTarget, _drag.startState);
   }
 
+  // ── Menciones diarias: modo automático o manual ──────────────
+  //  Automático: N horas por día, repartidas parejo entre "desde" y "hasta",
+  //              en los días elegidos. Se recalcula al cambiar N, días o franja.
+  //  Manual:     el usuario marca, pero nunca más de N horas en un día.
+  const _menc = { modo: 'auto', dias: [1, 2, 3, 4, 5], desde: 6, hasta: 22 };
+
+  function _menciones() {
+    const n = parseInt($('fMenciones')?.value ?? '4', 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }
+
+  function _porDia(matriz) {
+    const n = Array(7).fill(0);
+    Object.keys(matriz).filter(k => k !== '__meta').forEach(k => n[+k.split('-')[0]]++);
+    return n;
+  }
+
+  function _initMencionesUI() {
+    const opts = HORAS.map((h, i) => `<option value="${i}">${h}</option>`).join('');
+    $('mencDesde').innerHTML = opts;
+    $('mencHasta').innerHTML = opts;
+    $('mencDias').innerHTML = [1, 2, 3, 4, 5, 6, 0].map(d =>
+      `<label class="menc-dia"><input type="checkbox" value="${d}"> ${DIAS[d]}</label>`).join('') +
+      `<button type="button" class="menc-preset" data-dias="1,2,3,4,5">Lun–Vie</button>` +
+      `<button type="button" class="menc-preset" data-dias="0,1,2,3,4,5,6">Todos</button>`;
+    document.querySelectorAll('.menc-btn').forEach(b =>
+      b.addEventListener('click', () => _setModoMenciones(b.dataset.modo)));
+    $('mencDias').addEventListener('change', () => {
+      _menc.dias = [...document.querySelectorAll('#mencDias input:checked')].map(i => +i.value);
+      _distribuir();
+    });
+    $('mencDias').addEventListener('click', e => {
+      const p = e.target.closest('.menc-preset');
+      if (!p) return;
+      _menc.dias = p.dataset.dias.split(',').map(Number);
+      _pintarControlesMenc();
+      _distribuir();
+    });
+    ['mencDesde', 'mencHasta'].forEach(id => $(id).addEventListener('change', () => {
+      _menc.desde = +$('mencDesde').value; _menc.hasta = +$('mencHasta').value;
+      _distribuir();
+    }));
+  }
+
+  function _pintarControlesMenc() {
+    document.querySelectorAll('.menc-btn').forEach(b => b.classList.toggle('activo', b.dataset.modo === _menc.modo));
+    $('mencAuto').hidden = _menc.modo !== 'auto';
+    document.querySelectorAll('#mencDias input').forEach(i => { i.checked = _menc.dias.includes(+i.value); });
+    $('mencDesde').value = _menc.desde; $('mencHasta').value = _menc.hasta;
+    // Los rellenos rápidos marcan días enteros: solo tienen sentido para "Limpiar"
+    ['btnQfLV', 'btnQfFinde', 'btnQfPrime'].forEach(id => { const b = $(id); if (b) b.hidden = true; });
+    const hint = $('matrixHint');
+    if (hint) hint.textContent = _menc.modo === 'auto'
+      ? 'Vista previa de las horas elegidas. Si tocas la matriz pasas a modo manual.'
+      : `Clic o arrastre para marcar · máximo ${_menciones()} por día`;
+  }
+
+  function _setModoMenciones(modo) {
+    _menc.modo = modo;
+    _pintarControlesMenc();
+    if (modo === 'auto') _distribuir();
+    else _checkMentionsWarning();
+  }
+
+  /** Reparte N horas por día, parejo dentro de la franja, en los días elegidos. */
+  function _distribuir() {
+    if (_menc.modo !== 'auto') return;
+    const n = _menciones();
+    const desde = Math.min(_menc.desde, _menc.hasta), hasta = Math.max(_menc.desde, _menc.hasta);
+    const horas = [];
+    for (let h = desde; h <= hasta; h++) horas.push(h);
+    const cuantas = Math.min(n, horas.length);
+    const elegidas = new Set();
+    for (let i = 0; i < cuantas; i++) elegidas.add(horas[Math.floor((i + 0.5) * horas.length / cuantas)]);
+    document.querySelectorAll('.matrix-cell[data-key]').forEach(c => {
+      const [d, h] = c.dataset.key.split('-').map(Number);
+      c.dataset.state = _menc.dias.includes(d) && elegidas.has(h) ? 'on' : 'off';
+    });
+    _updateMatrixSummary(_readMatrixFromDOM());
+    const info = $('mencInfo');
+    if (info) {
+      info.classList.toggle('menc-info--error', n > horas.length);
+      info.textContent = !_menc.dias.length ? 'Elige al menos un día.'
+        : n > horas.length
+          ? `${n} menciones no entran entre las ${HORAS[desde]} y las ${HORAS[hasta]} (máximo ${horas.length}: una por hora). Amplía la franja.`
+          : `${n} por día a las ${[...elegidas].sort((a, b) => a - b).map(h => HORAS[h].slice(0, 2) + 'h').join(', ')}`;
+    }
+    _hideEl($('mentionsWarning'));
+  }
+
   function _onCellMouseUp() {
     _drag.active = false;
     _updateMatrixSummary(_readMatrixFromDOM());
@@ -646,6 +732,22 @@
   }
 
   function _toggleCell(cell, newState) {
+    if (newState === 'on' && cell.dataset.state !== 'on') {
+      // Manual: nunca más de N horas en un día
+      const d = +cell.dataset.key.split('-')[0];
+      if (_porDia(_readMatrixFromDOM())[d] >= _menciones()) {
+        cell.classList.remove('matrix-cell--lleno');
+        void cell.offsetWidth;                      // reinicia la animación
+        cell.classList.add('matrix-cell--lleno');
+        const info = $('mencInfo');
+        _menc.avisoHasta = Date.now() + 4000;       // que el aviso no lo borre el mouseup
+        if (info) {
+          info.classList.add('menc-info--error');
+          info.textContent = `${DIAS[d]} ya tiene ${_menciones()} de ${_menciones()}: quita una hora para elegir otra, o sube las menciones.`;
+        }
+        return;
+      }
+    }
     cell.dataset.state = newState;
   }
 
@@ -668,9 +770,11 @@
     const days = new Set(
       Object.keys(matriz).filter(k => k !== '__meta').map(k => k.split('-')[0])
     ).size;
-    const perDay = (count / 7).toFixed(1);
+    const porDia = _porDia(matriz).filter(n => n > 0);
+    const iguales = porDia.every(n => n === porDia[0]);
     el.textContent =
-      `${count} slot${count !== 1 ? 's' : ''} en ${days} día${days !== 1 ? 's' : ''} · ~${perDay}/día`;
+      `${count} mención${count !== 1 ? 'es' : ''} por semana en ${days} día${days !== 1 ? 's' : ''} · ` +
+      (iguales ? `${porDia[0]} por día` : `entre ${Math.min(...porDia)} y ${Math.max(...porDia)} por día`);
   }
 
   // ──────────────────────────────────────────────────────────
@@ -693,14 +797,16 @@
     const menciones = parseInt($('fMenciones')?.value ?? 4, 10);
     if (!menciones || menciones < 1) { _hideEl(warnEl); return; }
 
+    if (_menc.modo === 'auto') { _distribuir(); return; }
+    _pintarControlesMenc();
     const matriz = _readMatrixFromDOM();
-
-    // Contamos cuántos slots tiene cada día
-    const perDay = Array(7).fill(0);
-    Object.keys(matriz).filter(k => k !== '__meta').forEach(k => {
-      const d = parseInt(k.split('-')[0], 10);
-      perDay[d]++;
-    });
+    const perDay = _porDia(matriz);
+    const info = $('mencInfo');
+    if (info && Date.now() > (_menc.avisoHasta || 0)) {
+      const faltan = perDay.map((c, d) => c > 0 && c < menciones ? `${DIAS[d]} ${c}/${menciones}` : null).filter(Boolean);
+      info.classList.remove('menc-info--error');
+      info.textContent = faltan.length ? `Faltan horas: ${faltan.join(' · ')}` : '';
+    }
 
     const maxDay  = Math.max(...perDay);
     const offenders = perDay
@@ -711,9 +817,8 @@
       _showEl(warnEl);
       if (warnTxt) {
         warnTxt.textContent =
-          `Advertencia: ${offenders.join(', ')} tienen más de ${menciones} franja${menciones !== 1 ? 's' : ''} ` +
-          `seleccionada${menciones !== 1 ? 's' : ''}. ` +
-          `Con ${menciones} menciones/día el sistema solo emitirá las primeras ${menciones}.`;
+          `${offenders.join(', ')} tienen más de ${menciones} hora${menciones !== 1 ? 's' : ''} marcada${menciones !== 1 ? 's' : ''}. ` +
+          `Quita las que sobran: no se puede guardar así.`;
       }
     } else {
       _hideEl(warnEl);
@@ -775,7 +880,8 @@
    * Se llama una sola vez al abrir el modal por primera vez.
    */
   function _initWaveSurfer() {
-    if (_wfReady) return Promise.resolve();
+    // Siempre se pide en el contenedor de Pautas: el editor es compartido con la
+    // Biblioteca y puede haber quedado dibujado allí.
 
     if (typeof global.wfInit !== 'function') {
       console.warn('[PautasController] wfInit no encontrado. ¿Está cargado onix-waveform.js?');
@@ -791,7 +897,7 @@
     // no está listo en ese tiempo, el modal abre de todas formas y el panel de la
     // onda simplemente permanece oculto. Nunca rechazamos — siempre resolvemos —
     // para garantizar que _openModal() siempre avanza.
-    var wfPromise = global.wfInit().then(function() { _wfReady = true; });
+    var wfPromise = global.wfInit('waveform').then(function() { _wfReady = true; });
     var timeout   = new Promise(function(resolve) { setTimeout(resolve, 3000); });
 
     return Promise.race([wfPromise, timeout]).catch(function(err) {
@@ -837,6 +943,13 @@
       $('btnSaveText').textContent = 'Actualizar Pauta';
 
       _buildMatrix(p.matriz);
+      // Pautas viejas (sin modo guardado) se abren en manual con lo que tenían
+      Object.assign(_menc, meta.modo === 'auto'
+        ? { modo: 'auto', dias: meta.dias ?? [1, 2, 3, 4, 5], desde: meta.desde ?? 6, hasta: meta.hasta ?? 22 }
+        : { modo: 'manual' });
+      _pintarControlesMenc();
+      if (_menc.modo === 'manual') _checkMentionsWarning();
+      else _distribuir();
 
       // Actualizar badge urgente en la cabecera del modal
       _syncUrgenteHeader();
@@ -879,6 +992,9 @@
       $('btnSaveText').textContent = 'Guardar Pauta';
 
       _buildMatrix({});
+      Object.assign(_menc, { modo: 'auto', dias: [1, 2, 3, 4, 5], desde: 6, hasta: 22 });
+      _pintarControlesMenc();
+      _distribuir();
       _hideEl($('urgenteBadgeHeader'));
       _hideEl($('mentionsWarning'));
     }
@@ -965,6 +1081,15 @@
       _showModalError('Seleccioná al menos un slot en la Matriz de Horarios.');
       return;
     }
+    const porDia = _porDia(rawMatrix);
+    const sobran = porDia.map((c, d) => c > menciones ? DIAS[d] : null).filter(Boolean);
+    if (sobran.length) {
+      _showModalError(`${sobran.join(', ')}: hay más horas marcadas que ${menciones} menciones por día.`);
+      return;
+    }
+    const faltan = porDia.map((c, d) => c > 0 && c < menciones ? `${DIAS[d]} (${c})` : null).filter(Boolean);
+    if (faltan.length && !confirm(`Estos días tienen menos de ${menciones} horas: ${faltan.join(', ')}.\n` +
+                                  `Esos días saldrá menos veces. ¿Guardar igual?`)) return;
 
     // Obtener los marcadores de WaveSurfer si están disponibles
     const cues = (typeof global.wfGetMarkers === 'function')
@@ -980,6 +1105,10 @@
         contrato,
         urgente,
         menciones,
+        modo:  _menc.modo,
+        dias:  _menc.dias,
+        desde: _menc.desde,
+        hasta: _menc.hasta,
         cue_intro:       cues.intro       ?? 0,
         cue_outro:       cues.outro       ?? 0,
         cue_mezcla:      cues.mezcla      ?? 0,
@@ -1051,6 +1180,32 @@
     $('audioFileInput')?.click();
   }
 
+  /** El campo de audio abre la Biblioteca de cuñas (antes abría el explorador de archivos). */
+  async function _elegirCuna() {
+    if (!global.CunasBiblioteca) { _openFilePicker(); return; }
+    const c = await global.CunasBiblioteca.elegir(($('fCliente')?.value || '').trim());
+    if (c) _asignarCuna(c);
+  }
+
+  function _asignarCuna(c) {
+    const f = $('fAudio');
+    f.value = `${c.titulo} — ${c.artista}`;
+    f._selectedId = c.id;
+    f._selectedNombre = c.titulo;
+    f._selectedPath = c.archivo_path || '';
+    const hint = $('audioHint');
+    if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
+    if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;
+    if (typeof global.wfLoadUrl === 'function') global.wfLoadUrl(`/api/v1/audios/${c.id}/stream`, {});
+  }
+
+  /** "＋ Pauta" desde la Biblioteca de cuñas: pauta nueva con esa cuña ya elegida. */
+  async function _nuevaConCuna(c) {
+    document.querySelector('.cunas-tab[data-tab="pautas"]')?.click();
+    await _openModal(null);
+    _asignarCuna(c);
+  }
+
   /**
    * Sube el archivo a /api/v1/upload incluyendo la subcarpeta
    * anualizada MEDIA/COMERCIALES/{AÑO}/ y luego activa el
@@ -1084,21 +1239,14 @@
     }
 
     try {
-      const year    = new Date().getFullYear();
-      const subdir  = `MEDIA/COMERCIALES/${year}`;
-
-      const formData = new FormData();
-      formData.append('file',   file);
-      formData.append('subdir', subdir); // instrucción de ruta para el backend
-
-      const result = await _uploadWithProgress(
-        '/api/v1/upload',
-        formData,
-        pct => {
-          progressBar.style.width = `${pct}%`;
-          progressLbl.textContent = `Subiendo… ${pct}%`;
-        }
-      );
+      // Se sube a la Biblioteca de cuñas (tipo Cuña, anunciante = cliente):
+      // la respuesta trae el id, así que la pauta queda vinculada siempre.
+      const creada = await global.CunasBiblioteca.subir(file, ($('fCliente')?.value || '').trim(), pct => {
+        progressBar.style.width = `${pct}%`;
+        progressLbl.textContent = `Subiendo… ${pct}%`;
+      });
+      const result = { audio_id: creada.id, filename: creada.titulo, archivo_path: creada.archivo_path };
+      const subdir = '';
 
       const nombre = result.filename ?? file.name;
       const path   = result.archivo_path ?? `${subdir}/${nombre}`;
@@ -1263,10 +1411,11 @@
       _checkMentionsWarning();
     });
     $('fMenciones')?.addEventListener('input', _checkMentionsWarning);
+    _initMencionesUI();
 
     // ── Selector de audio ──
     $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
-    $('fAudio')?.addEventListener('click', _openFilePicker);
+    $('fAudio')?.addEventListener('click', _elegirCuna);
     $('audioFileInput')?.addEventListener('change', _onAudioFileSelected);
 
     // ── Relleno rápido de la Matriz ──
@@ -1384,6 +1533,7 @@
 
     _bindEvents();
     _render();
+    global.CunasBiblioteca?.montar();
 
     // Inicializar WaveSurfer en segundo plano (warm-up)
     _initWaveSurfer().then(() => {
@@ -1424,6 +1574,7 @@
     // Métodos de conveniencia para integración externa
     save:             _savePauta,
     openModal:        _openModal,
+    nuevaConCuna:     _nuevaConCuna,
     closeModal:       _closeModal,
     deletePauta:      _deletePauta,
     openDeleteModal:  _openDeleteModal,
