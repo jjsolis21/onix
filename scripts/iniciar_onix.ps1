@@ -35,5 +35,15 @@ if ($motorActivo) {
     Start-Sleep -Seconds 2
 }
 
+# ¿El puerto de la API ya está ocupado? (típico: un ONIX anterior que sigue abierto)
+$ocupado = Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($ocupado) {
+    $proc = Get-Process -Id $ocupado.OwningProcess -ErrorAction SilentlyContinue
+    Write-Host "El puerto $Puerto ya lo usa '$($proc.ProcessName)' (PID $($ocupado.OwningProcess))." -ForegroundColor Red
+    Write-Host "Si es un ONIX anterior (python), ciérralo:  Stop-Process -Id $($ocupado.OwningProcess) -Force" -ForegroundColor Yellow
+    Write-Host "Si es otro programa, usa otro puerto:        -Puerto 8002" -ForegroundColor Yellow
+    exit 1
+}
+
 Write-Host "Arrancando API en http://localhost:$Puerto  (Admin: http://localhost:$Puerto/admin/)"
 python backend\api\api_server.py
