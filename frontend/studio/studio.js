@@ -910,6 +910,23 @@ const Problemas = (() => {
   return { abrir, aireMuerto, nivel, pronto };
 })();
 
+/* ── Usuario: desde otra PC se muestra SALIR; el operador no ve el Admin ── */
+(async () => {
+  const yo = await api("/api/v1/auth/yo").catch(() => null);
+  if (!yo || yo.local) return;
+  const b = $("btnSalir");
+  b.hidden = false;
+  b.textContent = `SALIR · ${(yo.nombre || yo.usuario).toUpperCase()}`;
+  b.addEventListener("click", async () => {
+    await fetch("/api/v1/auth/logout", { method: "POST" });
+    location.href = "/login";
+  });
+  if (yo.rol === "operador") {
+    $("lnkAdmin").hidden = true;
+    document.querySelector(".lib-cargar")?.setAttribute("hidden", "");
+  }
+})();
+
 /* ─────────────────────────── eventos del motor ─────────────────────────── */
 let _tProg;
 const programaPronto = () => { clearTimeout(_tProg); _tProg = setTimeout(Estado.cargarPrograma, 250); };

@@ -163,6 +163,44 @@
     <p class="ox-hint">Restaurar una copia: cierra ONIX y en PowerShell, desde la carpeta de ONIX:
       <code>powershell -ExecutionPolicy Bypass -File scripts\restaurar_respaldo.ps1</code></p>
   </section>
+
+  <!-- ── Usuarios y acceso desde la red ── -->
+  <section class="ox-card">
+    <h3>👥 Usuarios y acceso desde la red</h3>
+    <p class="ox-hint">La <b>PC del estudio entra sin contraseña</b> (si ONIX se reinicia solo, el aire sigue).
+      Las demás PCs de la emisora entran con usuario y contraseña:
+      <b>Programación</b> = Admin (biblioteca, relojes, eventos, pautas, cartuchera, estadísticas), sin tocar el aire;
+      <b>Operador</b> = Studio; <b>Administrador</b> = todo.</p>
+    <div id="mRed" class="ox-hint"></div>
+    <div class="ox-table-wrap" style="margin-top:var(--s3)">
+      <table class="ox-table">
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Último acceso</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="mUsuarios"></tbody>
+      </table>
+    </div>
+    <h3 style="margin-top:var(--s4)" id="mUsrTitulo">Nuevo usuario</h3>
+    <div class="ox-row">
+      <div class="ox-field"><label for="mUsrUsuario">Usuario</label>
+        <input class="ox-input" id="mUsrUsuario" maxlength="40" placeholder="jefe.programacion" autocomplete="off"></div>
+      <div class="ox-field"><label for="mUsrNombre">Nombre</label>
+        <input class="ox-input" id="mUsrNombre" maxlength="80"></div>
+      <div class="ox-field"><label for="mUsrRol">Rol</label>
+        <select class="ox-select" id="mUsrRol">
+          <option value="programacion">Programación</option>
+          <option value="operador">Operador</option>
+          <option value="admin">Administrador</option>
+        </select></div>
+      <div class="ox-field"><label for="mUsrClave" id="mUsrClaveLbl">Contraseña (mín. 8)</label>
+        <input type="password" class="ox-input" id="mUsrClave" maxlength="200" autocomplete="new-password"></div>
+      <label style="align-self:end"><input type="checkbox" id="mUsrActivo" checked> Activo</label>
+    </div>
+    <div class="ox-row" style="margin-top:var(--s2)">
+      <button class="ox-btn ox-btn--primary" id="mUsrGuardar">Guardar usuario</button>
+      <button class="ox-btn" id="mUsrNuevo">Nuevo</button>
+      <button class="ox-btn ox-btn--danger" id="mUsrBorrar" disabled>Borrar</button>
+    </div>
+    <p class="ox-msg" id="mMsgUsr"></p>
+  </section>
 </div>
 
 <script>
@@ -364,8 +402,62 @@
     cargarRespaldos(false);
   });
 
+  // ── Usuarios y red ──────────────────────────────────────
+  const ROL = { admin: "Administrador", programacion: "Programación", operador: "Operador" };
+  let usuarios = [], usrActual = null;
+  async function cargarUsuarios() {
+    const red = await fetch("/api/v1/red").then(r => r.json()).catch(() => null);
+    $("mRed").innerHTML = red && red.ips.length
+      ? `Desde otra PC de la emisora, escribe en el navegador: ${red.admin.map(u => `<b class="ox-mono">${esc(u)}</b>`).join(" o ")}.
+         Si no conecta, en esta PC ejecuta una vez <b>«Abrir ONIX en la red local.bat»</b> (abre el puerto solo para la red local).`
+      : "No se encontró una dirección de red local en esta PC.";
+    const r = await fetch("/api/v1/usuarios");
+    if (!r.ok) { $("mUsuarios").innerHTML = `<tr><td colspan="6" class="ox-empty">Solo el administrador ve los usuarios</td></tr>`; return; }
+    usuarios = await r.json();
+    $("mUsuarios").innerHTML = usuarios.length ? usuarios.map(u => `<tr data-id="${u.id}" style="cursor:pointer">
+        <td class="ox-mono">${esc(u.usuario)}</td><td>${esc(u.nombre)}</td><td>${ROL[u.rol] || u.rol}</td>
+        <td>${esc((u.ultimo_acceso || "—").replace("T", " "))}</td><td>${u.activo ? "Activo" : "Desactivado"}</td>
+        <td><button class="ox-btn ox-btn--sm" data-editar="${u.id}">Editar</button></td></tr>`).join("")
+      : `<tr><td colspan="6" class="ox-empty">Aún no hay usuarios. Crea el del jefe de programación.</td></tr>`;
+  }
+  function usrNuevo() {
+    usrActual = null;
+    $("mUsrTitulo").textContent = "Nuevo usuario";
+    $("mUsrUsuario").value = ""; $("mUsrNombre").value = ""; $("mUsrRol").value = "programacion";
+    $("mUsrClave").value = ""; $("mUsrActivo").checked = true;
+    $("mUsrClaveLbl").textContent = "Contraseña (mín. 8)";
+    $("mUsrBorrar").disabled = true;
+  }
+  $("mUsuarios").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-id]");
+    if (!tr) return;
+    usrActual = usuarios.find(u => u.id === +tr.dataset.id);
+    $("mUsrTitulo").textContent = `Usuario: ${usrActual.usuario}`;
+    $("mUsrUsuario").value = usrActual.usuario; $("mUsrNombre").value = usrActual.nombre;
+    $("mUsrRol").value = usrActual.rol; $("mUsrActivo").checked = usrActual.activo; $("mUsrClave").value = "";
+    $("mUsrClaveLbl").textContent = "Nueva contraseña (vacío = no cambiar)";
+    $("mUsrBorrar").disabled = false;
+  });
+  $("mUsrNuevo").addEventListener("click", usrNuevo);
+  $("mUsrGuardar").addEventListener("click", async () => {
+    const body = { usuario: $("mUsrUsuario").value.trim(), nombre: $("mUsrNombre").value.trim(),
+                   rol: $("mUsrRol").value, activo: $("mUsrActivo").checked };
+    if ($("mUsrClave").value) body.clave = $("mUsrClave").value;
+    const r = await fetch(usrActual ? `/api/v1/usuarios/${usrActual.id}` : "/api/v1/usuarios", {
+      method: usrActual ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { msg("mMsgUsr", await errTxt(r), false); return; }
+    msg("mMsgUsr", `✓ Guardado: ${body.usuario}`);
+    usrNuevo(); cargarUsuarios();
+  });
+  $("mUsrBorrar").addEventListener("click", async () => {
+    if (!usrActual || !confirm(`¿Borrar el usuario "${usrActual.usuario}"? No podrá volver a entrar.`)) return;
+    await fetch(`/api/v1/usuarios/${usrActual.id}`, { method: "DELETE" });
+    msg("mMsgUsr", "Usuario borrado"); usrNuevo(); cargarUsuarios();
+  });
+
   function recargarTodo() {
-    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado(); cargarSecciones(); cargarRespaldos();
+    cargarSalidas(); cargarConfig(); cargarNorm(); cargarEstado(); cargarSecciones(); cargarRespaldos(); cargarUsuarios();
   }
   $("mRecargar").addEventListener("click", recargarTodo);
 

@@ -23,7 +23,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
@@ -59,6 +58,8 @@ from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
+from backend.api.red import router as red_router
+from backend.api import auth as auth_api
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -193,14 +194,40 @@ app.include_router(relojes_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)
+app.include_router(red_router)
+app.include_router(auth_api.router)
 _respaldos = respaldos_api.RespaldoWorker()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Sin CORS abierto: solo las páginas de ONIX (mismo origen) usan la API. Con
+# "*" cualquier web abierta en la PC del estudio (que entra sin contraseña)
+# podía mandarle órdenes a ONIX.
+
+
+@app.middleware("http")
+async def control_de_acceso(request: Request, call_next):
+    """
+    Usuarios y roles (backend/api/auth.py). La PC del estudio pasa sin
+    contraseña; las demás PCs necesitan sesión y permiso para la ruta.
+    """
+    ruta, metodo = request.url.path, request.method
+    # Cambios solo desde páginas de ONIX: un Origin ajeno = otra web intentándolo
+    origen = request.headers.get("origin")
+    if metodo not in ("GET", "HEAD", "OPTIONS") and origen:
+        if origen.split("://", 1)[-1] != request.headers.get("host", ""):
+            return JSONResponse(status_code=403, content={"detail": "Origen no permitido"})
+    if ruta.startswith(auth_api.LIBRES) or ruta == "/ws":
+        return await call_next(request)          # el WebSocket se controla al conectar
+    u = auth_api.usuario_de(request)
+    if u is None:
+        if ruta.startswith("/api/") or ruta.startswith("/stream"):
+            return JSONResponse(status_code=401, content={"detail": "Inicia sesión"})
+        return RedirectResponse(f"/login?volver={ruta}", status_code=303)
+    if not auth_api.permiso(u["rol"], metodo, ruta):
+        if ruta.startswith("/api/"):
+            return JSONResponse(status_code=403, content={"detail": "Tu usuario no tiene permiso para esto"})
+        return RedirectResponse("/admin/" if u["rol"] == "programacion" else "/", status_code=303)
+    request.state.usuario = u
+    return await call_next(request)
 
 
 # Montar la carpeta de biblioteca interactiva para streaming.
@@ -2246,6 +2273,13 @@ async def websocket_endpoint(ws: WebSocket):
            el emisor), de forma que el Shell y otros módulos puedan
            reaccionar al evento.
     """
+    # Mismo control que las páginas: sesión (o PC del estudio) y origen propio
+    usuario = auth_api.usuario_de(ws)
+    origen = ws.headers.get("origin")
+    if usuario is None or (origen and origen.split("://", 1)[-1] != ws.headers.get("host", "")):
+        await ws.close(code=1008)
+        return
+    opera_aire = auth_api.puede_operar_aire(usuario["rol"])
     await _manager.connect(ws)
     try:
         while True:
@@ -2271,6 +2305,11 @@ async def websocket_endpoint(ws: WebSocket):
 
             # Comandos del Studio para el motor de audio. No se reemiten:
             # el motor responde con sus propios eventos (track_started, …).
+            if cmd in PLAYER_COMMANDS and not opera_aire:
+                await ws.send_text(_ws_message(
+                    "playback_error", {"reason": "sin_permiso", "cmd": cmd,
+                                       "msg": "Tu usuario no puede operar el aire"}))
+                continue
             if cmd in PLAYER_COMMANDS:
                 logger.info(f"[WS] ← player/{cmd} | {str(msg)[:120]}")
                 try:
@@ -2312,6 +2351,11 @@ ADMIN_DIR    = FRONTEND_DIR / "admin"
 async def read_index():
     """Studio: la consola del operador (estilo Jazler SoHo)."""
     return FileResponse(FRONTEND_DIR / "studio" / "index.html")
+
+@app.get("/login")
+async def pagina_login():
+    """Inicio de sesión para entrar desde otras PCs de la red."""
+    return FileResponse(FRONTEND_DIR / "login" / "index.html")
 
 @app.get("/studio")
 async def read_studio():

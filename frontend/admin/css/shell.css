@@ -1192,3 +1192,7 @@ body:not(.sidebar-expanded) .nav-btn:hover::after {
   font-weight: 700 !important;
   font-size: 14px !important;
 }
+/* Usuario conectado desde otra PC */
+.topbar-usuario { font-family: var(--font-data, monospace); font-size: .7rem; color: var(--text-lo, #8aa); margin-left: 10px; }
+#topbar-salir { cursor: pointer; margin-left: 6px; }
+#topbar-salir[hidden] { display: none; }

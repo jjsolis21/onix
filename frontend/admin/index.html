@@ -110,9 +110,11 @@
         <span class="visually-hidden" id="topbar-ws-label">Conectando</span>
       </div>
 
-      <a href="/" class="btn-studio-link" title="Volver a la consola del operador">
+      <a href="/" class="btn-studio-link" id="topbar-studio" title="Volver a la consola del operador">
         🎙 VER STUDIO ↗
       </a>
+      <span class="topbar-usuario" id="topbar-usuario" hidden></span>
+      <button class="btn-studio-link" id="topbar-salir" hidden title="Cerrar sesión">SALIR</button>
     </div>
   </header>
 
@@ -790,6 +792,34 @@
        puedan usarla para redirigir al usuario (ej: un CTA en Estado Global
        que lleva a Biblioteca). */
     window.ShellNav = { activate: activateSection };
+
+    /* ── Usuario conectado (backend/api/auth.py) ──
+       En la PC del estudio no hay sesión (es admin). Desde otra PC se muestra
+       quién entró y se oculta lo que su rol no puede usar. */
+    (async () => {
+      try {
+        const yo = await fetch("/api/v1/auth/yo").then(r => r.ok ? r.json() : null);
+        if (!yo) return;
+        window.OnixUsuario = yo;
+        if (!yo.local) {
+          const etiqueta = { admin: "Administrador", programacion: "Programación", operador: "Operador" }[yo.rol] || yo.rol;
+          $id("topbar-usuario").textContent = `${yo.nombre || yo.usuario} · ${etiqueta}`;
+          $id("topbar-usuario").hidden = false;
+          $id("topbar-salir").hidden = false;
+          $id("topbar-salir").style.display = "inline-flex";
+          $id("topbar-salir").addEventListener("click", async () => {
+            await fetch("/api/v1/auth/logout", { method: "POST" });
+            location.href = "/login";
+          });
+        }
+        if (yo.rol === "programacion") {
+          // Motor de audio (salidas, respaldos, usuarios) y el Studio son del administrador/operador
+          // (style.display: el CSS de estos botones pisa el atributo hidden)
+          $$('.nav-btn[data-section="06-motor-audio"]').forEach(b => b.style.display = "none");
+          $id("topbar-studio").style.display = "none";
+        }
+      } catch { /* sin servidor: el indicador de conexión ya lo muestra */ }
+    })();
 
   </script>
 

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONIX FM — Entrar</title>
+  <style>
+    :root { --bg: #001219; --caja: #001e2b; --linea: #00475a; --txt: #e9f5f3; --suave: #94d2bd;
+            --ambar: #ee9b00; --rojo: #e63946; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: var(--bg); color: var(--txt); font-family: "Segoe UI", system-ui, sans-serif; padding: 16px; }
+    form { width: 100%; max-width: 360px; background: var(--caja); border: 1px solid var(--linea);
+           border-radius: 10px; padding: 28px; }
+    h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: .08em; }
+    h1 span { color: var(--ambar); }
+    p { margin: 0 0 20px; color: var(--suave); font-size: 14px; }
+    label { display: block; font-size: 12px; letter-spacing: .1em; color: var(--suave); margin: 14px 0 6px; }
+    input { width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--linea);
+            background: var(--bg); color: var(--txt); font-size: 16px; }
+    input:focus { outline: 2px solid var(--ambar); border-color: transparent; }
+    button { width: 100%; margin-top: 22px; padding: 11px; border: 0; border-radius: 6px;
+             background: var(--ambar); color: var(--bg); font-weight: 700; font-size: 15px; letter-spacing: .08em; cursor: pointer; }
+    button:disabled { opacity: .6; }
+    .error { color: var(--rojo); min-height: 20px; margin-top: 12px; font-size: 14px; }
+    small { display: block; margin-top: 16px; color: var(--suave); font-size: 12px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <form id="f">
+    <h1>ONIX <span>FM</span></h1>
+    <p>Entrar desde otra PC de la emisora</p>
+    <label for="u">USUARIO</label>
+    <input id="u" autocomplete="username" required autofocus />
+    <label for="c">CONTRASEÑA</label>
+    <input id="c" type="password" autocomplete="current-password" required />
+    <button id="b">ENTRAR</button>
+    <div class="error" id="e" role="alert"></div>
+    <small>¿No tienes usuario? Lo crea el administrador en la PC del estudio:
+      Admin › Motor de audio › Usuarios.</small>
+  </form>
+  <script>
+    const volver = new URLSearchParams(location.search).get("volver");
+    document.getElementById("f").addEventListener("submit", async e => {
+      e.preventDefault();
+      const b = document.getElementById("b"), err = document.getElementById("e");
+      b.disabled = true; err.textContent = "";
+      try {
+        const r = await fetch("/api/v1/auth/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuario: document.getElementById("u").value, clave: document.getElementById("c").value }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+        // Solo rutas propias (no redirigir a otra web)
+        location.href = volver && volver.startsWith("/") && !volver.startsWith("//") ? volver : d.inicio;
+      } catch (ex) {
+        err.textContent = ex.message; b.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

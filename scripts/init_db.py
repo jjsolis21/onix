@@ -514,6 +514,31 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     """)
     logger.info("  → reloj_eventos: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 17 — Usuarios y sesiones (entrar desde otras PCs de la red)
+    #   La PC del estudio entra sin contraseña; ver backend/api/auth.py
+    # ------------------------------------------------------------------
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario       TEXT    NOT NULL UNIQUE,
+            nombre        TEXT    NOT NULL DEFAULT '',
+            rol           TEXT    NOT NULL,          -- admin | programacion | operador
+            clave_hash    TEXT    NOT NULL,          -- pbkdf2$vueltas$sal$hash
+            activo        INTEGER NOT NULL DEFAULT 1,
+            ultimo_acceso TEXT,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS sesiones (
+            token_hash TEXT PRIMARY KEY,             -- sha256 del token de la cookie
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            expira     TEXT    NOT NULL,
+            ip         TEXT,
+            creada     TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+    """)
+    logger.info("  → usuarios y sesiones: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

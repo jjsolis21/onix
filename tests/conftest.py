@@ -24,6 +24,9 @@ os.environ["RADIO_DB_PATH"]      = str(_TMP / "api.db")
 os.environ["RADIO_MEDIA_ROOT"]   = str(_TMP / "media")
 os.environ["RADIO_BACKUP_DIR"]   = str(_TMP / "respaldos")
 os.environ["ONIX_AUDIO_BACKEND"] = "mock"
+# El TestClient cuenta como "la PC del estudio" (entra sin contraseña).
+# Las pruebas de acceso remoto usan TestClient(client=("192.168.1.50", …)).
+os.environ["ONIX_HOSTS_LOCALES"] = "testclient"
 
 for p in (str(ROOT), str(ROOT / "scripts")):
     if p not in sys.path:
