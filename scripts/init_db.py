@@ -677,6 +677,28 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE reloj_eventos ADD COLUMN hasta TEXT NOT NULL DEFAULT ''")
     logger.info("  → reloj_eventos.hasta: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 29 — Playlists generadas desde un reloj (Jazler)
+    #   playlist_items admite el mismo audio varias veces (12 h de música).
+    #   playlists.reloj_id / horas: de qué patrón y cuántas horas se creó.
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS playlist_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+            posicion    INTEGER NOT NULL,
+            audio_id    INTEGER NOT NULL REFERENCES audios(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_playlist_items ON playlist_items(playlist_id, posicion)")
+    cursor.execute("PRAGMA table_info(playlists)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    if "reloj_id" not in cols:
+        cursor.execute("ALTER TABLE playlists ADD COLUMN reloj_id INTEGER DEFAULT NULL")
+    if "horas" not in cols:
+        cursor.execute("ALTER TABLE playlists ADD COLUMN horas REAL DEFAULT NULL")
+    logger.info("  → playlist_items y playlists.reloj_id/horas: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -549,9 +549,40 @@ const Decks = (() => {
 /* ─────────────────────────── biblioteca ─────────────────────────── */
 const Biblioteca = (() => {
   const TABS = [["Musica", "MÚSICA"], ["Efecto", "JINGLES"], ["Sweeper", "SWEEPERS"], ["Cuña", "CUÑAS"],
-                ["Programa", "PROGRAMAS"], ["Tips", "TIPS"]];
+                ["Programa", "PROGRAMAS"], ["Tips", "TIPS"], ["Playlist", "PLAYLISTS"]];
   const MAX_FILAS = 300;
-  let audios = [], tab = "Musica", alAire = null, enCue = null;
+  let audios = [], tab = "Musica", alAire = null, enCue = null, playlists = [];
+
+  // Playlists generadas en Admin › Relojes desde el patrón de un reloj
+  async function cargarPlaylists() {
+    try { playlists = await api("/api/v1/playlists"); } catch (_) { playlists = []; }
+  }
+  function pintarPlaylists(q) {
+    const lista = playlists.filter(p => !q || norm(`${p.nombre} ${p.reloj ?? ""}`).includes(q));
+    $("libFilas").innerHTML = lista.length ? lista.map(p => `
+      <tr data-pl="${p.id}">
+        <td><div class="lib-tit">${esc(p.nombre)}</div><div class="lib-art">${esc(p.reloj ? `Reloj ${p.reloj}` : "")} · ${esc((p.created_at || "").slice(0, 10))}</div></td>
+        <td>${p.horas ? `${p.horas} h` : ""}</td>
+        <td>${p.audios} audios</td>
+        <td class="num"></td>
+        <td class="num">${Math.floor(p.duracion / 3600)}:${String(Math.round(p.duracion % 3600 / 60)).padStart(2, "0")} h</td>
+        <td class="lib-acc">
+          <button data-plcola="${p.id}" title="Agregar todos sus audios al final de la cola">+ COLA</button>
+          <button data-plreemp="${p.id}" class="aire" title="Vaciar la cola y poner esta playlist">▶ LANZAR</button>
+        </td></tr>`).join("")
+      : `<tr><td colspan="6" class="vacio">${playlists.length ? "Sin resultados" : "No hay playlists. Créalas en Admin › Relojes › Playlists."}</td></tr>`;
+    $("libInfo").textContent = `${lista.length} playlist(s) · la cola suena antes que el programa; las tandas salen a su hora`;
+  }
+  async function lanzarPlaylist(id, reemplazar) {
+    const p = playlists.find(x => x.id === id);
+    if (reemplazar && !confirm(`¿Lanzar "${p?.nombre}"?\n\nSe vacía la cola del operador y entran sus ${p?.audios} audios.` +
+                               `\nSonarán antes que el programa automático (las tandas siguen a su hora).`)) return;
+    try {
+      const r = await api(`/api/v1/playlists/${id}/lanzar`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reemplazar }) });
+      toast(`▶ ${p?.nombre}: ${r.encoladas} audios a la cola`, "info", 3000);
+    } catch (err) { toast(`No se pudo lanzar: ${err.message}`, "error"); }
+  }
 
   async function cargar() {
     try {
@@ -569,19 +600,21 @@ const Biblioteca = (() => {
     opciones("libCat1", "cat1", "Género");
     opciones("libCat2", "cat2", "Rotación");
     opciones("libVoz", "voz", "Voz");
+    await cargarPlaylists();
     pintarTabs();
     pintar();
   }
 
   function pintarTabs() {
     $("libTabs").innerHTML = TABS.map(([t, n]) =>
-      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}<b>${audios.filter(a => a.tipo_audio === t).length}</b></button>`).join("");
+      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}<b>${t === "Playlist" ? playlists.length : audios.filter(a => a.tipo_audio === t).length}</b></button>`).join("");
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
   }
 
   function pintar() {
     const q = norm($("libBuscar").value.trim());
+    if (tab === "Playlist") { pintarPlaylists(q); return; }
     const c1 = $("libCat1").value, c2 = $("libCat2").value, voz = $("libVoz").value;
     const lista = audios.filter(a => a.tipo_audio === tab
       && (!q || norm(`${a.titulo} ${a.artista} ${a.cat1 ?? ""} ${a.cat2 ?? ""}`).includes(q))
@@ -614,7 +647,9 @@ const Biblioteca = (() => {
   $("libTabs").addEventListener("click", e => {
     const b = e.target.closest(".lib-tab");
     if (!b) return;
-    tab = b.dataset.tab; pintarTabs(); pintar();
+    tab = b.dataset.tab;
+    if (tab === "Playlist") cargarPlaylists().then(() => { pintarTabs(); pintar(); });
+    else { pintarTabs(); pintar(); }
   });
   let t;
   $("libBuscar").addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintar, 150); });
@@ -623,6 +658,8 @@ const Biblioteca = (() => {
   $("libFilas").addEventListener("click", e => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.dataset.plcola) { lanzarPlaylist(+b.dataset.plcola, false); return; }
+    if (b.dataset.plreemp) { lanzarPlaylist(+b.dataset.plreemp, true); return; }
     const a = audios.find(x => x.id === +(b.dataset.cue || b.dataset.cola || b.dataset.aire));
     if (b.dataset.cue) WS.send(enCue === +b.dataset.cue ? { cmd: "cue_stop" } : { cmd: "cue", audio_id: +b.dataset.cue });
     if (b.dataset.cola) { WS.send({ cmd: "queue", audio_id: +b.dataset.cola }); toast(`+ Cola: ${a?.titulo ?? ""}`, "info", 2000); }

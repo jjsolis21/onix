@@ -23,7 +23,16 @@ def subir(client, tmp_path, titulo, tipo="Musica", cat2=None, seconds=3.0):
     with open(wav, "rb") as fh:
         r = client.post("/api/v1/audios", data=data, files={"file": (wav.name, fh, "audio/wav")})
     assert r.status_code == 201, r.text
-    return r.json()["data"]["id"]
+    aid = r.json()["data"]["id"]
+    # Lo subido entra a la Bandeja (no suena solo): en estas pruebas se aprueba
+    # directo; si no, el resultado dependía de otras pruebas que aprobaban.
+    import sqlite3
+    from backend.paths import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE audios SET aprobada = 1 WHERE id = ?", (aid,))
+    conn.commit()
+    conn.close()
+    return aid
 
 
 def test_crud_de_reloj(client, tmp_path):
@@ -142,3 +151,20 @@ def test_evento_guarda_dura_hasta(client):
     assert r.status_code == 201 and r.json()["hasta"] == "21:15"
     assert client.post("/api/v1/relojes/eventos", json={"nombre": "Mal", "reloj_id": rid, "hora": "20:30",
                                                         "hasta": "20:30"}).status_code == 422
+
+
+def test_playlist_desde_reloj_y_lanzar(client, tmp_path):
+    for i in range(3):
+        subir(client, tmp_path, f"PL {i}", cat2="PLAYL", seconds=60)
+    rid = client.post("/api/v1/relojes", json={"nombre": "Para playlist",
+                                               "filas": [{"tipo_audio": "Musica", "filtros": {"cat2": "PLAYL"}}]}).json()["id"]
+    r = client.post("/api/v1/playlists/generar", json={"nombre": "Noche larga", "reloj_id": rid, "horas": 0.25})
+    assert r.status_code == 201, r.text
+    p = r.json()
+    assert p["audios"] >= 15 and p["reloj"] == "Para playlist"        # 15 min con temas de 1 min (se repiten)
+    assert any(x["id"] == p["id"] for x in client.get("/api/v1/playlists", params={"q": "noche"}).json())
+    assert client.post("/api/v1/playlists/generar", json={"nombre": "Noche larga", "reloj_id": rid, "horas": 1}).status_code == 409
+    r = client.post(f"/api/v1/playlists/{p['id']}/lanzar", json={"reemplazar": True})
+    assert r.status_code == 200 and r.json()["encoladas"] == p["audios"]
+    client.post("/api/v1/player/clear_queue")
+    assert client.delete(f"/api/v1/playlists/{p['id']}").status_code == 204

@@ -56,6 +56,7 @@ from backend.audio.loudness import NormalizadorWorker
 from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
+from backend.api import playlists as playlists_api
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
@@ -192,6 +193,8 @@ app.include_router(reportes_router)
 # La grilla (/relojes/grilla) se declara antes que /relojes/{id} dentro del router
 relojes_api.engine = engine
 app.include_router(relojes_api.router)
+playlists_api.engine = engine
+app.include_router(playlists_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)

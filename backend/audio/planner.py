@@ -150,6 +150,11 @@ class Planner:
         except sqlite3.OperationalError:
             pass
         try:
+            conn.execute("SELECT 1 FROM pauta_audios LIMIT 1")
+            self._tiene_versiones = True
+        except sqlite3.OperationalError:
+            self._tiene_versiones = False
+        try:
             conn.execute("SELECT prioridad FROM audios LIMIT 1")
             self._tiene_prioridad = True
         except sqlite3.OperationalError:
@@ -159,6 +164,49 @@ class Planner:
                 "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
         except sqlite3.OperationalError:       # BD sin la migración 16
             self.eventos = []
+
+    def generar_lista(self, reloj_id: int, horas: float, inicio: Optional[datetime] = None) -> list[dict]:
+        """
+        Playlist (Jazler "crear playlist"): N horas de audios siguiendo el
+        patrón del reloj, fila por fila y en vuelta, con las mismas reglas que
+        el aire (artista, voz, no repetir, restricciones). Sin tandas ni
+        eventos: eso lo pone el motor al aire. Las filas sin audios usan el
+        respaldo del reloj o se saltan.
+        """
+        inicio = inicio or datetime.now()
+        conn = self._conn()
+        try:
+            self._cargar(conn)
+            reloj = self.relojes.get(reloj_id)
+            if not reloj or not reloj["filas"]:
+                return []
+            crossfade = self._icfg("crossfade_seg", 4)
+            fin = inicio + timedelta(hours=horas)
+            t, previos, en_plan, out, vacias, i = inicio, [], set(), [], 0, 0
+            respaldo = reloj.get("respaldo") or {}
+            while t < fin and len(out) < 2000 and vacias < len(reloj["filas"]):
+                fila = reloj["filas"][i % len(reloj["filas"])]
+                i += 1
+                audio = self._elegir(conn, fila, t, previos, en_plan, set())
+                if not audio and respaldo and fila["tipo_audio"] == "Musica" and not fila.get("audio_id"):
+                    audio = self._elegir(conn, {"tipo_audio": "Musica", "filtros": respaldo, "audio_id": None},
+                                         t, previos, en_plan, set())
+                if not audio:
+                    vacias += 1
+                    continue
+                vacias = 0
+                out.append({"audio_id": audio["id"], "titulo": audio["titulo"], "artista": audio["artista"],
+                            "tipo_audio": audio["tipo_audio"], "duracion": audio.get("duracion") or 0,
+                            "inicio": t.isoformat(timespec="seconds")})
+                if audio["tipo_audio"] == "Musica":
+                    en_plan.add(audio["id"])
+                previos.append({"audio_id": audio["id"], "artista": audio["artista"],
+                                "genero_vocal": audio.get("genero_vocal"), "tipo_audio": audio["tipo_audio"],
+                                "ts": t.isoformat(), "plan": True})
+                t += timedelta(seconds=duracion_efectiva(audio, crossfade))
+            return out
+        finally:
+            conn.close()
 
     def _icfg(self, clave: str, defecto: float) -> float:
         try:
@@ -537,6 +585,9 @@ class Planner:
         params: list = [tipo]
         if tipo == "Musica":
             base.append("a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)")
+            # Las versiones que rotan de un spot tampoco son música
+            if self._tiene_versiones:
+                base.append("a.id NOT IN (SELECT audio_id FROM pauta_audios)")
             # Bandeja de entrada: la música sin aprobar no sale al aire sola
             base.append("COALESCE(a.aprobada, 1) = 1")
         # Restricciones de la canción (Jazler): reglas duras, no se relajan
