@@ -183,8 +183,17 @@ class RemoteEngine:
     def play_next(self):
         self._call("play_next")
 
-    def queue_track(self, audio_id: int, nota: str = "") -> bool:
-        return bool(self._call("queue_track", audio_id, nota))
+    def queue_track(self, audio_id: int, nota: str = "", posicion=None) -> bool:
+        return bool(self._call("queue_track", audio_id, nota, posicion))
+
+    def cola_mover(self, uid: int, posicion: int):
+        self._call("cola_mover", uid, posicion)
+
+    def cola_quitar(self, uid: int):
+        self._call("cola_quitar", uid)
+
+    def plan_a_cola(self, uid: int, posicion: int = 0):
+        self._call("plan_a_cola", uid, posicion)
 
     def clear_queue(self):
         self._call("clear_queue")

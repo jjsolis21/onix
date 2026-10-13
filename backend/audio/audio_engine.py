@@ -1225,20 +1225,76 @@ class AudioEngine:
         """Arranca lo siguiente de la cola (o de la rotacion en modo automatico)."""
         self._cmds.put(("play_next",))
 
-    def queue_track(self, audio_id: int, nota: str = "") -> bool:
-        """A la cola del operador. `nota` = memo para el locutor (sale en el
-        Studio cuando esta canción está al aire)."""
-        track = self._fetch_track(audio_id)
-        if not track:
-            return False
-        self._playlist_queue.append({
+    def _entrada_cola(self, track: dict, nota: str = "") -> dict:
+        from backend.audio.planner import nuevo_uid
+        return {
+            "uid": nuevo_uid(),            # para elegirla, subirla, bajarla o quitarla en el Studio
             "id": track["id"], "titulo": track["titulo"], "artista": track["artista"],
             "duracion_efectiva": duracion_efectiva(track, self._crossfade_secs),
             "nota": (nota or "").strip()[:500],
-        })
+        }
+
+    def queue_track(self, audio_id: int, nota: str = "", posicion: Optional[int] = None) -> bool:
+        """A la cola del operador. `nota` = memo para el locutor (sale en el
+        Studio cuando esta canción está al aire). `posicion`: lugar de la cola
+        donde entra (el Studio inserta tras la canción elegida); sin él, al final."""
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        entrada = self._entrada_cola(track, nota)
+        if posicion is None:
+            self._playlist_queue.append(entrada)
+            self._replanificar = True
+            self._emit_queue()
+        else:
+            self._cmds.put(("cola_insertar", entrada, int(posicion)))     # en el hilo del motor
+        return True
+
+    def cola_mover(self, uid: int, posicion: int):
+        self._cmds.put(("cola_mover", int(uid), int(posicion)))
+
+    def cola_quitar(self, uid: int):
+        self._cmds.put(("cola_quitar", int(uid)))
+
+    def plan_a_cola(self, uid: int, posicion: int = 0):
+        """Pasa un audio del programa automático a la cola del operador (suena antes que el programa)."""
+        self._cmds.put(("plan_a_cola", int(uid), int(posicion)))
+
+    def _cola_indice(self, uid: int) -> int:
+        return next((i for i, q in enumerate(self._playlist_queue) if q.get("uid") == uid), -1)
+
+    def _cola_insertar(self, entrada: dict, posicion: int):
+        self._playlist_queue.insert(max(0, min(posicion, len(self._playlist_queue))), entrada)
         self._replanificar = True
         self._emit_queue()
-        return True
+
+    def _cola_mover(self, uid: int, posicion: int):
+        i = self._cola_indice(uid)
+        if i < 0:
+            return
+        entrada = self._playlist_queue[i]
+        del self._playlist_queue[i]
+        self._playlist_queue.insert(max(0, min(posicion, len(self._playlist_queue))), entrada)
+        self._replanificar = True
+        self._emit_queue()
+
+    def _cola_quitar(self, uid: int):
+        i = self._cola_indice(uid)
+        if i >= 0:
+            del self._playlist_queue[i]
+            self._replanificar = True
+            self._emit_queue()
+
+    def _plan_a_cola(self, uid: int, posicion: int):
+        with self._programa_lock:
+            it = next((x for x in self._programa if x["uid"] == uid and x.get("tipo") == "audio"), None)
+            if it is None:
+                return
+            self._programa = deque(x for x in self._programa if x["uid"] != uid)
+        entrada = {"uid": it["uid"], "id": it["audio_id"], "titulo": it["titulo"], "artista": it["artista"],
+                   "duracion_efectiva": float(it.get("duracion") or 180), "nota": ""}
+        self._cola_insertar(entrada, posicion)
+        self._emit_programa()
 
     def clear_queue(self):
         self._playlist_queue.clear()
@@ -1331,6 +1387,14 @@ class AudioEngine:
                 self._do_seek(cmd[1])
             elif name == "pausar":
                 self._do_pausar(cmd[1])
+            elif name == "cola_insertar":
+                self._cola_insertar(cmd[1], cmd[2])
+            elif name == "cola_mover":
+                self._cola_mover(cmd[1], cmd[2])
+            elif name == "cola_quitar":
+                self._cola_quitar(cmd[1])
+            elif name == "plan_a_cola":
+                self._plan_a_cola(cmd[1], cmd[2])
             elif name == "detener_al_terminar":
                 self._detener_al_terminar = bool(cmd[1])
                 self.bus.emit("detener_al_terminar", {"activo": self._detener_al_terminar,

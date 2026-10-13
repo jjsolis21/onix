@@ -2013,7 +2013,8 @@ def get_status():
 
 PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue",
                    "lanzar_tanda", "cue", "cue_stop", "detener_al_terminar", "pausar",
-                   "plan_insertar", "plan_mover", "plan_quitar", "seek"}
+                   "plan_insertar", "plan_mover", "plan_quitar", "seek",
+                   "cola_insertar", "cola_mover", "cola_quitar", "plan_a_cola"}
 
 
 def _player_command(cmd: str, msg: dict) -> dict:
@@ -2046,6 +2047,23 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
     elif cmd == "queue":
         if not engine.queue_track(_audio_id()):
             raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "cola_insertar":
+        # Como "queue" pero en un lugar de la cola: el Studio inserta tras la canción elegida
+        if msg.get("posicion") is None:
+            raise ValueError("Falta posicion")
+        if not engine.queue_track(_audio_id(), "", int(msg["posicion"])):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd in ("cola_mover", "cola_quitar", "plan_a_cola"):
+        try:
+            uid = int(msg["uid"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Falta uid")
+        if cmd == "cola_quitar":
+            engine.cola_quitar(uid)
+        elif cmd == "cola_mover":
+            engine.cola_mover(uid, int(msg.get("posicion") or 0))
+        else:
+            engine.plan_a_cola(uid, int(msg.get("posicion") or 0))
     elif cmd == "fire_effect":
         if not engine.fire_effect(_audio_id(), int(msg.get("canal_offset") or 0)):
             raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")

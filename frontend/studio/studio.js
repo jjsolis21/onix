@@ -404,11 +404,12 @@ $("btnRegenerar").addEventListener("click", async () => {
 /* ─────────────────────────── decks (programa) ─────────────────────────── */
 const Decks = (() => {
   const lista = $("decksLista");
-  let items = [], sel = null;     // sel = uid de la tarjeta elegida
+  let items = [], colaItems = [], sel = null;     // sel = uid de la tarjeta elegida (de la cola o del programa)
 
   function pintar(prog) {
     items = prog?.items ?? [];
-    const cola = prog?.cola ?? [];
+    colaItems = prog?.cola ?? [];
+    const cola = colaItems;
     // Duración total de lo que está en cola + programa (como "Duración del Playlist")
     const total = [...cola, ...items].reduce((s, it) => s + (+(it.duracion ?? it.duracion_total) || 0), 0);
     const hms = t => `${Math.floor(t / 3600)}:${String(Math.floor(t % 3600 / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -422,7 +423,7 @@ const Decks = (() => {
     let html = "";
     if (cola.length) {
       html += `<div class="deck-sep"><i style="background:var(--cyan)"></i>Cola del operador</div>`;
-      html += cola.map(q => `<div class="deck cola">
+      html += cola.map((q, i) => `<div class="deck cola${q.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${q.uid}" data-zona="cola" data-tipo="Cola">
         <span class="deck-hora">${esc(q.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div>
           ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}</div>
@@ -440,7 +441,7 @@ const Decks = (() => {
       }
       if (it.tipo === "tanda") {
         const marcas = (it.inmediata ? " ⚡ EN PUNTO" : "") + (it.excede ? " ⚠ LARGA" : "");
-        html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="Tanda">
+        html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tanda">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
           <div class="deck-txt"><div class="deck-tit">📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
             <div class="deck-art">${it.cunas} cuña(s)</div></div>
@@ -448,7 +449,7 @@ const Decks = (() => {
         return;
       }
       const marcas = [it.compensacion ? "⚖" : "", it.cortada ? "✂" : "", it.operador ? "✋" : ""].join(" ").trim();
-      html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-tipo="${esc(it.tipo_audio)}"
+      html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="${esc(it.tipo_audio)}"
           title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda o el evento salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
         <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(it.titulo)}</div>
@@ -457,19 +458,31 @@ const Decks = (() => {
       </div>`;
     });
     lista.innerHTML = html;
-    if (sel !== null && !items.some(x => x.uid === sel)) sel = null;   // ya sonó o se quitó
+    if (sel !== null && !actual().it) sel = null;   // ya sonó o se quitó
     barra();
   }
 
   // ── Selección + barra de herramientas fija (como Jazler SoHo) ──
-  const indiceSel = () => items.findIndex(x => x.uid === sel);
+  // La selección puede ser de la COLA del operador o del PROGRAMA automático; las dos se editan igual.
+  // La canción elegida es también el punto de inserción: lo que se agregue entra DESPUÉS de ella.
+  const todos = () => [...colaItems.map(q => ({ it: q, zona: "cola" })), ...items.map(it => ({ it, zona: "plan" }))];
+  function actual() {
+    let i = colaItems.findIndex(x => x.uid === sel);
+    if (i >= 0) return { zona: "cola", i, it: colaItems[i], n: colaItems.length };
+    i = items.findIndex(x => x.uid === sel);
+    return i >= 0 ? { zona: "plan", i, it: items[i], n: items.length } : { zona: null, i: -1, it: null, n: 0 };
+  }
   function barra() {
-    const i = indiceSel(), it = items[i];
+    const { zona, i, it, n } = actual();
     $("dkSubir").disabled = !it || i === 0;
-    $("dkBajar").disabled = !it || i === items.length - 1;
-    $("dkPrimero").disabled = !it || i === 0;
-    $("dkCue").disabled = !it || it.tipo !== "audio";
+    $("dkBajar").disabled = !it || i === n - 1;
+    // "Primero" = que suene a continuación: un audio del programa pasa a la cabeza de la cola
+    $("dkPrimero").disabled = !it || (zona === "cola" ? i === 0 : (i === 0 && !colaItems.length) || it.tipo !== "audio" && colaItems.length > 0);
+    $("dkCue").disabled = !it || (zona === "plan" && it.tipo !== "audio");
     $("dkQuitar").disabled = !it;
+    const c = $("decksCursor");
+    c.hidden = !it;
+    if (it) c.textContent = `↳ agrega tras «${(it.titulo || "tanda").slice(0, 24)}» ✕`;
   }
   function elegir(uid, enfocar = true) {
     sel = uid;
@@ -479,21 +492,50 @@ const Decks = (() => {
     if (d && enfocar) d.scrollIntoView({ block: "nearest" });
     barra();
   }
+  function soltarSeleccion() { sel = null; lista.querySelectorAll(".deck.sel").forEach(d => d.classList.remove("sel")); barra(); }
+  $("decksCursor").addEventListener("click", soltarSeleccion);
+
+  function repintar() { pintar({ items, cola: colaItems, fin: null }); }
+  /** posicion: lugar dentro de su zona (cola o programa) */
   function mover(posicion) {
-    const i = indiceSel();
-    if (i < 0) return;
-    posicion = Math.max(0, Math.min(items.length - 1, posicion));
+    const { zona, i, it, n } = actual();
+    if (!it) return;
+    posicion = Math.max(0, Math.min(n - 1, posicion));
     if (posicion === i) return;
     // Respuesta inmediata en pantalla; el servidor confirma con programa_actualizado
-    const [it] = items.splice(i, 1);
-    items.splice(posicion, 0, it);
-    WS.send({ cmd: "plan_mover", uid: it.uid, posicion });
+    const lista_ = zona === "cola" ? colaItems : items;
+    lista_.splice(i, 1); lista_.splice(posicion, 0, it);
+    WS.send({ cmd: zona === "cola" ? "cola_mover" : "plan_mover", uid: it.uid, posicion });
+    repintar();
+  }
+  function primero() {
+    const { zona, it } = actual();
+    if (!it) return;
+    if (zona === "cola") { mover(0); return; }
+    if (colaItems.length) {
+      // Un audio del programa pasa a la cola, a la cabeza: suena a continuación
+      items.splice(items.findIndex(x => x.uid === it.uid), 1);
+      colaItems.unshift(it);
+      WS.send({ cmd: "plan_a_cola", uid: it.uid, posicion: 0 });
+      repintar();
+    } else mover(0);
   }
   function quitar() {
-    const i = indiceSel();
-    if (i < 0) return;
-    WS.send({ cmd: "plan_quitar", uid: sel });
-    sel = items[i + 1]?.uid ?? items[i - 1]?.uid ?? null;   // la selección pasa a la vecina
+    const { zona, i, it } = actual();
+    if (!it) return;
+    WS.send({ cmd: zona === "cola" ? "cola_quitar" : "plan_quitar", uid: it.uid });
+    const t = todos(), k = t.findIndex(x => x.it.uid === it.uid);
+    sel = t[k + 1]?.it.uid ?? t[k - 1]?.it.uid ?? null;      // la selección pasa a la vecina
+    const lista_ = zona === "cola" ? colaItems : items;
+    lista_.splice(i, 1); repintar();
+  }
+
+  /** Agrega un audio donde el operador lo eligió: tras la canción marcada; sin marca, al final de la cola */
+  function agregar(audioId, titulo = "") {
+    const { zona, i, it } = actual();
+    if (!it) { WS.send({ cmd: "queue", audio_id: audioId }); toast(`+ Cola: ${titulo}`, "info", 2000); return; }
+    WS.send({ cmd: zona === "cola" ? "cola_insertar" : "plan_insertar", audio_id: audioId, posicion: i + 1 });
+    toast(`${titulo ? titulo + " · " : ""}entra después de «${(it.titulo || "tanda").slice(0, 30)}»`, "info", 2200);
   }
 
   lista.addEventListener("click", e => {
@@ -502,15 +544,18 @@ const Decks = (() => {
   });
   lista.addEventListener("dblclick", e => {
     const d = e.target.closest(".deck[data-uid]");
-    const it = d && items.find(x => x.uid === +d.dataset.uid);
-    if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
+    if (!d) return;
+    const it = [...colaItems, ...items].find(x => x.uid === +d.dataset.uid);
+    if (d.dataset.zona === "cola") WS.send({ cmd: "cue", audio_id: it.id });
+    else if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
   });
-  $("dkSubir").addEventListener("click", () => mover(indiceSel() - 1));
-  $("dkBajar").addEventListener("click", () => mover(indiceSel() + 1));
-  $("dkPrimero").addEventListener("click", () => mover(0));
+  $("dkSubir").addEventListener("click", () => mover(actual().i - 1));
+  $("dkBajar").addEventListener("click", () => mover(actual().i + 1));
+  $("dkPrimero").addEventListener("click", primero);
   $("dkCue").addEventListener("click", () => {
-    const it = items[indiceSel()];
-    if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
+    const { zona, it } = actual();
+    if (zona === "cola") WS.send({ cmd: "cue", audio_id: it.id });
+    else if (it?.tipo === "audio") WS.send({ cmd: "cue", audio_id: it.audio_id });
   });
   $("dkQuitar").addEventListener("click", quitar);
   // Tras usar la barra, el foco vuelve al programa para seguir con el teclado
@@ -520,19 +565,21 @@ const Decks = (() => {
   // Teclado (con el foco en el panel del programa, también tras usar su barra):
   // ↑/↓ elegir · Alt+↑/↓ mover · Supr quitar · Esc soltar la selección
   lista.closest(".decks").addEventListener("keydown", e => {
-    if (!items.length) return;
-    const i = indiceSel();
+    const t = todos();
+    if (!t.length) return;
+    const { i, it } = actual();
+    const k = t.findIndex(x => x.it.uid === sel);
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       const delta = e.key === "ArrowUp" ? -1 : 1;
       if (e.altKey) { mover(i + delta); return; }
-      const j = i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + delta));
-      elegir(items[j].uid);
-    } else if (e.key === "Delete" && i >= 0) {
+      const j = k < 0 ? 0 : Math.max(0, Math.min(t.length - 1, k + delta));
+      elegir(t[j].it.uid);
+    } else if (e.key === "Delete" && it) {
       e.preventDefault();
       quitar();
     } else if (e.key === "Escape") {
-      sel = null; lista.querySelectorAll(".deck.sel").forEach(d => d.classList.remove("sel")); barra();
+      soltarSeleccion();
     }
   });
 
@@ -552,13 +599,13 @@ const Decks = (() => {
     lista.querySelectorAll(".drop-antes,.drop-despues").forEach(x => x.classList.remove("drop-antes", "drop-despues"));
     lista.classList.remove("drop-final");
   }
-  /** Posición (índice del programa) donde caería lo que se suelta */
+  /** Dónde caería lo que se suelta: en la cola (por su índice) o en el programa; fuera de las tarjetas = al final de la cola */
   function destino(e) {
     const d = e.target.closest(".deck[data-i]");
-    if (!d) return { idx: items.length, el: null, antes: false };
+    if (!d) return { zona: "cola", idx: colaItems.length, el: null, antes: false };
     const r = d.getBoundingClientRect();
     const antes = e.clientY < r.top + r.height / 2;
-    return { idx: +d.dataset.i + (antes ? 0 : 1), el: d, antes };
+    return { zona: d.dataset.zona, idx: +d.dataset.i + (antes ? 0 : 1), el: d, antes };
   }
   lista.addEventListener("dragover", e => {
     const tipos = e.dataTransfer.types;
@@ -572,20 +619,28 @@ const Decks = (() => {
   lista.addEventListener("dragleave", e => { if (!lista.contains(e.relatedTarget)) limpiar(); });
   lista.addEventListener("drop", e => {
     e.preventDefault();
-    const { idx } = destino(e);
+    const { zona, idx } = destino(e);
     limpiar();
-    const uid = e.dataTransfer.getData("onix/uid");
+    const uid = +e.dataTransfer.getData("onix/uid");
     const audio = e.dataTransfer.getData("onix/audio");
     if (uid) {
-      const desde = items.findIndex(x => String(x.uid) === uid);
-      const pos = desde >= 0 && desde < idx ? idx - 1 : idx;   // al sacarlo, lo de abajo sube uno
-      if (pos !== desde) WS.send({ cmd: "plan_mover", uid: +uid, posicion: pos });
+      const deCola = colaItems.findIndex(x => x.uid === uid), dePlan = items.findIndex(x => x.uid === uid);
+      if (deCola >= 0 && zona === "cola") {
+        const pos = deCola < idx ? idx - 1 : idx;                    // al sacarla, lo de abajo sube uno
+        if (pos !== deCola) { elegir(uid, false); mover(pos); }
+      } else if (dePlan >= 0 && zona === "plan") {
+        const pos = dePlan < idx ? idx - 1 : idx;
+        if (pos !== dePlan) { elegir(uid, false); mover(pos); }
+      } else if (dePlan >= 0 && zona === "cola") {
+        WS.send({ cmd: "plan_a_cola", uid, posicion: idx });         // del programa a la cola del operador
+      }                                                              // (de la cola al programa: no se hace)
     } else if (audio) {
-      WS.send({ cmd: "plan_insertar", audio_id: +audio, posicion: idx });
+      // Todo lo que pone el operador va a la cola (en manual el programa no se consume solo)
+      WS.send({ cmd: zona === "cola" ? "cola_insertar" : "plan_insertar", audio_id: +audio, posicion: idx });
     }
   });
 
-  return { pintar };
+  return { pintar, agregar };
 })();
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
@@ -813,7 +868,7 @@ const Biblioteca = (() => {
     if (b.dataset.plreemp) { lanzarPlaylist(+b.dataset.plreemp, true); return; }
     const a = cache.get(+(b.dataset.cue || b.dataset.cola || b.dataset.aire));
     if (b.dataset.cue) WS.send(enCue === +b.dataset.cue ? { cmd: "cue_stop" } : { cmd: "cue", audio_id: +b.dataset.cue });
-    if (b.dataset.cola) { WS.send({ cmd: "queue", audio_id: +b.dataset.cola }); toast(`+ Cola: ${a?.titulo ?? ""}`, "info", 2000); }
+    if (b.dataset.cola) Decks.agregar(+b.dataset.cola, a?.titulo ?? "");
     if (b.dataset.aire) {
       const sonando = Estado.st?.current_track;
       if (!sonando || confirm(`¿Poner "${a?.titulo}" al aire AHORA?\n\nLo que suena sale con crossfade.`)) {
@@ -824,8 +879,7 @@ const Biblioteca = (() => {
   $("libFilas").addEventListener("dblclick", e => {
     const tr = e.target.closest("tr[data-id]");
     if (!tr || e.target.closest("button")) return;
-    WS.send({ cmd: "queue", audio_id: +tr.dataset.id });
-    toast(`+ Cola: ${cache.get(+tr.dataset.id)?.titulo ?? ""}`, "info", 2000);
+    Decks.agregar(+tr.dataset.id, cache.get(+tr.dataset.id)?.titulo ?? "");
   });
   $("libFilas").addEventListener("dragstart", e => {
     const tr = e.target.closest("tr[data-id]");

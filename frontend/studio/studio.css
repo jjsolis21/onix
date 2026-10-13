@@ -598,3 +598,13 @@ kbd {
 .lib-cuenta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; min-width: 96px; margin-left: auto; }
 .lib-cuenta b { font-family: var(--f-display); font-weight: 400; font-size: 24px; letter-spacing: .02em; color: var(--ambar-vivo); font-variant-numeric: tabular-nums; }
 .lib-cuenta small { font-family: var(--f-data); font-size: 9px; letter-spacing: .14em; color: var(--txt-lo); text-transform: uppercase; }
+
+/* Punto de inserción: la canción elegida marca dónde entra lo que se agregue */
+.deck.sel { box-shadow: inset 0 0 0 1px var(--ambar), 0 3px 0 -1px var(--ambar); }
+.deck.cola { cursor: pointer; }
+.deck-cursor {
+  margin-left: auto; background: rgba(238, 155, 0, .16); border: 1px solid var(--ambar); color: var(--ambar-vivo);
+  border-radius: 12px; padding: 2px 9px; font-family: var(--f-data); font-size: 10px; letter-spacing: .04em; cursor: pointer; white-space: nowrap;
+  max-width: 70%; overflow: hidden; text-overflow: ellipsis;
+}
+.deck-cursor[hidden] { display: none; }

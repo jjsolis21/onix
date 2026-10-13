@@ -50,6 +50,11 @@
   .idf-cat.vacia { color: var(--text-lo); background: transparent; border-style: dashed; }
   .idf-play { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--choc-5); background: var(--choc-3); cursor: pointer; display: grid; place-items: center; padding: 0; }
   .idf-play:hover { border-color: var(--gold-0); }
+  .idf-acc { display: flex; gap: 4px; }
+  .idf-edit { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--choc-5); background: var(--choc-3); color: var(--text-mid); cursor: pointer; padding: 0; }
+  .idf-edit:hover { border-color: var(--gold-0); color: var(--gold-1); }
+  .idf-tabla tbody tr { cursor: pointer; }
+  .idf-tabla tbody tr.elegida td { box-shadow: inset 0 1px 0 var(--gold-0), inset 0 -1px 0 var(--gold-0); background: rgba(238, 155, 0, .07); }
   .idf-play img { width: 14px; height: 14px; display: block; }
   .idf-vacio { padding: 40px; text-align: center; color: var(--text-lo); }
   .idf-mas { padding: 10px; text-align: center; }
@@ -110,6 +115,7 @@
     <aside class="idf-lado">
       <button class="idf-btn idf-btn--pri" id="idfAgregar" title="Abre la misma ventana de canción: onda, marcas y datos">＋ Agregar</button>
       <button class="idf-btn" id="idfAgregarLote" title="Varios archivos de una vez, con la misma categoría">⇪ Agregar en lote</button>
+      <button class="idf-btn" id="idfEditar" disabled title="Abre la ventana de canción del identificador elegido (o doble clic en la fila)">✎ Editar</button>
       <button class="idf-btn idf-btn--peligro" id="idfEliminar" disabled>🗑 Eliminar marcados</button>
       <label class="idf-chk"><input type="checkbox" id="idfRapida"> Edición rápida</label>
       <label class="idf-chk"><input type="checkbox" id="idfSoloMarcados"> Solo marcados</label>
@@ -136,7 +142,7 @@
       <div class="idf-wrap" id="idfWrap">
         <table class="idf-tabla">
           <thead><tr>
-            <th style="width:30px"><input type="checkbox" id="idfTodos" title="Marcar los de la lista"></th><th style="width:40px"></th>
+            <th style="width:30px"><input type="checkbox" id="idfTodos" title="Marcar los de la lista"></th><th style="width:74px"></th>
             <th>Autor</th><th>Título</th><th class="num">Duración</th><th class="num">Intro</th><th>Categoría</th><th class="num">Sonó</th><th>Código</th>
           </tr></thead>
           <tbody id="idfFilas"></tbody>
@@ -148,7 +154,7 @@
           <button id="idfStop" title="Detener"><img src="/static/studio/icons/stop2.svg" alt=""></button>
         </div>
         <div class="info">
-          <b id="idfPlayTxt">Elige un identificador y pulsa ▶</b>
+          <b id="idfPlayTxt">Haz clic en un identificador y pulsa ▶</b>
           <div class="idf-prog" id="idfProg" title="Clic para ir a ese punto"><i id="idfProgFill"></i></div>
         </div>
         <span class="idf-t" id="idfT">0:00 / 0:00</span>
@@ -215,7 +221,7 @@
   let tipo = "Efecto", cats = { Efecto: [], Sweeper: [], Tips: [] };
   let filas = [], total = 0, gen = 0, cargandoMas = false;
   const marcados = new Set(), cache = new Map();
-  let sonando = null, audio = null;
+  let sonando = null, audio = null, elegido = null;     // elegido = fila con la que trabajan el reproductor y Editar
 
   function msg(texto, ok = true, id = "idfMsg") {
     const el = $(id); el.textContent = texto; el.className = `idf-msg ${ok ? "ok" : "err"}`;
@@ -252,9 +258,10 @@
     const cat = $("idfRapida").checked
       ? `<select class="idf-in" data-cat="${a.id}" style="padding:3px 6px"><option value="">—</option>${(cats[tipo] || []).map(c => `<option ${c.nombre.toUpperCase() === (a.categoria_ident || "").toUpperCase() ? "selected" : ""}>${esc(c.nombre)}</option>`).join("")}</select>`
       : (a.categoria_ident ? `<span class="idf-cat">${esc(a.categoria_ident)}</span>` : `<span class="idf-cat vacia">sin categoría</span>`);
-    return `<tr data-id="${a.id}" class="${marcados.has(a.id) ? "marcado" : ""} ${sonando === a.id ? "sonando" : ""}">
+    return `<tr data-id="${a.id}" class="${marcados.has(a.id) ? "marcado" : ""} ${sonando === a.id ? "sonando" : ""} ${elegido === a.id ? "elegida" : ""}">
       <td><input type="checkbox" data-chk="${a.id}" ${marcados.has(a.id) ? "checked" : ""}></td>
-      <td><button class="idf-play" data-play="${a.id}" title="Escuchar"><img src="/static/studio/icons/${sonando === a.id && audio && !audio.paused ? "pause2" : "play2"}.svg" alt=""></button></td>
+      <td><div class="idf-acc"><button class="idf-play" data-play="${a.id}" title="Escuchar"><img src="/static/studio/icons/${sonando === a.id && audio && !audio.paused ? "pause2" : "play2"}.svg" alt=""></button>
+        <button class="idf-edit" data-edit="${a.id}" title="Editar (ventana de canción)">✎</button></div></td>
       <td>${esc(a.artista)}</td><td class="tit" title="Doble clic para editar">${esc(a.titulo)}</td>
       <td class="num">${mmss(a.duracion)}</td><td class="num">${(a.cue_intro || a.intro) ? Math.round(a.cue_intro || a.intro) + "s" : ""}</td>
       <td>${cat}</td><td class="num">${a.veces_reproducido || ""}</td>
@@ -318,7 +325,7 @@
   // ── Eventos de la tabla y del panel ─────────────────────
   $("idfTabs").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b || b.dataset.tipo === tipo) return;
-    tipo = b.dataset.tipo; marcados.clear(); $("idfSoloMarcados").checked = false; $("idfBuscar").value = "";
+    tipo = b.dataset.tipo; marcados.clear(); elegido = null; $("idfEditar").disabled = true; $("idfSoloMarcados").checked = false; $("idfBuscar").value = "";
     $("idfTabs").querySelectorAll("button").forEach(x => x.classList.toggle("activo", x === b));
     llenarSelects(); $("idfFiltroCat").value = ""; recargar();
   });
@@ -339,8 +346,21 @@
       chk.closest("tr").classList.toggle("marcado", chk.checked); pintarCuenta(); return;
     }
     const play = e.target.closest("[data-play]");
-    if (play) escuchar(+play.dataset.play);
+    if (play) { elegir(+play.dataset.play); escuchar(+play.dataset.play); return; }
+    const ed = e.target.closest("[data-edit]");
+    if (ed) { abrirEditar(+ed.dataset.edit); return; }
+    const tr = e.target.closest("tr[data-id]");
+    if (tr && !e.target.closest("select, input")) elegir(+tr.dataset.id);
   });
+  /** Elegir una fila: queda marcada, el reproductor de abajo la carga (▶ la toca) y se puede Editar */
+  function elegir(id) {
+    elegido = id;
+    document.querySelectorAll("#idfFilas tr[data-id]").forEach(tr => tr.classList.toggle("elegida", +tr.dataset.id === id));
+    const a = cache.get(id);
+    if (a && sonando !== id) $("idfPlayTxt").innerHTML = `${esc(a.titulo)}<span>${esc(a.artista)}</span>`;
+    $("idfEditar").disabled = !id;
+  }
+  $("idfEditar").addEventListener("click", () => elegido && abrirEditar(elegido));
   $("idfFilas").addEventListener("change", async e => {
     const sel = e.target.closest("[data-cat]"); if (!sel) return;
     try {
@@ -389,7 +409,11 @@
     $("idfPlayTxt").innerHTML = a ? `${esc(a.titulo)}<span>${esc(a.artista)}</span>` : "";
     audio.play().catch(() => msg("No se pudo reproducir el archivo", false));
   }
-  $("idfPlay").addEventListener("click", () => { if (audio?.src) audio.paused ? audio.play() : audio.pause(); });
+  $("idfPlay").addEventListener("click", () => {
+    if (elegido && sonando !== elegido) { escuchar(elegido); return; }     // toca la fila elegida
+    if (audio?.src) { audio.paused ? audio.play() : audio.pause(); return; }
+    msg("Elige un identificador de la lista (clic en la fila)", false);
+  });
   $("idfStop").addEventListener("click", () => { if (audio) { audio.pause(); audio.currentTime = 0; } });
   $("idfProg").addEventListener("click", e => {
     if (!audio?.duration) return; const r = $("idfProg").getBoundingClientRect(); audio.currentTime = (e.clientX - r.left) / r.width * audio.duration;

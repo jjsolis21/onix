@@ -823,3 +823,42 @@ def test_siguiente_en_pausa_sale_de_la_pausa(engine, media):
 def test_pausa_sin_pista_no_hace_nada(engine):
     engine._do_pausar(True)
     assert not engine._pausado
+
+
+# ── Editar la cola del operador (subir, bajar, primero, quitar, insertar en un lugar) ──
+def _titulos_cola(engine):
+    return [q["titulo"] for q in engine.programa()["cola"]]
+
+
+def test_cola_se_puede_mover_quitar_e_insertar_en_un_lugar(engine, media):
+    ids = {n: add_audio(engine, media, n, seconds=60.0, artista="X") for n in ("A", "B", "C", "D")}
+    for n in ("A", "B", "C"):
+        engine.queue_track(ids[n])
+    uids = {q["titulo"]: q["uid"] for q in engine.programa()["cola"]}
+    assert len(set(uids.values())) == 3                       # cada entrada con su uid
+
+    engine.cola_mover(uids["C"], 0); engine._drain_commands()
+    assert _titulos_cola(engine) == ["C", "A", "B"]           # PRIMERO
+    engine.cola_mover(uids["C"], 1); engine._drain_commands()
+    assert _titulos_cola(engine) == ["A", "C", "B"]           # BAJAR
+    engine.cola_quitar(uids["A"]); engine._drain_commands()
+    assert _titulos_cola(engine) == ["C", "B"]
+    engine.queue_track(ids["D"], "", 1); engine._drain_commands()   # insertar tras la primera
+    assert _titulos_cola(engine) == ["C", "D", "B"]
+    engine.queue_track(ids["A"]); engine._drain_commands()          # sin posición: al final
+    assert _titulos_cola(engine)[-1] == "A"
+    engine.cola_quitar(999999); engine.cola_mover(999999, 0); engine._drain_commands()   # uid inexistente: nada
+
+
+def test_audio_del_programa_pasa_a_la_cola_para_sonar_a_continuacion(engine, media):
+    for i in range(4):
+        add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    pedido = add_audio(engine, media, "PEDIDO", seconds=60.0)
+    engine._actualizar_programa(forzar=True)
+    engine.queue_track(pedido)
+    elegido = engine.programa()["items"][2]
+    engine.plan_a_cola(elegido["uid"], 0); engine._drain_commands()
+    cola = engine.programa()["cola"]
+    assert [q["titulo"] for q in cola][:2] == [elegido["titulo"], "PEDIDO"]
+    assert elegido["uid"] not in [i["uid"] for i in engine.programa()["items"]]
+    assert engine._advance() and engine._current_track["titulo"] == elegido["titulo"]
