@@ -452,6 +452,71 @@ def autocue(audio_id: int):
     return res
 
 
+class ClaveAcoustIn(BaseModel):
+    clave: str = Field("", max_length=64)
+
+
+def _clave_acoustid() -> str:
+    conn = _conn()
+    try:
+        r = conn.execute("SELECT valor FROM config WHERE clave = 'acoustid_clave'").fetchone()
+    finally:
+        conn.close()
+    return (r["valor"] if r else "") or ""
+
+
+@router.get("/api/v1/config/acoustid", summary="¿Hay clave de AcoustID? (nunca devuelve la clave)")
+def acoustid_estado():
+    return {"configurada": bool(_clave_acoustid())}
+
+
+@router.put("/api/v1/config/acoustid", summary="Guardar la clave gratuita de AcoustID (vacía = quitarla)")
+def acoustid_guardar(body: ClaveAcoustIn):
+    clave = body.clave.strip()
+    conn = _conn()
+    try:
+        conn.execute("INSERT INTO config (clave, valor) VALUES ('acoustid_clave', ?) "
+                     "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (clave,))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"configurada": bool(clave)}
+
+
+# Para poder probar sin internet: los tests cambian esta función
+def _http_externo():
+    from backend.audio import metadatos
+    return metadatos.http_json
+
+
+@router.post("/api/v1/biblioteca/{audio_id}/analizar", summary="Sugerir título, artista, álbum, año, ritmo, energía y marcas (no guarda)")
+def analizar(audio_id: int, en_linea: bool = True):
+    """
+    Une las etiquetas del archivo, la búsqueda en línea (MusicBrainz / AcoustID) y el análisis de
+    la señal (ritmo, inicio, intro, outro, mezcla). Devuelve propuestas con su fuente y su confianza;
+    el editor las muestra y el operador elige cuáles aplicar. No toca la ficha.
+    """
+    from backend.audio import sugerencias
+    from backend.audio.loudness import find_ffmpeg
+    conn = _conn()
+    try:
+        r = conn.execute("SELECT * FROM audios WHERE id = ? AND activo = 1", (audio_id,)).fetchone()
+    finally:
+        conn.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="Audio no encontrado")
+    ruta = resolve_media(r["archivo_path"] or "")
+    if not ruta.is_file():
+        raise HTTPException(status_code=404, detail="No se encuentra el archivo de audio")
+    actual = {"titulo": r["titulo"], "artista": r["artista"], "album": r["album"],
+              "anio": (r["fecha_lanzamiento"] or "")[:4], "bpm": r["bpm"], "energia": r["energia"],
+              "cue_inicio": r["cue_inicio"], "cue_intro": r["cue_intro"], "cue_outro": r["cue_outro"], "cue_mezcla": r["cue_mezcla"]}
+    out = sugerencias.sugerir(ruta, ruta.name, actual, find_ffmpeg(), _clave_acoustid(), en_linea, _http_externo())
+    out["id"] = audio_id
+    out["acoustid"] = bool(_clave_acoustid())
+    return out
+
+
 @router.post("/api/v1/audios/{audio_id}/caratula", summary="Poner carátula: subir imagen o leerla de la etiqueta")
 async def poner_caratula(audio_id: int, file: Optional[UploadFile] = File(None)):
     """Con archivo: esa imagen. Sin archivo: se vuelve a leer de la etiqueta del audio."""

@@ -122,3 +122,20 @@
 .ec-embed .ec-onda-sec { border: 0; background: transparent; padding: 0; }
 .ec-sin-ajustes .ec-ajustes { display: none; }
 .ec-embed .ec-marcas { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* Sugerencias del análisis */
+.ec-sug { margin-top: 12px; background: var(--choc-1); border: 1px solid var(--gold-0); border-radius: 8px; padding: 10px 12px; }
+.ec-sug-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ec-sug-cab b { color: var(--gold-1); }
+.ec-sug-cab span { flex: 1; font-size: 12px; color: var(--text-lo); }
+.ec-sug-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ec-sug-tabla th { text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-lo); font-weight: 500; padding: 4px 8px; }
+.ec-sug-tabla td { padding: 6px 8px; border-top: 1px solid var(--choc-4); color: var(--text-mid); vertical-align: middle; }
+.ec-sug-ahora { color: var(--text-lo); }
+.ec-sug-nuevo b { color: var(--text-hi); }
+.ec-sug-conf { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--cc); border: 1px solid var(--cc); border-radius: 9px; padding: 1px 7px; }
+.ec-sug small { color: var(--text-lo); }
+.ec-sug-aviso, .ec-sug-vacio { margin: 8px 0 0; font-size: 12px; color: var(--text-lo); }
+.ec-sug-clave { display: flex; gap: 6px; margin-top: 8px; }
+.ec-sug-clave input { flex: 1; background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 6px 9px; font: inherit; font-size: 12px; }
+.ec-sug-pie { margin-top: 10px; display: flex; justify-content: flex-end; }

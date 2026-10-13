@@ -89,6 +89,7 @@
             <span class="ec-tiempo"><b id="ecT">0:00.0</b> / <span id="ecDur">${fmt(f.duracion)}</span></span>
             <label class="ec-zoom">🔍 <input type="range" id="ecZoom" min="0" max="300" value="0" title="Zoom de la onda"></label>
             <button class="ec-btn" data-acc="autocue" ${nueva ? 'disabled title="Guarda primero la canción"' : 'title="Detectar inicio y mezcla automáticamente"'}>✨ AutoCue</button>
+            <button class="ec-btn" data-acc="analizar" ${nueva ? 'disabled title="Guarda primero la canción"' : 'title="Sugiere título, artista, álbum, año, ritmo, energía y marcas (no cambia nada hasta que lo apruebes)"'}>🔎 Analizar</button>
           </div>
           <div class="ec-onda" id="ecOnda"><p class="ec-onda-vacia">${nueva ? 'La onda aparece al elegir el archivo' : 'Cargando la onda…'}</p></div>
           <div class="ec-marcas" id="ecMarcas"></div>
@@ -97,6 +98,7 @@
             <label>Fade out <input type="range" id="ecFadeOut" min="0" max="10" step="0.1" value="${+f.fade_out || 0}"><b id="ecFadeOutV">${(+f.fade_out || 0).toFixed(1)} s</b></label>
             <label title="Ajuste propio de esta canción, sumado a la normalización">Volumen <input type="range" id="ecGan" min="-12" max="6" step="0.5" value="${+f.ganancia_db || 0}"><b id="ecGanV">${(+f.ganancia_db || 0) > 0 ? '+' : ''}${(+f.ganancia_db || 0).toFixed(1)} dB</b></label>
           </div>
+          <div class="ec-sug" id="ecSug" hidden></div>
           <p class="ec-ayuda">Clic en la onda = ir a ese punto · Marca elegida: <b>← →</b> la mueven (Mayús = 1 s) y el audio salta ahí · <b>F</b> = fijarla donde va el audio · <b>1–6</b> elegir marca · <b>Espacio</b> play/pausa</p>
         </section>`;
   }
@@ -315,6 +317,10 @@
         case 'quitar': E.valores[marca] = 0; E.sucio = true; pintarMarcas(); dibujarMarcas(); break;
         case 'valor': E.sel = marca; break;
         case 'autocue': await autoCue(); break;
+        case 'analizar': await analizar(); break;
+        case 'sug-aplicar': aplicarSugerencias(); break;
+        case 'sug-cerrar': R.querySelector('#ecSug').hidden = true; break;
+        case 'sug-clave': await guardarClaveAcoustid(); break;
         case 'guardar': guardar(false); break;
         case 'guardar-aprobar': guardar(true); break;
         case 'tapa-etiqueta': tapa('etiqueta'); break;
@@ -383,6 +389,67 @@
     E.sucio = true;
     pintarMarcas(); dibujarMarcas();
     est.textContent = `✨ Inicio ${fmt(d.cue_inicio)} · mezcla ${d.cue_mezcla ? fmt(d.cue_mezcla) : '—'} (sin guardar)`;
+  }
+
+  // ── Análisis: sugerencias que el operador aprueba (nada se aplica solo) ──
+  const CAMPOS_FICHA = { titulo: '#ecTitulo', artista: '#ecArtista', album: '#ecAlbum', anio: '#ecAnio', bpm: '#ecBpm', energia: '#ecEnergia' };
+  const verSug = c => c.campo.startsWith('cue_') ? marcasDe().some(m => m.k === c.campo)
+    : (el => !!el && !el.closest('[hidden]'))(E.raiz.querySelector(CAMPOS_FICHA[c.campo]));   // jingles: sin álbum/BPM/energía
+  const nombreActual = (c, v) => c.campo === 'energia' ? ({ 1: '1 · Lenta', 2: '2 · Suave', 3: '3 · Media', 4: '4 · Movida', 5: '5 · Rápida' }[v] || '—')
+    : c.campo.startsWith('cue_') ? (v ? fmt(v) : '—') : (v || '—');
+  const CONF = { alta: ['segura', '#52b788'], media: ['probable', '#ffa94d'], baja: ['aproximada', '#9aa3b2'] };
+
+  async function analizar(clave) {
+    const R = E.raiz, est = R.querySelector('#ecEstado'), cont = R.querySelector('#ecSug');
+    est.textContent = 'Analizando (ritmo, marcas y búsqueda en línea)…';
+    let d;
+    try {
+      const r = await fetch(`/api/v1/biblioteca/${E.id}/analizar`, { method: 'POST' });
+      d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `Error ${r.status}`);
+    } catch (err) { est.textContent = ''; toast(err.message, 'error'); return; }
+    est.textContent = '';
+    E.sug = d;
+    const filas = d.campos.filter(c => c.mostrar && verSug(c));
+    const marcada = c => !(c.actual) && c.confianza !== 'baja' && !(c.campo === 'cue_inicio');
+    cont.hidden = false;
+    cont.innerHTML = `
+      <div class="ec-sug-cab"><b>🔎 Sugerencias</b><span>Nada se cambia hasta que marques lo que quieres y presiones «Aplicar»; luego guarda.</span>
+        <button class="ec-btn" data-acc="sug-cerrar" title="Cerrar">✕</button></div>
+      ${filas.length ? `<table class="ec-sug-tabla"><thead><tr><th></th><th>Dato</th><th>Ahora</th><th>Sugerido</th><th>De dónde</th></tr></thead><tbody>
+        ${filas.map(c => `<tr data-campo="${c.campo}"><td><input type="checkbox" ${marcada(c) ? 'checked' : ''}></td>
+          <td>${esc(c.etiqueta)}</td><td class="ec-sug-ahora">${esc(nombreActual(c, c.actual))}</td>
+          <td class="ec-sug-nuevo"><b>${esc(c.texto || nombreActual(c, c.sugerido))}</b></td>
+          <td><span class="ec-sug-conf" style="--cc:${CONF[c.confianza][1]}">${CONF[c.confianza][0]}</span> <small>${esc(c.fuente)}</small></td></tr>`).join('')}
+        </tbody></table>` : '<p class="ec-sug-vacio">No hay nada nuevo que proponer: lo que se pudo detectar ya está en la ficha.</p>'}
+      ${(d.avisos || []).map(a => `<p class="ec-sug-aviso">ℹ ${esc(a)}</p>`).join('')}
+      ${d.acoustid || R.querySelector('#ecTitulo') === null ? '' : `<div class="ec-sug-clave"><input id="ecAcoustKey" placeholder="Clave gratuita de AcoustID (acoustid.org/new-application)"><button class="ec-btn" data-acc="sug-clave">Guardar clave y analizar de nuevo</button></div>`}
+      <div class="ec-sug-pie">${filas.length ? '<button class="ec-btn ec-pri" data-acc="sug-aplicar">Aplicar las marcadas</button>' : ''}</div>`;
+  }
+
+  async function guardarClaveAcoustid() {
+    const v = E.raiz.querySelector('#ecAcoustKey')?.value.trim();
+    if (!v) { toast('Pega la clave de AcoustID', 'error'); return; }
+    const r = await fetch('/api/v1/config/acoustid', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clave: v }) });
+    if (!r.ok) { toast('No se pudo guardar la clave', 'error'); return; }
+    toast('✓ Clave guardada', 'success');
+    await analizar();
+  }
+
+  function aplicarSugerencias() {
+    const R = E.raiz, marcadas = [...R.querySelectorAll('#ecSug tbody tr')].filter(tr => tr.querySelector('input').checked);
+    if (!marcadas.length) { toast('Marca lo que quieres aplicar', 'error'); return; }
+    let n = 0;
+    marcadas.forEach(tr => {
+      const c = E.sug.campos.find(x => x.campo === tr.dataset.campo);
+      if (!c) return;
+      if (c.campo.startsWith('cue_')) { E.valores[c.campo] = +(+c.sugerido).toFixed(2); n++; }
+      else { const el = R.querySelector(CAMPOS_FICHA[c.campo]); if (el) { el.value = c.sugerido; n++; } }
+    });
+    E.sucio = true;
+    pintarMarcas(); dibujarMarcas();
+    R.querySelector('#ecEstado').textContent = `✓ ${n} dato(s) aplicados a la ficha: revisa y guarda`;
+    R.querySelector('#ecSug').hidden = true;
   }
 
   async function elegirArchivo(file) {
@@ -527,7 +594,8 @@
         if (!E || !E.embebido) return;
         if (valores) MARCAS.forEach(m => { E.valores[m.k] = +((valores || {})[m.k] || 0); });
         E.id = audioId || null; E.sucio = false;
-        const ac = E.raiz.querySelector('[data-acc="autocue"]'); if (ac) { ac.disabled = !E.id; ac.title = E.id ? 'Detectar inicio y mezcla automáticamente' : 'Guarda primero el audio'; }
+        ['autocue', 'analizar'].forEach(a => { const b = E.raiz.querySelector(`[data-acc="${a}"]`); if (b) { b.disabled = !E.id; if (!E.id) b.title = 'Guarda primero el audio'; } });
+        const sg = E.raiz.querySelector('#ecSug'); if (sg) sg.hidden = true;
         pintarMarcas(); cargarOnda(url);
       },
       valores: () => (E && E.embebido ? { ...E.valores } : {}),
