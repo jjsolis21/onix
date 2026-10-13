@@ -1142,3 +1142,71 @@
   .pautas-stats { grid-template-columns: repeat(3, 1fr); }
   .notif-dropdown { width: 260px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   MODAL DE PAUTA EN PESTAÑAS (como "Propiedades de spot" de Jazler)
+   Antes todo iba apretado en una columna de 360 px: el selector de audio,
+   las versiones y la onda se comían la altura y los datos de la pauta
+   quedaban en un cuadrito con scroll. Ahora cada tema tiene toda la altura.
+   ══════════════════════════════════════════════════════════ */
+.pm-tabs {
+  flex: none; display: flex; align-items: center; gap: 2px; padding: 0 18px;
+  background: var(--p-surface-2); border-bottom: 1px solid var(--p-border-subtle);
+}
+.pm-tab {
+  background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer;
+  color: var(--p-text-lo, #8b97a5); padding: 11px 18px; font-size: .86rem; font-weight: 600; letter-spacing: .02em;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.pm-tab:hover { color: var(--p-text, #fff); }
+.pm-tab.activo { color: var(--p-accent); border-bottom-color: var(--p-accent); }
+.pm-tab small { font-weight: 500; color: var(--p-text-lo, #8b97a5); }
+.pm-tab.activo small { color: var(--p-accent); }
+.pm-dot { display: none; width: 8px; height: 8px; border-radius: 50%; }
+.pm-dot.ok { display: inline-block; background: var(--p-green); }
+.pm-dot.falta { display: inline-block; background: var(--p-red); box-shadow: 0 0 6px var(--p-red); }
+.pm-resumen { margin-left: auto; font-size: .78rem; color: var(--p-text-lo, #8b97a5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.modal-dashboard.pm-panes { display: block; position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.pm-pane { display: none !important; height: 100%; min-height: 0; }
+.pm-pane.activo { display: flex !important; }
+.modal-col-a.pm-pane { border-right: none; }
+
+/* Pestaña 1 — Datos: el formulario en dos columnas, todo a la vista */
+.pm-pane[data-pane="datos"] .form-section {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; align-content: start;
+  padding: 22px 32px; overflow-y: auto; flex: 1;
+}
+.pm-pane[data-pane="datos"] .form-section > h4 { grid-column: 1 / -1; margin: 0; }
+.pm-pane[data-pane="datos"] .form-section > .form-group:has(#fNotas),
+.pm-pane[data-pane="datos"] .form-section > :has(#matrixSummaryText) { grid-column: 1 / -1; }
+
+/* Pestaña 2 — Audio: selector y versiones arriba, la onda ocupa el resto */
+.pm-pane[data-pane="audio"] { flex-direction: column; overflow-y: auto; }
+.pm-pane[data-pane="audio"] .audio-picker-row { padding: 18px 32px; }
+.pm-pane[data-pane="audio"] .wf-panel-wrap { flex: 1 0 auto; height: auto; min-height: 270px; padding: 0 32px 14px; overflow: visible; }
+
+/* Pestaña 3 — Horarios: la matriz usa todo el ancho y alto del modal */
+.pm-pane[data-pane="horarios"] { flex-direction: column; }
+.pm-pane[data-pane="horarios"] .matrix-section { padding: 14px 28px 4px; }
+
+@media (max-width: 860px) {
+  .pm-tab { padding: 10px 11px; font-size: .78rem; }
+  .pm-resumen { display: none; }
+  .pm-pane[data-pane="datos"] .form-section { grid-template-columns: 1fr; padding: 16px; }
+  .pm-pane[data-pane="audio"] .audio-picker-row, .pm-pane[data-pane="audio"] .wf-panel-wrap { padding-left: 16px; padding-right: 16px; }
+}
+
+/* Relleno rápido de la matriz: los botones no tenían estilo (texto negro sobre fondo oscuro = invisibles) */
+.matrix-quickfill { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 10px; }
+.quickfill-label { font-size: .76rem; color: var(--p-text-lo, #8b97a5); letter-spacing: .04em; }
+.btn-quickfill {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: .78rem; font-weight: 600;
+  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--p-border); background: var(--p-surface-3); color: var(--p-text, #fff);
+}
+.btn-quickfill:hover { border-color: var(--p-accent); color: var(--p-accent); }
+.btn-quickfill--prime { border-color: var(--p-prime-border); color: var(--p-yellow); }
+.btn-quickfill--clear { color: var(--p-red); border-color: rgba(255, 61, 90, .35); }
+.btn-quickfill--clear:hover { background: var(--p-red-dim); color: var(--p-red); border-color: var(--p-red); }
+.btn-quickfill[hidden] { display: none; }
+.pm-pane[data-pane="audio"] #btnSelectAudio { white-space: nowrap; flex: none; padding: 0 12px; }
