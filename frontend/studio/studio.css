@@ -196,7 +196,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 
 /* ═══════════ CUERPO ═══════════ */
 .cuerpo {
-  display: grid; grid-template-columns: 370px minmax(0, 1fr) 320px; gap: 1px;
+  display: grid; grid-template-columns: 350px minmax(0, 1fr) 400px; gap: 1px;
   background: var(--line); min-height: 0;
 }
 .panel { background: var(--bg-1); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
@@ -362,7 +362,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 
 /* Pantallas de 1366 px: un poco más compacto */
 @media (max-width: 1500px) {
-  .cuerpo { grid-template-columns: 320px minmax(0, 1fr) 280px; }
+  .cuerpo { grid-template-columns: 310px minmax(0, 1fr) 350px; }
   .pl-titulo { font-size: 26px; }
   .cuenta { font-size: 52px; min-width: 115px; }
   .lib-tabla th:nth-child(3), .lib-tabla td:nth-child(3) { display: none; }
@@ -444,11 +444,6 @@ kbd {
 .problemas-pie { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .atajos-caja button.sec { background: transparent; color: var(--txt-mid); border: 1px solid var(--line); }
 
-.lib-cargar {
-  font-family: var(--f-data); font-size: 11px; letter-spacing: .1em; color: var(--ambar);
-  border: 1px solid var(--ambar); border-radius: 4px; padding: 3px 9px; text-decoration: none;
-}
-.lib-cargar:hover { background: var(--ambar); color: var(--bg-0); }
 .prob-donde a { color: var(--ambar); text-decoration: none; }
 .prob-donde a:hover { text-decoration: underline; }
 
@@ -504,3 +499,47 @@ kbd {
 .ctl small { font-size: 8px; }
 .ctl-stop { grid-column: auto; }
 @media (max-width: 1500px) { .hide-sm { display: none; } .pl-controles { grid-template-columns: repeat(5, 54px); gap: 4px; } .ctl small { font-size: 7px; } }
+
+/* ═══════════ PESTAÑAS DE BIBLIOTECA: separador y marca activa ═══════════ */
+.lib-tabs { padding: 0 6px; gap: 0; }
+.lib-tab { position: relative; padding: 10px 16px; transition: color .15s, background .15s; }
+.lib-tab + .lib-tab::before {
+  content: ""; position: absolute; left: 0; top: 30%; bottom: 30%; width: 1px; background: var(--line);
+}
+.lib-tab:hover { color: var(--txt-hi); background: rgba(255, 255, 255, .03); }
+.lib-tab.active { background: linear-gradient(180deg, transparent, rgba(238, 155, 0, .10)); }
+.lib-tab.active::before, .lib-tab.active + .lib-tab::before { display: none; }
+.lib-tab b {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-3); color: var(--txt-mid); margin-left: 6px;
+}
+.lib-tab.active b { background: var(--ambar); color: var(--bg-0); }
+.lib-tipo { font-style: normal; font-family: var(--f-data); font-size: 9px; letter-spacing: .1em; color: var(--ambar); border: 1px solid var(--ambar); border-radius: 3px; padding: 0 4px; margin-right: 4px; }
+.lib-tabla tbody tr.elegida td { background: var(--bg-2); }
+
+/* ═══════════ REPRODUCTOR DE PREESCUCHA (pie de la biblioteca) ═══════════ */
+.sp-player {
+  flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 6px 12px; background: var(--bg-0); border-top: 1px solid var(--line);
+}
+.sp-player.sonando { border-top-color: var(--ambar); }
+.sp-mandos { display: flex; align-items: center; gap: 4px; }
+.sp-b {
+  width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-3);
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.sp-b:hover { border-color: var(--ambar); }
+.sp-b .ico { width: 18px; height: 18px; display: block; }
+.sp-play { width: 40px; height: 40px; border-radius: 50%; }
+.sp-play .ico { width: 24px; height: 24px; }
+.sp-player.sonando .sp-play { box-shadow: 0 0 0 3px rgba(238, 155, 0, .28); }
+.sp-centro { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sp-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.sp-txt { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
+.sp-txt b { color: var(--txt-hi); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-txt span { color: var(--txt-lo); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-tiempos { font-family: var(--f-data); font-size: 11px; color: var(--txt-lo); white-space: nowrap; display: flex; gap: 6px; align-items: baseline; }
+.sp-tiempos b { color: var(--ambar-vivo); font-size: 15px; font-weight: 600; }
+.sp-tiempos em { font-style: normal; min-width: 40px; text-align: right; color: var(--txt-mid); }
+.sp-prog { position: relative; height: 8px; background: var(--bg-3); border-radius: 4px; cursor: pointer; overflow: hidden; }
+.sp-prog i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--rojo-osc), var(--ambar)); }
+.sp-info { font-family: var(--f-data); font-size: 10px; color: var(--txt-lo); text-align: right; max-width: 150px; line-height: 1.2; }

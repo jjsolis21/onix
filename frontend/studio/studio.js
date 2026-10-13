@@ -167,6 +167,7 @@ const Estado = (() => {
     $("avisoCue").hidden = !cue;
     if (cue) $("avisoCueTxt").textContent = `🎧 PREESCUCHA (no sale al aire): ${cue.titulo} · ${fmt(cue.posicion)} / ${fmt(cue.duracion)}`;
     Biblioteca.marcar(ct?.id, cue?.audio_id);
+    Biblioteca.estadoCue(cue);
     Derecha.tanda(programa, st);
     pintarSiguiente();
   }
@@ -374,7 +375,6 @@ $("btnTandaLuego").addEventListener("click", () => {
   toast("La tanda sale al terminar la canción", "aviso", 3000);
 });
 $("btnCueStop").addEventListener("click", () => WS.send({ cmd: "cue_stop" }));
-$("btnVaciarCola").addEventListener("click", () => WS.send({ cmd: "clear_queue" }));
 $("btnRegenerar").addEventListener("click", async () => {
   if (!confirm("¿Volver a planificar el programa desde ahora? Se pierden los cambios hechos a mano.")) return;
   await api("/api/v1/programa/regenerar", { method: "POST" });
@@ -568,10 +568,15 @@ const Decks = (() => {
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
 const Biblioteca = (() => {
-  const TABS = [["Musica", "MÚSICA"], ["Efecto", "JINGLES"], ["Sweeper", "SWEEPERS"], ["Cuña", "CUÑAS"],
-                ["Programa", "PROGRAMAS"], ["Tips", "TIPS"], ["Playlist", "PLAYLISTS"]];
+  // Jingles, sweepers y tips comparten pestaña ("IMAGEN"): se separan con el filtro Tipo
+  const IMAGEN = ["Efecto", "Sweeper", "Tips"];
+  const NOMBRE_TIPO = { Efecto: "JINGLE", Sweeper: "SWEEPER", Tips: "TIP" };
+  const TABS = [["Musica", "MÚSICA"], ["Imagen", "IMAGEN"], ["Cuña", "CUÑAS"],
+                ["Programa", "PROGRAMAS"], ["Playlist", "PLAYLISTS"]];
+  const enTab = (a, t) => t === "Imagen" ? IMAGEN.includes(a.tipo_audio) : a.tipo_audio === t;
   const MAX_FILAS = 300;
   let audios = [], tab = "Musica", alAire = null, enCue = null, playlists = [];
+  const P = { id: null, pos: 0, activo: false, recibido: 0, dur: 0, pausado: false };
 
   // Playlists generadas en Admin › Relojes desde el patrón de un reloj
   async function cargarPlaylists() {
@@ -627,22 +632,24 @@ const Biblioteca = (() => {
 
   function pintarTabs() {
     $("libTabs").innerHTML = TABS.map(([t, n]) =>
-      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}<b>${t === "Playlist" ? playlists.length : audios.filter(a => a.tipo_audio === t).length}</b></button>`).join("");
+      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}<b>${t === "Playlist" ? playlists.length : audios.filter(a => enTab(a, t)).length}</b></button>`).join("");
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
+    $("libTipo").hidden = tab !== "Imagen";
   }
 
   function pintar() {
     const q = norm($("libBuscar").value.trim());
     if (tab === "Playlist") { pintarPlaylists(q); return; }
     const c1 = $("libCat1").value, c2 = $("libCat2").value, voz = $("libVoz").value;
-    const lista = audios.filter(a => a.tipo_audio === tab
+    const tipo = $("libTipo").value;
+    const lista = audios.filter(a => enTab(a, tab) && (tab !== "Imagen" || !tipo || a.tipo_audio === tipo)
       && (!q || norm(`${a.titulo} ${a.artista} ${a.cat1 ?? ""} ${a.cat2 ?? ""}`).includes(q))
       && (tab !== "Musica" || ((!c1 || a.cat1 === c1) && (!c2 || a.cat2 === c2) && (!voz || a.voz === voz))));
     const filas = lista.slice(0, MAX_FILAS);
     $("libFilas").innerHTML = filas.length ? filas.map(a => `
-      <tr draggable="true" data-id="${a.id}" class="${a.id === alAire ? "al-aire" : ""}">
-        <td><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${esc(a.artista)}</div></td>
+      <tr draggable="true" data-id="${a.id}" class="${a.id === alAire ? "al-aire" : ""} ${a.id === P.id ? "elegida" : ""}">
+        <td><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${tab === "Imagen" ? `<em class="lib-tipo">${NOMBRE_TIPO[a.tipo_audio] ?? ""}</em> ` : ""}${esc(a.artista)}</div></td>
         <td>${esc(a.cat2 ?? "")}</td>
         <td>${esc(a.voz ?? "")}</td>
         <td class="num">${a.cue_intro ? Math.round(a.cue_intro) + "s" : ""}</td>
@@ -673,7 +680,7 @@ const Biblioteca = (() => {
   });
   let t;
   $("libBuscar").addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintar, 150); });
-  ["libCat1", "libCat2", "libVoz"].forEach(id => $(id).addEventListener("change", pintar));
+  ["libCat1", "libCat2", "libVoz", "libTipo"].forEach(id => $(id).addEventListener("change", pintar));
 
   $("libFilas").addEventListener("click", e => {
     const b = e.target.closest("button");
@@ -703,8 +710,82 @@ const Biblioteca = (() => {
     e.dataTransfer.effectAllowed = "copy";
   });
 
+  /* ── Reproductor de preescucha: manda al motor (salida interna, nunca al aire) ── */
+  const mmss = t => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  const audioDe = id => audios.find(x => x.id === id);
+  function elegir(id) {
+    if (P.id === id) return;
+    P.id = id; P.pos = 0; P.pausado = false;
+    const a = audioDe(id);
+    P.dur = a?.duracion ?? 0;
+    $("spTitulo").textContent = a?.titulo ?? "";
+    $("spArtista").textContent = a?.artista ?? "";
+    document.querySelectorAll("#libFilas tr[data-id]").forEach(tr => tr.classList.toggle("elegida", +tr.dataset.id === id));
+    pintarPlayer();
+  }
+  const posP = () => P.activo ? P.pos + (performance.now() - P.recibido) / 1000 : P.pos;
+  function pintarPlayer() {
+    const pos = Math.min(posP(), P.dur || Infinity);
+    $("spPos").textContent = mmss(pos);
+    $("spDur").textContent = `/ ${mmss(P.dur)}`;
+    $("spResta").textContent = P.dur ? `−${mmss(P.dur - pos)}` : "";
+    $("spFill").style.width = P.dur ? `${Math.min(100, pos / P.dur * 100)}%` : "0";
+    $("spPlayer").classList.toggle("sonando", P.activo);
+    const img = `/static/studio/icons/${P.activo ? "pause2" : "play2"}.svg`;
+    const ico = $("spPlay").querySelector("img");
+    if (!ico.src.endsWith(img)) ico.src = img;
+  }
+  /** Lo llama el sondeo del estado con st.preescucha */
+  function estadoCue(cue) {
+    if (cue) {
+      if (P.id !== cue.audio_id) elegir(cue.audio_id);
+      Object.assign(P, { activo: true, pausado: false, pos: cue.posicion, dur: cue.duracion || P.dur, recibido: performance.now() });
+    } else if (P.activo) {
+      // Terminó solo (o lo paró otro): si no fue la pausa del operador, vuelve al inicio
+      P.activo = false;
+      if (!P.pausado) P.pos = 0;
+    }
+    pintarPlayer();
+  }
+  function irA(seg) {
+    if (!P.id) return;
+    seg = Math.max(0, Math.min(seg, Math.max(0, (P.dur || seg) - 0.5)));
+    P.pos = seg; P.recibido = performance.now();
+    if (P.activo) WS.send({ cmd: "cue", audio_id: P.id, desde: seg });
+    pintarPlayer();
+  }
+  function reproducirOPausar() {
+    if (!P.id) { toast("Elige un audio de la lista (clic en la fila)", "info", 2000); return; }
+    if (P.activo) {
+      P.pos = posP(); P.pausado = true; P.activo = false;
+      WS.send({ cmd: "cue_stop" });
+    } else {
+      P.pausado = false;
+      WS.send({ cmd: "cue", audio_id: P.id, desde: P.pos >= (P.dur || Infinity) - 0.5 ? 0 : P.pos });
+    }
+    pintarPlayer();
+  }
+  $("spPlay").addEventListener("click", reproducirOPausar);
+  $("spStop").addEventListener("click", () => {
+    P.pos = 0; P.pausado = false;
+    if (P.activo) { P.activo = false; WS.send({ cmd: "cue_stop" }); }
+    pintarPlayer();
+  });
+  $("spAtras").addEventListener("click", () => irA(posP() - 5));
+  $("spAdelante").addEventListener("click", () => irA(posP() + 5));
+  $("spProg").addEventListener("click", e => {
+    const r = $("spProg").getBoundingClientRect();
+    irA((e.clientX - r.left) / r.width * (P.dur || 0));
+  });
+  setInterval(() => { if (P.activo) pintarPlayer(); }, 250);
+  // Un clic en la fila la deja lista en el reproductor
+  $("libFilas").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-id]");
+    if (tr && !e.target.closest("button")) elegir(+tr.dataset.id);
+  });
+
   cargar();
-  return { cargar, marcar };
+  return { cargar, marcar, estadoCue };
 })();
 
 /* ─────────────────────────── derecha ─────────────────────────── */
@@ -1006,7 +1087,6 @@ const Problemas = (() => {
   });
   if (yo.rol === "operador") {
     $("lnkAdmin").hidden = true;
-    document.querySelector(".lib-cargar")?.setAttribute("hidden", "");
   }
 })();
 
