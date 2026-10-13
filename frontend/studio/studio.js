@@ -402,6 +402,24 @@ $("btnRegenerar").addEventListener("click", async () => {
 });
 
 /* ─────────────────────────── decks (programa) ─────────────────────────── */
+
+/**
+ * Regla "volver a sonar cada N tiempo" en modo manual: si la canción ya sonó dentro de su regla,
+ * avisa cuándo podrá volver y el operador decide (poner igual o respetar la regla).
+ */
+async function respetaRepeticion(audioId, titulo = "") {
+  if (Estado.st?.modo !== "manual") return true;
+  try {
+    const r = await fetch(`/api/v1/audios/${audioId}/repeticion`).then(x => x.ok ? x.json() : null);
+    if (!r?.bloqueada) return true;
+    const h = Math.floor(r.faltan_min / 60), m = r.faltan_min % 60;
+    const falta = h ? `${h} h ${m} min` : `${m} min`;
+    const hora = (r.disponible || "").slice(11, 16);
+    return confirm(`«${titulo || r.titulo}» YA SONÓ (regla: no repetir antes de ${r.horas >= 24 && r.horas % 24 === 0 ? r.horas / 24 + " día(s)" : r.horas + " h"}).\n\n`
+      + `Podrá volver a las ${hora} (faltan ${falta}).\n\n¿Ponerla igual? Aceptar = ponerla · Cancelar = respetar la regla`);
+  } catch { return true; }
+}
+
 const Decks = (() => {
   const lista = $("decksLista");
   let items = [], colaItems = [], sel = null;     // sel = uid de la tarjeta elegida (de la cola o del programa)
@@ -531,7 +549,8 @@ const Decks = (() => {
   }
 
   /** Agrega un audio donde el operador lo eligió: tras la canción marcada; sin marca, al final de la cola */
-  function agregar(audioId, titulo = "") {
+  async function agregar(audioId, titulo = "") {
+    if (!(await respetaRepeticion(audioId, titulo))) return;
     const { zona, i, it } = actual();
     if (!it) { WS.send({ cmd: "queue", audio_id: audioId }); toast(`+ Cola: ${titulo}`, "info", 2000); return; }
     WS.send({ cmd: zona === "cola" ? "cola_insertar" : "plan_insertar", audio_id: audioId, posicion: i + 1 });
@@ -636,7 +655,8 @@ const Decks = (() => {
       }                                                              // (de la cola al programa: no se hace)
     } else if (audio) {
       // Todo lo que pone el operador va a la cola (en manual el programa no se consume solo)
-      WS.send({ cmd: zona === "cola" ? "cola_insertar" : "plan_insertar", audio_id: +audio, posicion: idx });
+      respetaRepeticion(+audio, "").then(ok => ok &&
+        WS.send({ cmd: zona === "cola" ? "cola_insertar" : "plan_insertar", audio_id: +audio, posicion: idx }));
     }
   });
 
@@ -872,7 +892,7 @@ const Biblioteca = (() => {
     if (b.dataset.aire) {
       const sonando = Estado.st?.current_track;
       if (!sonando || confirm(`¿Poner "${a?.titulo}" al aire AHORA?\n\nLo que suena sale con crossfade.`)) {
-        WS.send({ cmd: "play", audio_id: +b.dataset.aire });
+        respetaRepeticion(+b.dataset.aire, a?.titulo ?? "").then(ok => ok && WS.send({ cmd: "play", audio_id: +b.dataset.aire }));
       }
     }
   });

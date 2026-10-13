@@ -567,12 +567,18 @@
     }).join('')}</div>`;
   }
 
+  function textoRep(h) {
+    const u = [[720, 'mes(es)'], [168, 'semana(s)'], [24, 'día(s)']].find(([x]) => h % x === 0);
+    return u ? `${h / u[0]} ${u[1]}` : `${h} h`;
+  }
+
   function textoRestr(f) {
     const p = [];
     if (f.restr_desde !== null && f.restr_desde !== undefined && f.restr_hasta !== null && f.restr_hasta !== undefined && f.restr_desde !== f.restr_hasta)
       p.push(`solo de ${String(f.restr_desde).padStart(2, '0')} a ${String(f.restr_hasta).padStart(2, '0')} h`);
     if (f.restr_dias) p.push(`solo ${f.restr_dias.split(',').map(d => DIAS[+d]).join(' ')}`);
     if (f.max_por_dia) p.push(`máximo ${f.max_por_dia} por día`);
+    if (f.repeticion_horas) p.push(`vuelve a sonar cada ${textoRep(f.repeticion_horas)}`);
     return p.join(' · ');
   }
 
@@ -583,6 +589,8 @@
     if (ids.length === 1) actual = await fetch(`/api/v1/biblioteca/${ids[0]}/ficha`).then(r => r.json()).catch(() => ({}));
     const horas = sel => `<option value="">—</option>` + Array.from({ length: 24 }, (_, h) =>
       `<option value="${h}" ${sel === h ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
+    const rh = +actual.repeticion_horas || 0;
+    const rep0 = [720, 168, 24].map(h => ({ n: rh / h, h })).find(x => rh && rh % x.h === 0) || { n: rh, h: 1 };
     const dias = actual.restr_dias ? actual.restr_dias.split(',').map(Number) : [0, 1, 2, 3, 4, 5, 6];
     const fondo = document.createElement('div');
     fondo.className = 'bv-modal-fondo';
@@ -595,6 +603,10 @@
       <div class="bv-modal-dias">${[1, 2, 3, 4, 5, 6, 0].map(d =>
         `<label><input type="checkbox" value="${d}" ${dias.includes(d) ? 'checked' : ''}> ${DIAS[d]}</label>`).join('')}</div>
       <label>Máximo de veces por día <input type="number" min="0" max="48" data-r="max" value="${actual.max_por_dia || ''}" placeholder="sin tope"></label>
+      <label>Volver a sonar cada <input type="number" min="0" max="999" data-r="repn" value="${rep0.n || ''}" placeholder="sin regla">
+        <select data-r="repu">${[['horas', 1], ['días', 24], ['semanas', 168], ['meses (30 d)', 720]].map(([n, h]) =>
+          `<option value="${h}" ${h === rep0.h ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <p class="bv-modal-ayuda">Después de sonar, no vuelve en ese tiempo. En automático la salta; en manual el Studio avisa y tú decides.</p>
       <div class="bv-modal-pie">
         <button class="bv-btn" data-r="quitar">Quitar restricciones</button>
         <button class="bv-btn" data-r="cancelar">Cancelar</button>
@@ -608,10 +620,11 @@
       if (e.target === fondo || r === 'cancelar') return cerrar();
       if (r !== 'guardar' && r !== 'quitar') return;
       const cambios = r === 'quitar'
-        ? { restr_desde: null, restr_hasta: null, restr_dias: null, max_por_dia: null }
+        ? { restr_desde: null, restr_hasta: null, restr_dias: null, max_por_dia: null, repeticion_horas: null }
         : { restr_desde: val('desde') === '' ? null : +val('desde'), restr_hasta: val('hasta') === '' ? null : +val('hasta'),
             restr_dias: [...fondo.querySelectorAll('.bv-modal-dias input:checked')].map(i => +i.value),
-            max_por_dia: val('max') === '' ? null : +val('max') };
+            max_por_dia: val('max') === '' ? null : +val('max'),
+            repeticion_horas: Math.round((+val('repn') || 0) * +val('repu')) || null };
       if (r === 'guardar' && !cambios.restr_dias.length) { aviso('Elige al menos un día', 'error'); return; }
       if (r === 'guardar' && (cambios.restr_desde === null) !== (cambios.restr_hasta === null)) { aviso('Elige las dos horas (desde y hasta) o ninguna', 'error'); return; }
       const antes = new Set(S.sel); S.sel = new Set(ids);

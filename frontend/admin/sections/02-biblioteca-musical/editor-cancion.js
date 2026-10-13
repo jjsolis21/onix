@@ -29,6 +29,14 @@
   };
   const toast = (m, t = 'info') => (typeof showToast === 'function' ? showToast(m, t) : console.info(m));
 
+  // Regla "volver a sonar cada…": se guarda en horas; se muestra en la unidad más grande que la divide exacta
+  const REP_UNIDADES = [{ n: 'horas', h: 1 }, { n: 'días', h: 24 }, { n: 'semanas', h: 168 }, { n: 'meses (30 d)', h: 720 }];
+  function repInicial(horas) {
+    horas = +horas || 0;
+    const u = [...REP_UNIDADES].reverse().find(x => horas && horas % x.h === 0) || REP_UNIDADES[0];
+    return { n: horas / u.h, h: u.h };
+  }
+
   // Marcas: clave en la BD, nombre, color, segundos de "antes" al escuchar
   const MARCAS = [
     { k: 'cue_inicio',      n: 'Inicio',      c: '#4fc3f7', antes: 0 },
@@ -155,10 +163,10 @@
             </section>
             <section class="ec-sec"><h3>Bloqueo en automático</h3>
               <label class="ec-rep">No repetir hasta
-                <input type="number" id="ecRepH" min="0" max="23" value="${(+f.repeticion_horas || 0) % 24 || ''}" placeholder="0"> horas
-                <input type="number" id="ecRepD" min="0" max="30" value="${Math.floor((+f.repeticion_horas || 0) / 24) || ''}" placeholder="0"> días
+                <input type="number" id="ecRepN" min="0" max="999" value="${repInicial(f.repeticion_horas).n || ''}" placeholder="0">
+                <select id="ecRepU">${REP_UNIDADES.map(u => `<option value="${u.h}" ${u.h === repInicial(f.repeticion_horas).h ? 'selected' : ''}>${u.n}</option>`).join('')}</select>
               </label>
-              <p class="ec-ayuda">Después de sonar, el automático no la vuelve a elegir hasta que pase ese tiempo (0 = la regla general).</p>
+              <p class="ec-ayuda">Después de sonar, el automático no la vuelve a elegir hasta que pase ese tiempo (0 = la regla general). En manual, el Studio avisa si ya sonó y tú decides.</p>
               ${nueva ? '' : `<button class="ec-btn" data-acc="restricciones">⏱ Horas, días y tope por día…</button>`}
             </section>
           </div>
@@ -518,7 +526,7 @@
 
   function datos() {
     const v = s => E.raiz.querySelector(s).value.trim();
-    const horas = (+v('#ecRepH') || 0) + (+v('#ecRepD') || 0) * 24;
+    const horas = Math.round((+v('#ecRepN') || 0) * (+v('#ecRepU') || 1));
     const d = {
       titulo: v('#ecTitulo'), artista: v('#ecArtista'), album: v('#ecAlbum'),
       fecha_lanzamiento: v('#ecAnio'), bpm: v('#ecBpm') ? +v('#ecBpm') : null,

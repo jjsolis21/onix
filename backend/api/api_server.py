@@ -15,7 +15,7 @@ import sqlite3
 import time
 import unicodedata
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
@@ -714,6 +714,10 @@ class AudioCreateRequest(BaseModel):
     voz:   Optional[str] = Field(default=None, description="Voz/Tipo → config voz")
 
 
+# Tope de la regla "volver a sonar cada…": 3 años en horas (el editor la expresa en horas/días/semanas/meses)
+MAX_REPETICION_HORAS = 24 * 365 * 3
+
+
 class AudioUpdateRequest(BaseModel):
     titulo:            Optional[str] = Field(default=None, min_length=1, max_length=200)
     artista:           Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -744,7 +748,7 @@ class AudioUpdateRequest(BaseModel):
     fade_out:        Optional[float] = Field(default=None)
     cue_outro:       Optional[float] = Field(default=None, description="Fin de la voz (no es la mezcla)")
     prioridad:       Optional[int]   = Field(default=None, ge=1, le=3)
-    repeticion_horas: Optional[int]  = Field(default=None, ge=0, le=24 * 30,
+    repeticion_horas: Optional[int]  = Field(default=None, ge=0, le=MAX_REPETICION_HORAS,
                                               description="No repetir hasta N horas después (0 = sin regla)")
 
 
@@ -1544,7 +1548,30 @@ _LOTE_COLUMNAS = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz
                   "origen": "origen", "energia": "energia", "tipo_audio": "tipo_audio",
                   "restr_desde": "restr_desde", "restr_hasta": "restr_hasta",
                   "restr_dias": "restr_dias", "max_por_dia": "max_por_dia",
-                  "prioridad": "prioridad", "bpm": "bpm"}
+                  "prioridad": "prioridad", "bpm": "bpm", "repeticion_horas": "repeticion_horas"}
+
+
+@app.get("/api/v1/audios/{audio_id}/repeticion", tags=["Audios"],
+         summary="¿Esta canción ya sonó dentro de su regla de repetición?")
+def estado_repeticion(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
+    """Para que el Studio avise en modo manual: `bloqueada` = sonó hace menos de `horas`."""
+    r = conn.execute("SELECT titulo, repeticion_horas, ultima_reproduccion FROM audios WHERE id = ?",
+                     (audio_id,)).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Audio no encontrado")
+    horas = r["repeticion_horas"] or 0
+    out = {"titulo": r["titulo"], "horas": horas, "ultima": r["ultima_reproduccion"],
+           "bloqueada": False, "faltan_min": 0, "disponible": None}
+    if horas and r["ultima_reproduccion"]:
+        try:
+            ult = datetime.fromisoformat(str(r["ultima_reproduccion"]).replace(" ", "T"))
+        except ValueError:
+            return out
+        libre = ult + timedelta(hours=horas)
+        faltan = (libre - datetime.now()).total_seconds() / 60
+        if faltan > 0:
+            out.update(bloqueada=True, faltan_min=int(faltan) + 1, disponible=libre.isoformat(timespec="minutes"))
+    return out
 
 
 @app.post("/api/v1/biblioteca/lote", tags=["Audios"], summary="Edición masiva de la Biblioteca")
@@ -1582,6 +1609,10 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
             v = int(v) if v not in (None, "") else None
             if v is not None and v not in (1, 2, 3):
                 raise HTTPException(status_code=422, detail="Prioridad: 1 Alta, 2 Normal o 3 Baja")
+        elif clave == "repeticion_horas":
+            v = int(v) if v not in (None, "", 0, "0") else None
+            if v is not None and not 1 <= v <= MAX_REPETICION_HORAS:
+                raise HTTPException(status_code=422, detail="La repetición va de 1 hora a 3 años")
         elif clave == "bpm":
             v = int(float(v)) if v not in (None, "") else None
             if v is not None and not 40 <= v <= 300:
