@@ -584,3 +584,8 @@ kbd {
 .cart-btn.soltar { outline: 2px dashed var(--ambar); outline-offset: -3px; }
 .entra.alerta b { color: var(--rojo); animation: parpadeo 1s steps(2) infinite; }
 .entra.alerta span { color: var(--rojo); }
+
+/* Buscador más corto: el contador de archivos va a su lado, dentro de la sección */
+.lib-filtros input { flex: 0 1 240px; min-width: 120px; }
+.lib-cuenta { margin-left: auto; align-self: center; font-family: var(--f-data); font-size: 12px; letter-spacing: .06em; color: var(--ambar); white-space: nowrap; }
+.lib-tab b { display: none; }

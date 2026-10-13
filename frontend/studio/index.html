@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=16" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=17" />
 </head>
 <body>
 
@@ -45,7 +45,7 @@
         <div class="pl-chips"><span class="chip" id="nowTipo">—</span><span class="chip chip-soft" id="nowReloj"></span></div>
         <div class="pl-titulo" id="nowTitulo">Sin reproducción</div>
         <div class="pl-artista" id="nowArtista">&nbsp;</div>
-        <div class="pl-memo" id="nowMemo" hidden title="Memo de la playlist para el locutor"></div>
+        <div class="pl-memo" id="nowMemo" hidden title="Memo de la lista para el locutor"></div>
       </div>
       <div class="pl-tiempos">
         <div class="intro" id="nowIntro" hidden><span>INTRO</span><b id="nowIntroSeg">0</b></div>
@@ -138,6 +138,7 @@
         <select id="libCat1" title="Género"><option value="">Género</option></select>
         <select id="libCat2" title="Rotación"><option value="">Rotación</option></select>
         <select id="libVoz" title="Voz"><option value="">Voz</option></select>
+        <span class="lib-cuenta" id="libCuenta" title="Archivos de esta sección"></span>
       </div>
       <div class="lib-tabla-wrap">
         <table class="lib-tabla">
@@ -220,6 +221,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=17"></script>
+  <script src="/static/studio/studio.js?v=18"></script>
 </body>
 </html>

@@ -145,7 +145,7 @@ const Estado = (() => {
     $("nowTipo").textContent = ct ? (TIPO_NOMBRE[tipo] ?? tipo) : "—";
     $("nowTipo").dataset.tipo = tipo ?? "";
     $("nowReloj").textContent = ct?.reloj ? `🕐 ${ct.reloj}` : (ct?.origen === "cola" ? "COLA" : "");
-    // Memo de la playlist para el locutor (Jazler "Memos")
+    // Memo de la lista para el locutor (Jazler "Memos")
     $("nowMemo").hidden = !ct?.nota;
     $("nowMemo").textContent = ct?.nota ? `📝 ${ct.nota}` : "";
     tapa($("nowTapa"), ct && ct.origen !== "pauta" ? ct.id : null);
@@ -594,10 +594,14 @@ const Biblioteca = (() => {
   const IMAGEN = ["Efecto", "Sweeper", "Tips"];
   const NOMBRE_TIPO = { Efecto: "JINGLE", Sweeper: "SWEEPER", Tips: "TIP" };
   const TABS = [["Musica", "MÚSICA"], ["Imagen", "SEPARADORES"], ["Cuña", "CUÑAS"],
-                ["Programa", "PROGRAMAS"], ["Playlist", "PLAYLISTS"]];
+                ["Programa", "PROGRAMAS"], ["Playlist", "LISTAS"]];
   const enTab = (a, t) => t === "Imagen" ? IMAGEN.includes(a.tipo_audio) : a.tipo_audio === t;
   const MAX_FILAS = 300;
-  let audios = [], tab = "Musica", alAire = null, enCue = null, playlists = [];
+  let audios = [], tab = "Musica", alAire = null, enCue = null, playlists = [], totalBiblioteca = 0;
+  const num = n => n.toLocaleString("es");
+  // La biblioteca se baja entera al navegador (hasta 10 000): si hay más, hay que avisarlo
+  const avisoBiblioteca = () => totalBiblioteca > audios.length
+    ? `⚠ Hay ${num(totalBiblioteca)} audios y solo se cargaron ${num(audios.length)}.` : "";
   const P = { id: null, pos: 0, activo: false, recibido: 0, dur: 0, pausado: false };
 
   // Playlists generadas en Admin › Relojes desde el patrón de un reloj
@@ -608,7 +612,7 @@ const Biblioteca = (() => {
   function filasDeLista(id) {
     const items = plItems[id];
     if (!items) return `<tr class="pl-det"><td colspan="6" class="vacio">Cargando…</td></tr>`;
-    if (!items.length) return `<tr class="pl-det"><td colspan="6" class="vacio">La playlist está vacía</td></tr>`;
+    if (!items.length) return `<tr class="pl-det"><td colspan="6" class="vacio">La lista está vacía</td></tr>`;
     return items.map((i, n) => `
       <tr class="pl-det" data-id="${i.audio_id}" draggable="true">
         <td><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(i.titulo)}</div><div class="lib-art">${esc(i.artista)}${i.nota ? ` · <em class="pl-nota">📝 ${esc(i.nota)}</em>` : ""}</div></td>
@@ -639,10 +643,11 @@ const Biblioteca = (() => {
         <td class="num">${Math.floor(p.duracion / 3600)}:${String(Math.round(p.duracion % 3600 / 60)).padStart(2, "0")} h</td>
         <td class="lib-acc">
           <button data-plcola="${p.id}" title="Agregar todos sus audios al final de la cola">+ COLA</button>
-          <button data-plreemp="${p.id}" class="aire" title="Vaciar la cola y poner esta playlist">▶ LANZAR</button>
+          <button data-plreemp="${p.id}" class="aire" title="Vaciar la cola y poner esta lista">▶ LANZAR</button>
         </td></tr>${plAbiertas.has(p.id) ? filasDeLista(p.id) : ""}`).join("")
-      : `<tr><td colspan="6" class="vacio">${playlists.length ? "Sin resultados" : "No hay playlists. Créalas en Admin › Relojes › Playlists."}</td></tr>`;
-    $("libInfo").textContent = `${lista.length} playlist(s) · la cola suena antes que el programa; las tandas salen a su hora`;
+      : `<tr><td colspan="6" class="vacio">${playlists.length ? "Sin resultados" : "No hay listas. Créalas en Admin › Listas."}</td></tr>`;
+    $("libCuenta").textContent = lista.length === playlists.length ? `${num(playlists.length)} listas` : `${num(lista.length)} de ${num(playlists.length)}`;
+    $("libInfo").textContent = "Clic en una lista para ver sus archivos";
   }
   async function lanzarPlaylist(id, reemplazar) {
     const p = playlists.find(x => x.id === id);
@@ -657,7 +662,8 @@ const Biblioteca = (() => {
 
   async function cargar() {
     try {
-      audios = (await api("/api/v1/audios?limit=10000")).data ?? [];
+      const r = await api("/api/v1/audios?limit=10000");
+      audios = r.data ?? []; totalBiblioteca = r.total ?? audios.length;
     } catch (err) {
       $("libFilas").innerHTML = `<tr><td colspan="6" class="vacio">No se pudo cargar la biblioteca: ${esc(err.message)}</td></tr>`;
       return;
@@ -678,7 +684,7 @@ const Biblioteca = (() => {
 
   function pintarTabs() {
     $("libTabs").innerHTML = TABS.map(([t, n]) =>
-      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}<b>${t === "Playlist" ? playlists.length : audios.filter(a => enTab(a, t)).length}</b></button>`).join("");
+      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}</button>`).join("");
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
     $("libTipo").hidden = tab !== "Imagen";
@@ -706,9 +712,10 @@ const Biblioteca = (() => {
           <button data-aire="${a.id}" class="aire" title="Poner al aire ahora">▶ AIRE</button>
         </td></tr>`).join("")
       : `<tr><td colspan="6" class="vacio">Sin resultados</td></tr>`;
-    $("libInfo").textContent = lista.length > MAX_FILAS
-      ? `Mostrando ${MAX_FILAS} de ${lista.length}: afina la búsqueda`
-      : `${lista.length} audio(s)`;
+    // El contador va dentro de la sección (junto al buscador), no en las pestañas
+    const deTab = audios.filter(a => enTab(a, tab)).length;
+    $("libCuenta").textContent = lista.length === deTab ? `${num(deTab)} archivos` : `${num(lista.length)} de ${num(deTab)}`;
+    $("libInfo").textContent = (lista.length > MAX_FILAS ? `Mostrando ${MAX_FILAS}: afina la búsqueda. ` : "") + avisoBiblioteca();
   }
 
   function marcar(aireId, cueId) {

@@ -1,10 +1,10 @@
 <!-- ============================================================
-     ÓNIX FM — Sección 09 — Playlists (como Jazler SoHo)
+     ÓNIX FM — Sección 09 — Listas (como Jazler SoHo)
      · Lista de playlists + detalle a la derecha (minuto, duración, intro).
      · Auto Playlist: N horas desde un reloj o "según la grilla", para una
        fecha y hora; se puede programar para que entre sola al aire.
      · Editor manual: armar la lista canción por canción desde la biblioteca.
-     · En el Studio, pestaña PLAYLISTS: se busca y se lanza a la cola.
+     · En el Studio, pestaña LISTAS: se busca y se lanza a la cola.
      API: /api/v1/playlists[/generar|/{id}], /api/v1/relojes, /api/v1/audios
      ============================================================ -->
 <link rel="stylesheet" href="css/secciones-operacion.css">
@@ -100,7 +100,7 @@
     <!-- Izquierda: acciones y búsqueda -->
     <aside class="pl-panel pl-lado">
       <button class="pl-btn pl-btn--pri" id="plNueva">＋ Nueva playlist (a mano)</button>
-      <button class="pl-btn" id="plAuto">⚡ Auto Playlist (desde reloj)</button>
+      <button class="pl-btn" id="plAuto">⚡ Lista automática (desde reloj)</button>
       <button class="pl-btn" id="plImportar" title="Listas M3U, M3U8, PLS o TXT de otro programa">📥 Importar playlist (M3U)</button>
       <input type="file" id="plArchivo" accept=".m3u,.m3u8,.pls,.txt" hidden>
       <button class="pl-btn" id="plEditar" disabled>✎ Editar la elegida</button>
@@ -108,7 +108,7 @@
       <h3>Buscar</h3>
       <input type="search" id="plBuscar" placeholder="Nombre de la playlist…">
       <label class="pl-chk"><input type="checkbox" id="plSoloProg"> Solo programadas</label>
-      <p class="ox-hint" style="margin-top:auto">En el Studio, pestaña <b>PLAYLISTS</b>, se buscan y se lanzan a la cola.
+      <p class="ox-hint" style="margin-top:auto">En el Studio, pestaña <b>LISTAS</b>, se buscan y se lanzan a la cola.
         Las programadas entran solas a su fecha y hora.</p>
     </aside>
 
@@ -124,7 +124,7 @@
 
     <!-- Derecha: detalle -->
     <aside class="pl-panel" id="plDet">
-      <p class="pl-vacio">Elige una playlist para ver sus audios.</p>
+      <p class="pl-vacio">Elige una lista para ver sus audios.</p>
     </aside>
   </div>
 </div>
@@ -132,14 +132,14 @@
 <!-- ── Auto Playlist ── -->
 <div class="pl-modal" id="plAutoModal" hidden>
   <div class="pl-caja pl-auto">
-    <div class="pl-caja-cab"><h3>⚡ Auto Playlist</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <div class="pl-caja-cab"><h3>⚡ Lista automática</h3><button class="pl-x" data-cerrar>✕</button></div>
     <div class="pl-auto-cuerpo">
-    <p class="ox-hint" style="margin:10px 16px 0">Crea una playlist automática con el patrón de un reloj y las mismas reglas del aire.</p>
+    <p class="ox-hint" style="margin:10px 16px 0">Crea una lista automática con el patrón de un reloj y las mismas reglas del aire.</p>
     <div class="sec"><b>Nombre</b><input class="pl-in" id="paNombre" maxlength="80" placeholder="Ej.: Sábado de los 80"></div>
-    <div class="sec"><b>Fecha y hora para esta playlist</b>
+    <div class="sec"><b>Fecha y hora para esta lista</b>
       <div class="fila"><input type="datetime-local" id="paInicio">
         <span>Las reglas (no repetir a la misma hora, restricciones) se calculan para ese momento.</span></div></div>
-    <div class="sec"><b>Reloj para la playlist</b>
+    <div class="sec"><b>Reloj para la lista</b>
       <label class="fila"><input type="radio" name="paModo" value="reloj" checked> Reloj específico
         <select id="paReloj"></select></label>
       <label class="fila"><input type="radio" name="paModo" value="grilla"> Cualquier reloj programado para la hora elegida (sigue la grilla)</label></div>
@@ -157,7 +157,7 @@
 <!-- ── Resultado de importar ── -->
 <div class="pl-modal" id="plImpModal" hidden>
   <div class="pl-caja pl-auto">
-    <div class="pl-caja-cab"><h3>📥 Playlist importada</h3><button class="pl-x" data-cerrar>✕</button></div>
+    <div class="pl-caja-cab"><h3>📥 Lista importada</h3><button class="pl-x" data-cerrar>✕</button></div>
     <div class="pl-auto-cuerpo"><div class="sec" id="plImpRes"></div></div>
     <div class="pl-pie"><button class="pl-btn pl-btn--pri" data-cerrar>Listo</button></div>
   </div>
@@ -230,7 +230,7 @@
         <td>${p.reloj ? `Reloj ${esc(p.reloj)}` : esc(p.descripcion || "")}</td>
         <td class="pl-prog">${p.programada ? `⏰ ${fechaHora(p.programada)}${p.inmediato ? " ⚡" : ""}` : ""}</td>
         <td>${esc(p.autor || "")}</td><td class="ox-mono">${esc((p.created_at || "").slice(0, 10).split("-").reverse().join("/"))}</td></tr>`).join("")
-      : `<tr><td colspan="7" class="pl-vacio">${lista.length ? "Sin resultados" : "Aún no hay playlists: crea una a mano o con Auto Playlist."}</td></tr>`;
+      : `<tr><td colspan="7" class="pl-vacio">${lista.length ? "Sin resultados" : "Aún no hay listas: crea una a mano o con Lista automática."}</td></tr>`;
     $("plEditar").disabled = $("plEliminar").disabled = !sel;
   }
   async function abrir(id) {
@@ -238,7 +238,7 @@
     pintarLista(); pintarDetalle(sel);
   }
   function pintarDetalle(p) {
-    if (!p) { $("plDet").innerHTML = '<p class="pl-vacio">Elige una playlist para ver sus audios.</p>'; return; }
+    if (!p) { $("plDet").innerHTML = '<p class="pl-vacio">Elige una lista para ver sus audios.</p>'; return; }
     let t = 0;
     $("plDet").innerHTML = `<div class="pl-det-cab"><b>${esc(p.nombre)} (${hms(p.duracion)})</b>
         <button class="pl-x" id="plDetX" title="Cerrar el detalle">✕</button></div>
@@ -256,7 +256,7 @@
   $("plBuscar").addEventListener("input", pintarLista);
   $("plSoloProg").addEventListener("change", pintarLista);
   $("plEliminar").addEventListener("click", async () => {
-    if (!sel || !confirm(`¿Eliminar la playlist "${sel.nombre}"? (no borra las canciones)`)) return;
+    if (!sel || !confirm(`¿Eliminar la lista "${sel.nombre}"? (no borra las canciones)`)) return;
     await fetch(`/api/v1/playlists/${sel.id}`, { method: "DELETE" });
     sel = null; cargar();
   });
@@ -269,7 +269,7 @@
   $("plArchivo").addEventListener("change", async () => {
     const f = $("plArchivo").files[0];
     if (!f) return;
-    const nombre = prompt("Nombre de la playlist:", f.name.replace(/\.[^.]+$/, ""));
+    const nombre = prompt("Nombre de la lista:", f.name.replace(/\.[^.]+$/, ""));
     if (nombre === null) return;
     const fd = new FormData();
     fd.append("archivo", f); fd.append("nombre", nombre.trim());
@@ -404,7 +404,7 @@
     const body = { nombre: $("edNombre").value.trim(), items: ed.items.map(a => ({ audio_id: a.id, nota: a.nota || "" })),
       programada: $("edProg").value || "", inmediato: $("edInm").checked };
     if (!body.nombre) { msg("edMsg", "Ponle un nombre", false); return; }
-    if (!body.items.length) { msg("edMsg", "La playlist está vacía", false); return; }
+    if (!body.items.length) { msg("edMsg", "La lista está vacía", false); return; }
     const r = await fetch(ed.id ? `/api/v1/playlists/${ed.id}` : "/api/v1/playlists", {
       method: ed.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) { msg("edMsg", await errTxt(r), false); return; }
