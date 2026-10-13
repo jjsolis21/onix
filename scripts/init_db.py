@@ -769,6 +769,33 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     cursor.execute(f"UPDATE audios SET busq = {_busq('')} WHERE busq = '' OR busq != {_busq('')}")
     logger.info("  → audios.busq (búsqueda rápida): OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 34 — Identificadores (jingles, sweepers y tips) con categorías propias
+    #   Como "Editar categorías" de Jazler: cada tipo tiene su lista de categorías
+    #   (ID de emisora, Stinger…). El audio guarda el nombre en categoria_ident; así no se
+    #   mezcla con el género musical (cat1) y los relojes pueden filtrar por ella.
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "categoria_ident" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN categoria_ident TEXT")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ident_categorias (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo_audio TEXT    NOT NULL,
+            nombre     TEXT    NOT NULL,
+            comentario TEXT    NOT NULL DEFAULT '',
+            orden      INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (tipo_audio, nombre COLLATE NOCASE)
+        )
+    """)
+    if not cursor.execute("SELECT 1 FROM ident_categorias LIMIT 1").fetchone():
+        for tipo, nombres in (("Efecto", ["ID de emisora", "Jingle musical", "Jingle de humor", "Stinger"]),
+                              ("Sweeper", ["Entrada de programa", "Salida de programa"]),
+                              ("Tips", ["Tip genérico"])):
+            for n, nombre in enumerate(nombres):
+                cursor.execute("INSERT INTO ident_categorias (tipo_audio, nombre, orden) VALUES (?, ?, ?)", (tipo, nombre, n))
+    logger.info("  → identificadores (categorías): OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

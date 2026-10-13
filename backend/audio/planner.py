@@ -51,6 +51,7 @@ log = logging.getLogger("Planner")
 FILTRO_COLUMNA = {
     "cat1": "subgenero", "cat2": "categoria", "cat3": "cat3",
     "voz": "genero_vocal", "origen": "origen",
+    "ident": "categoria_ident",      # categoría de jingles / sweepers / tips (Admin › Identificadores)
 }
 TIPOS_RELOJ = ("Musica", "Efecto", "Sweeper", "Tips", "Programa")
 

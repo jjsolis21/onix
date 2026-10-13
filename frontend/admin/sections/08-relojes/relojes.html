@@ -260,6 +260,11 @@
   const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const TIPOS = { Musica: "🎵 Música", Efecto: "⚡ Jingle / ID", Sweeper: "〰 Sweeper", Tips: "💡 Tips", Programa: "🎙 Programa" };
   const FILTROS = [["cat1", "Género"], ["cat2", "Rotación"], ["cat3", "Subgénero"], ["voz", "Voz"], ["origen", "Origen"]];
+  // Jingles, sweepers y tips no tienen género: se filtran por su categoría (Admin › Identificadores)
+  const FILTROS_IDENT = [["ident", "Categoría"]];
+  const esIdent = tipo => tipo === "Efecto" || tipo === "Sweeper" || tipo === "Tips";
+  const filtrosDe = tipo => esIdent(tipo) ? FILTROS_IDENT : FILTROS;
+  let identCats = {};
 
   let relojes = [], grilla = [], valores = {}, actual = null, filas = [];
   const audioCache = OnixBuscador.cache;      // audios ya vistos (la biblioteca no se baja entera)
@@ -276,6 +281,7 @@
       fetch("/api/v1/relojes/eventos").then(r => r.ok ? r.json() : []),
     ]);
     relojes = rel; grilla = gr; eventos = evs;
+    try { const c = await fetch("/api/v1/ident/categorias").then(r => r.json()); identCats = Object.fromEntries(Object.entries(c).map(([t, l]) => [t, l.map(x => x.nombre)])); } catch (_) { identCats = {}; }
     valores = { origen: ["NACIONAL", "INTERNACIONAL"] };
     for (const c of schema.categorias || []) valores[c.nombre_interno] = (c.valores || []).map(v => v.valor);
     pintarLista();
@@ -296,11 +302,11 @@
   }
 
   // ── Editor de filas ──────────────────────────────────────
-  function selectValores(campo, valor, extra = "") {
-    const vs = valores[campo] || [];
+  function selectValores(campo, valor, extra = "", tipoFila = "Musica") {
+    const vs = campo === "ident" ? (identCats[tipoFila] || []) : (valores[campo] || []);
     const actualEnLista = valor && !vs.some(v => v.toUpperCase() === valor.toUpperCase());
     return `<select class="ox-select" data-filtro="${campo}" ${extra}>
-      <option value="">${FILTROS.find(f => f[0] === campo)?.[1] ?? campo}: todos</option>
+      <option value="">${[...FILTROS, ...FILTROS_IDENT].find(f => f[0] === campo)?.[1] ?? campo}: todos</option>
       ${vs.map(v => `<option ${v.toUpperCase() === (valor || "").toUpperCase() ? "selected" : ""}>${esc(v)}</option>`).join("")}
       ${actualEnLista ? `<option selected>${esc(valor)}</option>` : ""}</select>`;
   }
@@ -321,7 +327,7 @@
       const v = vista?.filas?.[i];
       const fijo = f.fijo;
       const audio = fijo ? audioCache.get(f.audio_id) : null;
-      const resumen = [...FILTROS.map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
+      const resumen = [...filtrosDe(f.tipo_audio).map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
         f.filtros.energia_min || f.filtros.energia_max ? `<span class="chip">Energía ${f.filtros.energia_min || 1}–${f.filtros.energia_max || 5}</span>` : ""].join("");
       return `<tr data-i="${i}">
         <td class="ox-mono">${i + 1}</td>
@@ -334,9 +340,8 @@
           ? `<input class="ox-input" data-campo="audio" style="width:100%" placeholder="Buscar audio…"
                value="${audio ? esc(audioLabel(audio)) : ""}" data-audio-id="${f.audio_id ?? ""}">`
           : `<button type="button" class="rj-resumen" data-acc="filtros">${resumen || '<span class="todo">Cualquier ' + (f.tipo_audio === "Musica" ? "canción" : "audio de este tipo") + '</span>'}</button>
-             <div class="rj-pop" hidden><div class="rj-filtros">${FILTROS.map(([k]) => selectValores(k, f.filtros[k])).join("")}
-               ${selectEnergia("energia_min", "Energía desde", f.filtros.energia_min)}
-               ${selectEnergia("energia_max", "Energía hasta", f.filtros.energia_max)}</div></div>`}
+             <div class="rj-pop" hidden><div class="rj-filtros">${filtrosDe(f.tipo_audio).map(([k]) => selectValores(k, f.filtros[k], "", f.tipo_audio)).join("")}
+               ${esIdent(f.tipo_audio) ? "" : selectEnergia("energia_min", "Energía desde", f.filtros.energia_min) + selectEnergia("energia_max", "Energía hasta", f.filtros.energia_max)}</div></div>`}
         </td>
         <td data-cand></td>
         <td style="white-space:nowrap">
@@ -458,12 +463,19 @@
     if (e.target.dataset.filtro) {          // actualizar el resumen de la fila sin cerrar los filtros
       leerFilas();
       const f = filas[+tr.dataset.i];
-      const chips = [...FILTROS.map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
+      const chips = [...filtrosDe(f.tipo_audio).map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
         f.filtros.energia_min || f.filtros.energia_max ? `<span class="chip">Energía ${f.filtros.energia_min || 1}–${f.filtros.energia_max || 5}</span>` : ""].join("");
       tr.querySelector(".rj-resumen").innerHTML = chips || '<span class="todo">Cualquier canción</span>';
     }
     previa();
-    if (e.target.dataset.campo === "tipo_audio") return;
+    if (e.target.dataset.campo === "tipo_audio") {
+      // Otro tipo = otros filtros (los de música no valen para un jingle, y al revés)
+      const f = filas[+tr.dataset.i], antes = f.tipo_audio;
+      leerFilas();                                   // no perder lo que se editó en otras filas
+      if (esIdent(antes) !== esIdent(f.tipo_audio)) f.filtros = {};
+      pintarFilas();
+      return;
+    }
     if (e.target.dataset.campo === "fijo") {
       leerFilas();
       const f = filas[+tr.dataset.i];

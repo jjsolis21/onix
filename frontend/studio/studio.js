@@ -742,6 +742,8 @@ const Biblioteca = (() => {
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
     $("libTipo").hidden = tab !== "Imagen";
+    const th = document.querySelector(".lib-tabla th:nth-child(2)");       // en Separadores esa columna es la categoría
+    if (th) th.textContent = tab === "Imagen" ? "Categoría" : "Rotación";
   }
 
   function pintar() {
@@ -754,7 +756,7 @@ const Biblioteca = (() => {
     return `
       <tr draggable="true" data-id="${a.id}" class="${a.id === alAire ? "al-aire" : ""} ${a.id === P.id ? "elegida" : ""}">
         <td><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${tab === "Imagen" ? `<em class="lib-tipo">${NOMBRE_TIPO[a.tipo_audio] ?? ""}</em> ` : ""}${esc(a.artista)}</div></td>
-        <td>${esc(a.cat2 ?? "")}</td>
+        <td>${esc((tab === "Imagen" ? a.categoria_ident : a.cat2) ?? "")}</td>
         <td>${esc(a.voz ?? "")}</td>
         <td class="num">${a.cue_intro ? Math.round(a.cue_intro) + "s" : ""}</td>
         <td class="num">${fmt(a.duracion)}</td>

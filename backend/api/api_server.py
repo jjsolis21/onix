@@ -58,6 +58,7 @@ from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
 from backend.api import playlists as playlists_api
+from backend.api import identificadores as identificadores_api
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
@@ -196,6 +197,7 @@ relojes_api.engine = engine
 app.include_router(relojes_api.router)
 playlists_api.engine = engine
 app.include_router(playlists_api.router)
+app.include_router(identificadores_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)
@@ -1388,7 +1390,7 @@ def list_audios(
                tipo_audio, veces_reproducido, ultima_reproduccion,
                loudness_lufs, pico_db, loudness_estado, ganancia_db, origen, energia,
                marcas_auto, aprobada, restr_desde, restr_hasta, restr_dias, max_por_dia, prioridad,
-               cue_outro, repeticion_horas
+               cue_outro, repeticion_horas, categoria_ident
         FROM audios
         WHERE activo = 1
     """

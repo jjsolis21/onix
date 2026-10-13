@@ -1,0 +1,515 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 10 — Identificadores (jingles, sweepers y tips)
+     Como las pantallas "Jingles" y "Editar categorías" de Jazler SoHo:
+     tabla por tipo, categorías propias editables, edición rápida y carga en lote.
+     API: /api/v1/ident/audios · /api/v1/ident/categorias · /api/v1/audios (subida, edición)
+          /api/v1/biblioteca/lote (eliminar → Papelera)
+     Los relojes pueden filtrar por la categoría (Admin › Relojes › fila de jingle/sweeper/tip).
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .idf-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 10px; }
+  .idf-cab { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+  .idf-cab h2 { margin: 0; font-size: 1.35rem; color: var(--text-hi); }
+  .idf-cab p { margin: 2px 0 0; color: var(--text-lo); font-size: .82rem; }
+  .idf-tabs { display: flex; margin-left: auto; background: var(--choc-0); border: 1px solid var(--choc-4); border-radius: 8px; overflow: hidden; }
+  .idf-tabs button { background: transparent; border: 0; color: var(--text-lo); padding: 9px 20px; font: 600 .82rem/1 inherit; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; border-right: 1px solid var(--choc-4); }
+  .idf-tabs button:last-child { border-right: 0; }
+  .idf-tabs button:hover { color: var(--text-hi); }
+  .idf-tabs button.activo { background: var(--gold-0); color: #000; }
+  .idf-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 10px; }
+  .idf-lado, .idf-main { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; min-height: 0; }
+  .idf-lado { padding: 10px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
+  .idf-lado h4 { margin: 12px 0 0; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold-1); }
+  .idf-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 9px 11px; font: 600 .85rem inherit; cursor: pointer; text-align: left; }
+  .idf-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .idf-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .idf-btn--pri { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .idf-btn--pri:hover:not(:disabled) { color: #000; filter: brightness(1.1); }
+  .idf-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .idf-in { width: 100%; background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 7px 9px; font: inherit; font-size: .85rem; color-scheme: dark; }
+  .idf-chk { display: flex; gap: 7px; align-items: center; font-size: .82rem; color: var(--text-mid); cursor: pointer; }
+  .idf-main { display: flex; flex-direction: column; overflow: hidden; }
+  .idf-barra { display: flex; align-items: center; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--choc-4); }
+  .idf-cuenta { display: flex; flex-direction: column; line-height: 1.05; }
+  .idf-cuenta b { font-size: 1.5rem; font-weight: 500; color: var(--gold-1); font-variant-numeric: tabular-nums; }
+  .idf-cuenta small { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: var(--text-lo); }
+  .idf-sel { margin-left: auto; font-size: .8rem; color: var(--text-mid); }
+  .idf-wrap { flex: 1; min-height: 0; overflow: auto; }
+  .idf-tabla { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  .idf-tabla th { position: sticky; top: 0; z-index: 1; background: var(--choc-0); color: var(--text-lo); font-weight: 500; text-align: left; padding: 8px 10px; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; }
+  .idf-tabla td { padding: 6px 10px; border-bottom: 1px solid var(--choc-3); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; color: var(--text-mid); }
+  .idf-tabla td.tit { color: var(--text-hi); font-weight: 600; }
+  .idf-tabla td.num, .idf-tabla th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .idf-tabla td.cod { font-family: var(--font-data, monospace); font-size: .78rem; color: var(--text-lo); }
+  .idf-tabla tbody tr { cursor: default; }
+  .idf-tabla tbody tr:hover td { background: var(--choc-3); }
+  .idf-tabla tbody tr.marcado td { background: rgba(238, 155, 0, .12); }
+  .idf-tabla tbody tr.sonando td { background: rgba(82, 183, 136, .14); }
+  .idf-cat { display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .04em; padding: 2px 9px; border-radius: 10px; background: var(--choc-4); color: var(--gold-1); border: 1px solid var(--choc-5); }
+  .idf-cat.vacia { color: var(--text-lo); background: transparent; border-style: dashed; }
+  .idf-play { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--choc-5); background: var(--choc-3); cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .idf-play:hover { border-color: var(--gold-0); }
+  .idf-play img { width: 14px; height: 14px; display: block; }
+  .idf-vacio { padding: 40px; text-align: center; color: var(--text-lo); }
+  .idf-mas { padding: 10px; text-align: center; }
+  .idf-player { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--choc-4); background: var(--choc-1); }
+  .idf-player .mandos { display: flex; gap: 5px; }
+  .idf-player .mandos button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--choc-5); background: var(--choc-3); cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .idf-player .mandos img { width: 18px; height: 18px; }
+  .idf-player .info { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .idf-player .info b { color: var(--text-hi); font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .idf-player .info span { color: var(--text-lo); font-weight: 400; margin-left: 6px; }
+  .idf-prog { height: 8px; background: var(--choc-3); border-radius: 4px; cursor: pointer; overflow: hidden; }
+  .idf-prog i { display: block; height: 100%; width: 0; background: var(--gold-0); }
+  .idf-t { font-family: var(--font-data, monospace); font-size: .8rem; color: var(--gold-1); }
+  .idf-msg { min-height: 1.2em; font-size: .8rem; }
+  .idf-msg.ok { color: var(--mint, #52b788); } .idf-msg.err { color: var(--red-live); }
+  /* Ventanas */
+  .idf-fondo { position: fixed; inset: 0; z-index: 9000; background: rgba(0, 0, 0, .65); display: grid; place-items: center; }
+  .idf-fondo[hidden] { display: none; }
+  .idf-caja { background: var(--choc-2); border: 1px solid var(--choc-5); border-radius: 10px; width: min(760px, 94vw); max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); }
+  .idf-caja h3 { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--choc-4); font-size: 1.05rem; color: var(--text-hi); display: flex; justify-content: space-between; }
+  .idf-caja h3 button { background: none; border: 0; color: var(--text-lo); font-size: 1.1rem; cursor: pointer; }
+  .idf-cont { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .idf-pie { padding: 12px 18px; border-top: 1px solid var(--choc-4); display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+  .idf-campo { display: flex; flex-direction: column; gap: 4px; font-size: .78rem; color: var(--text-lo); }
+  .idf-fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .idf-arch { max-height: 200px; overflow-y: auto; font-size: .8rem; border: 1px solid var(--choc-4); border-radius: 6px; }
+  .idf-arch div { display: flex; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--choc-3); }
+  .idf-arch div span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-hi); }
+  .idf-arch .ok { color: var(--mint, #52b788); } .idf-arch .err { color: var(--red-live); }
+  /* Editar categorías */
+  .idf-cats { display: grid; grid-template-columns: 200px minmax(0, 1fr) 54px; gap: 10px; min-height: 340px; }
+  .idf-tipos button { display: block; width: 100%; text-align: left; background: var(--choc-1); border: 0; border-left: 3px solid transparent; color: var(--text-mid); padding: 11px 12px; font: 600 .86rem inherit; cursor: pointer; }
+  .idf-tipos button.activo { background: var(--choc-4); color: var(--text-hi); border-left-color: var(--gold-0); }
+  .idf-lcat { border: 1px solid var(--choc-4); border-radius: 6px; overflow-y: auto; max-height: 360px; }
+  .idf-lcat table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .idf-lcat th { position: sticky; top: 0; background: var(--choc-0); color: var(--text-lo); font-weight: 500; text-align: left; padding: 7px 10px; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; }
+  .idf-lcat td { padding: 8px 10px; border-bottom: 1px solid var(--choc-3); color: var(--text-mid); cursor: pointer; }
+  .idf-lcat tr.sel td { background: var(--gold-0); color: #000; }
+  .idf-mover { display: flex; flex-direction: column; gap: 6px; }
+  .idf-mover button { height: 44px; background: var(--choc-3); border: 1px solid var(--choc-5); border-radius: 6px; color: var(--text-hi); font-size: 1.1rem; cursor: pointer; }
+  @media (max-width: 900px) { .idf-cuerpo { grid-template-columns: 1fr; } .idf-lado { max-height: 220px; } }
+</style>
+
+<div class="idf-root" id="idfRoot">
+  <div class="idf-cab">
+    <div>
+      <h2>Identificadores</h2>
+      <p>Jingles, sweepers y tips: cárgalos aquí, clasifícalos por categoría y úsalos en los relojes y en el Studio.</p>
+    </div>
+    <div class="idf-tabs" id="idfTabs">
+      <button data-tipo="Efecto" class="activo">Jingles</button>
+      <button data-tipo="Sweeper">Sweepers</button>
+      <button data-tipo="Tips">Tips</button>
+    </div>
+  </div>
+
+  <div class="idf-cuerpo">
+    <aside class="idf-lado">
+      <button class="idf-btn idf-btn--pri" id="idfAgregar">＋ Agregar (uno o varios)</button>
+      <button class="idf-btn idf-btn--peligro" id="idfEliminar" disabled>🗑 Eliminar marcados</button>
+      <label class="idf-chk"><input type="checkbox" id="idfRapida"> Edición rápida</label>
+      <label class="idf-chk"><input type="checkbox" id="idfSoloMarcados"> Solo marcados</label>
+
+      <h4>Buscar</h4>
+      <input class="idf-in" id="idfBuscar" type="search" placeholder="Título o autor…" autocomplete="off">
+      <select class="idf-in" id="idfFiltroCat" aria-label="Categoría"></select>
+      <button class="idf-btn" id="idfReiniciar">Reiniciar</button>
+
+      <h4>Marcados</h4>
+      <select class="idf-in" id="idfCatMasiva" aria-label="Categoría para los marcados"></select>
+      <button class="idf-btn" id="idfAplicarCat" disabled>Asignar esta categoría</button>
+
+      <h4>Tareas</h4>
+      <button class="idf-btn" id="idfEditarCats">✎ Editar categorías</button>
+      <span class="idf-msg" id="idfMsg"></span>
+    </aside>
+
+    <section class="idf-main">
+      <div class="idf-barra">
+        <div class="idf-cuenta"><b id="idfN">0</b><small id="idfNtxt">archivos</small></div>
+        <span class="idf-sel" id="idfSel"></span>
+      </div>
+      <div class="idf-wrap" id="idfWrap">
+        <table class="idf-tabla">
+          <thead><tr>
+            <th style="width:30px"><input type="checkbox" id="idfTodos" title="Marcar los de la lista"></th><th style="width:40px"></th>
+            <th>Autor</th><th>Título</th><th class="num">Duración</th><th class="num">Intro</th><th>Categoría</th><th class="num">Sonó</th><th>Código</th>
+          </tr></thead>
+          <tbody id="idfFilas"></tbody>
+        </table>
+      </div>
+      <div class="idf-player">
+        <div class="mandos">
+          <button id="idfPlay" title="Escuchar / pausar"><img src="/static/studio/icons/play2.svg" alt=""></button>
+          <button id="idfStop" title="Detener"><img src="/static/studio/icons/stop2.svg" alt=""></button>
+        </div>
+        <div class="info">
+          <b id="idfPlayTxt">Elige un identificador y pulsa ▶</b>
+          <div class="idf-prog" id="idfProg" title="Clic para ir a ese punto"><i id="idfProgFill"></i></div>
+        </div>
+        <span class="idf-t" id="idfT">0:00 / 0:00</span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Agregar -->
+<div class="idf-fondo" id="idfModalAgregar" hidden>
+  <div class="idf-caja">
+    <h3><span id="idfAgTitulo">Agregar identificadores</span><button data-cerrar>✕</button></h3>
+    <div class="idf-cont">
+      <div class="idf-fila2">
+        <label class="idf-campo">Tipo
+          <select class="idf-in" id="idfAgTipo"><option value="Efecto">Jingles</option><option value="Sweeper">Sweepers</option><option value="Tips">Tips</option></select></label>
+        <label class="idf-campo">Categoría
+          <select class="idf-in" id="idfAgCat"></select></label>
+      </div>
+      <label class="idf-campo">Autor (se usa el mismo para todos; si el archivo trae autor en sus etiquetas, no se toca después)
+        <input class="idf-in" id="idfAgAutor" value="Emisora" maxlength="200"></label>
+      <label class="idf-campo">Archivos de audio (puedes elegir varios)
+        <input class="idf-in" id="idfAgArchivos" type="file" multiple accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*"></label>
+      <div class="idf-arch" id="idfAgLista" hidden></div>
+    </div>
+    <div class="idf-pie"><span class="idf-msg" id="idfAgMsg" style="margin-right:auto"></span>
+      <button class="idf-btn" data-cerrar>Cerrar</button>
+      <button class="idf-btn idf-btn--pri" id="idfAgSubir" disabled>Subir</button></div>
+  </div>
+</div>
+
+<!-- Editar uno -->
+<div class="idf-fondo" id="idfModalEditar" hidden>
+  <div class="idf-caja" style="width:min(520px, 94vw)">
+    <h3><span>Editar identificador</span><button data-cerrar>✕</button></h3>
+    <div class="idf-cont">
+      <label class="idf-campo">Título<input class="idf-in" id="idfEdTitulo" maxlength="200"></label>
+      <label class="idf-campo">Autor<input class="idf-in" id="idfEdAutor" maxlength="200"></label>
+      <label class="idf-campo">Categoría<select class="idf-in" id="idfEdCat"></select></label>
+      <p style="margin:0;font-size:.78rem;color:var(--text-lo)">Para marcar inicio, intro o mezcla usa la ficha completa en Biblioteca musical.</p>
+    </div>
+    <div class="idf-pie"><span class="idf-msg" id="idfEdMsg" style="margin-right:auto"></span>
+      <button class="idf-btn" data-cerrar>Cancelar</button><button class="idf-btn idf-btn--pri" id="idfEdGuardar">Guardar</button></div>
+  </div>
+</div>
+
+<!-- Editar categorías -->
+<div class="idf-fondo" id="idfModalCats" hidden>
+  <div class="idf-caja">
+    <h3><span>Editar categorías</span><button data-cerrar>✕</button></h3>
+    <div class="idf-cont">
+      <div class="idf-cats">
+        <div class="idf-tipos" id="idfCatTipos">
+          <button data-tipo="Efecto" class="activo">Jingles</button><button data-tipo="Sweeper">Sweepers</button><button data-tipo="Tips">Tips</button>
+        </div>
+        <div class="idf-lcat"><table><thead><tr><th>Nombre</th><th>Comentarios</th><th class="num">Audios</th></tr></thead><tbody id="idfCatFilas"></tbody></table></div>
+        <div class="idf-mover"><button id="idfCatSube" title="Subir">▲</button><button id="idfCatBaja" title="Bajar">▼</button></div>
+      </div>
+      <span style="font-size:.78rem;color:var(--text-lo)">Doble clic en una categoría para cambiar su nombre o comentario. Si la renombras, también cambia en sus audios y en los relojes que la usan.</span>
+    </div>
+    <div class="idf-pie"><span class="idf-msg" id="idfCatMsg" style="margin-right:auto"></span>
+      <button class="idf-btn" id="idfCatAgregar">Agregar</button><button class="idf-btn idf-btn--peligro" id="idfCatEliminar">Eliminar</button>
+      <button class="idf-btn idf-btn--pri" data-cerrar>OK</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const mmss = t => { t = Math.max(0, Math.round(+t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  const num = n => (+n || 0).toLocaleString("es");
+  const PREFIJO = { Efecto: "JI", Sweeper: "SW", Tips: "TP" };
+  const NOMBRE = { Efecto: "jingles", Sweeper: "sweepers", Tips: "tips" };
+  const PAGINA = 100;
+  const json = (m, b) => ({ method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+
+  let tipo = "Efecto", cats = { Efecto: [], Sweeper: [], Tips: [] };
+  let filas = [], total = 0, gen = 0, cargandoMas = false;
+  const marcados = new Set(), cache = new Map();
+  let sonando = null, audio = null;
+
+  function msg(texto, ok = true, id = "idfMsg") {
+    const el = $(id); el.textContent = texto; el.className = `idf-msg ${ok ? "ok" : "err"}`;
+    clearTimeout(msg.t); msg.t = setTimeout(() => { el.textContent = ""; }, 5000);
+  }
+  async function api(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+    return d;
+  }
+
+  // ── Categorías ──────────────────────────────────────────
+  async function cargarCats() {
+    cats = await api("/api/v1/ident/categorias");
+    llenarSelects();
+  }
+  const opcionesCat = (t, extra = "") => extra + (cats[t] || []).map(c => `<option>${esc(c.nombre)}</option>`).join("");
+  function llenarSelects() {
+    const f = $("idfFiltroCat"), previo = f.value;
+    f.innerHTML = `<option value="">Todas las categorías</option><option value="__sin">(sin categoría)</option>` + opcionesCat(tipo);
+    f.value = [...f.options].some(o => o.value === previo) ? previo : "";
+    $("idfCatMasiva").innerHTML = `<option value="">(quitar categoría)</option>` + opcionesCat(tipo);
+  }
+
+  // ── Tabla ───────────────────────────────────────────────
+  function params(offset) {
+    const p = new URLSearchParams({ tipo, limit: PAGINA, offset });
+    if ($("idfBuscar").value.trim()) p.set("q", $("idfBuscar").value.trim());
+    if ($("idfFiltroCat").value) p.set("categoria", $("idfFiltroCat").value);
+    return p;
+  }
+  function htmlFila(a) {
+    const cat = $("idfRapida").checked
+      ? `<select class="idf-in" data-cat="${a.id}" style="padding:3px 6px"><option value="">—</option>${(cats[tipo] || []).map(c => `<option ${c.nombre.toUpperCase() === (a.categoria_ident || "").toUpperCase() ? "selected" : ""}>${esc(c.nombre)}</option>`).join("")}</select>`
+      : (a.categoria_ident ? `<span class="idf-cat">${esc(a.categoria_ident)}</span>` : `<span class="idf-cat vacia">sin categoría</span>`);
+    return `<tr data-id="${a.id}" class="${marcados.has(a.id) ? "marcado" : ""} ${sonando === a.id ? "sonando" : ""}">
+      <td><input type="checkbox" data-chk="${a.id}" ${marcados.has(a.id) ? "checked" : ""}></td>
+      <td><button class="idf-play" data-play="${a.id}" title="Escuchar"><img src="/static/studio/icons/${sonando === a.id && audio && !audio.paused ? "pause2" : "play2"}.svg" alt=""></button></td>
+      <td>${esc(a.artista)}</td><td class="tit" title="Doble clic para editar">${esc(a.titulo)}</td>
+      <td class="num">${mmss(a.duracion)}</td><td class="num">${(a.cue_intro || a.intro) ? Math.round(a.cue_intro || a.intro) + "s" : ""}</td>
+      <td>${cat}</td><td class="num">${a.veces_reproducido || ""}</td>
+      <td class="cod">${PREFIJO[a.tipo_audio] || "ID"}-${String(a.id).padStart(4, "0")}</td></tr>`;
+  }
+  async function recargar() {
+    const mia = ++gen;
+    $("idfFilas").innerHTML = `<tr><td colspan="9" class="idf-vacio">Buscando…</td></tr>`;
+    let r;
+    try {
+      if ($("idfSoloMarcados").checked) {
+        // Solo los marcados: se piden por id
+        r = { data: [], total: 0 };
+        if (marcados.size) {
+          const d = await api(`/api/v1/audios?ids=${[...marcados].slice(0, 500).join(",")}&limit=500`);
+          r = { data: d.data.filter(a => a.tipo_audio === tipo).map(a => ({ ...a, categoria_ident: cache.get(a.id)?.categoria_ident ?? null })), total: 0 };
+          r.total = r.data.length;
+        }
+      } else r = await api(`/api/v1/ident/audios?${params(0)}`);
+    } catch (e) { if (mia === gen) $("idfFilas").innerHTML = `<tr><td colspan="9" class="idf-vacio">${esc(e.message)}</td></tr>`; return; }
+    if (mia !== gen) return;
+    filas = r.data; total = r.total;
+    filas.forEach(a => cache.set(a.id, a));
+    $("idfWrap").scrollTop = 0;
+    pintarFilas();
+  }
+  function pintarFilas() {
+    $("idfFilas").innerHTML = filas.length ? filas.map(htmlFila).join("")
+      : `<tr><td colspan="9" class="idf-vacio">${$("idfBuscar").value || $("idfFiltroCat").value ? "Nada coincide con la búsqueda." : `Aún no hay ${NOMBRE[tipo]}: usa «＋ Agregar».`}</td></tr>`;
+    pintarMas(); pintarCuenta();
+  }
+  function pintarMas() {
+    $("idfFilas").querySelector(".idf-mas")?.closest("tr")?.remove();
+    if (filas.length < total) $("idfFilas").insertAdjacentHTML("beforeend",
+      `<tr><td colspan="9" class="idf-mas"><button class="idf-btn" data-mas>Cargar más (${num(total - filas.length)} restantes)</button><span class="idf-mas"></span></td></tr>`);
+  }
+  async function masFilas() {
+    if (cargandoMas || filas.length >= total || $("idfSoloMarcados").checked) return;
+    cargandoMas = true; const mia = gen;
+    try {
+      const r = await api(`/api/v1/ident/audios?${params(filas.length)}`);
+      if (mia !== gen) return;
+      r.data.forEach(a => cache.set(a.id, a));
+      filas = filas.concat(r.data);
+      $("idfFilas").querySelector("[data-mas]")?.closest("tr")?.remove();
+      $("idfFilas").insertAdjacentHTML("beforeend", r.data.map(htmlFila).join(""));
+      pintarMas(); pintarCuenta();
+    } catch (_) { /* se reintenta */ } finally { cargandoMas = false; }
+  }
+  $("idfWrap").addEventListener("scroll", e => { const w = e.currentTarget; if (w.scrollTop + w.clientHeight >= w.scrollHeight - 250) masFilas(); });
+
+  function pintarCuenta() {
+    $("idfN").textContent = num(total);
+    $("idfNtxt").textContent = $("idfBuscar").value || $("idfFiltroCat").value ? `${NOMBRE[tipo]} encontrados` : NOMBRE[tipo];
+    const n = marcados.size;
+    $("idfSel").textContent = n ? `${num(n)} marcado(s)` : "";
+    $("idfEliminar").disabled = !n; $("idfAplicarCat").disabled = !n;
+    $("idfTodos").checked = !!filas.length && filas.every(a => marcados.has(a.id));
+  }
+
+  // ── Eventos de la tabla y del panel ─────────────────────
+  $("idfTabs").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b || b.dataset.tipo === tipo) return;
+    tipo = b.dataset.tipo; marcados.clear(); $("idfSoloMarcados").checked = false; $("idfBuscar").value = "";
+    $("idfTabs").querySelectorAll("button").forEach(x => x.classList.toggle("activo", x === b));
+    llenarSelects(); $("idfFiltroCat").value = ""; recargar();
+  });
+  let tb; $("idfBuscar").addEventListener("input", () => { clearTimeout(tb); tb = setTimeout(recargar, 250); });
+  $("idfFiltroCat").addEventListener("change", recargar);
+  $("idfSoloMarcados").addEventListener("change", recargar);
+  $("idfRapida").addEventListener("change", pintarFilas);
+  $("idfReiniciar").addEventListener("click", () => { $("idfBuscar").value = ""; $("idfFiltroCat").value = ""; $("idfSoloMarcados").checked = false; recargar(); });
+  $("idfTodos").addEventListener("change", e => {
+    filas.forEach(a => e.target.checked ? marcados.add(a.id) : marcados.delete(a.id)); pintarFilas();
+  });
+
+  $("idfFilas").addEventListener("click", e => {
+    if (e.target.closest("[data-mas]")) { masFilas(); return; }
+    const chk = e.target.closest("[data-chk]");
+    if (chk) {
+      const id = +chk.dataset.chk; chk.checked ? marcados.add(id) : marcados.delete(id);
+      chk.closest("tr").classList.toggle("marcado", chk.checked); pintarCuenta(); return;
+    }
+    const play = e.target.closest("[data-play]");
+    if (play) escuchar(+play.dataset.play);
+  });
+  $("idfFilas").addEventListener("change", async e => {
+    const sel = e.target.closest("[data-cat]"); if (!sel) return;
+    try {
+      await api("/api/v1/ident/audios", json("PUT", { ids: [+sel.dataset.cat], categoria: sel.value || null }));
+      const a = cache.get(+sel.dataset.cat); if (a) a.categoria_ident = sel.value || null;
+      msg("✓ Categoría guardada");
+    } catch (err) { msg(err.message, false); }
+  });
+  $("idfFilas").addEventListener("dblclick", e => {
+    const tr = e.target.closest("tr[data-id]");
+    if (tr && !e.target.closest("button, select, input")) abrirEditar(+tr.dataset.id);
+  });
+
+  $("idfAplicarCat").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/v1/ident/audios", json("PUT", { ids: [...marcados], categoria: $("idfCatMasiva").value || null }));
+      msg(`✓ ${num(r.actualizados)} audio(s): ${r.categoria || "sin categoría"}`); marcados.clear(); recargar();
+    } catch (err) { msg(err.message, false); }
+  });
+  $("idfEliminar").addEventListener("click", async () => {
+    const n = marcados.size;
+    if (!n || !confirm(`¿Eliminar ${n} ${NOMBRE[tipo]}?\n\nVan a la Papelera de la Biblioteca musical: se pueden restaurar.`)) return;
+    try {
+      await api("/api/v1/biblioteca/lote", json("POST", { ids: [...marcados], accion: "desactivar" }));
+      msg(`✓ ${num(n)} eliminado(s)`); marcados.clear(); await recargar();
+    } catch (err) { msg(err.message, false); }
+  });
+
+  // ── Reproductor (en el navegador, no sale al aire) ──────
+  function crearAudio() {
+    audio = new Audio();
+    audio.addEventListener("timeupdate", () => {
+      const d = audio.duration || 0;
+      $("idfProgFill").style.width = d ? `${audio.currentTime / d * 100}%` : "0";
+      $("idfT").textContent = `${mmss(audio.currentTime)} / ${mmss(d)}`;
+    });
+    const icono = () => { $("idfPlay").innerHTML = `<img src="/static/studio/icons/${audio.paused ? "play2" : "pause2"}.svg" alt="">`; pintarFilas(); };
+    audio.addEventListener("play", icono); audio.addEventListener("pause", icono);
+    audio.addEventListener("ended", () => { sonando = null; icono(); });
+  }
+  function escuchar(id) {
+    if (!audio) crearAudio();
+    if (sonando === id) { audio.paused ? audio.play() : audio.pause(); return; }
+    const a = cache.get(id);
+    audio.src = `/api/v1/audios/${id}/stream`; sonando = id;
+    $("idfPlayTxt").innerHTML = a ? `${esc(a.titulo)}<span>${esc(a.artista)}</span>` : "";
+    audio.play().catch(() => msg("No se pudo reproducir el archivo", false));
+  }
+  $("idfPlay").addEventListener("click", () => { if (audio?.src) audio.paused ? audio.play() : audio.pause(); });
+  $("idfStop").addEventListener("click", () => { if (audio) { audio.pause(); audio.currentTime = 0; } });
+  $("idfProg").addEventListener("click", e => {
+    if (!audio?.duration) return; const r = $("idfProg").getBoundingClientRect(); audio.currentTime = (e.clientX - r.left) / r.width * audio.duration;
+  });
+
+  // ── Ventanas ────────────────────────────────────────────
+  document.querySelectorAll(".idf-fondo").forEach(f => f.addEventListener("click", e => {
+    if (e.target === f || e.target.closest("[data-cerrar]")) { f.hidden = true; if (f.id === "idfModalAgregar") recargar(); }
+  }));
+
+  // Agregar
+  let archivos = [];
+  function llenarCatAg() { $("idfAgCat").innerHTML = `<option value="">(sin categoría)</option>` + opcionesCat($("idfAgTipo").value); }
+  $("idfAgregar").addEventListener("click", () => {
+    $("idfAgTipo").value = tipo; llenarCatAg();
+    $("idfAgArchivos").value = ""; archivos = []; $("idfAgLista").hidden = true; $("idfAgSubir").disabled = true; $("idfAgMsg").textContent = "";
+    $("idfModalAgregar").hidden = false;
+  });
+  $("idfAgTipo").addEventListener("change", llenarCatAg);
+  $("idfAgArchivos").addEventListener("change", e => {
+    archivos = [...e.target.files];
+    $("idfAgLista").hidden = !archivos.length;
+    $("idfAgLista").innerHTML = archivos.map((f, i) => `<div data-i="${i}"><span>${esc(f.name)}</span><span>${(f.size / 1048576).toFixed(1)} MB</span><span class="est">en espera</span></div>`).join("");
+    $("idfAgSubir").disabled = !archivos.length;
+  });
+  $("idfAgSubir").addEventListener("click", async () => {
+    $("idfAgSubir").disabled = true; $("idfAgArchivos").disabled = true;
+    const tipoAg = $("idfAgTipo").value, nuevos = [];
+    let ok = 0;
+    for (const [i, f] of archivos.entries()) {
+      const fila = $("idfAgLista").querySelector(`[data-i="${i}"] .est`);
+      fila.textContent = "subiendo…";
+      const fd = new FormData();
+      fd.append("titulo", f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim() || f.name);
+      fd.append("artista", $("idfAgAutor").value.trim() || "Emisora");
+      fd.append("tipo_audio", tipoAg); fd.append("file", f);
+      try {
+        const r = await fetch("/api/v1/audios", { method: "POST", body: fd });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+        nuevos.push(d.data?.id); ok++; fila.textContent = "✓ listo"; fila.className = "est ok";
+      } catch (err) { fila.textContent = err.message.slice(0, 60); fila.className = "est err"; }
+    }
+    if (nuevos.length && $("idfAgCat").value) {
+      try { await api("/api/v1/ident/audios", json("PUT", { ids: nuevos.filter(Boolean), categoria: $("idfAgCat").value })); } catch (err) { $("idfAgMsg").textContent = err.message; }
+    }
+    $("idfAgMsg").textContent = `${ok} de ${archivos.length} subido(s)`; $("idfAgMsg").className = `idf-msg ${ok === archivos.length ? "ok" : "err"}`;
+    $("idfAgArchivos").disabled = false;
+    if (tipoAg !== tipo) { tipo = tipoAg; $("idfTabs").querySelectorAll("button").forEach(x => x.classList.toggle("activo", x.dataset.tipo === tipo)); llenarSelects(); }
+    cargarCats();
+  });
+
+  // Editar uno
+  let editando = null;
+  function abrirEditar(id) {
+    const a = cache.get(id); if (!a) return;
+    editando = id;
+    $("idfEdTitulo").value = a.titulo; $("idfEdAutor").value = a.artista;
+    $("idfEdCat").innerHTML = `<option value="">(sin categoría)</option>` + opcionesCat(a.tipo_audio);
+    $("idfEdCat").value = [...$("idfEdCat").options].find(o => o.value.toUpperCase() === (a.categoria_ident || "").toUpperCase())?.value ?? "";
+    $("idfEdMsg").textContent = ""; $("idfModalEditar").hidden = false; $("idfEdTitulo").focus();
+  }
+  $("idfEdGuardar").addEventListener("click", async () => {
+    try {
+      await api(`/api/v1/audios/${editando}`, json("PUT", { titulo: $("idfEdTitulo").value.trim(), artista: $("idfEdAutor").value.trim() }));
+      await api("/api/v1/ident/audios", json("PUT", { ids: [editando], categoria: $("idfEdCat").value || null }));
+      $("idfModalEditar").hidden = true; msg("✓ Guardado"); recargar();
+    } catch (err) { $("idfEdMsg").textContent = err.message; $("idfEdMsg").className = "idf-msg err"; }
+  });
+
+  // Editar categorías
+  let tipoCats = "Efecto", catSel = null;
+  function pintarCats() {
+    $("idfCatTipos").querySelectorAll("button").forEach(b => b.classList.toggle("activo", b.dataset.tipo === tipoCats));
+    $("idfCatFilas").innerHTML = (cats[tipoCats] || []).map(c => `<tr data-id="${c.id}" class="${c.id === catSel ? "sel" : ""}"><td>${esc(c.nombre)}</td><td>${esc(c.comentario)}</td><td class="num">${c.usos}</td></tr>`).join("")
+      || `<tr><td colspan="3" style="color:var(--text-lo)">Sin categorías: agrega la primera.</td></tr>`;
+  }
+  $("idfEditarCats").addEventListener("click", async () => { tipoCats = tipo; catSel = null; await cargarCats(); pintarCats(); $("idfModalCats").hidden = false; });
+  $("idfCatTipos").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { tipoCats = b.dataset.tipo; catSel = null; pintarCats(); } });
+  $("idfCatFilas").addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) { catSel = +tr.dataset.id; pintarCats(); } });
+  const errCat = err => msg(err.message, false, "idfCatMsg");
+  async function trasCats() { await cargarCats(); pintarCats(); }
+  $("idfCatFilas").addEventListener("dblclick", async e => {
+    const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+    const c = cats[tipoCats].find(x => x.id === +tr.dataset.id);
+    const nombre = prompt("Nombre de la categoría:", c.nombre); if (nombre === null || !nombre.trim()) return;
+    const coment = prompt("Comentario (opcional):", c.comentario); if (coment === null) return;
+    try { await api(`/api/v1/ident/categorias/${c.id}`, json("PUT", { nombre: nombre.trim(), comentario: coment })); await trasCats(); } catch (err) { errCat(err); }
+  });
+  $("idfCatAgregar").addEventListener("click", async () => {
+    const nombre = prompt(`Nombre de la nueva categoría de ${NOMBRE[tipoCats]}:`); if (!nombre?.trim()) return;
+    try { const r = await api("/api/v1/ident/categorias", json("POST", { tipo_audio: tipoCats, nombre: nombre.trim() })); catSel = r.id; await trasCats(); } catch (err) { errCat(err); }
+  });
+  $("idfCatEliminar").addEventListener("click", async () => {
+    const c = cats[tipoCats].find(x => x.id === catSel); if (!c) { msg("Elige una categoría", false, "idfCatMsg"); return; }
+    const quitar = c.usos ? confirm(`«${c.nombre}» la usan ${c.usos} audio(s).\n\n¿Eliminarla y dejarlos sin categoría?`) : confirm(`¿Eliminar la categoría «${c.nombre}»?`);
+    if (!quitar) return;
+    try { await api(`/api/v1/ident/categorias/${c.id}?quitar=true`, { method: "DELETE" }); catSel = null; await trasCats(); } catch (err) { errCat(err); }
+  });
+  for (const [id, dir] of [["idfCatSube", -1], ["idfCatBaja", 1]]) $(id).addEventListener("click", async () => {
+    if (!catSel) return;
+    try { await api(`/api/v1/ident/categorias/${catSel}/mover`, json("POST", { dir })); await trasCats(); } catch (err) { errCat(err); }
+  });
+  $("idfModalCats").addEventListener("click", e => { if (e.target === $("idfModalCats") || e.target.closest("[data-cerrar]")) { llenarSelects(); recargar(); } });
+
+  document.addEventListener("ws:library_updated", () => { if (document.getElementById("idfRoot")?.offsetParent) recargar(); });
+  cargarCats().then(recargar).catch(err => msg(`No se pudo cargar: ${err.message}`, false));
+})();
+</script>
