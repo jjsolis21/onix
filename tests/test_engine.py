@@ -943,3 +943,84 @@ def test_voz_sin_musica_antes_suena_sola(engine, media):
     assert engine._start({"track": engine._fetch_track(voz), "origen": "manual"})
     assert engine._cama is None and engine._current_track["id"] == voz
     assert abs(engine._mix_point - (6.0 - engine.VOZ_FIN)) < 0.01
+
+
+# ── Cartuchera como Soho: pulsar otra vez detiene; marcas y volumen del botón ─
+
+def _efx_eventos(engine):
+    ev = []
+    for n in ("effect_fired", "effect_stopped"):
+        engine.bus.subscribe(n, lambda e, d: ev.append((e, d)))
+    return ev
+
+
+def test_pulsar_el_mismo_boton_mientras_suena_lo_detiene(engine, media):
+    from backend.audio.audio_engine import CANAL_EFX_BASE
+    tema = add_audio(engine, media, "TEMA", seconds=60.0)
+    jid = add_audio(engine, media, "CLAPS", tipo="Efecto", seconds=10.0)
+    engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    ev = _efx_eventos(engine)
+    engine.fire_effect(jid, 0, {"boton": "p1/1"}); engine._drain_commands()
+    assert engine._audio.is_active(CANAL_EFX_BASE) and engine._effect_ducking
+    assert ev[-1][0] == "effect_fired" and ev[-1][1]["duracion"] == 10.0
+
+    engine.fire_effect(jid, 0, {"boton": "p1/1"}); engine._drain_commands()      # segunda pulsación
+    assert not engine._audio.is_active(CANAL_EFX_BASE) and engine._efx == {}
+    assert ev[-1][0] == "effect_stopped" and ev[-1][1]["motivo"] == "operador" and ev[-1][1]["audio_id"] == jid
+    engine._restore_ducking()
+    assert not engine._effect_ducking                    # la música vuelve a su volumen sin esperar los 10 s
+
+    engine.fire_effect(jid, 0, {"boton": "p1/1"}); engine._drain_commands()      # tercera: suena otra vez
+    assert engine._audio.is_active(CANAL_EFX_BASE)
+
+
+def test_sin_boton_un_segundo_disparo_relanza_como_antes(engine, media):
+    from backend.audio.audio_engine import CANAL_EFX_BASE
+    jid = add_audio(engine, media, "JINGLE", tipo="Efecto", seconds=5.0)
+    engine.fire_effect(jid); engine._drain_commands()
+    engine._audio.set_position_sec(CANAL_EFX_BASE, 3.0)
+    engine.fire_effect(jid); engine._drain_commands()
+    assert engine._audio.is_active(CANAL_EFX_BASE) and engine._audio.get_position_sec(CANAL_EFX_BASE) < 1.0
+
+
+def test_otro_boton_en_el_mismo_canal_corta_al_anterior(engine, media):
+    a = add_audio(engine, media, "UNO", tipo="Efecto", seconds=8.0)
+    b = add_audio(engine, media, "DOS", tipo="Efecto", seconds=8.0)
+    ev = _efx_eventos(engine)
+    engine.fire_effect(a, 0, {"boton": "p1/1"}); engine._drain_commands()
+    engine.fire_effect(b, 6, {"boton": "p1/7"}); engine._drain_commands()        # 7 comparte canal con 1
+    assert [(e, d.get("motivo")) for e, d in ev] == [("effect_fired", None), ("effect_stopped", "reemplazado"),
+                                                    ("effect_fired", None)]
+    assert list(engine._efx.values())[0]["audio_id"] == b
+
+
+def test_el_boton_respeta_marca_in_marca_out_y_volumen(engine, media):
+    from backend.audio.audio_engine import CANAL_EFX_BASE
+    jid = add_audio(engine, media, "CLAPS", tipo="Efecto", seconds=10.0)
+    vols = []
+    real = engine._audio.set_volume
+    engine._audio.set_volume = lambda canal, v: (vols.append((canal, v)), real(canal, v))[1]
+    ev = _efx_eventos(engine)
+    engine.fire_effect(jid, 0, {"boton": "p1/1", "mark_in": 2.0, "mark_out": 5.0, "volumen": 50})
+    engine._drain_commands()
+    assert 2.0 <= engine._audio.get_position_sec(CANAL_EFX_BASE) < 2.5      # arranca en la marca in
+    assert ev[-1][1]["duracion"] == 3.0
+    v = [x for c, x in vols if c == CANAL_EFX_BASE][-1]
+    assert v == pytest.approx(engine._master_volume * engine._gain_of(engine._fetch_track(jid)) * 0.5)
+
+    engine._audio.set_position_sec(CANAL_EFX_BASE, 4.0); engine._vigilar_efectos()
+    assert engine._audio.is_active(CANAL_EFX_BASE)                          # aún no llega a la marca out
+    engine._audio.set_position_sec(CANAL_EFX_BASE, 5.1); engine._vigilar_efectos()
+    assert not engine._audio.is_active(CANAL_EFX_BASE)                      # se corta en la marca out
+    assert ev[-1][0] == "effect_stopped" and ev[-1][1]["motivo"] == "fin"
+
+
+def test_marcas_invalidas_se_ignoran_y_el_fin_natural_avisa(engine, media):
+    from backend.audio.audio_engine import CANAL_EFX_BASE
+    jid = add_audio(engine, media, "CORTO", tipo="Efecto", seconds=4.0)
+    ev = _efx_eventos(engine)
+    engine.fire_effect(jid, 0, {"boton": "p1/1", "mark_in": 9.0, "mark_out": 1.0, "volumen": "x"})
+    engine._drain_commands()
+    assert engine._audio.get_position_sec(CANAL_EFX_BASE) < 0.5 and ev[-1][1]["duracion"] == 4.0
+    engine._audio.set_position_sec(CANAL_EFX_BASE, 4.0); engine._vigilar_efectos()   # terminó solo
+    assert ev[-1][0] == "effect_stopped" and ev[-1][1]["motivo"] == "fin" and engine._efx == {}

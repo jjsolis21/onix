@@ -114,7 +114,7 @@ _locutor = LocutorServicio(lambda: engine, DB_PATH)
 # Eventos del motor que se retransmiten a los clientes WebSocket
 ENGINE_EVENTS = (
     "track_started", "track_ended", "crossfade_start", "playback_stopped",
-    "playback_error", "mode_changed", "effect_fired", "queue_updated",
+    "playback_error", "mode_changed", "effect_fired", "effect_stopped", "queue_updated",
     "pauta_scheduled", "pauta_missed", "tanda_scheduled", "respaldo_activado",
     "engine_stopped", "engine_connected", "cue_started", "cue_stopped",
     "programa_actualizado", "tanda_excedida", "tanda_inmediata", "evento_inmediato", "detener_al_terminar", "seek", "pausa",
@@ -2064,6 +2064,22 @@ PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "
                    "cola_insertar", "cola_mover", "cola_quitar", "plan_a_cola"}
 
 
+def _opciones_boton(msg: dict) -> dict:
+    """Marcas y volumen del botón de la cartuchera que se pulsó (si el comando dice cuál fue)."""
+    banco, slot = msg.get("banco"), msg.get("slot")
+    if not banco or slot is None:
+        return {}
+    try:
+        with db_session() as conn:
+            r = conn.execute("SELECT audio_id, mark_in, mark_out, volumen FROM cartuchera WHERE banco = ? AND slot = ?",
+                             (str(banco), int(slot))).fetchone()
+    except (sqlite3.Error, TypeError, ValueError):
+        return {}
+    if not r or r["audio_id"] != msg.get("audio_id"):
+        return {"boton": f"{banco}/{slot}"}
+    return {"boton": f"{banco}/{slot}", "mark_in": r["mark_in"], "mark_out": r["mark_out"], "volumen": r["volumen"]}
+
+
 def _player_command(cmd: str, msg: dict) -> dict:
     """
     Ejecuta un comando de reproducción. Lanza ValueError con un mensaje
@@ -2112,7 +2128,7 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
         else:
             engine.plan_a_cola(uid, int(msg.get("posicion") or 0))
     elif cmd == "fire_effect":
-        if not engine.fire_effect(_audio_id(), int(msg.get("canal_offset") or 0)):
+        if not engine.fire_effect(_audio_id(), int(msg.get("canal_offset") or 0), _opciones_boton(msg)):
             raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
     elif cmd == "set_mode":
         engine.set_mode(str(msg.get("mode") or msg.get("modo") or ""))

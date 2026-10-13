@@ -204,8 +204,8 @@ class RemoteEngine:
     def stop_playback(self):
         self._call("stop_playback")
 
-    def fire_effect(self, audio_id: int, canal_offset: int = 0) -> bool:
-        return bool(self._call("fire_effect", audio_id, canal_offset))
+    def fire_effect(self, audio_id: int, canal_offset: int = 0, opciones=None) -> bool:
+        return bool(self._call("fire_effect", audio_id, canal_offset, opciones or {}))
 
     def set_mode(self, mode: str):
         self._call("set_mode", mode)

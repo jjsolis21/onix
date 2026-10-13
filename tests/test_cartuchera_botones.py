@@ -80,3 +80,23 @@ def test_cambiar_el_audio_por_arrastre_reinicia_las_marcas(client, paleta, tmp_p
     assert client.put(f"/api/v1/cartuchera/{paleta}/3", json={"audio_id": otro}).status_code == 200
     b = _boton(client, paleta, 3)
     assert b["audio_id"] == otro and b["mark_in"] is None and b["mark_out"] is None
+
+
+def test_al_disparar_el_motor_recibe_las_marcas_y_el_volumen_del_boton(client, paleta, tmp_path):
+    from backend.api import api_server
+    aid = client.post(f"/api/v1/cartuchera/{paleta}/1/archivo",
+                      files={"file": ("e.wav", _wav_bytes(tmp_path), "audio/wav")}).json()["audio_id"]
+    client.patch(f"/api/v1/cartuchera/{paleta}/1", json={"mark_in": 0.5, "mark_out": 3.0, "volumen": 70})
+    op = api_server._opciones_boton({"audio_id": aid, "banco": paleta, "slot": 1})
+    assert op == {"boton": f"{paleta}/1", "mark_in": 0.5, "mark_out": 3.0, "volumen": 70}
+    assert api_server._opciones_boton({"audio_id": aid}) == {}                     # atajo sin botón: como antes
+    # el botón ya tiene otro audio: no se le aplican marcas ajenas
+    assert api_server._opciones_boton({"audio_id": aid + 999, "banco": paleta, "slot": 1}) == {"boton": f"{paleta}/1"}
+    visto = {}
+    real = api_server.engine.fire_effect
+    api_server.engine.fire_effect = lambda a, c=0, o=None: visto.update(a=a, c=c, o=o) or True
+    try:
+        api_server._run_player_command("fire_effect", {"audio_id": aid, "canal_offset": 0, "banco": paleta, "slot": 1})
+    finally:
+        api_server.engine.fire_effect = real
+    assert visto["a"] == aid and visto["o"]["mark_out"] == 3.0 and visto["o"]["boton"] == f"{paleta}/1"

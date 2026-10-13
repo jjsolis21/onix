@@ -930,6 +930,7 @@ class AudioEngine:
         self._norm_activa      = True
         self._norm_lufs        = -16.0
         self._duck_until       = 0.0
+        self._efx: dict[int, dict] = {}        # canal de cartuchera → {boton, audio_id, titulo, fin, hasta}
 
         # Salidas: rol -> dispositivo BASS (-1 = predeterminado del sistema)
         self._devices: dict[str, int] = {rol: -1 for rol in ROLES_SALIDA}
@@ -1065,6 +1066,7 @@ class AudioEngine:
             try:
                 self._drain_commands()
                 self._finish_crossfade()
+                self._vigilar_efectos()
                 self._restore_ducking()
                 self._check_pautas()
                 self._check_tanda_inmediata()
@@ -1327,12 +1329,16 @@ class AudioEngine:
     def stop_playback(self):
         self._cmds.put(("stop",))
 
-    def fire_effect(self, audio_id: int, canal_offset: int = 0) -> bool:
-        """Dispara un jingle o cuña en canal paralelo con auto-ducking."""
+    def fire_effect(self, audio_id: int, canal_offset: int = 0, opciones: Optional[dict] = None) -> bool:
+        """
+        Dispara un jingle o cuña en canal paralelo con auto-ducking.
+        opciones (botón de la cartuchera): {"boton": "banco/slot", "mark_in", "mark_out", "volumen" (%)}.
+        Con "boton", volver a disparar el mismo botón mientras suena lo DETIENE (como Soho).
+        """
         track = self._fetch_track(audio_id)
         if not track:
             return False
-        self._cmds.put(("effect", track, canal_offset))
+        self._cmds.put(("effect", track, canal_offset, opciones or {}))
         return True
 
     def lanzar_tanda(self, ahora: bool = False) -> int:
@@ -1433,7 +1439,7 @@ class AudioEngine:
             elif name == "stop":
                 self._do_stop("manual")
             elif name == "effect":
-                self._do_effect(cmd[1], cmd[2])
+                self._do_effect(cmd[1], cmd[2], cmd[3] if len(cmd) > 3 else {})
             elif name == "recover":
                 self._do_recover()
             elif name == "restart":
@@ -2080,9 +2086,19 @@ class AudioEngine:
 
     # ── Cartuchera ────────────────────────────────────────────────────────────
 
-    def _do_effect(self, track: dict, canal_offset: int):
+    def _do_effect(self, track: dict, canal_offset: int, op: Optional[dict] = None):
+        op    = op or {}
         path  = self._path_of(track)
         canal = CANAL_EFX_BASE + (int(canal_offset) % 6)
+        boton = op.get("boton") or None
+
+        # Mismo botón y todavía suena: se detiene (pulsar = sonar, pulsar otra vez = parar)
+        actual = self._efx.get(canal)
+        if boton and actual and actual.get("boton") == boton and self._audio.is_active(canal):
+            self._stop_effect(canal, "operador")
+            return
+        if actual:
+            self._stop_effect(canal, "reemplazado")   # otro botón comparte el canal: el anterior se corta
 
         if not path or not Path(path).exists():
             self._emit_error(track.get("id"), "archivo_no_encontrado",
@@ -2093,11 +2109,28 @@ class AudioEngine:
                              f"No se pudo abrir el efecto: {track.get('titulo', '')}")
             return
 
-        self._audio.set_volume(canal, self._master_volume * self._gain_of(track))
+        dur = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 5)
+        # Marcas del botón: fuera de rango o cruzadas se ignoran (suena el archivo completo)
+        try:
+            inicio = float(op.get("mark_in") or 0)
+            fin    = float(op.get("mark_out") or 0)
+            vol    = max(0.0, min(float(op["volumen"] if op.get("volumen") is not None else 100), 150.0)) / 100
+        except (TypeError, ValueError):
+            inicio, fin, vol = 0.0, 0.0, 1.0
+        if not (0 < inicio < dur):
+            inicio = 0.0
+        if not (inicio < fin < dur):
+            fin = 0.0                                  # 0 = hasta el final del archivo
+        if inicio > 0 and not self._audio.set_position_sec(canal, inicio):
+            inicio = 0.0
+
+        self._audio.set_volume(canal, self._master_volume * self._gain_of(track) * vol)
         self._audio.play(canal)
 
-        dur = self._audio.get_duration_sec(canal) or float(track.get("duracion") or 5)
-        self._duck_until = max(self._duck_until, time.monotonic() + dur + 0.3)
+        largo = (fin or dur) - inicio
+        self._efx[canal] = {"boton": boton, "audio_id": track["id"], "titulo": track.get("titulo", ""),
+                            "fin": fin, "hasta": time.monotonic() + largo}
+        self._duck_until = max(self._duck_until, time.monotonic() + largo + 0.3)
         if not self._effect_ducking:
             self._effect_ducking = True
             if self._current_track:
@@ -2106,8 +2139,30 @@ class AudioEngine:
         self._log_emision(track, {"origen": "manual"}, tipo="efecto")
         self.bus.emit("effect_fired", {
             "audio_id": track["id"], "titulo": track.get("titulo", ""), "canal": canal,
+            "duracion": round(largo, 2), "boton": boton,
         })
-        log.info("[Engine] Efecto: %s (canal %d)", track.get("titulo"), canal)
+        log.info("[Engine] Efecto: %s (canal %d, %.1fs)", track.get("titulo"), canal, largo)
+
+    def _stop_effect(self, canal: int, motivo: str):
+        """Corta el efecto de ese canal y devuelve la música a su volumen si ya no suena ninguno."""
+        e = self._efx.pop(canal, None)
+        self._audio.stop(canal)
+        if e is None:
+            return
+        # el ducking dura lo que el efecto más largo que siga sonando; sin ninguno, se suelta ya
+        self._duck_until = max((x["hasta"] + 0.3 for x in self._efx.values()), default=time.monotonic())
+        self.bus.emit("effect_stopped", {"audio_id": e["audio_id"], "titulo": e["titulo"], "canal": canal,
+                                         "boton": e["boton"], "motivo": motivo})
+        if motivo != "fin":
+            log.info("[Engine] Efecto detenido (%s): %s", motivo, e["titulo"])
+
+    def _vigilar_efectos(self):
+        """Corta cada efecto en su marca out y avisa cuando termina (para apagar el botón en el Studio)."""
+        for canal, e in list(self._efx.items()):
+            if not self._audio.is_active(canal):
+                self._stop_effect(canal, "fin")
+            elif e["fin"] and self._audio.get_position_sec(canal) >= e["fin"]:
+                self._stop_effect(canal, "fin")
 
     # ── Preescucha (salida interna, nunca al aire) ───────────────────────────
 
