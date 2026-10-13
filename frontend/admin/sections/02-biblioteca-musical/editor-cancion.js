@@ -32,11 +32,11 @@
   // Marcas: clave en la BD, nombre, color, segundos de "antes" al escuchar
   const MARCAS = [
     { k: 'cue_inicio',      n: 'Inicio',      c: '#4fc3f7', antes: 0 },
-    { k: 'cue_intro',       n: 'Intro',       c: '#ff6b6b', antes: 3 },
+    { k: 'cue_intro',       n: 'Intro',       c: '#ff6b6b', antes: 0 },
     { k: 'cue_inicio_coro', n: 'Inicio coro', c: '#52d273', antes: 0 },
-    { k: 'cue_final_coro',  n: 'Final coro',  c: '#52d273', antes: 3 },
-    { k: 'cue_outro',       n: 'Outro',       c: '#ffa94d', antes: 3 },
-    { k: 'cue_mezcla',      n: 'Mezcla',      c: '#4dabf7', antes: 4 },
+    { k: 'cue_final_coro',  n: 'Final coro',  c: '#52d273', antes: 0 },
+    { k: 'cue_outro',       n: 'Outro',       c: '#ffa94d', antes: 0 },
+    { k: 'cue_mezcla',      n: 'Mezcla',      c: '#4dabf7', antes: 0 },
   ];
   const TIPOS = { Musica: 'Música', Efecto: 'Jingle / ID', Sweeper: 'Sweeper', Programa: 'Programa', Tips: 'Tips' };
   const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
@@ -283,7 +283,7 @@
     if (!E.ws) return;
     const m = MARCAS.find(x => x.k === k);
     E.sel = k; pintarMarcas();
-    // En una pauta (E.antes = 0) suena justo desde la marca; en canciones, unos segundos antes para oír la transición
+    // Siempre suena justo desde la marca (sin segundos de adelanto), igual que en pautas
     const antes = E.antes != null ? E.antes : m.antes;
     E.ws.setTime(Math.max(0, (E.valores[k] || 0) - antes));
     E.ws.play();
