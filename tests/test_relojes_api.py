@@ -75,6 +75,7 @@ def test_grilla(client):
 def test_programa(client, tmp_path):
     for i in range(5):
         subir(client, tmp_path, f"PROG {i}", seconds=60)
+    client.post("/api/v1/player/set_mode", json={"mode": "automatico"})   # en manual no se planifica
     client.post("/api/v1/programa/regenerar")
     for _ in range(40):
         prog = client.get("/api/v1/programa").json()

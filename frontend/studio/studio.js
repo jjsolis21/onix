@@ -185,6 +185,7 @@ const Estado = (() => {
     pintarSiguiente();
   }
 
+  let sinSiguiente = false;        // manual y sin nada en cola: al terminar queda aire libre
   function pintarSiguiente() {
     if (!st) return;
     const q = programa?.cola?.[0];
@@ -195,6 +196,8 @@ const Estado = (() => {
     else if (it?.tipo === "tanda") { tipo = "Tanda"; titulo = `TANDA :${String(it.minuto).padStart(2, "0")}`; artista = `${it.cunas} cuña(s) · ${fmt(it.duracion)}`; }
     else if (it) { tipo = it.tipo_audio; titulo = it.titulo; artista = it.artista; }
     else if (st.modo === "automatico") { titulo = "Rotación automática"; }
+    sinSiguiente = st.modo === "manual" && !q && !it;
+    if (sinSiguiente) { titulo = "Nada en cola"; artista = "Al terminar queda aire libre"; }
     tapa($("nextTapa"), q?.id ?? (it && it.tipo !== "tanda" ? it.audio_id : null));
     $("nextTipo").textContent = TIPO_NOMBRE[tipo] ?? tipo;
     $("nextTipo").dataset.tipo = tipo;
@@ -202,7 +205,7 @@ const Estado = (() => {
     $("nextArtista").textContent = artista;
     const entra = $("nextEntra").parentElement;
     entra.classList.toggle("detenido", !!st.detener_al_terminar || !auto);
-    $("nextEntraLbl").textContent = st.detener_al_terminar ? "NO ENTRA" : (auto ? "ENTRA EN" : "MANUAL");
+    $("nextEntraLbl").textContent = st.detener_al_terminar ? "NO ENTRA" : (sinSiguiente ? "TERMINA EN" : (auto ? "ENTRA EN" : "MANUAL"));
   }
 
   /** Cuentas regresivas: 4 veces por segundo, sin esperar al servidor */
@@ -249,7 +252,10 @@ const Estado = (() => {
       // Cuándo entra lo siguiente: en el punto de mezcla
       const mezcla = ct?.mezcla ?? total;
       $("nextEntra").textContent = st.detener_al_terminar ? "—"
-        : (ct && (st.modo === "automatico" || programa?.cola?.length) ? fmt(Math.max(0, mezcla - pos)) : "—");
+        : (ct && (st.modo === "automatico" || programa?.cola?.length) ? fmt(Math.max(0, mezcla - pos))
+          : (ct && sinSiguiente ? fmt(Math.max(0, total - pos)) : "—"));
+      // Manual sin nada en cola: avisa en rojo que se acerca el aire libre
+      $("nextEntra").parentElement.classList.toggle("alerta", !!(ct && sinSiguiente && !st.detener_al_terminar && total - pos <= 20));
     }
     Derecha.cuentaTanda();
     setTimeout(animar, 250);
@@ -408,7 +414,9 @@ const Decks = (() => {
     const hms = t => `${Math.floor(t / 3600)}:${String(Math.floor(t % 3600 / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
     $("decksFin").textContent = (prog?.fin ? `hasta ${prog.fin.slice(0, 5)}` : "") + (total ? ` · ${hms(total)}` : "");
     if (!cola.length && !items.length) {
-      lista.innerHTML = `<div class="vacio">Nada programado.<br>Arrastra canciones aquí desde la biblioteca.</div>`;
+      lista.innerHTML = Estado.st?.modo === "manual"
+        ? `<div class="vacio"><b>MODO MANUAL</b> — la automatización se borró.<br>Arma tu programa: doble clic o arrastra canciones desde la biblioteca.</div>`
+        : `<div class="vacio">Nada programado.<br>Arrastra canciones aquí desde la biblioteca.</div>`;
       return;
     }
     let html = "";
@@ -582,10 +590,10 @@ const Decks = (() => {
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
 const Biblioteca = (() => {
-  // Jingles, sweepers y tips comparten pestaña ("IMAGEN"): se separan con el filtro Tipo
+  // Jingles, sweepers y tips comparten pestaña ("SEPARADORES"): se separan con el filtro Tipo
   const IMAGEN = ["Efecto", "Sweeper", "Tips"];
   const NOMBRE_TIPO = { Efecto: "JINGLE", Sweeper: "SWEEPER", Tips: "TIP" };
-  const TABS = [["Musica", "MÚSICA"], ["Imagen", "IMAGEN"], ["Cuña", "CUÑAS"],
+  const TABS = [["Musica", "MÚSICA"], ["Imagen", "SEPARADORES"], ["Cuña", "CUÑAS"],
                 ["Programa", "PROGRAMAS"], ["Playlist", "PLAYLISTS"]];
   const enTab = (a, t) => t === "Imagen" ? IMAGEN.includes(a.tipo_audio) : a.tipo_audio === t;
   const MAX_FILAS = 300;
@@ -832,6 +840,18 @@ const Biblioteca = (() => {
 /* ─────────────────────────── derecha ─────────────────────────── */
 const Derecha = (() => {
   let proxima = null, bancos = {}, slots = {}, nombres = {}, banco = "jingles";
+  // Qué se ve en el panel de la derecha: "hist" (historial) o la clave de una paleta
+  let vista = "hist";
+  try { vista = localStorage.getItem("onix_vista_der") || "hist"; } catch { /* sin almacenamiento */ }
+  function pintarVista() {
+    const claves = Object.keys(bancos);
+    if (vista !== "hist") banco = vista;
+    $("derTabs").innerHTML = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
+      + claves.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
+    $("historial").hidden = vista !== "hist";
+    $("cartuchera").hidden = vista === "hist";
+    if (vista !== "hist") pintarCart();
+  }
 
   function tanda(prog, st) {
     const it = (prog?.items ?? []).find(i => i.tipo === "tanda");
@@ -896,9 +916,8 @@ const Derecha = (() => {
       const d = await api("/api/v1/cartuchera");
       bancos = d.bancos ?? {}; slots = d.slots ?? {}; nombres = d.nombres ?? {};
       if (!(banco in bancos)) banco = Object.keys(bancos)[0];
-      $("cartTabs").innerHTML = Object.keys(bancos).map((b, i) =>
-        `<button class="cart-tab ${b === banco ? "active" : ""}" data-banco="${b}" title="${esc(nombres[b] || b)}">${i + 1} ${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
-      pintarCart();
+      if (vista !== "hist" && !(vista in bancos)) vista = "hist";
+      pintarVista();
     } catch { /* aviso de conexión */ }
   }
   function pintarCart() {
@@ -907,17 +926,43 @@ const Derecha = (() => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
       const num = i + 1;
       return s
-        ? `<button class="cart-btn cart-${s.tipo_audio === "Cuña" ? "cuna" : (i % 2 ? "b" : "a")}" data-audio="${s.audio_id}" data-slot="${num}" title="${esc(s.titulo)}">
+        ? `<button class="cart-btn cart-${s.tipo_audio === "Cuña" ? "cuna" : (i % 2 ? "b" : "a")}" data-audio="${s.audio_id}" data-slot="${num}" data-n="${num}" title="${esc(s.titulo)}">
              <span class="cart-n">${esc(s.etiqueta || s.titulo)}</span><small><b>${num}</b>${fmt(s.duracion)}</small></button>`
-        : `<button class="cart-btn vacio-btn" title="Vacío — se asigna en Admin → 04 Cartuchera"><span class="cart-n">·</span><small><b>${num}</b></small></button>`;
+        : `<button class="cart-btn vacio-btn" data-n="${num}" title="Vacío — arrastra aquí una canción de la biblioteca"><span class="cart-n">·</span><small><b>${num}</b></small></button>`;
     }).join("");
   }
-  $("cartTabs").addEventListener("click", e => {
-    const t = e.target.closest(".cart-tab");
+  $("derTabs").addEventListener("click", e => {
+    const t = e.target.closest(".der-tab");
     if (!t) return;
-    banco = t.dataset.banco;
-    document.querySelectorAll(".cart-tab").forEach(x => x.classList.toggle("active", x === t));
-    pintarCart();
+    vista = t.dataset.vista;
+    try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
+    pintarVista();
+  });
+  // El operador carga sus botones: arrastra una canción de la biblioteca sobre un botón
+  const botonDe = e => e.target.closest(".cart-btn[data-slot], .cart-btn.vacio-btn");
+  $("cartuchera").addEventListener("dragover", e => {
+    if (botonDe(e) && e.dataTransfer.types.includes("onix/audio")) { e.preventDefault(); botonDe(e).classList.add("soltar"); }
+  });
+  $("cartuchera").addEventListener("dragleave", e => botonDe(e)?.classList.remove("soltar"));
+  $("cartuchera").addEventListener("drop", async e => {
+    const b = botonDe(e), id = +e.dataTransfer.getData("onix/audio");
+    if (!b || !id) return;
+    e.preventDefault(); b.classList.remove("soltar");
+    const slot = +b.dataset.n;
+    if (b.dataset.audio && !confirm(`El botón ${slot} ya tiene «${b.title}». ¿Reemplazarlo?`)) return;
+    try {
+      await api(`/api/v1/cartuchera/${banco}/${slot}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio_id: id }) });
+      toast(`Botón ${slot} cargado`, "info", 1500);
+    } catch (err) { toast(`No se pudo cargar el botón: ${err.message}`, "error", 3000); }
+  });
+  // Clic derecho sobre un botón cargado = vaciarlo
+  $("cartuchera").addEventListener("contextmenu", async e => {
+    const b = e.target.closest(".cart-btn[data-audio]");
+    if (!b) return;
+    e.preventDefault();
+    if (!confirm(`¿Vaciar el botón ${b.dataset.slot} («${b.title}»)?`)) return;
+    try { await api(`/api/v1/cartuchera/${banco}/${b.dataset.slot}`, { method: "DELETE" }); }
+    catch (err) { toast(`No se pudo vaciar: ${err.message}`, "error", 3000); }
   });
   function disparar(b) {
     WS.send({ cmd: "fire_effect", audio_id: +b.dataset.audio, canal_offset: +b.dataset.slot - 1 });
@@ -930,6 +975,7 @@ const Derecha = (() => {
   });
   /** Atajo 1–8: botón n del banco que se está viendo */
   function dispararSlot(n) {
+    if (vista === "hist") { toast("Abre una paleta para usar los números 1–9", "info", 2000); return; }
     const b = $("cartuchera").querySelector(`.cart-btn[data-slot="${n}"]`);
     if (b) disparar(b);
     else toast(`El botón ${n} de la cartuchera está vacío`, "info", 2000);

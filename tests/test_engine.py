@@ -350,16 +350,23 @@ def test_automatico_consume_el_programa_en_orden(engine, media):
     assert engine.programa()["items"][0]["uid"] != plan[0]["uid"]
 
 
-def test_manual_muestra_el_programa_pero_no_avanza_solo(engine, media):
-    engine._mode = "manual"
+def test_pasar_a_manual_borra_lo_cargado_por_la_automatizacion(engine, media):
     for i in range(4):
         add_audio(engine, media, f"TEMA {i}", seconds=60.0, artista=f"ART {i}")
+    pedido = add_audio(engine, media, "PEDIDO", seconds=60.0)
     engine._actualizar_programa(forzar=True)
     assert engine.programa()["items"]
-    assert engine._advance() is False                    # fin de pista: no toma del plan
-    engine.play_next()                                   # el operador pide "siguiente"
-    engine._drain_commands()
-    assert engine._current_item["origen"] == "auto"
+    engine.queue_track(pedido)                           # lo del operador se queda
+    engine.set_mode("manual")
+    assert engine.programa()["items"] == []
+    assert [q["id"] for q in engine.programa()["cola"]] == [pedido]
+    engine._actualizar_programa(forzar=True)             # en manual no se vuelve a planificar
+    assert engine.programa()["items"] == []
+    assert engine._advance() is True and engine._current_track["id"] == pedido   # la cola sí suena
+    assert engine._advance() is False                    # nada más: aire libre, no toma del plan
+    engine.set_mode("automatico")                        # al volver, plan nuevo desde ahora
+    engine._actualizar_programa(forzar=True)
+    assert engine.programa()["items"]
 
 
 def test_cola_del_operador_va_antes_del_programa(engine, media):

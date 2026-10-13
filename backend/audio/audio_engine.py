@@ -1296,9 +1296,16 @@ class AudioEngine:
     def set_mode(self, mode: str):
         if mode not in ("manual", "automatico"):
             raise ValueError(f"Modo invalido: {mode!r}")
-        self._mode = mode
+        anterior, self._mode = self._mode, mode
         self._idle_retry_at = 0.0
         self._retenido = False
+        if mode == "manual" and anterior != "manual":
+            # Como Jazler: al pasar a manual lo cargado por la automatización se borra
+            # (la cola del operador se queda); el operador arma su propio programa.
+            self._vaciar_programa()
+            self._emit_programa()
+        elif mode == "automatico":
+            self._replanificar = True          # al volver, el plan se rehace desde ahora
         self._update_cfg_db("modo", mode)
         self.bus.emit("mode_changed", {"modo": mode, "mode": mode})
 
@@ -1451,6 +1458,8 @@ class AudioEngine:
 
     def _actualizar_programa(self, forzar: bool = False):
         """Completa el programa hasta `horas_planificadas` desde ahora."""
+        if self._mode == "manual":
+            return                             # en manual no se planifica: lo arma el operador
         if not forzar and not self._replanificar and \
                 time.monotonic() - self._last_plan_check < self.PLAN_INTERVAL:
             return

@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import time
@@ -2041,26 +2042,31 @@ def player_command(cmd: str, body: Optional[PlayerCommand] = None):
 # SECCIÓN: CARTUCHERA — Botones de disparo del Studio
 # ===========================================================================
 
-# Páginas de la cartuchera (como "Efectos" de Jazler): banco → nº de botones.
-# jingles y publicidad conservan sus asignaciones de antes.
-BANCOS_CARTUCHERA = {"jingles": 15, "efectos": 15, "voces": 15, "publicidad": 15, "especiales": 15}
-NOMBRES_CARTUCHERA = {"jingles": "Jingles", "efectos": "Efectos", "voces": "Voces",
-                      "publicidad": "Publicidad", "especiales": "Especiales"}
-
-
+# Paletas de la cartuchera (como las de Jazler): cada una con nombre y nº de botones propios.
+# Se administran en Admin › Cartuchera; el operador carga sus botones desde el Studio.
 class CartucheraSlotIn(BaseModel):
     audio_id: int
     etiqueta: str = Field("", max_length=40)
 
 
-def _check_slot(banco: str, slot: int) -> None:
-    if banco not in BANCOS_CARTUCHERA or not (1 <= slot <= BANCOS_CARTUCHERA[banco]):
+class PaletaIn(BaseModel):
+    nombre: Optional[str] = Field(None, min_length=1, max_length=30)
+    slots: Optional[int] = Field(None, ge=3, le=60)
+
+
+def _paletas(conn) -> list[dict]:
+    return [dict(r) for r in conn.execute("SELECT clave, nombre, slots FROM paletas ORDER BY orden, rowid")]
+
+
+def _check_slot(conn, banco: str, slot: int) -> None:
+    r = conn.execute("SELECT slots FROM paletas WHERE clave = ?", (banco,)).fetchone()
+    if not r or not (1 <= slot <= r["slots"]):
         raise HTTPException(status_code=404, detail=f"Botón inexistente: {banco}/{slot}")
 
 
-@app.get("/api/v1/cartuchera", tags=["Cartuchera"], summary="Botones asignados")
+@app.get("/api/v1/cartuchera", tags=["Cartuchera"], summary="Paletas y botones asignados")
 def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
-    """Devuelve, por banco, los botones que tienen audio asignado."""
+    """Devuelve las paletas (en orden) y, por paleta, los botones que tienen audio asignado."""
     rows = conn.execute(
         """
         SELECT c.banco, c.slot, c.audio_id, c.etiqueta,
@@ -2070,10 +2076,58 @@ def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
         ORDER BY c.banco, c.slot
         """
     ).fetchall()
-    data = {banco: [] for banco in BANCOS_CARTUCHERA}
+    paletas = _paletas(conn)
+    data = {p["clave"]: [] for p in paletas}
     for r in rows:
-        data.setdefault(r["banco"], []).append(dict(r))
-    return {"bancos": BANCOS_CARTUCHERA, "nombres": NOMBRES_CARTUCHERA, "slots": data}
+        if r["banco"] in data:
+            data[r["banco"]].append(dict(r))
+    return {"paletas": paletas, "bancos": {p["clave"]: p["slots"] for p in paletas},
+            "nombres": {p["clave"]: p["nombre"] for p in paletas}, "slots": data}
+
+
+@app.post("/api/v1/paletas", tags=["Cartuchera"], status_code=201, summary="Crear paleta")
+async def crear_paleta(body: PaletaIn, conn: sqlite3.Connection = Depends(get_db)):
+    nombre = (body.nombre or "").strip()
+    if not nombre:
+        raise HTTPException(status_code=422, detail="Escribe un nombre para la paleta")
+    if conn.execute("SELECT 1 FROM paletas WHERE lower(nombre) = lower(?)", (nombre,)).fetchone():
+        raise HTTPException(status_code=409, detail=f"Ya existe una paleta llamada «{nombre}»")
+    clave = "p" + secrets.token_hex(3)
+    orden = conn.execute("SELECT COALESCE(MAX(orden), -1) + 1 FROM paletas").fetchone()[0]
+    conn.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, ?, ?)",
+                 (clave, nombre, body.slots or 15, orden))
+    conn.commit()
+    await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": clave}))
+    return {"clave": clave, "nombre": nombre, "slots": body.slots or 15}
+
+
+@app.put("/api/v1/paletas/{clave}", tags=["Cartuchera"], summary="Renombrar o cambiar el nº de botones")
+async def editar_paleta(clave: str, body: PaletaIn, conn: sqlite3.Connection = Depends(get_db)):
+    p = conn.execute("SELECT clave, nombre, slots FROM paletas WHERE clave = ?", (clave,)).fetchone()
+    if not p:
+        raise HTTPException(status_code=404, detail="Paleta no encontrada")
+    nombre = (body.nombre or p["nombre"]).strip()
+    if conn.execute("SELECT 1 FROM paletas WHERE lower(nombre) = lower(?) AND clave != ?", (nombre, clave)).fetchone():
+        raise HTTPException(status_code=409, detail=f"Ya existe una paleta llamada «{nombre}»")
+    slots = body.slots or p["slots"]
+    conn.execute("UPDATE paletas SET nombre = ?, slots = ? WHERE clave = ?", (nombre, slots, clave))
+    conn.execute("DELETE FROM cartuchera WHERE banco = ? AND slot > ?", (clave, slots))   # al achicar
+    conn.commit()
+    await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": clave}))
+    return {"clave": clave, "nombre": nombre, "slots": slots}
+
+
+@app.delete("/api/v1/paletas/{clave}", tags=["Cartuchera"], summary="Borrar paleta y sus botones")
+async def borrar_paleta(clave: str, conn: sqlite3.Connection = Depends(get_db)):
+    if not conn.execute("SELECT 1 FROM paletas WHERE clave = ?", (clave,)).fetchone():
+        raise HTTPException(status_code=404, detail="Paleta no encontrada")
+    if conn.execute("SELECT COUNT(*) FROM paletas").fetchone()[0] <= 1:
+        raise HTTPException(status_code=409, detail="Debe quedar al menos una paleta")
+    conn.execute("DELETE FROM cartuchera WHERE banco = ?", (clave,))
+    conn.execute("DELETE FROM paletas WHERE clave = ?", (clave,))
+    conn.commit()
+    await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": clave}))
+    return {"ok": True}
 
 
 @app.put("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Asignar audio a un botón")
@@ -2081,7 +2135,7 @@ async def set_cartuchera_slot(
     banco: str, slot: int, body: CartucheraSlotIn,
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    _check_slot(banco, slot)
+    _check_slot(conn, banco, slot)
     audio = conn.execute(
         "SELECT id, titulo FROM audios WHERE id = ? AND activo = 1", (body.audio_id,)
     ).fetchone()
@@ -2103,7 +2157,7 @@ async def set_cartuchera_slot(
 
 @app.delete("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Vaciar un botón")
 async def clear_cartuchera_slot(banco: str, slot: int, conn: sqlite3.Connection = Depends(get_db)):
-    _check_slot(banco, slot)
+    _check_slot(conn, banco, slot)
     conn.execute("DELETE FROM cartuchera WHERE banco = ? AND slot = ?", (banco, slot))
     conn.commit()
     await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": banco, "slot": slot}))

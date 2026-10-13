@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=15" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=16" />
 </head>
 <body>
 
@@ -172,14 +172,12 @@
         <div class="tanda-det" id="tandaDet"></div>
       </div>
 
-      <div class="panel-head"><span>HISTORIAL</span></div>
-      <div class="historial" id="historial"></div>
-
-      <div class="panel-head">
-        <span>EFECTOS</span>
-        <div class="cart-tabs" id="cartTabs"></div>
+      <!-- HISTORIAL y las paletas de la cartuchera comparten el mismo espacio -->
+      <div class="der-tabs" id="derTabs" role="tablist"></div>
+      <div class="der-cuerpo">
+        <div class="historial" id="historial"></div>
+        <div class="cartuchera" id="cartuchera" hidden></div>
       </div>
-      <div class="cartuchera" id="cartuchera"></div>
     </section>
   </main>
 
@@ -222,6 +220,6 @@
   </div>
 
   <div class="toasts" id="toasts"></div>
-  <script src="/static/studio/studio.js?v=16"></script>
+  <script src="/static/studio/studio.js?v=17"></script>
 </body>
 </html>

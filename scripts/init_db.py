@@ -723,6 +723,27 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE playlist_items ADD COLUMN nota TEXT NOT NULL DEFAULT ''")
     logger.info("  → playlist_items.nota: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 32 — Paletas de la cartuchera (Jazler: "paletas")
+    #   Antes eran 5 bancos fijos; ahora son paletas con nombre propio que
+    #   se crean, renombran y borran. Las 5 de siempre se conservan con sus
+    #   botones (cartuchera.banco guarda la clave de la paleta).
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS paletas (
+            clave      TEXT    PRIMARY KEY,
+            nombre     TEXT    NOT NULL,
+            slots      INTEGER NOT NULL DEFAULT 15,
+            orden      INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    if not cursor.execute("SELECT 1 FROM paletas LIMIT 1").fetchone():
+        for n, (clave, nombre) in enumerate([("jingles", "Jingles"), ("efectos", "Efectos"), ("voces", "Voces"),
+                                              ("publicidad", "Publicidad"), ("especiales", "Especiales")]):
+            cursor.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, 15, ?)", (clave, nombre, n))
+    logger.info("  → paletas de la cartuchera: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 
