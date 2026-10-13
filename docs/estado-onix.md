@@ -21,7 +21,7 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   terminar la voz). `backend/api/voicetrack.py`, `frontend/studio/voicetracker.js`, `audio_engine.py` (_cama).
 - Publicidad/Biblioteca: las marcas suenan justo desde donde están; cerrar la ventana corta el audio.
 
-- Locutor IA (paso 1-2, sin pantalla todavía): `backend/locutor/` (guion, validador «cero datos inventados»,
+- Locutor IA (pasos 1-3): `backend/locutor/` (guion, validador «cero datos inventados»,
   plantillas de emergencia, noticias RSS, moderación, `almacen.py`, `servicio.py`) + `backend/api/locutor.py`.
   Hilo de fondo que, si está encendido (`POST /api/v1/locutor/activar`), llena huecos del programa con locuciones
   `Locucion` generadas ANTES de salir al aire. Aprobación `auto`/`manual` por tipo (por defecto manual: noticia,
@@ -37,7 +37,7 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 - El micrófono solo funciona con el Studio abierto como http://localhost (por IP de red local el navegador lo bloquea).
 
 ## Pendiente (en este orden sugerido)
-1. Locutor IA (paso 3 pendiente: pantallas Studio › 🎙 VOZ y Admin › Locutor IA; canal de entrada de mensajes). Integrar el panel que hoy funciona en AzuraCast. Su código está en
+1. Locutor IA: pantallas hechas (Studio › 🎙 VOZ: por aprobar/listas/probar; Admin › 12 Locutor IA: encender, auto/manual, turnos, patrocinios, fuentes, saludos). Falta: probarlo en el aire con claves reales y el canal de entrada de mensajes de oyentes. Su código está en
    `C:\Users\REDESSOCIALES\Desktop\SOLIS FM DIGITAL\SOLISFM\solis fm digital\LOCUTOR IA` (leerlo, sin copiar claves).
    Regla: la voz se genera antes de salir al aire, nunca en el momento; mensajes de oyentes con aprobación previa.
 2. Cartuchera: botón «Editar» como Soho (color y título; marca in/out y volumen respetados al disparar = motor).

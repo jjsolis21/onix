@@ -1,0 +1,325 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 12 — Locutor IA
+     Enciende o apaga al locutor, decide qué sale solo y qué pasa por aprobación, y configura turnos,
+     patrocinios, fuentes de noticias y mensajes de oyentes.
+     La voz se genera ANTES de salir al aire; si algo falla, esa intervención se descarta y suena música.
+     API: /api/v1/locutor/*   (las claves de IA y de voz están en la sección 11)
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .lcz-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 12px; overflow-y: auto; }
+  .lcz-root h2 { margin: 0; font-size: 1.35rem; color: var(--text-hi); }
+  .lcz-root p.sub { margin: 2px 0 0; color: var(--text-lo); font-size: .82rem; }
+  .lcz-card { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; }
+  .lcz-barra { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--choc-4); flex-wrap: wrap; }
+  .lcz-barra b { color: var(--gold-1); letter-spacing: .08em; text-transform: uppercase; font-size: .74rem; }
+  .lcz-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 7px 11px; font: 600 .8rem inherit; cursor: pointer; }
+  .lcz-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .lcz-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .lcz-btn--pri { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .lcz-btn--pri:hover:not(:disabled) { color: #000; filter: brightness(1.1); }
+  .lcz-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .lcz-der { margin-left: auto; }
+  .lcz-cuerpo { padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; }
+  .lcz-cuerpo label { display: flex; flex-direction: column; gap: 4px; font-size: .72rem; color: var(--text-lo); letter-spacing: .06em; text-transform: uppercase; }
+  .lcz-cuerpo input, .lcz-cuerpo select, .lcz-cuerpo textarea, .lcz-form input, .lcz-form select, .lcz-form textarea {
+    background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 8px 9px;
+    font: inherit; font-size: .86rem; text-transform: none; letter-spacing: 0; color-scheme: dark; }
+  .lcz-ancho { grid-column: 1 / -1; }
+  .lcz-fila { display: flex; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--choc-3); font-size: .86rem; }
+  .lcz-fila:last-child { border-bottom: 0; }
+  .lcz-fila.apagada { opacity: .5; }
+  .lcz-fila .t { flex: 1; min-width: 0; }
+  .lcz-fila small { display: block; color: var(--text-lo); font-size: .72rem; }
+  .lcz-vacio { padding: 22px; text-align: center; color: var(--text-lo); font-size: .86rem; }
+  .lcz-form { padding: 12px 14px; display: none; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; border-bottom: 1px solid var(--choc-4); }
+  .lcz-form.abierto { display: grid; }
+  .lcz-form label { display: flex; flex-direction: column; gap: 4px; font-size: .72rem; color: var(--text-lo); letter-spacing: .06em; text-transform: uppercase; }
+  .lcz-form .pie { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .lcz-msg { font-size: .8rem; } .lcz-msg.ok { color: #52d273; } .lcz-msg.err { color: var(--red-live); }
+  .lcz-estado { display: inline-block; padding: 2px 9px; border-radius: 10px; font-weight: 700; font-size: .74rem; letter-spacing: .08em; }
+  .lcz-estado.on { background: #1d4d2b; color: #7ee59a; } .lcz-estado.off { background: var(--choc-4); color: var(--text-lo); }
+  .lcz-num { display: inline-flex; flex-direction: column; align-items: center; min-width: 74px; padding: 4px 8px; background: var(--choc-0); border-radius: 6px; }
+  .lcz-num b { font-size: 1.2rem; color: var(--gold-1); } .lcz-num span { font-size: .66rem; color: var(--text-lo); text-transform: uppercase; letter-spacing: .06em; }
+  .lcz-badge { font-size: .68rem; padding: 1px 7px; border-radius: 8px; background: var(--choc-4); color: var(--text-mid); text-transform: uppercase; letter-spacing: .06em; }
+  .lcz-badge.borrador { background: #5a4a14; color: #ffd966; } .lcz-badge.lista, .lcz-badge.al_aire { background: #1d4d2b; color: #7ee59a; }
+  .lcz-badge.fallo, .lcz-badge.descartada { background: #5a1d1d; color: #ff9c9c; }
+</style>
+
+<div class="lcz-root">
+  <div>
+    <h2>Locutor IA</h2>
+    <p class="sub">Habla entre canciones con voz de IA. Lo que dice se escribe y se locuta antes de salir al aire; lo que pide aprobación espera a que alguien la dé en el Studio (pestaña VOZ).</p>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra">
+      <b>Estado</b><span class="lcz-estado off" id="lczEstado">APAGADO</span>
+      <span class="lcz-msg" id="lczMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczToggle">Encender</button>
+    </div>
+    <div class="lcz-cuerpo" id="lczNumeros" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    <div class="lcz-cuerpo" style="padding-top:0"><small id="lczCiclo" style="color:var(--text-lo)"></small></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Qué sale solo y qué pide aprobación</b>
+      <span class="lcz-msg" id="lczAprMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczAprGuardar">Guardar</button></div>
+    <div class="lcz-cuerpo" id="lczApr"></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Locutor base y ritmo</b>
+      <span class="lcz-msg" id="lczCfgMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczCfgGuardar">Guardar</button></div>
+    <div class="lcz-cuerpo">
+      <label>Nombre <input id="lczNombre" maxlength="60"></label>
+      <label>Voz (fish:ID, o nombre de voz de Gemini/OpenAI) <input id="lczVoz" maxlength="80" placeholder="fish:9ea79fe3…"></label>
+      <label>Habla cada N canciones <input id="lczCada" type="number" min="1" max="12"></label>
+      <label>Noticias cada (min) <input id="lczNotMin" type="number" min="5" max="720"></label>
+      <label>Franja desde <input id="lczDesde" type="time"></label>
+      <label>Franja hasta <input id="lczHasta" type="time"></label>
+      <label class="lcz-ancho">Personalidad <textarea id="lczPers" rows="2" maxlength="600"></textarea></label>
+      <label class="lcz-ancho">Frases que nunca dice (separadas por coma) <input id="lczProh" maxlength="400"></label>
+    </div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Turnos (quién está al aire)</b><span class="lcz-msg" id="lczTurMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczTurNuevo">+ Agregar turno</button></div>
+    <form class="lcz-form" id="lczTurForm" autocomplete="off">
+      <label>Desde <input id="lczTDesde" type="time" required></label>
+      <label>Hasta <input id="lczTHasta" type="time" required></label>
+      <label>Nombre <input id="lczTNombre" maxlength="60" required></label>
+      <label>Voz <input id="lczTVoz" maxlength="80" placeholder="fish:ID" required></label>
+      <label style="grid-column:1/-1">Personalidad <input id="lczTPers" maxlength="600"></label>
+      <div class="pie"><button class="lcz-btn lcz-btn--pri">Guardar turno</button>
+        <button type="button" class="lcz-btn" id="lczTurCancelar">Cancelar</button></div>
+    </form>
+    <div id="lczTurnos"></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Patrocinios (publicidad leída por el locutor)</b><span class="lcz-msg" id="lczPatMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczPatNuevo">+ Agregar patrocinio</button></div>
+    <form class="lcz-form" id="lczPatForm" autocomplete="off">
+      <label>Anunciante (se nombra en la apertura) <input id="lczPNombre" maxlength="80"></label>
+      <label>Desde <input id="lczPDesde" type="date" required></label>
+      <label>Hasta <input id="lczPHasta" type="date" required></label>
+      <label>Veces por día <input id="lczPFrec" type="number" min="1" max="48" value="4"></label>
+      <label style="grid-column:1/-1">Texto (se lee completo y fiel) <textarea id="lczPTexto" rows="3" maxlength="1500" required></textarea></label>
+      <div class="pie"><button class="lcz-btn lcz-btn--pri">Guardar patrocinio</button>
+        <button type="button" class="lcz-btn" id="lczPatCancelar">Cancelar</button></div>
+    </form>
+    <div id="lczPatrocinios"></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Fuentes de noticias (RSS)</b><span class="lcz-msg" id="lczFueMsg"></span>
+      <button class="lcz-btn lcz-der" id="lczFueRevisar">Revisar ahora</button>
+      <button class="lcz-btn lcz-btn--pri" id="lczFueNueva">+ Agregar fuente</button></div>
+    <form class="lcz-form" id="lczFueForm" autocomplete="off">
+      <label>Nombre (se dice «según …») <input id="lczFNombre" maxlength="80" required></label>
+      <label>Dirección del RSS <input id="lczFUrl" maxlength="500" placeholder="https://…/feed/" required></label>
+      <label>Frase de cierre (opcional) <input id="lczFCierre" maxlength="200"></label>
+      <div class="pie"><button class="lcz-btn lcz-btn--pri">Guardar fuente</button>
+        <button type="button" class="lcz-btn" id="lczFueCancelar">Cancelar</button></div>
+    </form>
+    <div id="lczFuentes"></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Saludos de oyentes</b><span class="lcz-msg" id="lczMenMsg"></span>
+      <button class="lcz-btn lcz-btn--pri lcz-der" id="lczMenNuevo">+ Cargar saludo</button></div>
+    <form class="lcz-form" id="lczMenForm" autocomplete="off">
+      <label>De <input id="lczMDe" maxlength="60" required></label>
+      <label>Para <input id="lczMPara" maxlength="60"></label>
+      <label>Desde (lugar) <input id="lczMLugar" maxlength="60"></label>
+      <label style="grid-column:1/-1">Mensaje <textarea id="lczMTexto" rows="2" maxlength="500"></textarea></label>
+      <div class="pie"><button class="lcz-btn lcz-btn--pri">Cargar</button>
+        <button type="button" class="lcz-btn" id="lczMenCancelar">Cancelar</button>
+        <small style="color:var(--text-lo)">Los saludos todavía no llegan solos desde la web: se cargan aquí. Los enlaces, teléfonos y groserías se rechazan.</small></div>
+    </form>
+    <div id="lczMensajes"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const json = (m, b) => ({ method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+  const TIPOS = { corta: "Presentación corta de canciones", contenido: "Presentación con dato verificado", hora_clima: "Hora y clima",
+    identificacion: "Identificación de la emisora", apertura: "Apertura del bloque", patrocinio: "Patrocinio / publicidad",
+    noticia: "Noticias", complacencia: "Saludos de oyentes" };
+  let activo = false;
+
+  async function api(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+    return d;
+  }
+  function msg(id, texto, ok = true) {
+    const el = $(id); el.textContent = texto; el.className = `lcz-msg ${ok ? "ok" : "err"}`;
+    clearTimeout(msg["t" + id]); msg["t" + id] = setTimeout(() => { el.textContent = ""; }, 6000);
+  }
+  const abrir = (form, on) => $(form).classList.toggle("abierto", on);
+  const lista = (v, vacio) => v.length ? v : `<div class="lcz-vacio">${vacio}</div>`;
+
+  async function estado() {
+    const d = await api("/api/v1/locutor/estado");
+    activo = d.activo;
+    $("lczEstado").textContent = activo ? "ENCENDIDO" : "APAGADO";
+    $("lczEstado").className = `lcz-estado ${activo ? "on" : "off"}`;
+    $("lczToggle").textContent = activo ? "Apagar" : "Encender";
+    const c = d.ultimas_24h || {};
+    $("lczNumeros").innerHTML = [["por_aprobar", "Por aprobar", d.por_aprobar], ["lista", "Listas", c.lista || 0],
+      ["al_aire", "Ya sonaron (24 h)", c.al_aire || 0], ["descartada", "Descartadas", c.descartada || 0],
+      ["fallo", "Fallos", c.fallo || 0], ["claves", "Claves de IA", d.claves_ia]]
+      .map(([, t, n]) => `<span class="lcz-num"><b>${n}</b><span>${t}</span></span>`).join("");
+    const u = d.ultimo_ciclo;
+    $("lczCiclo").textContent = !u ? "El servicio aún no ha hecho su primera pasada." :
+      u.error ? `Último ciclo con error: ${u.error}` :
+      `Último ciclo: ${new Date(u.ts * 1000).toLocaleTimeString()}${u.resumen && !u.resumen.activo ? " · apagado" : ""}`;
+    if (!d.claves_ia) msg("lczMsg", "Sin claves de IA: configúralas en la sección 11", false);
+  }
+
+  async function config() {
+    const d = await api("/api/v1/locutor/config");
+    $("lczApr").innerHTML = d.tipos.map(t => `
+      <label>${esc(TIPOS[t] || t)}
+        <select data-tipo="${t}"><option value="auto" ${d.aprobacion[t] === "auto" ? "selected" : ""}>Sale solo</option>
+          <option value="manual" ${d.aprobacion[t] === "manual" ? "selected" : ""}>Pide aprobación</option></select></label>`).join("");
+    const p = d.persona, r = d.reglas;
+    $("lczNombre").value = p.nombre || ""; $("lczVoz").value = p.voz || ""; $("lczPers").value = p.personalidad || "";
+    $("lczProh").value = (p.prohibidos || []).join(", ");
+    $("lczCada").value = r.cada_canciones; $("lczNotMin").value = r.noticias_cada_min;
+    const f = (r.franjas || [])[0];
+    $("lczDesde").value = f ? f[0] : ""; $("lczHasta").value = f ? f[1] : "";
+  }
+
+  async function turnos() {
+    const t = await api("/api/v1/locutor/turnos");
+    $("lczTurnos").innerHTML = lista(t.map(x => `
+      <div class="lcz-fila" data-id="${x.id}"><div class="t"><b>${esc(x.nombre)}</b> · ${esc(x.desde)}–${esc(x.hasta)}
+        <small>${esc(x.voz)}${x.personalidad ? " · " + esc(x.personalidad.slice(0, 70)) : ""}</small></div>
+        <button class="lcz-btn lcz-btn--peligro" data-a="quitar">Quitar</button></div>`).join(""),
+      "Sin turnos: habla siempre el locutor base.");
+  }
+  async function patrocinios() {
+    const t = await api("/api/v1/locutor/patrocinios");
+    $("lczPatrocinios").innerHTML = lista(t.map(x => `
+      <div class="lcz-fila ${x.activo ? "" : "apagada"}" data-id="${x.id}"><div class="t">
+        <b>${esc(x.nombre || "(sin nombre de anunciante)")}</b> · ${esc(x.desde)} → ${esc(x.hasta)} · ${x.frecuencia} por día
+        <small>${esc(x.texto.slice(0, 140))}${x.texto.length > 140 ? "…" : ""}</small></div>
+        <button class="lcz-btn" data-a="alternar">${x.activo ? "Pausar" : "Activar"}</button>
+        <button class="lcz-btn lcz-btn--peligro" data-a="quitar">Quitar</button></div>`).join(""), "Sin patrocinios.");
+  }
+  async function fuentes() {
+    const t = await api("/api/v1/locutor/fuentes");
+    $("lczFuentes").innerHTML = lista(t.map(x => `
+      <div class="lcz-fila" data-id="${x.id}"><div class="t"><b>${esc(x.nombre)}</b>
+        <small>${esc(x.url)}${x.error ? ` · <span style="color:var(--red-live)">✕ ${esc(x.error.slice(0, 80))}</span>` : x.revisada_en ? ` · revisada ${esc(x.revisada_en)}` : ""}</small></div>
+        <button class="lcz-btn lcz-btn--peligro" data-a="quitar">Quitar</button></div>`).join(""), "Sin fuentes: no habrá noticias.");
+  }
+  async function mensajes() {
+    const t = await api("/api/v1/locutor/mensajes?limit=30");
+    $("lczMensajes").innerHTML = lista(t.map(x => `
+      <div class="lcz-fila" data-id="${x.id}"><div class="t"><b>${esc(x.de)}</b>${x.para ? " → " + esc(x.para) : ""}${x.lugar ? " · " + esc(x.lugar) : ""}
+        <small>${esc(x.texto)}${x.motivo ? ` · <span style="color:var(--red-live)">${esc(x.motivo)}</span>` : ""}</small></div>
+        <span class="lcz-badge ${esc(x.estado)}">${esc(x.estado)}</span>
+        ${x.estado === "pendiente" ? '<button class="lcz-btn lcz-btn--pri" data-a="aprobar">Aprobar</button><button class="lcz-btn" data-a="rechazar">Rechazar</button>' : ""}</div>`).join(""),
+      "Sin saludos.");
+  }
+
+  // ── Acciones ──────────────────────────────────────────────────────────────
+  $("lczToggle").addEventListener("click", async () => {
+    if (!activo && !confirm("¿Encender al Locutor IA? Empezará a escribir y, lo que salga solo, irá al aire en los próximos minutos.")) return;
+    try { await api("/api/v1/locutor/activar", json("POST", { activo: !activo })); await estado(); msg("lczMsg", activo ? "✓ Encendido" : "✓ Apagado"); }
+    catch (e) { msg("lczMsg", e.message, false); }
+  });
+  $("lczAprGuardar").addEventListener("click", async () => {
+    const apr = {}; document.querySelectorAll("#lczApr select").forEach(s => { apr[s.dataset.tipo] = s.value; });
+    try { await api("/api/v1/locutor/config", json("PUT", { aprobacion: apr })); msg("lczAprMsg", "✓ Guardado"); }
+    catch (e) { msg("lczAprMsg", e.message, false); }
+  });
+  $("lczCfgGuardar").addEventListener("click", async () => {
+    const d = $("lczDesde").value, h = $("lczHasta").value;
+    try {
+      await api("/api/v1/locutor/config", json("PUT", {
+        persona: { nombre: $("lczNombre").value.trim(), voz: $("lczVoz").value.trim(), personalidad: $("lczPers").value.trim(),
+                   prohibidos: $("lczProh").value.split(",").map(s => s.trim()).filter(Boolean) },
+        reglas: { cada_canciones: +$("lczCada").value || 2, noticias_cada_min: +$("lczNotMin").value || 60,
+                  franjas: d && h ? [[d, h]] : [] } }));
+      msg("lczCfgMsg", "✓ Guardado");
+    } catch (e) { msg("lczCfgMsg", e.message, false); }
+  });
+
+  const form = (btn, f, cancel) => { $(btn).addEventListener("click", () => abrir(f, true)); $(cancel).addEventListener("click", () => abrir(f, false)); };
+  form("lczTurNuevo", "lczTurForm", "lczTurCancelar"); form("lczPatNuevo", "lczPatForm", "lczPatCancelar");
+  form("lczFueNueva", "lczFueForm", "lczFueCancelar"); form("lczMenNuevo", "lczMenForm", "lczMenCancelar");
+
+  $("lczTurForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      await api("/api/v1/locutor/turnos", json("POST", { desde: $("lczTDesde").value, hasta: $("lczTHasta").value,
+        nombre: $("lczTNombre").value, voz: $("lczTVoz").value, personalidad: $("lczTPers").value }));
+      abrir("lczTurForm", false); await turnos(); msg("lczTurMsg", "✓ Turno agregado");
+    } catch (err) { msg("lczTurMsg", err.message, false); }
+  });
+  $("lczPatForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      await api("/api/v1/locutor/patrocinios", json("POST", { nombre: $("lczPNombre").value, texto: $("lczPTexto").value,
+        desde: $("lczPDesde").value, hasta: $("lczPHasta").value, frecuencia: +$("lczPFrec").value || 1 }));
+      abrir("lczPatForm", false); await patrocinios(); msg("lczPatMsg", "✓ Patrocinio agregado");
+    } catch (err) { msg("lczPatMsg", err.message, false); }
+  });
+  $("lczFueForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      await api("/api/v1/locutor/fuentes", json("POST", { nombre: $("lczFNombre").value, url: $("lczFUrl").value, cierre: $("lczFCierre").value }));
+      abrir("lczFueForm", false); await fuentes(); msg("lczFueMsg", "✓ Fuente agregada: pulsa «Revisar ahora»");
+    } catch (err) { msg("lczFueMsg", err.message, false); }
+  });
+  $("lczMenForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      const r = await api("/api/v1/locutor/mensajes", json("POST", { de: $("lczMDe").value, para: $("lczMPara").value,
+        lugar: $("lczMLugar").value, texto: $("lczMTexto").value }));
+      abrir("lczMenForm", false); $("lczMenForm").reset(); await mensajes();
+      msg("lczMenMsg", r.estado === "rechazado" ? `Rechazado: ${r.motivo}` : "✓ Pendiente de aprobación", r.estado !== "rechazado");
+    } catch (err) { msg("lczMenMsg", err.message, false); }
+  });
+  $("lczFueRevisar").addEventListener("click", async () => {
+    $("lczFueRevisar").disabled = true; $("lczFueRevisar").textContent = "Leyendo…";
+    try { const r = await api("/api/v1/locutor/fuentes/revisar", { method: "POST" }); await fuentes(); msg("lczFueMsg", `✓ ${r.nuevas} noticias nuevas`); }
+    catch (e) { msg("lczFueMsg", e.message, false); }
+    finally { $("lczFueRevisar").disabled = false; $("lczFueRevisar").textContent = "Revisar ahora"; }
+  });
+
+  const delegar = (cont, base, recargar, msgId, nombre) => $(cont).addEventListener("click", async e => {
+    const b = e.target.closest("button[data-a]"); if (!b) return;
+    const id = +b.closest(".lcz-fila").dataset.id, a = b.dataset.a;
+    try {
+      if (a === "quitar") { if (!confirm(`¿Quitar ${nombre}?`)) return; await api(`${base}/${id}`, { method: "DELETE" }); }
+      else if (a === "alternar") {
+        const activo = !b.closest(".lcz-fila").classList.contains("apagada");
+        await api(`${base}/${id}`, json("PATCH", { activo: !activo }));
+      } else await api(`${base}/${id}/${a}`, { method: "POST" });
+      await recargar();
+    } catch (err) { msg(msgId, err.message, false); }
+  });
+  delegar("lczTurnos", "/api/v1/locutor/turnos", turnos, "lczTurMsg", "este turno");
+  delegar("lczPatrocinios", "/api/v1/locutor/patrocinios", patrocinios, "lczPatMsg", "este patrocinio");
+  delegar("lczFuentes", "/api/v1/locutor/fuentes", fuentes, "lczFueMsg", "esta fuente");
+  delegar("lczMensajes", "/api/v1/locutor/mensajes", mensajes, "lczMenMsg", "este saludo");
+
+  Promise.all([estado(), config(), turnos(), patrocinios(), fuentes(), mensajes()])
+    .catch(e => msg("lczMsg", e.message, false));
+  setInterval(() => { if ($("lczEstado")?.isConnected) estado().catch(() => { }); }, 15000);
+})();
+</script>

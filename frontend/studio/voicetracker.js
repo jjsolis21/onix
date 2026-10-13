@@ -257,6 +257,7 @@ const VoiceTracker = (() => {
   function mostrar() {
     if (!montado) montar();
     contexto(); cargarVoces(); cargarLista();
+    if (typeof LocutorIA !== "undefined") LocutorIA.mostrar(raiz);   // Locutor IA: por aprobar y listas
   }
 
   // La selección de la cola cambia lo que muestra «Entra después de…»

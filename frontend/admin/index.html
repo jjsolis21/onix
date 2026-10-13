@@ -265,6 +265,12 @@
           <span class="nav-btn__num">11</span>
         </button>
 
+        <button class="nav-btn" data-section="12-locutor" data-tooltip="Locutor IA (encender, aprobación, turnos, patrocinios, noticias)">
+          <span class="nav-btn__icon" aria-hidden="true"><img class="nav-ico" src="/static/studio/icons/rayo.svg" alt=""></span>
+          <span class="nav-btn__label">Locutor IA</span>
+          <span class="nav-btn__num">12</span>
+        </button>
+
       </div>
 
       <!--
@@ -359,6 +365,8 @@
         data-loaded="false" role="region" aria-label="Identificadores"></div>
       <div class="section-panel" id="section-panel-11-ia" data-section-id="11-ia"
         data-loaded="false" role="region" aria-label="Inteligencia artificial"></div>
+      <div class="section-panel" id="section-panel-12-locutor" data-section-id="12-locutor"
+        data-loaded="false" role="region" aria-label="Locutor IA"></div>
 
     </main>
   </div>
@@ -462,6 +470,12 @@
         name: "Inteligencia artificial",
         sub: "Claves de Gemini y otras IA, con respaldo: si una falla entra la siguiente",
         src: "sections/11-ia/ia.html",
+      },
+      "12-locutor": {
+        icon: "🎙", img: "rayo",
+        name: "Locutor IA",
+        sub: "Enciende al locutor, decide qué sale solo y qué pide aprobación; turnos, patrocinios, noticias y saludos",
+        src: "sections/12-locutor/locutor.html",
       },
     };
 

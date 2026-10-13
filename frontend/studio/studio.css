@@ -639,3 +639,13 @@ kbd {
 .vt-item button:hover { border-color: var(--ambar); color: var(--ambar-vivo); }
 .deck[data-tipo="Locucion"] { border-left-color: var(--t-voz); }
 .chip[data-tipo="Locucion"] { background: var(--t-voz); color: var(--bg-0); }
+
+/* ── Locutor IA (bloque en la pestaña VOZ) ── */
+.lia-estado { margin-left: 6px; padding: 1px 7px; border-radius: 9px; font-size: 9px; letter-spacing: .1em; }
+.lia-estado.on { background: #1d4d2b; color: #7ee59a; }
+.lia-estado.off { background: var(--bg-3); color: var(--txt-lo); }
+.lia-sub { margin-top: 6px !important; }
+.lia-item { display: flex; flex-direction: column; gap: 5px; padding: 7px; background: var(--bg-2); border-left: 3px solid var(--ambar); border-radius: 5px; }
+.lia-cab { font-size: 12px; color: var(--txt-hi); }
+.lia-cab small { display: block; color: var(--txt-lo); font-size: 10px; }
+.lia-txt { width: 100%; box-sizing: border-box; }
