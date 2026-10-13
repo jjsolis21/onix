@@ -1210,3 +1210,48 @@
 .btn-quickfill--clear:hover { background: var(--p-red-dim); color: var(--p-red); border-color: var(--p-red); }
 .btn-quickfill[hidden] { display: none; }
 .pm-pane[data-pane="audio"] #btnSelectAudio { white-space: nowrap; flex: none; padding: 0 12px; }
+
+/* ══════════════════════════════════════════════════════════
+   MODAL DE PAUTA — 2.º PASO: opciones a la izquierda, lo grande a la derecha
+   (la matriz y la onda ganan el espacio; en pantallas bajas ya no se cortan)
+   ══════════════════════════════════════════════════════════ */
+
+/* Pestaña Horarios: controles en una columna de 320 px y la matriz ocupa el resto */
+.pm-pane[data-pane="horarios"] .matrix-section {
+  display: grid; grid-template-columns: 320px minmax(0, 1fr); grid-template-rows: repeat(5, auto) 1fr;
+  column-gap: 24px; row-gap: 10px; padding: 16px 24px 8px; align-content: stretch;
+}
+.pm-pane[data-pane="horarios"] .matrix-section > :not(.matrix-scroll-wrap) { grid-column: 1; min-width: 0; }
+.pm-pane[data-pane="horarios"] .matrix-section > .matrix-scroll-wrap { grid-column: 2; grid-row: 1 / -1; min-height: 0; height: 100%; }
+/* La matriz reparte la altura entre las 24 horas; solo hace scroll si ni así caben */
+.pm-pane[data-pane="horarios"] .matrix-grid { min-width: 0; min-height: 100%; grid-template-rows: auto repeat(24, minmax(19px, 1fr)); }
+.pm-pane[data-pane="horarios"] .matrix-cell { height: auto; min-height: 19px; }
+.pm-pane[data-pane="horarios"] .matrix-cell--day-header { padding: 6px 3px; }
+.pm-pane[data-pane="horarios"] .menc-dias { flex-wrap: wrap; }
+
+/* Pestaña Audio: selector y versiones a la izquierda, onda y marcas a la derecha */
+.pm-pane[data-pane="audio"].activo { display: grid !important; grid-template-columns: 380px minmax(0, 1fr); overflow: hidden; }
+.pm-pane[data-pane="audio"] .audio-picker-row {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px 22px; overflow-y: auto;
+  border-bottom: 0; border-right: 1px solid var(--p-border-subtle);
+}
+.pm-pane[data-pane="audio"] .audio-selector { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.pm-pane[data-pane="audio"] .audio-selector input { flex: 1 1 100%; min-width: 0; }
+.pm-pane[data-pane="audio"] .field-hint { display: block; word-break: break-all; }
+.pm-pane[data-pane="audio"] .wf-panel-wrap { flex: none; height: 100%; min-height: 0; overflow-y: auto; padding: 14px 24px; gap: 10px; border-top: 0; }
+.pm-pane[data-pane="audio"] #waveform { height: 120px !important; }
+
+/* Si el aviso de menciones aparece, no le quita altura a la matriz de forma desproporcionada */
+.pm-pane[data-pane="horarios"] .mentions-warning { padding: 7px 24px; }
+
+@media (max-width: 1000px) {
+  .pm-pane[data-pane="horarios"] .matrix-section { grid-template-columns: 1fr; grid-template-rows: none; }
+  .pm-pane[data-pane="horarios"] .matrix-section > .matrix-scroll-wrap { grid-column: 1; grid-row: auto; height: 460px; }
+  .pm-pane[data-pane="audio"].activo { grid-template-columns: 1fr; overflow-y: auto; }
+  .pm-pane[data-pane="audio"] .audio-picker-row { border-right: 0; border-bottom: 1px solid var(--p-border-subtle); }
+  .pm-pane[data-pane="audio"] .wf-panel-wrap { height: auto; }
+}
+.pm-pane[data-pane="audio"] .audio-selector { flex: none !important; height: auto !important; align-items: stretch; }
+.pm-pane[data-pane="audio"] .audio-selector input { height: 40px; flex: 1 1 100%; }
+.pm-pane[data-pane="audio"] #btnSelectAudio { height: 36px; }
+.pm-pane[data-pane="audio"] #waveform { height: 170px !important; }

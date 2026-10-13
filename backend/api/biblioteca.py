@@ -220,6 +220,7 @@ def ficha(audio_id: int):
             "id": a["id"], "titulo": a["titulo"], "artista": a["artista"], "album": a["album"],
             "anio": (a["fecha_lanzamiento"] or "")[:4], "tipo_audio": a["tipo_audio"],
             "cat1": a["subgenero"], "cat2": a["categoria"], "cat3": a["cat3"], "voz": a["genero_vocal"],
+            "categoria_ident": a["categoria_ident"],
             "origen": a["origen"], "energia": a["energia"], "bpm": a["bpm"],
             "prioridad": a["prioridad"] if "prioridad" in claves else None,
             "coro": [a["cue_inicio_coro"] or 0, a["cue_final_coro"] or 0],

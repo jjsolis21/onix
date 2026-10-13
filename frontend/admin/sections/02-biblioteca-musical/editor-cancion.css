@@ -117,3 +117,4 @@
 .ec-pie { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--choc-5); background: var(--choc-0); }
 .ec-estado { margin-right: auto; font-size: 13px; color: var(--gold-1); }
 .ec-pie .ec-btn { padding: 9px 18px; font-size: 14px; }
+.ec [hidden] { display: none !important; }

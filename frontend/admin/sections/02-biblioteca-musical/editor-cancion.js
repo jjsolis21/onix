@@ -47,13 +47,15 @@
   async function abrir(id = null, opciones = {}) {
     if (E) cerrar(true);
     const schema = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json()).catch(() => ({ categorias: [] }));
-    let f = { titulo: '', artista: '', tipo_audio: 'Musica', prioridad: 2, aprobada: 1 };
+    let f = { titulo: '', artista: '', tipo_audio: opciones.tipo || 'Musica', prioridad: 2, aprobada: 1 };
+    // Categorías de jingles, sweepers y tips (Admin › Identificadores)
+    const ident = await fetch('/api/v1/ident/categorias').then(r => r.ok ? r.json() : {}).catch(() => ({}));
     if (id) {
       const r = await fetch(`/api/v1/biblioteca/${id}/ficha`);
       if (!r.ok) { toast('No se pudo abrir la canción', 'error'); return; }
       f = await r.json();
     }
-    E = { id, f, schema, valores: Object.fromEntries(MARCAS.map(m => [m.k, +(f[m.k] || 0)])),
+    E = { id, f, schema, ident, valores: Object.fromEntries(MARCAS.map(m => [m.k, +(f[m.k] || 0)])),
           sel: 'cue_intro', ws: null, rp: null, zonas: [], archivo: null, sucio: false, onGuardar: opciones.onGuardar };
     pintar();
     if (id) cargarOnda(`/api/v1/audios/${id}/stream`);
@@ -114,16 +116,17 @@
             <div class="ec-campos">
               <label class="ec-ancho">Artista <input id="ecArtista" list="ecArtistas" value="${esc(f.artista)}" autocomplete="off"><datalist id="ecArtistas"></datalist></label>
               <label class="ec-ancho">Título <input id="ecTitulo" value="${esc(f.titulo)}"></label>
-              <label class="ec-ancho">Álbum <input id="ecAlbum" value="${esc(f.album || '')}"></label>
-              <label>Año <input id="ecAnio" type="number" min="1900" max="2100" value="${esc(f.anio || '')}"></label>
-              <label>BPM <input id="ecBpm" type="number" min="40" max="300" value="${esc(f.bpm || '')}"></label>
+              <label class="ec-ancho" data-musica>Álbum <input id="ecAlbum" value="${esc(f.album || '')}"></label>
+              <label data-musica>Año <input id="ecAnio" type="number" min="1900" max="2100" value="${esc(f.anio || '')}"></label>
+              <label data-musica>BPM <input id="ecBpm" type="number" min="40" max="300" value="${esc(f.bpm || '')}"></label>
               <label>Tipo <select id="ecTipo">${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${f.tipo_audio === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-              <label>${esc(etq('cat1', 'Género'))} <select id="ecCat1">${opcionesCat('cat1', f.cat1)}</select></label>
-              <label>${esc(etq('cat2', 'Rotación'))} <select id="ecCat2">${opcionesCat('cat2', f.cat2)}</select></label>
-              <label>${esc(etq('cat3', 'Subgénero'))} <select id="ecCat3">${opcionesCat('cat3', f.cat3)}</select></label>
-              <label>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
-              <label>Origen <select id="ecOrigen"><option value="">—</option>${['NACIONAL', 'INTERNACIONAL'].map(o => `<option ${String(f.origen || '').toUpperCase() === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
-              <label>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${['', 'Lenta', 'Suave', 'Media', 'Movida', 'Rápida'][n]}</option>`).join('')}</select></label>
+              <label data-ident hidden>Categoría <select id="ecIdent"></select></label>
+              <label data-musica>${esc(etq('cat1', 'Género'))} <select id="ecCat1">${opcionesCat('cat1', f.cat1)}</select></label>
+              <label data-musica>${esc(etq('cat2', 'Rotación'))} <select id="ecCat2">${opcionesCat('cat2', f.cat2)}</select></label>
+              <label data-musica>${esc(etq('cat3', 'Subgénero'))} <select id="ecCat3">${opcionesCat('cat3', f.cat3)}</select></label>
+              <label data-musica>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
+              <label data-musica>Origen <select id="ecOrigen"><option value="">—</option>${['NACIONAL', 'INTERNACIONAL'].map(o => `<option ${String(f.origen || '').toUpperCase() === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
+              <label data-musica>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${['', 'Lenta', 'Suave', 'Media', 'Movida', 'Rápida'][n]}</option>`).join('')}</select></label>
               <label>Prioridad <select id="ecPrioridad">${[1, 2, 3].map(n => `<option value="${n}" ${(+f.prioridad || 2) === n ? 'selected' : ''}>${PRIORIDAD[n]}</option>`).join('')}</select></label>
             </div>
           </section>
@@ -160,10 +163,23 @@
     E.raiz = fondo;
     pintarMarcas();
     enlazar();
+    ajustarTipo();
+    fondo.querySelector('#ecTipo').addEventListener('change', ajustarTipo);
     fetch('/api/v1/artistas?tipo=Musica').then(r => r.ok ? r.json() : []).then(l => {
       const dl = fondo.querySelector('#ecArtistas');
       if (dl) dl.innerHTML = l.map(a => `<option value="${esc(a.artista)}">`).join('');
     }).catch(() => { });
+  }
+
+  /** Jingles, sweepers y tips no tienen género ni rotación: llevan su propia categoría (Admin › Identificadores) */
+  function ajustarTipo() {
+    const tipo = E.raiz.querySelector('#ecTipo').value, esIdent = ['Efecto', 'Sweeper', 'Tips'].includes(tipo);
+    E.raiz.querySelectorAll('[data-musica]').forEach(l => { l.hidden = esIdent; });
+    const l = E.raiz.querySelector('[data-ident]'), sel = E.raiz.querySelector('#ecIdent');
+    l.hidden = !esIdent;
+    const actual = sel.value || E.f.categoria_ident || '';
+    sel.innerHTML = '<option value="">(sin categoría)</option>' + (E.ident?.[tipo] || [])
+      .map(c => `<option ${c.nombre.toUpperCase() === actual.toUpperCase() ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('');
   }
 
   function pintarMarcas() {
@@ -397,6 +413,7 @@
     const d = {
       titulo: v('#ecTitulo'), artista: v('#ecArtista'), album: v('#ecAlbum'),
       fecha_lanzamiento: v('#ecAnio'), bpm: v('#ecBpm') ? +v('#ecBpm') : null,
+      categoria_ident: v('#ecIdent'),
       tipo_audio: v('#ecTipo'), cat1: v('#ecCat1'), cat2: v('#ecCat2'), cat3: v('#ecCat3'), voz: v('#ecVoz'),
       origen: v('#ecOrigen') || null, energia: v('#ecEnergia') ? +v('#ecEnergia') : null, prioridad: +v('#ecPrioridad'),
       fade_in: +v('#ecFadeIn'), fade_out: +v('#ecFadeOut'), ganancia_db: +v('#ecGan'), repeticion_horas: horas,
@@ -411,7 +428,8 @@
     if (!E.id && !E.archivo) { toast('Elige el archivo de audio', 'error'); return; }
     if (aprobar && (!d.cat1 || !d.cat2)) { toast('Para aprobarla necesita género y rotación', 'error'); return; }
     // PUT no acepta vacíos en categorías; null = no tocar
-    const cuerpo = Object.fromEntries(Object.entries(d).filter(([, x]) => x !== '' && x !== null && x !== undefined));
+    const { categoria_ident: catIdent, ...resto } = d;        // la categoría de identificadores tiene su propio endpoint
+    const cuerpo = Object.fromEntries(Object.entries(resto).filter(([, x]) => x !== '' && x !== null && x !== undefined));
     est.textContent = 'Guardando…';
     try {
       let id = E.id;
@@ -424,6 +442,10 @@
       }
       const r = await fetch(`/api/v1/audios/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
       if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(typeof x.detail === 'string' ? x.detail : (x.detail?.mensaje || `Error ${r.status}`)); }
+      if (['Efecto', 'Sweeper', 'Tips'].includes(d.tipo_audio)) {
+        await fetch('/api/v1/ident/audios', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ ids: [id], categoria: catIdent || null }) });
+      }
       if (aprobar) await fetch('/api/v1/biblioteca/lote', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ ids: [id], cambios: { aprobada: 1 } }) });
       E.sucio = false;

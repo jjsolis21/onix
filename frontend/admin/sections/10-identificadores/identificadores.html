@@ -108,7 +108,8 @@
 
   <div class="idf-cuerpo">
     <aside class="idf-lado">
-      <button class="idf-btn idf-btn--pri" id="idfAgregar">＋ Agregar (uno o varios)</button>
+      <button class="idf-btn idf-btn--pri" id="idfAgregar" title="Abre la misma ventana de canción: onda, marcas y datos">＋ Agregar</button>
+      <button class="idf-btn" id="idfAgregarLote" title="Varios archivos de una vez, con la misma categoría">⇪ Agregar en lote</button>
       <button class="idf-btn idf-btn--peligro" id="idfEliminar" disabled>🗑 Eliminar marcados</button>
       <label class="idf-chk"><input type="checkbox" id="idfRapida"> Edición rápida</label>
       <label class="idf-chk"><input type="checkbox" id="idfSoloMarcados"> Solo marcados</label>
@@ -159,7 +160,7 @@
 <!-- Agregar -->
 <div class="idf-fondo" id="idfModalAgregar" hidden>
   <div class="idf-caja">
-    <h3><span id="idfAgTitulo">Agregar identificadores</span><button data-cerrar>✕</button></h3>
+    <h3><span id="idfAgTitulo">Agregar en lote</span><button data-cerrar>✕</button></h3>
     <div class="idf-cont">
       <div class="idf-fila2">
         <label class="idf-campo">Tipo
@@ -176,21 +177,6 @@
     <div class="idf-pie"><span class="idf-msg" id="idfAgMsg" style="margin-right:auto"></span>
       <button class="idf-btn" data-cerrar>Cerrar</button>
       <button class="idf-btn idf-btn--pri" id="idfAgSubir" disabled>Subir</button></div>
-  </div>
-</div>
-
-<!-- Editar uno -->
-<div class="idf-fondo" id="idfModalEditar" hidden>
-  <div class="idf-caja" style="width:min(520px, 94vw)">
-    <h3><span>Editar identificador</span><button data-cerrar>✕</button></h3>
-    <div class="idf-cont">
-      <label class="idf-campo">Título<input class="idf-in" id="idfEdTitulo" maxlength="200"></label>
-      <label class="idf-campo">Autor<input class="idf-in" id="idfEdAutor" maxlength="200"></label>
-      <label class="idf-campo">Categoría<select class="idf-in" id="idfEdCat"></select></label>
-      <p style="margin:0;font-size:.78rem;color:var(--text-lo)">Para marcar inicio, intro o mezcla usa la ficha completa en Biblioteca musical.</p>
-    </div>
-    <div class="idf-pie"><span class="idf-msg" id="idfEdMsg" style="margin-right:auto"></span>
-      <button class="idf-btn" data-cerrar>Cancelar</button><button class="idf-btn idf-btn--pri" id="idfEdGuardar">Guardar</button></div>
   </div>
 </div>
 
@@ -417,7 +403,7 @@
   // Agregar
   let archivos = [];
   function llenarCatAg() { $("idfAgCat").innerHTML = `<option value="">(sin categoría)</option>` + opcionesCat($("idfAgTipo").value); }
-  $("idfAgregar").addEventListener("click", () => {
+  $("idfAgregarLote").addEventListener("click", () => {
     $("idfAgTipo").value = tipo; llenarCatAg();
     $("idfAgArchivos").value = ""; archivos = []; $("idfAgLista").hidden = true; $("idfAgSubir").disabled = true; $("idfAgMsg").textContent = "";
     $("idfModalAgregar").hidden = false;
@@ -456,22 +442,21 @@
     cargarCats();
   });
 
-  // Editar uno
-  let editando = null;
-  function abrirEditar(id) {
-    const a = cache.get(id); if (!a) return;
-    editando = id;
-    $("idfEdTitulo").value = a.titulo; $("idfEdAutor").value = a.artista;
-    $("idfEdCat").innerHTML = `<option value="">(sin categoría)</option>` + opcionesCat(a.tipo_audio);
-    $("idfEdCat").value = [...$("idfEdCat").options].find(o => o.value.toUpperCase() === (a.categoria_ident || "").toUpperCase())?.value ?? "";
-    $("idfEdMsg").textContent = ""; $("idfModalEditar").hidden = false; $("idfEdTitulo").focus();
+  // Agregar y editar: la MISMA ventana de canción que usa la Biblioteca musical (onda, marcas, fundidos, datos).
+  // Soho no reinventa la ventana por sección: la reutiliza.
+  function conEditor() {
+    if (window.EditorCancion) return Promise.resolve();
+    return new Promise((ok, mal) => {
+      const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "sections/02-biblioteca-musical/editor-cancion.css?v=3"; document.head.appendChild(css);
+      const js = document.createElement("script"); js.src = "sections/02-biblioteca-musical/editor-cancion.js?v=4"; js.onload = ok; js.onerror = () => mal(new Error("No se pudo cargar el editor"));
+      document.head.appendChild(js);
+    });
   }
-  $("idfEdGuardar").addEventListener("click", async () => {
-    try {
-      await api(`/api/v1/audios/${editando}`, json("PUT", { titulo: $("idfEdTitulo").value.trim(), artista: $("idfEdAutor").value.trim() }));
-      await api("/api/v1/ident/audios", json("PUT", { ids: [editando], categoria: $("idfEdCat").value || null }));
-      $("idfModalEditar").hidden = true; msg("✓ Guardado"); recargar();
-    } catch (err) { $("idfEdMsg").textContent = err.message; $("idfEdMsg").className = "idf-msg err"; }
+  async function abrirEditar(id) {
+    try { await conEditor(); window.EditorCancion.abrir(id, { onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
+  }
+  $("idfAgregar").addEventListener("click", async () => {
+    try { await conEditor(); window.EditorCancion.abrir(null, { tipo, onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
   });
 
   // Editar categorías
