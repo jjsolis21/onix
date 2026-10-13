@@ -184,7 +184,8 @@ const loadAudios = async () => {
     // Toda la biblioteca (antes solo las primeras 500) y sin cuñas: las
     // publicidades tienen su propia biblioteca en Programación de Pautas.
     // Lista ligera y comprimida (con 20 000 audios, /api/v1/audios pesa 15 MB y tarda 2 s)
-    const lista = await OnixBuscador.lista({ sin_tipo: 'Cuña' });
+    // La Biblioteca musical no muestra cuñas ni identificadores (jingles, sweepers, tips): tienen su propia sección
+    const lista = await OnixBuscador.lista({ sin_tipo: 'Cuña,Efecto,Sweeper,Tips' });
     library = lista.map(a => ({
       id: a.id, title: a.titulo || '—', artist: a.artista || '—', album: a.album || '',
       duration: a.duracion || 0, bpm: a.bpm || null, year: a.fecha_lanzamiento || null,

@@ -1255,3 +1255,19 @@
 .pm-pane[data-pane="audio"] .audio-selector input { height: 40px; flex: 1 1 100%; }
 .pm-pane[data-pane="audio"] #btnSelectAudio { height: 36px; }
 .pm-pane[data-pane="audio"] #waveform { height: 170px !important; }
+
+/* Matriz: color SÓLIDO en las horas marcadas (sin halo ni brillo que se derramen sobre las celdas vecinas) */
+.matrix-cell[data-state="on"],
+.matrix-cell[data-prime="true"][data-state="on"] {
+  background: var(--p-accent) !important;
+  box-shadow: none !important;
+  border-color: rgba(0, 0, 0, .35);
+}
+.matrix-cell[data-state="on"]::before { display: none !important; }
+.matrix-cell:hover { box-shadow: none; }
+
+/* Onda y marcas de la pauta: el editor de canción embebido */
+.pm-pane[data-pane="audio"] .pm-onda { min-height: 0; height: 100%; overflow-y: auto; padding: 16px 24px; }
+.pm-pane[data-pane="audio"] .pm-onda[hidden] { display: none; }
+.pm-onda .ec-onda { min-height: 150px; }
+.pm-onda .ec-estado { display: block; margin-top: 8px; }

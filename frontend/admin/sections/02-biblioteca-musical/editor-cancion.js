@@ -42,6 +42,7 @@
   const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
 
   let E = null;          // estado del editor abierto
+  const marcasDe = () => (E && E.marcasActivas) || MARCAS;   // en una pauta solo se muestran las que usa
 
   // ── Abrir ────────────────────────────────────────────────
   async function abrir(id = null, opciones = {}) {
@@ -55,7 +56,9 @@
       if (!r.ok) { toast('No se pudo abrir la canción', 'error'); return; }
       f = await r.json();
     }
-    E = { id, f, schema, ident, valores: Object.fromEntries(MARCAS.map(m => [m.k, +(f[m.k] || 0)])),
+    // Desde la Biblioteca solo música y programas; Identificadores pasa jingles, sweepers y tips
+    const tipos = opciones.tipos || ['Musica', 'Programa'];
+    E = { id, f, schema, ident, tipos: tipos.includes(f.tipo_audio) ? tipos : [...tipos, f.tipo_audio], valores: Object.fromEntries(MARCAS.map(m => [m.k, +(f[m.k] || 0)])),
           sel: 'cue_intro', ws: null, rp: null, zonas: [], archivo: null, sucio: false, onGuardar: opciones.onGuardar };
     pintar();
     if (id) cargarOnda(`/api/v1/audios/${id}/stream`);
@@ -73,6 +76,29 @@
   }
   function etq(campo, def) {
     return (E.schema.categorias || []).find(x => x.nombre_interno === campo)?.etiqueta_visible || def;
+  }
+
+  /** Sección de la onda: reproductor, onda con marcas, fundidos y volumen. Es la misma en la ventana de canción
+   *  y embebida en otros lugares (p. ej. Audio y versiones de una pauta). */
+  function htmlOnda(f, nueva) {
+    return `
+        <section class="ec-sec ec-onda-sec">
+          <div class="ec-barra">
+            <button class="ec-play" data-acc="play" title="Reproducir / pausar (Espacio)">${ICO('play2')}</button>
+            <button class="ec-btn" data-acc="stop" title="Parar y volver al inicio">${ICO('stop2')}</button>
+            <span class="ec-tiempo"><b id="ecT">0:00.0</b> / <span id="ecDur">${fmt(f.duracion)}</span></span>
+            <label class="ec-zoom">🔍 <input type="range" id="ecZoom" min="0" max="300" value="0" title="Zoom de la onda"></label>
+            <button class="ec-btn" data-acc="autocue" ${nueva ? 'disabled title="Guarda primero la canción"' : 'title="Detectar inicio y mezcla automáticamente"'}>✨ AutoCue</button>
+          </div>
+          <div class="ec-onda" id="ecOnda"><p class="ec-onda-vacia">${nueva ? 'La onda aparece al elegir el archivo' : 'Cargando la onda…'}</p></div>
+          <div class="ec-marcas" id="ecMarcas"></div>
+          <div class="ec-ajustes">
+            <label>Fade in <input type="range" id="ecFadeIn" min="0" max="5" step="0.1" value="${+f.fade_in || 0}"><b id="ecFadeInV">${(+f.fade_in || 0).toFixed(1)} s</b></label>
+            <label>Fade out <input type="range" id="ecFadeOut" min="0" max="10" step="0.1" value="${+f.fade_out || 0}"><b id="ecFadeOutV">${(+f.fade_out || 0).toFixed(1)} s</b></label>
+            <label title="Ajuste propio de esta canción, sumado a la normalización">Volumen <input type="range" id="ecGan" min="-12" max="6" step="0.5" value="${+f.ganancia_db || 0}"><b id="ecGanV">${(+f.ganancia_db || 0) > 0 ? '+' : ''}${(+f.ganancia_db || 0).toFixed(1)} dB</b></label>
+          </div>
+          <p class="ec-ayuda">Clic en la onda = ir a ese punto · Marca elegida: <b>← →</b> la mueven (Mayús = 1 s) y el audio salta ahí · <b>F</b> = fijarla donde va el audio · <b>1–6</b> elegir marca · <b>Espacio</b> play/pausa</p>
+        </section>`;
   }
 
   function pintar() {
@@ -93,23 +119,7 @@
             <span id="ecZonaTxt">Arrastra aquí el archivo de audio o haz clic para elegirlo</span></label>
           <p class="ec-aviso" id="ecAvisoArchivo" hidden></p></section>` : ''}
 
-        <section class="ec-sec ec-onda-sec">
-          <div class="ec-barra">
-            <button class="ec-play" data-acc="play" title="Reproducir / pausar (Espacio)">${ICO('play2')}</button>
-            <button class="ec-btn" data-acc="stop" title="Parar y volver al inicio">${ICO('stop2')}</button>
-            <span class="ec-tiempo"><b id="ecT">0:00.0</b> / <span id="ecDur">${fmt(f.duracion)}</span></span>
-            <label class="ec-zoom">🔍 <input type="range" id="ecZoom" min="0" max="300" value="0" title="Zoom de la onda"></label>
-            <button class="ec-btn" data-acc="autocue" ${nueva ? 'disabled title="Guarda primero la canción"' : 'title="Detectar inicio y mezcla automáticamente"'}>✨ AutoCue</button>
-          </div>
-          <div class="ec-onda" id="ecOnda"><p class="ec-onda-vacia">${nueva ? 'La onda aparece al elegir el archivo' : 'Cargando la onda…'}</p></div>
-          <div class="ec-marcas" id="ecMarcas"></div>
-          <div class="ec-ajustes">
-            <label>Fade in <input type="range" id="ecFadeIn" min="0" max="5" step="0.1" value="${+f.fade_in || 0}"><b id="ecFadeInV">${(+f.fade_in || 0).toFixed(1)} s</b></label>
-            <label>Fade out <input type="range" id="ecFadeOut" min="0" max="10" step="0.1" value="${+f.fade_out || 0}"><b id="ecFadeOutV">${(+f.fade_out || 0).toFixed(1)} s</b></label>
-            <label title="Ajuste propio de esta canción, sumado a la normalización">Volumen <input type="range" id="ecGan" min="-12" max="6" step="0.5" value="${+f.ganancia_db || 0}"><b id="ecGanV">${(+f.ganancia_db || 0) > 0 ? '+' : ''}${(+f.ganancia_db || 0).toFixed(1)} dB</b></label>
-          </div>
-          <p class="ec-ayuda">Clic en la onda = ir a ese punto · Marca elegida: <b>← →</b> la mueven (Mayús = 1 s) y el audio salta ahí · <b>F</b> = fijarla donde va el audio · <b>1–6</b> elegir marca · <b>Espacio</b> play/pausa</p>
-        </section>
+        ${htmlOnda(f, nueva)}
 
         <div class="ec-dos">
           <section class="ec-sec"><h3>Datos</h3>
@@ -119,7 +129,7 @@
               <label class="ec-ancho" data-musica>Álbum <input id="ecAlbum" value="${esc(f.album || '')}"></label>
               <label data-musica>Año <input id="ecAnio" type="number" min="1900" max="2100" value="${esc(f.anio || '')}"></label>
               <label data-musica>BPM <input id="ecBpm" type="number" min="40" max="300" value="${esc(f.bpm || '')}"></label>
-              <label>Tipo <select id="ecTipo">${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${f.tipo_audio === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+              <label>Tipo <select id="ecTipo">${E.tipos.map(k => `<option value="${k}" ${f.tipo_audio === k ? 'selected' : ''}>${TIPOS[k] || k}</option>`).join('')}</select></label>
               <label data-ident hidden>Categoría <select id="ecIdent"></select></label>
               <label data-musica>${esc(etq('cat1', 'Género'))} <select id="ecCat1">${opcionesCat('cat1', f.cat1)}</select></label>
               <label data-musica>${esc(etq('cat2', 'Rotación'))} <select id="ecCat2">${opcionesCat('cat2', f.cat2)}</select></label>
@@ -183,7 +193,7 @@
   }
 
   function pintarMarcas() {
-    E.raiz.querySelector('#ecMarcas').innerHTML = MARCAS.map((m, i) => `
+    E.raiz.querySelector('#ecMarcas').innerHTML = marcasDe().map((m, i) => `
       <div class="ec-marca ${E.sel === m.k ? 'sel' : ''}" data-m="${m.k}" style="--mc:${m.c}">
         <div class="ec-marca-tit">${i + 1} · ${m.n}</div>
         <button class="ec-marcar" data-acc="fijar" title="Marca ${m.n} donde va sonando el audio (tecla F)">● MARCAR</button>
@@ -236,7 +246,7 @@
     if (!E.rp || !E.dur) return;
     E.rp.clearRegions();
     E.zonas = [];
-    MARCAS.forEach(m => {
+    marcasDe().forEach(m => {
       const v = E.valores[m.k];
       if (!v && m.k !== 'cue_inicio') return;
       E.rp.addRegion({ id: m.k, start: Math.min(v || 0, E.dur), color: m.c, drag: true, resize: false, content: m.n });
@@ -291,7 +301,7 @@
     const R = E.raiz, $ = s => R.querySelector(s);
     R.addEventListener('click', async e => {
       const b = e.target.closest('[data-acc]');
-      if (!b) { if (e.target === R) pedirCerrar(); return; }
+      if (!b) { if (e.target === R && !E.embebido) pedirCerrar(); return; }
       const acc = b.dataset.acc, marca = b.closest('.ec-marca')?.dataset.m;
       if (marca && acc !== 'valor') { E.sel = marca; }
       switch (acc) {
@@ -343,11 +353,16 @@
     if (!E) return;
     const escribiendo = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) &&
       !document.activeElement.matches('input[type=range]');
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); guardar(false); return; }
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pedirCerrar(); return; }
+    if (E.embebido) {
+      // Dentro de otra ventana (pauta): solo con la pestaña a la vista, sin robar Ctrl+S ni Esc ni la barra a los botones
+      if (!E.raiz.offsetParent || document.activeElement?.tagName === 'BUTTON') return;
+    } else {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); guardar(false); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pedirCerrar(); return; }
+    }
     if (escribiendo) return;
     if (e.code === 'Space') { e.preventDefault(); E.ws?.playPause(); }
-    else if (/^[1-6]$/.test(e.key)) { E.sel = MARCAS[+e.key - 1].k; pintarMarcas(); }
+    else if (/^[1-6]$/.test(e.key) && marcasDe()[+e.key - 1]) { E.sel = marcasDe()[+e.key - 1].k; pintarMarcas(); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       mover(E.sel, (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 0.1));
@@ -480,10 +495,50 @@
   function cerrar() {
     if (!E) return;
     try { E.ws?.destroy(); } catch (_) { }
-    E.raiz?.remove();
+    if (E.embebido) E.raiz.innerHTML = ''; else E.raiz?.remove();     // embebido: el contenedor es de quien lo montó
     document.removeEventListener('keydown', teclado, true);
     E = null;
   }
 
-  window.EditorCancion = { abrir, cerrar };
+  /**
+   * Monta SOLO la onda y las marcas dentro de otro lugar (la pestaña «Audio y versiones» de una pauta):
+   * la misma ventana de la canción, ajustada a lo que necesita ese uso.
+   *   opc.marcas   claves de las marcas a mostrar (p. ej. ['cue_intro','cue_outro','cue_mezcla'])
+   *   opc.valores  valores iniciales {cue_intro: 2.4, …}
+   *   opc.audioId  para AutoCue (si el audio ya está guardado)
+   *   opc.ajustes  true = fundidos y volumen
+   *   opc.onCambio se llama cuando el usuario mueve o fija una marca
+   */
+  function montar(cont, opc = {}) {
+    if (E) cerrar(true);
+    const lista = MARCAS.filter(m => !opc.marcas || opc.marcas.includes(m.k));
+    E = { embebido: true, raiz: cont, id: opc.audioId || null, f: { duracion: 0, fade_in: 0, fade_out: 0, ganancia_db: 0 },
+          marcasActivas: lista, valores: Object.fromEntries(MARCAS.map(m => [m.k, +((opc.valores || {})[m.k] || 0)])),
+          sel: lista[0]?.k, ws: null, rp: null, zonas: [], archivo: null, sucio: false, schema: { categorias: [] }, ident: {}, tipos: [] };
+    cont.innerHTML = `<div class="ec ec-embed ${opc.ajustes ? '' : 'ec-sin-ajustes'}">${htmlOnda(E.f, !E.id)}<span class="ec-estado" id="ecEstado"></span></div>`;
+    pintarMarcas(); enlazar();
+    document.addEventListener('keydown', teclado, true);
+    const avisar = () => opc.onCambio?.();
+    cont.addEventListener('click', () => setTimeout(avisar, 0));
+    cont.addEventListener('change', avisar);
+    if (opc.url) cargarOnda(opc.url);
+    return {
+      cargar(url, valores, audioId) {
+        if (!E || !E.embebido) return;
+        if (valores) MARCAS.forEach(m => { E.valores[m.k] = +((valores || {})[m.k] || 0); });
+        E.id = audioId || null; E.sucio = false;
+        const ac = E.raiz.querySelector('[data-acc="autocue"]'); if (ac) { ac.disabled = !E.id; ac.title = E.id ? 'Detectar inicio y mezcla automáticamente' : 'Guarda primero el audio'; }
+        pintarMarcas(); cargarOnda(url);
+      },
+      valores: () => (E && E.embebido ? { ...E.valores } : {}),
+      destruir: () => { if (E && E.embebido) cerrar(true); },
+    };
+  }
+
+  window.EditorCancion = {
+    abrir, cerrar, montar,
+    /** Valores de las marcas del editor embebido (vacío si no hay uno montado) */
+    valoresMontados: () => (E && E.embebido ? { ...E.valores } : {}),
+    cerrarMontado: () => { if (E && E.embebido) cerrar(true); },
+  };
 })();

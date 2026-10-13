@@ -118,3 +118,7 @@
 .ec-estado { margin-right: auto; font-size: 13px; color: var(--gold-1); }
 .ec-pie .ec-btn { padding: 9px 18px; font-size: 14px; }
 .ec [hidden] { display: none !important; }
+.ec-embed { width: 100%; height: auto; border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
+.ec-embed .ec-onda-sec { border: 0; background: transparent; padding: 0; }
+.ec-sin-ajustes .ec-ajustes { display: none; }
+.ec-embed .ec-marcas { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }

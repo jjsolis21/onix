@@ -4,7 +4,7 @@
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=9">
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=7">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=9">
 
 <div class="pautas-root" id="pautasRoot">
 
@@ -386,111 +386,9 @@
 
 
 
-        <!-- ══════════════════════════════════════════════
-             PANEL WAVESURFER — fijo al pie de col-A
-             Alto fijo: no empuja el formulario, siempre visible.
-             Los IDs exactos son requeridos por onix-waveform.js.
-             ══════════════════════════════════════════════ -->
-        <div class="wf-panel-wrap" id="wf-panel" style="display:none">
-
-          <!-- Barra superior: nombre + info + spinner -->
-          <div class="wf-topbar">
-            <span class="wf-filename" id="wf-filename">—</span>
-            <div class="wf-info-bar" id="wf-info-bar"></div>
-            <div class="wf-loading" id="wf-loading" style="display:none" aria-live="polite">
-              <span class="wf-spinner" aria-hidden="true"></span>
-              <span>Analizando…</span>
-            </div>
-          </div>
-
-          <!-- Canvas de la onda (WaveSurfer renderiza aquí) -->
-          <div id="waveform" aria-label="Visualizador de onda"></div>
-
-          <!-- Transport: play/stop + tiempo + volumen + util -->
-          <div class="wf-transport">
-            <div class="wf-time-display">
-              <span id="wf-time-cur" class="wf-time-cur">0:00.0</span>
-              <span class="wf-time-sep">/</span>
-              <span id="wf-time-total" class="wf-time-total">0:00.0</span>
-            </div>
-            <div class="wf-ctrl-group">
-              <button class="wf-btn wf-btn--play" id="wf-btn-play" title="Reproducir / Pausar">
-                <svg id="wf-play-icon" width="15" height="15" viewBox="0 0 24 24" fill="none">
-                  <polygon points="5,2 21,12 5,22" fill="currentColor"/>
-                </svg>
-              </button>
-              <button class="wf-btn" id="wf-btn-stop" title="Detener">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                  <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/>
-                </svg>
-              </button>
-            </div>
-            <div class="wf-vol-group">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor" opacity=".7"/>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-              <input type="range" id="wf-volume" min="0" max="100" value="85" aria-label="Volumen">
-              <span id="wf-volume-label" class="wf-vol-label">85%</span>
-            </div>
-            <div class="wf-util-group">
-              <button class="wf-btn wf-btn--util" id="wf-btn-autocue" title="Calcular Cues automáticamente">Auto Cue</button>
-              <button class="wf-btn wf-btn--util wf-btn--reset" id="wf-btn-reiniciar" title="Reiniciar todos los Cues">↺ Reset</button>
-            </div>
-          </div>
-
-          <!-- Grid de Cue Points (INTRO / OUTRO / MEZCLA) -->
-          <div class="cue-grid" role="group" aria-label="Puntos de corte y mezcla">
-
-            <!-- INTRO -->
-            <div class="cue-row">
-              <span class="cue-label cue-label--intro">INTRO</span>
-              <div class="cue-micro-group">
-                <button class="cue-nudge" data-wf-nudge="intro:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <button class="cue-mark" data-wf-marcar="intro" title="Marcar posición actual como INTRO">⏺ Marcar</button>
-                <button class="cue-nudge" data-wf-nudge="intro:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <input class="cue-input" id="cue-intro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del INTRO">
-                <span class="cue-unit">s</span>
-              </div>
-              <button class="cue-escuchar" data-wf-escuchar="intro" title="Ir a INTRO y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
-              <button class="cue-reset-btn" data-wf-reiniciar="intro" title="Resetear INTRO">↺</button>
-            </div>
-
-            <!-- OUTRO -->
-            <div class="cue-row">
-              <span class="cue-label cue-label--outro">OUTRO</span>
-              <div class="cue-micro-group">
-                <button class="cue-nudge" data-wf-nudge="outro:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <button class="cue-mark" data-wf-marcar="outro" title="Marcar posición actual como OUTRO">⏺ Marcar</button>
-                <button class="cue-nudge" data-wf-nudge="outro:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <input class="cue-input" id="cue-outro" type="number" step="0.1" min="0" value="0" aria-label="Segundos del OUTRO">
-                <span class="cue-unit">s</span>
-              </div>
-              <button class="cue-escuchar" data-wf-escuchar="outro" title="Ir a OUTRO y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
-              <button class="cue-reset-btn" data-wf-reiniciar="outro" title="Resetear OUTRO">↺</button>
-            </div>
-
-            <!-- MEZCLA -->
-            <div class="cue-row">
-              <span class="cue-label cue-label--mezcla">MEZCLA</span>
-              <div class="cue-micro-group">
-                <button class="cue-nudge" data-wf-nudge="mezcla:-0.1" title="Retroceder 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M10 3L4 8l6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <button class="cue-mark" data-wf-marcar="mezcla" title="Marcar posición actual como MEZCLA">⏺ Marcar</button>
-                <button class="cue-nudge" data-wf-nudge="mezcla:0.1" title="Adelantar 0.1s"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M6 3l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <input class="cue-input" id="cue-mezcla" type="number" step="0.1" min="0" value="0" aria-label="Segundos de MEZCLA">
-                <span class="cue-unit">s</span>
-              </div>
-              <button class="cue-escuchar" data-wf-escuchar="mezcla" title="Ir a MEZCLA y reproducir"><img class="ico" src="/static/studio/icons/play2.svg" alt=""> Escuchar</button>
-              <button class="cue-reset-btn" data-wf-reiniciar="mezcla" title="Resetear MEZCLA">↺</button>
-            </div>
-
-            <!-- Inputs ocultos requeridos por onix-waveform.js -->
-            <input type="hidden" id="cue-inicio"      value="0">
-            <input type="hidden" id="cue-inicio-coro" value="0">
-            <input type="hidden" id="cue-final-coro"  value="0">
-          </div>
-
-        </div><!-- /wf-panel-wrap -->
+        <!-- Onda y marcas: la MISMA ventana que se usa al cargar una canción (editor-cancion.js), ajustada a la pauta.
+             Lo monta pauta-onda.js. -->
+        <div class="pm-onda" id="pautaOnda" hidden></div>
 
       </div><!-- /pane audio -->
 

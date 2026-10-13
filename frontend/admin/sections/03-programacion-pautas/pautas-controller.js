@@ -1042,9 +1042,9 @@
     // Siempre se pide en el contenedor de Pautas: el editor es compartido con la
     // Biblioteca y puede haber quedado dibujado allí.
 
-    if (typeof global.wfInit !== 'function') {
-      console.warn('[PautasController] wfInit no encontrado. ¿Está cargado onix-waveform.js?');
-      return Promise.resolve();  // el modal abre sin waveform; no es crítico
+    if (!global.PautaOnda) {
+      console.warn('[PautasController] PautaOnda no encontrado. ¿Está cargado pauta-onda.js?');
+      return Promise.resolve();  // el modal abre sin onda; no es crítico
     }
 
     // BUG #4 FIX: la implementación anterior hacía await de wfInit() sin límite de
@@ -1056,7 +1056,7 @@
     // no está listo en ese tiempo, el modal abre de todas formas y el panel de la
     // onda simplemente permanece oculto. Nunca rechazamos — siempre resolvemos —
     // para garantizar que _openModal() siempre avanza.
-    var wfPromise = global.wfInit('waveform').then(function() { _wfReady = true; });
+    var wfPromise = global.PautaOnda.init().then(function() { _wfReady = true; });
     var timeout   = new Promise(function(resolve) { setTimeout(resolve, 3000); });
 
     return Promise.race([wfPromise, timeout]).catch(function(err) {
@@ -1119,7 +1119,7 @@
 
       // Cargar la onda del audio existente (si tiene ruta)
       const audioPath = p.audio_nombre || '';
-      if (audioPath && typeof global.wfLoadUrl === 'function') {
+      if (audioPath && global.PautaOnda) {
         // El audio de la pauta se sirve por id: la API resuelve la ruta real
         const url = audioPath.startsWith('http')
           ? audioPath
@@ -1132,7 +1132,7 @@
           inicio_coro: meta.cue_inicio_coro ?? 0,
           final_coro:  meta.cue_final_coro  ?? 0,
         };
-        global.wfLoadUrl(url, existingCues);
+        global.PautaOnda.loadUrl(url, existingCues, p.audio_id || null);
       }
 
     } else {
@@ -1263,8 +1263,8 @@
                                   `Esos días saldrá menos veces. ¿Guardar igual?`)) return;
 
     // Obtener los marcadores de WaveSurfer si están disponibles
-    const cues = (typeof global.wfGetMarkers === 'function')
-      ? global.wfGetMarkers()
+    const cues = (global.PautaOnda)
+      ? global.PautaOnda.getMarkers()
       : {};
 
     // Empaquetamos los campos extra en __meta para persistirlos
@@ -1370,7 +1370,7 @@
     const hint = $('audioHint');
     if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
     if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;
-    if (typeof global.wfLoadUrl === 'function') global.wfLoadUrl(`/api/v1/audios/${c.id}/stream`, {});
+    if (global.PautaOnda) global.PautaOnda.loadUrl(`/api/v1/audios/${c.id}/stream`, {}, c.id);
     _versiones = _versiones.filter(v => v.id !== c.id);
     _pintarVersiones();
   }
@@ -1410,8 +1410,8 @@
 
     // Cargar en WaveSurfer de inmediato (no esperar la subida)
     // para que el operador ya pueda editar los cues mientras sube.
-    if (typeof global.wfLoadFile === 'function') {
-      global.wfLoadFile(file);
+    if (global.PautaOnda) {
+      global.PautaOnda.loadFile(file);
     }
 
     try {
@@ -1800,8 +1800,8 @@
 
   function destroy() {
     // Destruir la instancia de WaveSurfer al desmontar la sección
-    if (typeof global.wfDestroy === 'function') {
-      global.wfDestroy();
+    if (global.PautaOnda) {
+      global.PautaOnda.destroy();
       _wfReady = false;
     }
   }

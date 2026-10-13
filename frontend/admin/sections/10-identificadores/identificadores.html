@@ -471,16 +471,16 @@
   function conEditor() {
     if (window.EditorCancion) return Promise.resolve();
     return new Promise((ok, mal) => {
-      const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "sections/02-biblioteca-musical/editor-cancion.css?v=3"; document.head.appendChild(css);
-      const js = document.createElement("script"); js.src = "sections/02-biblioteca-musical/editor-cancion.js?v=4"; js.onload = ok; js.onerror = () => mal(new Error("No se pudo cargar el editor"));
+      const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "sections/02-biblioteca-musical/editor-cancion.css?v=4"; document.head.appendChild(css);
+      const js = document.createElement("script"); js.src = "sections/02-biblioteca-musical/editor-cancion.js?v=6"; js.onload = ok; js.onerror = () => mal(new Error("No se pudo cargar el editor"));
       document.head.appendChild(js);
     });
   }
   async function abrirEditar(id) {
-    try { await conEditor(); window.EditorCancion.abrir(id, { onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
+    try { await conEditor(); window.EditorCancion.abrir(id, { tipos: ["Efecto", "Sweeper", "Tips"], onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
   }
   $("idfAgregar").addEventListener("click", async () => {
-    try { await conEditor(); window.EditorCancion.abrir(null, { tipo, onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
+    try { await conEditor(); window.EditorCancion.abrir(null, { tipo, tipos: ["Efecto", "Sweeper", "Tips"], onGuardar: () => { cargarCats().then(recargar); } }); } catch (err) { msg(err.message, false); }
   });
 
   // Editar categorías

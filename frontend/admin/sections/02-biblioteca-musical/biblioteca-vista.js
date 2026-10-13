@@ -92,7 +92,7 @@
 
   async function cargar() {
     const [lista, schema, calidad, papelera] = await Promise.all([
-      OnixBuscador.lista({ sin_tipo: 'Cuña' }),            // ligera y comprimida: con 20 000 audios son 0,3 MB, no 15
+      OnixBuscador.lista({ sin_tipo: 'Cuña,Efecto,Sweeper,Tips' }),   // sin cuñas ni identificadores (tienen su sección)
       fetch('/api/v1/config/biblioteca/schema').then(r => r.json()).catch(() => ({ categorias: [] })),
       fetch('/api/v1/biblioteca/calidad').then(r => r.ok ? r.json() : {}).catch(() => ({})),
       fetch('/api/v1/biblioteca/papelera').then(r => r.ok ? r.json() : []).catch(() => []),

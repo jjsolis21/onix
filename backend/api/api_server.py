@@ -1491,8 +1491,10 @@ def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Opt
     params: list = []
     if tipo:
         sql += " AND tipo_audio = ?"; params.append(_validate_tipo_audio(tipo))
-    if sin_tipo:
-        sql += " AND tipo_audio != ?"; params.append(_validate_tipo_audio(sin_tipo))
+    if sin_tipo:                      # uno o varios separados por coma
+        excluir = [_validate_tipo_audio(t) for t in sin_tipo.split(",") if t.strip()]
+        if excluir:
+            sql += f" AND tipo_audio NOT IN ({', '.join('?' * len(excluir))})"; params.extend(excluir)
     cuerpo = json.dumps({"campos": [a for _, a in _CAMPOS_LISTA], "filas": [list(r) for r in conn.execute(sql, params)]},
                         separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     cabeceras = {}

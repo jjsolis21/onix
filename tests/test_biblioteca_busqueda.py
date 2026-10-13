@@ -74,3 +74,12 @@ def test_lista_ligera_para_la_tabla_del_admin(client, tmp_path):
     assert all(dict(zip(d["campos"], f))["tipo_audio"] != "Cuña" for f in d["filas"])
     bruto = client.get("/api/v1/biblioteca/lista", headers={"Accept-Encoding": "gzip"})
     assert json.loads(bruto.content)["campos"] == d["campos"]       # TestClient ya descomprime
+
+
+def test_lista_de_la_biblioteca_puede_excluir_varios_tipos(client, tmp_path):
+    musica = subir(client, tmp_path, "SOLO MUSICA LISTA")
+    jingle = subir(client, tmp_path, "JINGLE FUERA DE LISTA", tipo="Efecto")
+    d = client.get("/api/v1/biblioteca/lista", params={"sin_tipo": "Cuña,Efecto,Sweeper,Tips"}, headers={"Accept-Encoding": "identity"}).json()
+    ids = {f[0] for f in d["filas"]}
+    assert musica in ids and jingle not in ids
+    assert client.get("/api/v1/biblioteca/lista", params={"sin_tipo": "Cuña,Inventado"}).status_code == 422
