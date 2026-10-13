@@ -120,7 +120,8 @@ def elegir_tipo(c, reglas: dict, ahora: datetime) -> Optional[str]:
     if reglas["patron"]:
         hechas = c.execute(      # con el reloj de la base, el mismo con que se guardó creado_en
             "SELECT COUNT(*) FROM locutor_intervenciones WHERE creado_en >= datetime('now', ?) AND estado IN"
-            " ('borrador','aprobada','lista','al_aire')", (f"-{ahora.minute} minutes",)).fetchone()[0]
+            " ('borrador','aprobada','lista','al_aire','fallo')",       # un intento fallido también avanza el patrón
+            (f"-{ahora.minute} minutes",)).fetchone()[0]
         entrada = reglas["patron"][hechas % len(reglas["patron"])]
         elegido = ENTRADAS.get(entrada)
     else:
@@ -377,6 +378,12 @@ def ciclo(engine, db_path: Any = None, ahora: Optional[datetime] = None,
             res = preparar(c, tipo, anterior, siguiente, fin,
                            anterior_id=a["audio_id"], siguiente_id=b["audio_id"])
             resumen["hecho"].append(res)
+            if res["estado"] == "fallo" and tipo not in ("corta", "identificacion"):
+                # Sin noticias, sin patrocinio o sin IA para ese tipo: el hueco no se pierde, entra una corta
+                alterno = "corta" if siguiente and "corta" in (reg["tipos_permitidos"] or almacen.TIPOS) else None
+                if alterno:
+                    resumen["hecho"].append(preparar(c, alterno, anterior, siguiente, fin,
+                                                     anterior_id=a["audio_id"], siguiente_id=b["audio_id"]))
             break
         return resumen
     finally:

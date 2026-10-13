@@ -322,3 +322,24 @@ def test_api_voces_para_elegir_y_editar_turno(client):
     assert (fila["desde"], fila["nombre"], fila["voz"]) == ("09:00", "Karen", "fish:629d")
     assert client.put("/api/v1/locutor/turnos/99999", json={"desde": "09:00", "hasta": "13:00", "nombre": "X", "voz": "y"}).status_code == 404
     client.delete(f"/api/v1/locutor/turnos/{t['id']}")
+
+
+def test_si_el_tipo_del_patron_falla_el_hueco_no_se_pierde(db, ia, monkeypatch):
+    """Sin IA y sin plantilla para «noticia»: entra una corta en ese mismo hueco y el patrón sigue avanzando."""
+    ruta, ids = db
+    _config(ruta, patron=["noticia", "corta"])
+    c = almacen.conectar(ruta)
+    c.execute("INSERT INTO locutor_fuentes (nombre, url) VALUES ('P', 'https://x.test/f')")
+    c.execute("INSERT INTO locutor_noticias (fuente_id, guid, titulo, publicada_en) VALUES (1, 'g', 'Abren el puente', datetime('now'))")
+    c.commit(); c.close()
+
+    def sin_ia(*a, **k):
+        raise proveedores.IAError("HTTP 404: modelo no disponible")
+    monkeypatch.setattr(proveedores, "generar_texto", sin_ia)
+    motor = MotorFalso(_programa(ids))
+    r = svc.ciclo(motor, ruta, AHORA, leer_noticias=lambda u: [])
+    assert [h["estado"] for h in r["hecho"]] == ["fallo", "aprobada"]
+    assert r["hecho"][1]["tipo"] == "corta" and "Feid" in r["hecho"][1]["texto"]
+    # el siguiente hueco sigue el patrón (el intento fallido contó): ya no insiste con la misma noticia
+    r2 = svc.ciclo(motor, ruta, AHORA, leer_noticias=lambda u: [])
+    assert any(h.get("tipo") == "corta" for h in r2["hecho"])

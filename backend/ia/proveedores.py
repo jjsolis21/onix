@@ -22,13 +22,13 @@ from typing import Optional
 from backend.paths import DB_PATH
 
 PROVEEDORES = {
-    "gemini": {"nombre": "Google Gemini", "modelo": "gemini-2.5-flash", "base_url": ""},
+    "gemini": {"nombre": "Google Gemini", "modelo": "gemini-3.5-flash", "base_url": ""},
     "openai": {"nombre": "OpenAI", "modelo": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"},
     "groq": {"nombre": "Groq", "modelo": "llama-3.3-70b-versatile", "base_url": "https://api.groq.com/openai/v1"},
     "openrouter": {"nombre": "OpenRouter", "modelo": "", "base_url": "https://openrouter.ai/api/v1"},
     "otro": {"nombre": "Otro (compatible con OpenAI)", "modelo": "", "base_url": ""},
     # Solo voz (no escribe textos): voces clonadas o de su catálogo, por su id
-    "fish": {"nombre": "Fish Audio (solo voz)", "modelo": "s1", "base_url": "https://api.fish.audio"},
+    "fish": {"nombre": "Fish Audio (solo voz)", "modelo": "s2.1-pro", "base_url": "https://api.fish.audio"},
 }
 SOLO_VOZ = ("fish",)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
@@ -72,7 +72,7 @@ def _llamar(k: dict, prompt: str, sistema: str) -> str:
         cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
         if sistema:
             cuerpo["systemInstruction"] = {"parts": [{"text": sistema}]}
-        d = http_post(GEMINI_URL.format(modelo=modelo or "gemini-2.5-flash"), {"x-goog-api-key": k["clave"]}, cuerpo)
+        d = http_post(GEMINI_URL.format(modelo=modelo or PROVEEDORES["gemini"]["modelo"]), {"x-goog-api-key": k["clave"]}, cuerpo)
         partes = (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
         texto = "".join(p.get("text", "") for p in partes).strip()
     else:
@@ -203,9 +203,10 @@ def _voz_con(k: dict, texto: str, voz: str, estilo: str) -> bytes:
     import base64
     if k["proveedor"] == "fish":
         ids = [vid for _, vid in voces_de(k)]
-        vid = voz[5:] if voz.startswith("fish:") and voz[5:] in ids else (ids[0] if ids else "")
+        # Una voz pedida como «fish:ID» (turnos del Locutor) se usa tal cual; la lista de la clave es solo un atajo
+        vid = voz[5:] if voz.startswith("fish:") and voz[5:] else (ids[0] if ids else "")
         if not vid:
-            raise RuntimeError("Esta clave de Fish Audio no tiene voces cargadas")
+            raise RuntimeError("Fish Audio: no se indicó la voz y esta clave no tiene voces cargadas")
         base = (k["base_url"] or PROVEEDORES["fish"]["base_url"]).rstrip("/")
         audio = http_post_bytes(f"{base}/v1/tts", {"Authorization": f"Bearer {k['clave']}",
                                                   "model": k["modelo"] or PROVEEDORES["fish"]["modelo"]},
