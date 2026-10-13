@@ -73,27 +73,31 @@
   let audio = null;
 
   // ── Datos ────────────────────────────────────────────────
+  // Para buscar «cancion» y encontrar «Canción»: mayúsculas y sin tildes
+  const plano = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   function normalizar(a) {
     const anio = parseInt(String(a.fecha_lanzamiento || '').slice(0, 4), 10);
     // Categorías agrupadas sin distinguir mayúsculas ("Pop" y "POP" son la misma)
     const may = v => (v === null || v === undefined || v === '') ? '' : String(v).toUpperCase();
-    return { ...a, cat1: may(a.cat1), cat2: may(a.cat2), cat3: may(a.cat3), voz: may(a.voz), origen: may(a.origen),
+    const n = { ...a, cat1: may(a.cat1), cat2: may(a.cat2), cat3: may(a.cat3), voz: may(a.voz), origen: may(a.origen),
              anio: Number.isFinite(anio) ? anio : null,
              decada: Number.isFinite(anio) ? `${Math.floor(anio / 10) * 10}s` : null,
              veces: a.veces_reproducido || 0, ultima: a.ultima_reproduccion || '',
              intro: a.cue_intro || a.intro || 0, aprobada: a.aprobada ?? 1,
              prioridad: a.prioridad || 2, bpm: a.bpm || null,
              coro: (a.cue_inicio_coro || 0) > 0 ? 'CON CORO MARCADO' : 'SIN CORO MARCADO' };
+    n._q = plano(`${n.titulo} ${n.artista} ${n.album || ''} ${n.cat1} ${n.cat2} ${n.anio ?? ''}`);   // se calcula una vez
+    return n;
   }
 
   async function cargar() {
     const [lista, schema, calidad, papelera] = await Promise.all([
-      fetch('/api/v1/audios?sin_tipo=Cu%C3%B1a&limit=50000').then(r => r.json()),
+      OnixBuscador.lista({ sin_tipo: 'Cuña' }),            // ligera y comprimida: con 20 000 audios son 0,3 MB, no 15
       fetch('/api/v1/config/biblioteca/schema').then(r => r.json()).catch(() => ({ categorias: [] })),
       fetch('/api/v1/biblioteca/calidad').then(r => r.ok ? r.json() : {}).catch(() => ({})),
       fetch('/api/v1/biblioteca/papelera').then(r => r.ok ? r.json() : []).catch(() => []),
     ]);
-    S.todos = (lista.data || []).map(normalizar);
+    S.todos = lista.map(normalizar);
     S.calidad = Object.fromEntries(Object.entries(calidad).map(([k, v]) => [k, Array.isArray(v) ? new Set(v) : v]));
     S.papelera = papelera.map(a => normalizar({ ...a, aprobada: 1 }));
     S.schema = schema;
@@ -180,8 +184,7 @@
       if ((a[n.campo] ?? '') !== n.valor) return false;
     }
     if (S.q) {
-      const t = (S.campoQ === 'todos' ? `${a.titulo} ${a.artista} ${a.album || ''} ${a.cat1} ${a.cat2} ${a.anio ?? ''}`
-                                      : String(a[S.campoQ] ?? '')).toUpperCase();
+      const t = S.campoQ === 'todos' ? a._q : plano(a[S.campoQ]);
       if (!S.q.split(/\s+/).every(p => t.includes(p))) return false;
     }
     return true;
@@ -656,7 +659,7 @@
     let t;
     $('bvBuscar').addEventListener('input', e => {
       clearTimeout(t);
-      t = setTimeout(() => { S.q = e.target.value.trim().toUpperCase(); S.cursor = -1; $('bvScroll').scrollTop = 0; filtrar(); }, 120);
+      t = setTimeout(() => { S.q = plano(e.target.value.trim()); S.cursor = -1; $('bvScroll').scrollTop = 0; filtrar(); }, 120);
     });
     const cambiarVista = v => {
       const eraPapelera = enPapelera();

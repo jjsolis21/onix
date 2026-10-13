@@ -116,5 +116,13 @@
     });
   }
 
-  window.OnixBuscador = { attach, etiqueta, porIds, cache };
+  /** La biblioteca para las tablas del Admin: ligera y comprimida (≈0,3 MB con 20 000 audios en vez de 15 MB). */
+  async function lista(params = { sin_tipo: "Cuña" }) {
+    const r = await fetch(`/api/v1/biblioteca/lista?${new URLSearchParams(params)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { campos, filas } = await r.json();
+    return filas.map(f => { const o = {}; campos.forEach((c, i) => { o[c] = f[i]; }); return o; });
+  }
+
+  window.OnixBuscador = { attach, etiqueta, porIds, cache, lista };
 })();

@@ -183,10 +183,9 @@ const loadAudios = async () => {
   try {
     // Toda la biblioteca (antes solo las primeras 500) y sin cuñas: las
     // publicidades tienen su propia biblioteca en Programación de Pautas.
-    const res = await fetch(`${API_BASE}/api/v1/audios?sin_tipo=Cu%C3%B1a&limit=50000&offset=0`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    library = (data.data || []).map(a => ({
+    // Lista ligera y comprimida (con 20 000 audios, /api/v1/audios pesa 15 MB y tarda 2 s)
+    const lista = await OnixBuscador.lista({ sin_tipo: 'Cuña' });
+    library = lista.map(a => ({
       id: a.id, title: a.titulo || '—', artist: a.artista || '—', album: a.album || '',
       duration: a.duracion || 0, bpm: a.bpm || null, year: a.fecha_lanzamiento || null,
       soundCode: a.cat1 || '', popularity: a.cat2 || '', voz: a.voz || '',

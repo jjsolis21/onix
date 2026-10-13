@@ -21,7 +21,7 @@ from typing import List, Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile, Query
+from fastapi import FastAPI, HTTPException, status, Depends, WebSocket, WebSocketDisconnect, Request, Form, File, UploadFile, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
@@ -1456,6 +1456,48 @@ _SIN_TILDES = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
 def _sin_acentos(texto: Optional[str]) -> str:
     """Minúsculas y sin tildes, igual que audios.busq (migración 33): «cancion» encuentra «Canción»."""
     return (texto or "").translate(_SIN_TILDES).lower()
+
+
+# Columnas que usa la tabla de la Biblioteca musical del Admin (SQL, nombre que ve la pantalla).
+# La ficha y el editor piden su fila completa aparte (/api/v1/biblioteca/{id}/ficha).
+_CAMPOS_LISTA = [
+    ("id", "id"), ("titulo", "titulo"), ("artista", "artista"), ("album", "album"), ("duracion", "duracion"),
+    ("archivo_path", "archivo_path"), ("subgenero", "cat1"), ("categoria", "cat2"), ("cat3", "cat3"),
+    ("genero_vocal", "voz"), ("bpm", "bpm"), ("fecha_lanzamiento", "fecha_lanzamiento"), ("intro", "intro"),
+    ("cue_intro", "cue_intro"), ("cue_inicio_coro", "cue_inicio_coro"), ("cue_mezcla", "cue_mezcla"),
+    ("tipo_audio", "tipo_audio"), ("veces_reproducido", "veces_reproducido"),
+    ("ultima_reproduccion", "ultima_reproduccion"), ("loudness_estado", "loudness_estado"), ("origen", "origen"),
+    ("energia", "energia"), ("marcas_auto", "marcas_auto"), ("aprobada", "aprobada"), ("prioridad", "prioridad"),
+    ("restr_desde", "restr_desde"), ("restr_hasta", "restr_hasta"), ("restr_dias", "restr_dias"),
+    ("max_por_dia", "max_por_dia"),
+    # Los usa el módulo clásico (admin-app.js): marcas y fundidos
+    ("cue_inicio", "cue_inicio"), ("cue_final_coro", "cue_final_coro"), ("cue_outro", "cue_outro"),
+    ("fade_in", "fade_in"), ("fade_out", "fade_out"), ("outro", "outro"),
+]
+
+
+@app.get("/api/v1/biblioteca/lista", tags=["Audios"], summary="Lista ligera y comprimida para la tabla del Admin")
+def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Optional[str] = None,
+                     conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Con ~20 000 audios la lista completa de /api/v1/audios pesa unos 15 MB y tarda ~2 s.
+    Aquí van solo las columnas de la tabla, como filas sin nombres de campo repetidos
+    (`campos` + `filas`), y comprimida con gzip si el navegador la acepta.
+    """
+    import gzip
+    sql = f"SELECT {', '.join(c for c, _ in _CAMPOS_LISTA)} FROM audios WHERE activo = 1"
+    params: list = []
+    if tipo:
+        sql += " AND tipo_audio = ?"; params.append(_validate_tipo_audio(tipo))
+    if sin_tipo:
+        sql += " AND tipo_audio != ?"; params.append(_validate_tipo_audio(sin_tipo))
+    cuerpo = json.dumps({"campos": [a for _, a in _CAMPOS_LISTA], "filas": [list(r) for r in conn.execute(sql, params)]},
+                        separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    cabeceras = {}
+    if "gzip" in request.headers.get("accept-encoding", "") and len(cuerpo) > 2000:
+        cuerpo = gzip.compress(cuerpo, compresslevel=4)
+        cabeceras["Content-Encoding"] = "gzip"
+    return Response(content=cuerpo, media_type="application/json", headers=cabeceras)
 
 
 @app.get("/api/v1/biblioteca/conteos", tags=["Audios"], summary="Cuántos audios hay de cada tipo")

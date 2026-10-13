@@ -60,3 +60,17 @@ def test_pedir_audios_por_id(client, tmp_path):
     r = client.get("/api/v1/audios", params={"ids": f"{a},{b},999999,xx"}).json()
     assert sorted(x["id"] for x in r["data"]) == sorted([a, b])
     assert client.get("/api/v1/audios", params={"ids": "xx"}).json()["data"] == []
+
+
+def test_lista_ligera_para_la_tabla_del_admin(client, tmp_path):
+    import gzip, json
+    aid = subir(client, tmp_path, "LISTA LIGERA")
+    r = client.get("/api/v1/biblioteca/lista", params={"sin_tipo": "Cuña"}, headers={"Accept-Encoding": "identity"})
+    d = r.json()
+    assert d["campos"][:3] == ["id", "titulo", "artista"] and len(d["filas"][0]) == len(d["campos"])
+    fila = next(f for f in d["filas"] if f[0] == aid)
+    assert dict(zip(d["campos"], fila))["titulo"] == "LISTA LIGERA"
+    # Cuña excluida; gzip cuando el navegador lo acepta y la lista es grande
+    assert all(dict(zip(d["campos"], f))["tipo_audio"] != "Cuña" for f in d["filas"])
+    bruto = client.get("/api/v1/biblioteca/lista", headers={"Accept-Encoding": "gzip"})
+    assert json.loads(bruto.content)["campos"] == d["campos"]       # TestClient ya descomprime
