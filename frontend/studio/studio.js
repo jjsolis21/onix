@@ -1092,15 +1092,17 @@ const Derecha = (() => {
   }
   function pintarCart() {
     const n = bancos[banco] ?? 0;
-    $("cartuchera").innerHTML = Array.from({ length: n }, (_, i) => {
+    // Como la paleta de Soho: nombre de la paleta y cuenta atrás del efecto, y debajo los botones de color
+    $("cartuchera").innerHTML = `<div class="cart-cab"><span>${esc(nombres[banco] || banco || "")}</span><b id="cartCuenta">00.0s</b></div>`
+      + Array.from({ length: n }, (_, i) => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
       const num = i + 1;
       const largo = s && (s.mark_out || s.mark_in) ? Math.max(0, (s.mark_out || s.duracion) - (s.mark_in || 0)) : (s ? s.duracion : 0);
       return s
-        ? `<button class="cart-btn cart-${s.tipo_audio === "Cuña" ? "cuna" : (i % 2 ? "b" : "a")}" data-audio="${s.audio_id}" data-slot="${num}" data-n="${num}"
-             ${s.color ? `style="background:${esc(s.color)}"` : ""} title="${esc(s.titulo)} — clic: sonar / volver a pulsar: detener · clic derecho: cargar, editar">
-             <span class="cart-n">${esc(s.etiqueta || s.titulo)}</span><small><b>${num}</b>${fmt(largo)}</small></button>`
-        : `<button class="cart-btn vacio-btn" data-n="${num}" title="Vacío — arrastra una canción o clic derecho › Cargar efecto"><span class="cart-n">·</span><small><b>${num}</b></small></button>`;
+        ? `<button class="cart-btn" data-audio="${s.audio_id}" data-slot="${num}" data-n="${num}" style="background:${esc(s.color || CartEditor.COLOR_DEFECTO)}"
+             title="${esc(s.titulo)} — clic: sonar / otra vez: detener · clic derecho: editar">
+             <i class="cart-num">${num}</i><span class="cart-n">${esc(s.etiqueta || s.titulo)}</span><small>${CartEditor.seg(largo)}</small></button>`
+        : `<button class="cart-btn vacio-btn" data-n="${num}" title="Vacío — clic derecho para cargar un efecto, o arrastra una canción"><i class="cart-num">${num}</i><span class="cart-n">Vacío</span><small></small></button>`;
     }).join("");
   }
   $("derTabs").addEventListener("click", e => {
@@ -1127,19 +1129,16 @@ const Derecha = (() => {
       toast(`Botón ${slot} cargado`, "info", 1500);
     } catch (err) { toast(`No se pudo cargar el botón: ${err.message}`, "error", 3000); }
   });
-  // Clic derecho sobre cualquier botón: cargar un efecto desde un archivo, editarlo o vaciarlo (como Soho)
+  // Clic derecho sobre cualquier botón (vacío o cargado): la ventana «Editar» de Soho, donde se carga el efecto
   $("cartuchera").addEventListener("contextmenu", e => {
     const b = e.target.closest(".cart-btn");
     if (!b) return;
+    e.preventDefault();
     const slot = +b.dataset.n;
-    const boton = (slots[banco] ?? []).find(x => x.slot === slot) || null;
-    CartMenu.abrir(e, {
-      banco, slot, boton,
-      vaciar: async () => {
-        if (!confirm(`¿Vaciar el botón ${slot} («${boton?.etiqueta || boton?.titulo}»)?`)) return;
-        try { await api(`/api/v1/cartuchera/${banco}/${slot}`, { method: "DELETE" }); }
-        catch (err) { toast(`No se pudo vaciar: ${err.message}`, "error", 3000); }
-      },
+    CartEditor.abrir({
+      banco, slot, boton: (slots[banco] ?? []).find(x => x.slot === slot) || null,
+      usados: Object.values(slots).flat().map(x => x.color),
+      alGuardar: () => cartuchera(),
     });
   });
   function disparar(b) {
@@ -1377,13 +1376,25 @@ WS.on("cue_stopped", () => Estado.poll());
 WS.on("cartuchera_updated", () => Derecha.cartuchera());
 let _libT;     // al subir muchos audios llegan avisos seguidos: se juntan en una sola recarga
 WS.on("library_updated", () => { clearTimeout(_libT); _libT = setTimeout(() => Biblioteca.cargar(), 1000); });
-// Botón de la cartuchera «sonando» mientras su efecto está al aire (el motor avisa al arrancar y al terminar)
+// Botón de la cartuchera «sonando» y cuenta atrás (como Soho) mientras su efecto está al aire
 const _botonesDe = id => document.querySelectorAll(`#cartuchera .cart-btn[data-audio="${id}"]`);
+const _cuenta = { timer: null, fin: 0, audio: null };
+function _cuentaPintar(seg) { const el = $("cartCuenta"); if (el) { el.textContent = CartEditor.seg(seg); el.classList.toggle("activa", seg > 0); } }
+function _cuentaParar() { clearInterval(_cuenta.timer); _cuenta.timer = null; _cuenta.audio = null; _cuentaPintar(0); }
 WS.on("effect_fired", d => {
   _botonesDe(d.audio_id).forEach(b => b.classList.add("sonando"));
-  if (d.duracion) setTimeout(() => _botonesDe(d.audio_id).forEach(b => b.classList.remove("sonando")), d.duracion * 1000 + 300);
+  clearInterval(_cuenta.timer);
+  _cuenta.audio = d.audio_id; _cuenta.fin = performance.now() + (d.duracion || 0) * 1000;
+  _cuenta.timer = setInterval(() => {
+    const queda = (_cuenta.fin - performance.now()) / 1000;
+    if (queda <= 0) { _botonesDe(_cuenta.audio).forEach(b => b.classList.remove("sonando")); _cuentaParar(); }
+    else _cuentaPintar(queda);
+  }, 100);
 });
-WS.on("effect_stopped", d => _botonesDe(d.audio_id).forEach(b => b.classList.remove("sonando")));
+WS.on("effect_stopped", d => {
+  _botonesDe(d.audio_id).forEach(b => b.classList.remove("sonando"));
+  if (_cuenta.audio === d.audio_id) _cuentaParar();
+});
 WS.on("engine_stopped", () => toast("⚠ Motor de audio detenido o desconectado", "error", 8000));
 WS.on("engine_connected", () => { toast("✓ Motor de audio conectado", "info", 3000); Estado.refrescarTodo(); });
 WS.on("playback_error", d => toast(`⚠ ${d.msg ?? "Error de reproducción"}`, "error", 8000));

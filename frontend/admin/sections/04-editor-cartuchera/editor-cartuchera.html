@@ -9,7 +9,7 @@
   <header class="ox-head">
     <div>
       <h2>Editor de Cartuchera</h2>
-      <p>Cada paleta tiene nombre y botones propios; el operador navega entre ellas en el Studio y también puede cargar sus botones arrastrando canciones.</p>
+      <p>Cada paleta tiene nombre y botones propios. «Editar» abre el botón como en Soho: eliges el archivo del efecto, lo escuchas y ajustas color, marcas y volumen. En el Studio se hace igual con clic derecho sobre el botón.</p>
     </div>
     <span class="ox-spacer"></span>
     <button class="ox-btn" id="cartReload">↻ Recargar</button>
@@ -17,7 +17,7 @@
   </header>
 
   <section class="ox-card">
-    <h3>Asignar audio a un botón</h3>
+    <h3>Asignar un audio de la biblioteca a un botón</h3>
     <div class="ox-row">
       <div class="ox-field">
         <label for="cartBanco">Paleta</label>
@@ -105,7 +105,7 @@
       grid.innerHTML = Array.from({ length: bancos[banco] }, (_, i) => {
         const n = i + 1;
         const s = (slots[banco] || []).find(x => x.slot === n);
-        return `<div class="ox-slot ${s ? "assigned" : ""}">
+        return `<div class="ox-slot ${s ? "assigned" : ""}" ${s && s.color ? `style="border-left:6px solid ${esc(s.color)}"` : ""}>
           <span class="ox-slot__num">${String(n).padStart(2, "0")}</span>
           <span class="ox-slot__title">${s ? esc(s.etiqueta || s.titulo) : "<i>vacío</i>"}</span>
           <span class="ox-slot__meta">${s ? `${esc(s.titulo)} · ${esc(s.tipo_audio)} · ${fmt(s.duracion)}` : "&nbsp;"}</span>
@@ -175,15 +175,12 @@
     }
     if (b.dataset.del && confirm(`¿Eliminar la paleta «${NOMBRES[b.dataset.del]}» y sus botones?`)) await paleta("DELETE", b.dataset.del);
     if (b.dataset.editar) {
+      // La ventana «Editar» de Soho: cargar el archivo, escucharlo, color, marcas y volumen
       const [banco, n] = b.dataset.editar.split(":");
-      $("cartBanco").value = banco; llenarSelects(); $("cartSlot").value = n;
-      const s = (slots[banco] || []).find(x => x.slot === parseInt(n));
-      // El botón ya trae título y artista: no hace falta buscarlo
-      elegido = s ? { id: s.audio_id, titulo: s.titulo, artista: s.artista, tipo_audio: s.tipo_audio } : null;
-      $("cartBuscar").value = elegido ? OnixBuscador.etiqueta(elegido) : "";
-      $("cartBuscar").dataset.audioId = elegido ? elegido.id : "";
-      $("cartEtiqueta").value = s?.etiqueta || "";
-      $("cartBuscar").focus();
+      CartEditor.abrir({
+        banco, slot: parseInt(n), boton: (slots[banco] || []).find(x => x.slot === parseInt(n)) || null,
+        usados: Object.values(slots).flat().map(x => x.color), alGuardar: cargar,
+      });
     }
     if (b.dataset.vaciar) {
       const [banco, n] = b.dataset.vaciar.split(":");
