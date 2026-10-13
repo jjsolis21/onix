@@ -113,6 +113,18 @@ const Estado = (() => {
   // Sin version_api es el servidor el que quedó viejo (ventana anterior aún abierta).
   const motorViejo = () => !!st && (st.version_api === undefined || st.version !== st.version_api);
 
+  /** Carátula del disco en un cuadro; sin carátula (o sin pista) queda la nota ♪ */
+  function tapa(el, id) {
+    const clave = id ? String(id) : "";
+    if (el.dataset.id === clave) return;
+    el.dataset.id = clave;
+    el.textContent = "♪";
+    if (!id) return;
+    const img = new Image();
+    img.onload = () => { if (el.dataset.id === clave) { el.textContent = ""; el.appendChild(img); } };
+    img.src = `/api/v1/audios/${id}/caratula`;
+  }
+
   function pintarEstatico() {
     $("avisoVersion").hidden = !motorViejo();
     if (motorViejo()) {
@@ -136,6 +148,7 @@ const Estado = (() => {
     // Memo de la playlist para el locutor (Jazler "Memos")
     $("nowMemo").hidden = !ct?.nota;
     $("nowMemo").textContent = ct?.nota ? `📝 ${ct.nota}` : "";
+    tapa($("nowTapa"), ct && ct.origen !== "pauta" ? ct.id : null);
     $("nowTitulo").textContent = ct ? ct.titulo : (st.retenido ? "Aire libre" : "Sin reproducción");
     $("nowArtista").textContent = ct ? (ct.cliente ? `📢 ${ct.cliente}` : ct.artista) : " ";
     const total = ct ? (ct.fin ?? st.duration_sec) : 0;
@@ -182,6 +195,7 @@ const Estado = (() => {
     else if (it?.tipo === "tanda") { tipo = "Tanda"; titulo = `TANDA :${String(it.minuto).padStart(2, "0")}`; artista = `${it.cunas} cuña(s) · ${fmt(it.duracion)}`; }
     else if (it) { tipo = it.tipo_audio; titulo = it.titulo; artista = it.artista; }
     else if (st.modo === "automatico") { titulo = "Rotación automática"; }
+    tapa($("nextTapa"), q?.id ?? (it && it.tipo !== "tanda" ? it.audio_id : null));
     $("nextTipo").textContent = TIPO_NOMBRE[tipo] ?? tipo;
     $("nextTipo").dataset.tipo = tipo;
     $("nextTitulo").textContent = titulo;
@@ -582,11 +596,35 @@ const Biblioteca = (() => {
   async function cargarPlaylists() {
     try { playlists = await api("/api/v1/playlists"); } catch (_) { playlists = []; }
   }
+  const plAbiertas = new Set(), plItems = {};
+  function filasDeLista(id) {
+    const items = plItems[id];
+    if (!items) return `<tr class="pl-det"><td colspan="6" class="vacio">Cargando…</td></tr>`;
+    if (!items.length) return `<tr class="pl-det"><td colspan="6" class="vacio">La playlist está vacía</td></tr>`;
+    return items.map((i, n) => `
+      <tr class="pl-det" data-id="${i.audio_id}" draggable="true">
+        <td><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(i.titulo)}</div><div class="lib-art">${esc(i.artista)}${i.nota ? ` · <em class="pl-nota">📝 ${esc(i.nota)}</em>` : ""}</div></td>
+        <td>${esc(i.rotacion ?? "")}</td><td></td>
+        <td class="num">${i.cue_intro ? Math.round(i.cue_intro) + "s" : ""}</td>
+        <td class="num">${fmt(i.duracion)}</td>
+        <td class="lib-acc">
+          <button data-cue="${i.audio_id}" class="${i.audio_id === enCue ? "cue-on" : ""}" title="Preescuchar">${i.audio_id === enCue ? "■" : "🎧"}</button>
+          <button data-cola="${i.audio_id}" title="Agregar a la cola">+ COLA</button>
+        </td></tr>`).join("");
+  }
+  async function alternarLista(id) {
+    if (plAbiertas.has(id)) { plAbiertas.delete(id); pintar(); return; }
+    plAbiertas.add(id); pintar();
+    if (!plItems[id]) {
+      try { plItems[id] = (await api(`/api/v1/playlists/${id}`)).items; } catch (_) { plItems[id] = []; }
+      pintar();
+    }
+  }
   function pintarPlaylists(q) {
     const lista = playlists.filter(p => !q || norm(`${p.nombre} ${p.reloj ?? ""}`).includes(q));
     $("libFilas").innerHTML = lista.length ? lista.map(p => `
-      <tr data-pl="${p.id}">
-        <td><div class="lib-tit">${esc(p.nombre)}</div><div class="lib-art">${esc(p.reloj ? `Reloj ${p.reloj}` : "")} · ${esc((p.created_at || "").slice(0, 10))}</div></td>
+      <tr data-pl="${p.id}" class="pl-cab ${plAbiertas.has(p.id) ? "abierta" : ""}" title="Clic para ver los archivos de la lista">
+        <td><div class="lib-tit"><span class="pl-flecha">${plAbiertas.has(p.id) ? "▾" : "▸"}</span>${esc(p.nombre)}</div><div class="lib-art">${esc(p.reloj ? `Reloj ${p.reloj}` : "")} · ${esc((p.created_at || "").slice(0, 10))}</div></td>
         <td>${p.horas ? `${p.horas} h` : ""}</td>
         <td>${p.audios} audios</td>
         <td class="num"></td>
@@ -594,7 +632,7 @@ const Biblioteca = (() => {
         <td class="lib-acc">
           <button data-plcola="${p.id}" title="Agregar todos sus audios al final de la cola">+ COLA</button>
           <button data-plreemp="${p.id}" class="aire" title="Vaciar la cola y poner esta playlist">▶ LANZAR</button>
-        </td></tr>`).join("")
+        </td></tr>${plAbiertas.has(p.id) ? filasDeLista(p.id) : ""}`).join("")
       : `<tr><td colspan="6" class="vacio">${playlists.length ? "Sin resultados" : "No hay playlists. Créalas en Admin › Relojes › Playlists."}</td></tr>`;
     $("libInfo").textContent = `${lista.length} playlist(s) · la cola suena antes que el programa; las tandas salen a su hora`;
   }
@@ -780,8 +818,11 @@ const Biblioteca = (() => {
   setInterval(() => { if (P.activo) pintarPlayer(); }, 250);
   // Un clic en la fila la deja lista en el reproductor
   $("libFilas").addEventListener("click", e => {
+    if (e.target.closest("button")) return;
     const tr = e.target.closest("tr[data-id]");
-    if (tr && !e.target.closest("button")) elegir(+tr.dataset.id);
+    if (tr) { elegir(+tr.dataset.id); return; }
+    const cab = e.target.closest("tr[data-pl]");
+    if (cab) alternarLista(+cab.dataset.pl);
   });
 
   cargar();

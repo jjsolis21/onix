@@ -319,7 +319,8 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 .tanda-box.cerca .tanda-cuenta { color: var(--ambar-vivo); }
 .tanda-det { font-family: var(--f-data); font-size: 11px; color: var(--txt-lo); }
 .tanda-box.espera .tanda-cuenta { color: var(--rojo); animation: parpadeo 1s steps(2) infinite; }
-.historial { max-height: 230px; overflow-y: auto; padding: 4px 0; }
+.derecha > * { flex-shrink: 0; }
+.historial { min-height: 150px; max-height: 230px; overflow-y: auto; padding: 4px 0; }
 .hist { display: grid; grid-template-columns: 46px 1fr; gap: 6px; padding: 3px 12px; font-size: 13px; border-left: 3px solid transparent; }
 .hist-h { font-family: var(--f-data); font-size: 11px; color: var(--ambar); }
 .hist-t { color: var(--txt-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -543,3 +544,24 @@ kbd {
 .sp-prog { position: relative; height: 8px; background: var(--bg-3); border-radius: 4px; cursor: pointer; overflow: hidden; }
 .sp-prog i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--rojo-osc), var(--ambar)); }
 .sp-info { font-family: var(--f-data); font-size: 10px; color: var(--txt-lo); text-align: right; max-width: 150px; line-height: 1.2; }
+
+/* ═══════════ CARÁTULA EN EL REPRODUCTOR ═══════════ */
+.pl-now { grid-template-columns: auto 84px minmax(0, 1fr) auto; }
+.pl-next { grid-template-columns: auto 56px minmax(0, 1fr) auto; }
+.pl-now .barra { grid-column: 3 / -1; }
+.pl-tapa {
+  width: 84px; height: 84px; border-radius: 6px; background: var(--bg-3); overflow: hidden;
+  display: grid; place-items: center; font-size: 30px; color: var(--txt-lo); grid-row: span 2;
+}
+.pl-tapa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pl-tapa-sm { width: 56px; height: 56px; font-size: 22px; grid-row: auto; }
+.ctl-detener .ctl-ico { width: 24px; height: 24px; }
+
+/* ═══════════ PLAYLISTS DESPLEGABLES ═══════════ */
+.lib-tabla tr.pl-cab { cursor: pointer; }
+.pl-flecha { display: inline-block; width: 14px; color: var(--ambar); }
+.lib-tabla tr.pl-cab.abierta td { background: var(--bg-2); }
+.lib-tabla tr.pl-det td { background: rgba(255, 255, 255, .02); }
+.lib-tabla tr.pl-det td:first-child { padding-left: 28px; }
+.pl-n { display: inline-block; min-width: 22px; color: var(--txt-lo); font-family: var(--f-data); font-size: 11px; }
+.pl-nota { font-style: normal; color: #f5c400; }
