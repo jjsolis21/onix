@@ -203,7 +203,7 @@
         <div class="ec-marca-btns">
           <button data-acc="menos" title="Atrás 0,1 s (Mayús: 1 s) — el audio salta ahí">«</button>
           <button data-acc="mas" title="Adelante 0,1 s (Mayús: 1 s) — el audio salta ahí">»</button>
-          <button data-acc="escuchar" title="Escuchar desde ${m.antes ? m.antes + ' s antes' : 'la marca'}">${ICO('play2')}</button>
+          <button data-acc="escuchar" title="Escuchar desde ${(E.antes != null ? E.antes : m.antes) ? (E.antes != null ? E.antes : m.antes) + ' s antes' : 'la marca'}">${ICO('play2')}</button>
           <button data-acc="quitar" title="Quitar la marca">✕</button>
         </div>
       </div>`).join('');
@@ -283,7 +283,9 @@
     if (!E.ws) return;
     const m = MARCAS.find(x => x.k === k);
     E.sel = k; pintarMarcas();
-    E.ws.setTime(Math.max(0, (E.valores[k] || 0) - m.antes));
+    // En una pauta (E.antes = 0) suena justo desde la marca; en canciones, unos segundos antes para oír la transición
+    const antes = E.antes != null ? E.antes : m.antes;
+    E.ws.setTime(Math.max(0, (E.valores[k] || 0) - antes));
     E.ws.play();
   }
   function aplicarVolumen() {
@@ -598,6 +600,7 @@
    *   opc.marcas   claves de las marcas a mostrar (p. ej. ['cue_intro','cue_outro','cue_mezcla'])
    *   opc.valores  valores iniciales {cue_intro: 2.4, …}
    *   opc.audioId  para AutoCue (si el audio ya está guardado)
+   *   opc.antes    segundos antes de la marca al escucharla (0 = justo desde la marca)
    *   opc.ajustes  true = fundidos y volumen
    *   opc.onCambio se llama cuando el usuario mueve o fija una marca
    */
@@ -605,7 +608,7 @@
     if (E) cerrar(true);
     const lista = MARCAS.filter(m => !opc.marcas || opc.marcas.includes(m.k));
     E = { embebido: true, raiz: cont, id: opc.audioId || null, f: { duracion: 0, fade_in: 0, fade_out: 0, ganancia_db: 0 },
-          marcasActivas: lista, valores: Object.fromEntries(MARCAS.map(m => [m.k, +((opc.valores || {})[m.k] || 0)])),
+          antes: opc.antes, marcasActivas: lista, valores: Object.fromEntries(MARCAS.map(m => [m.k, +((opc.valores || {})[m.k] || 0)])),
           sel: lista[0]?.k, ws: null, rp: null, zonas: [], archivo: null, sucio: false, schema: { categorias: [] }, ident: {}, tipos: [] };
     cont.innerHTML = `<div class="ec ec-embed ${opc.ajustes ? '' : 'ec-sin-ajustes'}">${htmlOnda(E.f, !E.id)}<span class="ec-estado" id="ecEstado"></span></div>`;
     pintarMarcas(); enlazar();
@@ -632,6 +635,8 @@
     abrir, cerrar, montar,
     /** Valores de las marcas del editor embebido (vacío si no hay uno montado) */
     valoresMontados: () => (E && E.embebido ? { ...E.valores } : {}),
+    /** Pausa el audio del editor embebido (al cambiar de pestaña) */
+    pausarMontado: () => { try { if (E && E.embebido) E.ws?.pause(); } catch (_) { } },
     cerrarMontado: () => { if (E && E.embebido) cerrar(true); },
   };
 })();

@@ -4,7 +4,7 @@
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=9">
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=9">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 
 <div class="pautas-root" id="pautasRoot">
 
@@ -522,6 +522,7 @@
   const panes = ["datos", "audio", "horarios"];
 
   function ir(nombre) {
+    if (nombre !== "audio") { try { window.EditorCancion && window.EditorCancion.pausarMontado(); } catch (_) { } }   // fuera de Audio, no sigue sonando
     modal.querySelectorAll(".pm-pane").forEach(p => p.classList.toggle("activo", p.dataset.pane === nombre));
     modal.querySelectorAll(".pm-tab").forEach(t => t.classList.toggle("activo", t.dataset.pane === nombre));
   }

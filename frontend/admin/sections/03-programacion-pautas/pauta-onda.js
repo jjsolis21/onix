@@ -18,7 +18,7 @@
     cargado = new Promise((ok, mal) => {
       const css = document.createElement('link'); css.rel = 'stylesheet';
       css.href = 'sections/02-biblioteca-musical/editor-cancion.css?v=6'; document.head.appendChild(css);
-      const js = document.createElement('script'); js.src = 'sections/02-biblioteca-musical/editor-cancion.js?v=9';
+      const js = document.createElement('script'); js.src = 'sections/02-biblioteca-musical/editor-cancion.js?v=10';
       js.onload = ok; js.onerror = () => { cargado = null; mal(new Error('No se pudo cargar el editor de onda')); };
       document.head.appendChild(js);
     });
@@ -35,7 +35,7 @@
     extra = { inicio_coro: cues.inicio_coro || 0, final_coro: cues.final_coro || 0 };
     cont.hidden = false;
     global.EditorCancion.montar(cont, {
-      marcas: MARCAS, audioId: audioId || null, url,
+      marcas: MARCAS, audioId: audioId || null, url, antes: 0,    // al escuchar una marca, suena justo desde ella
       valores: { cue_intro: cues.intro, cue_outro: cues.outro, cue_mezcla: cues.mezcla },
     });
   }

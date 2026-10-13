@@ -720,6 +720,7 @@
      */
     async function activateSection(sectionId) {
       if (sectionId === activeSectionId) return;
+      window.OnixAudio?.pausarTodo();                     // al cambiar de sección no queda nada sonando
 
       // 1. Desactivar el panel y botón actuales
       $id(`section-panel-${activeSectionId}`)?.classList.remove("section-panel--active");
@@ -860,12 +861,20 @@
   <script src="vendor/wavesurfer-7.12.12/plugins/regions.min.js"></script>
 
   <script src="js/onix-waveform.js?v=3"></script>
+  <!-- Red de seguridad: lo que suena en el navegador (preescuchas, ondas) se corta al cambiar de sección -->
+  <script>
+    (() => {
+      const vivos = new Set(), play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function () { vivos.add(this); return play.apply(this, arguments); };
+      window.OnixAudio = { pausarTodo() { vivos.forEach(m => { try { m.pause(); } catch (_) { } }); } };
+    })();
+  </script>
   <script src="js/iconos.js?v=1"></script>
   <script src="js/buscador-audios.js?v=2"></script>
   <script src="js/admin-app.js?v=12"></script>
   <script src="sections/03-programacion-pautas/cunas.js?v=2"></script>
-  <script src="sections/03-programacion-pautas/pauta-onda.js?v=1"></script>
-  <script src="sections/03-programacion-pautas/pautas-controller.js?v=14"></script>
+  <script src="sections/03-programacion-pautas/pauta-onda.js?v=2"></script>
+  <script src="sections/03-programacion-pautas/pautas-controller.js?v=15"></script>
   <script src="sections/02-biblioteca-musical/estadisticas/estadisticas-controller.js?v=4"></script>
 </body>
 

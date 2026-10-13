@@ -1174,6 +1174,7 @@
   }
 
   function _closeModal() {
+    if (global.PautaOnda) global.PautaOnda.destroy();      // cerrar la ventana corta el audio de la onda
     _hideEl($('pautaModal'));
     _editingId = null;
     _isSaving  = false;
