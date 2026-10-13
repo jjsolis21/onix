@@ -19,7 +19,7 @@ const fmt = s => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`;
 };
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips" };
+const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips", Locucion: "Voz" };
 
 function toast(msg, tipo = "info", ms = 5000) {
   const el = document.createElement("div");
@@ -441,11 +441,11 @@ const Decks = (() => {
     let html = "";
     if (cola.length) {
       html += `<div class="deck-sep"><i style="background:var(--cyan)"></i>Cola del operador</div>`;
-      html += cola.map((q, i) => `<div class="deck cola${q.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${q.uid}" data-zona="cola" data-tipo="Cola">
+      html += cola.map((q, i) => `<div class="deck cola${q.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${q.uid}" data-zona="cola" data-tipo="${q.tipo_audio === "Locucion" ? "Locucion" : "Cola"}">
         <span class="deck-hora">${esc(q.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div>
           ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}</div>
-        <span class="deck-dur">COLA</span></div>`).join("");
+        <span class="deck-dur">${q.tipo_audio === "Locucion" ? "🎙 VOZ" : "COLA"}</span></div>`).join("");
     }
     let reloj;
     items.forEach((it, i) => {
@@ -660,7 +660,22 @@ const Decks = (() => {
     }
   });
 
-  return { pintar, agregar };
+  /** Entre qué y qué entra lo que se agregue ahora (para el Voice Tracker): la elegida y la que le sigue */
+  function vecinos() {
+    const ref = x => x ? { id: x.audio_id ?? x.id, titulo: x.titulo || "", artista: x.artista || "" } : null;
+    const cancion = x => x && x.tipo_audio !== "Locucion" && (!x.tipo || x.tipo === "audio");   // las voces no cuentan
+    const audiosPlan = items.filter(cancion);
+    const { zona, i, it } = actual();
+    if (it) {
+      const siguiente = zona === "cola" ? (colaItems.slice(i + 1).find(cancion) || audiosPlan[0]) : items.slice(i + 1).find(cancion);
+      return { anterior: it.tipo && it.tipo !== "audio" ? null : ref(it), siguiente: ref(siguiente), elegida: true };
+    }
+    const ct = Estado.st?.current_track;
+    return { anterior: ct ? { id: ct.id, titulo: ct.titulo, artista: ct.artista } : null,
+             siguiente: ref(colaItems.find(cancion) || (Estado.st?.modo === "automatico" ? audiosPlan[0] : null)), elegida: false };
+  }
+
+  return { pintar, agregar, vecinos };
 })();
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
@@ -997,12 +1012,15 @@ const Derecha = (() => {
   try { vista = localStorage.getItem("onix_vista_der") || "hist"; } catch { /* sin almacenamiento */ }
   function pintarVista() {
     const claves = Object.keys(bancos);
-    if (vista !== "hist") banco = vista;
+    if (vista !== "hist" && vista !== "vt") banco = vista;
     $("derTabs").innerHTML = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
+      + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`
       + claves.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
     $("historial").hidden = vista !== "hist";
-    $("cartuchera").hidden = vista === "hist";
-    if (vista !== "hist") pintarCart();
+    $("voiceTracker").hidden = vista !== "vt";
+    $("cartuchera").hidden = vista === "hist" || vista === "vt";
+    if (vista === "vt") { if (typeof VoiceTracker !== "undefined") VoiceTracker.mostrar(); }
+    else if (vista !== "hist") pintarCart();
   }
 
   function tanda(prog, st) {

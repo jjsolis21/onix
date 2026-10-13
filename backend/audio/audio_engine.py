@@ -86,6 +86,9 @@ _THIS_FILE = Path(__file__).resolve()
 # automatica; las cuñas salen unicamente por la programacion de pautas.
 TIPO_MUSICA = "Musica"
 TIPO_CUNA   = "Cuña"
+# Voice track (locución grabada o hecha con voz de IA): entra SOBRE el final de la
+# canción anterior, con esa música bajada (talk-over), y la siguiente arranca al terminar la voz.
+TIPO_VOZ    = "Locucion"
 
 # Normalizacion: la ganancia de cada audio (ver loudness.py) se aplica como
 # volumen del canal. Se permite subir hasta +6 dB (volumen 2.0) y nunca por
@@ -888,6 +891,10 @@ class AudioEngine:
     FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
+    VOZ_DUCK           = 0.3    # la música bajo la voz queda al 30 % (≈ -10 dB)
+    VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
+    VOZ_SALIDA_CAMA    = 1.5    # la música de fondo se va en este tiempo antes de que termine la voz
+    VOZ_FIN            = 0.2    # la siguiente entra este tiempo antes del final de la voz
 
     def __init__(self, db_path: Path = None, respaldo_dir: Path = None):
         self.bus = EventBus()
@@ -912,6 +919,9 @@ class AudioEngine:
         self._cmds: "queue.Queue[tuple]" = queue.Queue()
 
         self._xfade:           Optional[dict] = None  # {canal, until, track}
+        # Voice track sobre música: la canción anterior sigue sonando bajita en su canal
+        self._cama:            Optional[dict] = None  # {canal, track, item, saliendo}
+        self._outro_voz:       Optional[float] = None # fin de la voz de la canción: si viene un voice track, entra ahí
         self._crossfade_secs   = 4.0
         self._master_volume    = 1.0
         self._effect_ducking   = False
@@ -1178,15 +1188,21 @@ class AudioEngine:
             return
 
         track = self._current_track
+        if self._cama:
+            self._vigilar_cama()
         if track:
             if self._audio.is_active(self._active_canal):
                 pos = self._audio.get_position_sec(self._active_canal)
                 if pos < self._hard_end:
-                    if not self._mix_fired and pos >= self._mix_point:
+                    if not self._mix_fired and (
+                            pos >= self._mix_point
+                            or (self._outro_voz is not None and pos >= self._outro_voz
+                                and self._siguiente_es_voz())):
                         # Si no hay siguiente, la pista simplemente termina completa.
                         self._mix_fired = True
                         if not self._detener_al_terminar:
-                            self._advance()
+                            if not self._advance() and self._cama:
+                                self._recuperar_cama()     # manual sin nada después: vuelve la canción
                     return
 
             # La pista termino sin relevo previo.
@@ -1195,6 +1211,7 @@ class AudioEngine:
             self._current_item  = None
             self.bus.emit("track_ended", {"audio_id": track.get("id"), "completada": True})
             if self._detener_al_terminar:
+                self._soltar_cama()                # tampoco sigue la música de fondo de una voz
                 self._detener_al_terminar = False
                 self._retenido = True
                 self._should_be_playing = False
@@ -1202,6 +1219,8 @@ class AudioEngine:
                 self.bus.emit("detener_al_terminar", {"activo": False, "retenido": True})
                 return
             if not self._advance():
+                if self._cama and self._recuperar_cama():
+                    return
                 self._should_be_playing = False
                 self.bus.emit("playback_stopped", {"reason": "sin_siguiente"})
             return
@@ -1230,6 +1249,7 @@ class AudioEngine:
         return {
             "uid": nuevo_uid(),            # para elegirla, subirla, bajarla o quitarla en el Studio
             "id": track["id"], "titulo": track["titulo"], "artista": track["artista"],
+            "tipo_audio": track.get("tipo_audio") or TIPO_MUSICA,
             "duracion_efectiva": duracion_efectiva(track, self._crossfade_secs),
             "nota": (nota or "").strip()[:500],
         }
@@ -1575,6 +1595,8 @@ class AudioEngine:
             if not self._audio.pause(self._active_canal):
                 self._emit_error(self._current_track.get("id"), "pausa_fallida", "No se pudo pausar el audio")
                 return
+            if self._cama:
+                self._audio.pause(self._cama["canal"])       # la música bajo la voz también
             self._pausado, self._pausado_desde, self._pausa_avisada = True, time.monotonic(), False
             log.info("[Engine] PAUSA en %.1fs de '%s'",
                      self._audio.get_position_sec(self._active_canal), self._current_track.get("titulo"))
@@ -1582,6 +1604,8 @@ class AudioEngine:
             self._pausado, self._pausado_desde = False, None
             if self._current_track and not self._audio.play(self._active_canal):
                 self._emit_error(self._current_track.get("id"), "error_play_backend", "No se pudo reanudar el audio")
+            if self._cama:
+                self._audio.play(self._cama["canal"])
             self._silencio_desde = None
             log.info("[Engine] Se reanuda '%s'", (self._current_track or {}).get("titulo"))
         self.bus.emit("pausa", {"activo": self._pausado})
@@ -1771,9 +1795,15 @@ class AudioEngine:
             self._pausado, self._pausado_desde = False, None
             self.bus.emit("pausa", {"activo": False})
 
+        if self._cama:
+            self._soltar_cama()                  # la música de fondo deja libre su canal
+
         outgoing_active = (self._current_track is not None
                            and self._audio.is_active(self._active_canal))
         outgoing = self._active_canal
+        # Voice track sobre la canción que suena (no sobre cuñas ni sobre otra voz)
+        sobre_musica = (self._is_voz(item) and outgoing_active and self._current_item is not None
+                        and not self._is_spot(self._current_item) and not self._is_voz(self._current_item))
         canal    = (CANAL_B if outgoing == CANAL_A else CANAL_A) if outgoing_active else CANAL_A
 
         if not outgoing_active:
@@ -1794,7 +1824,19 @@ class AudioEngine:
         is_spot = self._is_spot(item)
         target  = self._target_volume(track)
 
-        if outgoing_active:
+        if sobre_musica:
+            prev, prev_item = self._current_track, self._current_item
+            self._audio.set_volume(canal, target)
+            if not self._audio.play(canal):
+                self._audio.stop(canal)
+                self._emit_error(track.get("id"), "error_play_backend",
+                                 f"No se pudo reproducir: {track.get('titulo', '')}")
+                return False
+            self._audio.slide_volume(outgoing, self._target_volume(prev) * self.VOZ_DUCK, self.VOZ_BAJAR_MS)
+            self._cama = {"canal": outgoing, "track": prev, "item": prev_item, "saliendo": False}
+            self.bus.emit("voz_sobre_musica", {"voz_id": track.get("id"), "musica_id": prev.get("id"),
+                                               "titulo": track.get("titulo", "")})
+        elif outgoing_active:
             fade_in, fade_out = self._fade_times(self._current_item, item)
             prev = self._current_track
             self._audio.set_volume(canal, 0.0)
@@ -1834,6 +1876,11 @@ class AudioEngine:
             mix = float("inf")
         elif is_spot:
             mix = max(fin - self.SPOT_FADE_OUT, cue_in)
+        elif self._is_voz(item):
+            # La siguiente entra al final de la voz (o en su marca de mezcla, si la tiene)
+            mix = float(track.get("cue_mezcla") or 0)
+            if not (cue_in < mix < dur):
+                mix = max(dur - self.VOZ_FIN, cue_in)
         else:
             mix = float(track.get("cue_mezcla") or track.get("outro") or 0)
             if not (cue_in < mix < dur):
@@ -1849,6 +1896,9 @@ class AudioEngine:
         self._hard_end          = cue_out if cue_out > 0 else float("inf")
         self._mix_fired         = False
         self._should_be_playing = True
+        # Fin de la voz del cantante: si después viene un voice track, éste entra ahí
+        co = float(track.get("cue_outro") or 0)
+        self._outro_voz = co if (not is_spot and not self._is_voz(item) and cue_in < co < mix) else None
 
         if not item.get("_restart"):
             self._on_track_started(track, item, dur)
@@ -1862,8 +1912,76 @@ class AudioEngine:
         self._audio.stop(xf["canal"])
         self.bus.emit("track_ended", {"audio_id": xf["track"].get("id"), "completada": True})
 
+    # ── Voice track sobre música ─────────────────────────────────────────────
+
+    @staticmethod
+    def _is_voz(item: Optional[dict]) -> bool:
+        return bool(item) and item["track"].get("tipo_audio") == TIPO_VOZ
+
+    def _siguiente_es_voz(self) -> bool:
+        """¿Lo próximo que va a sonar es un voice track? (sin sacarlo de su lista)"""
+        if self._priority_queue and (self._mode == "automatico" or self._tanda_liberada):
+            return False                         # antes sale la tanda
+        if self._playlist_queue:
+            return self._playlist_queue[0].get("tipo_audio") == TIPO_VOZ
+        if self._mode != "automatico":
+            return False
+        with self._programa_lock:
+            it = self._programa[0] if self._programa else None
+        return bool(it) and it.get("tipo") == "audio" and it.get("tipo_audio") == TIPO_VOZ
+
+    def _hay_siguiente(self) -> bool:
+        """¿Algo va a entrar cuando termine lo que suena? (para despedir o no la música de fondo)"""
+        if self._detener_al_terminar:
+            return False
+        return (self._mode == "automatico" or bool(self._playlist_queue)
+                or bool(self._priority_queue and self._tanda_liberada))
+
+    def _vigilar_cama(self):
+        """La música bajo la voz: se despide antes de que termine la voz (si algo sigue) o se va sola."""
+        c = self._cama
+        if not self._audio.is_active(c["canal"]):
+            self._audio.stop(c["canal"])
+            self._cama = None
+            self.bus.emit("track_ended", {"audio_id": c["track"].get("id"), "completada": True})
+            return
+        if (not c["saliendo"] and self._current_track and self._mix_point != float("inf")
+                and self._audio.get_position_sec(self._active_canal) >= self._mix_point - self.VOZ_SALIDA_CAMA
+                and self._hay_siguiente()):
+            c["saliendo"] = True
+            self._audio.slide_volume(c["canal"], 0.0, int(self.VOZ_SALIDA_CAMA * 1000))
+
+    def _soltar_cama(self):
+        c, self._cama = self._cama, None
+        if c:
+            self._audio.stop(c["canal"])
+            self.bus.emit("track_ended", {"audio_id": c["track"].get("id"), "completada": True})
+
+    def _recuperar_cama(self) -> bool:
+        """Terminó la voz y no viene nada (manual): la canción de fondo vuelve a su volumen y sigue."""
+        c, self._cama = self._cama, None
+        if not c or not self._audio.is_active(c["canal"]):
+            return False
+        if self._current_track and self._active_canal != c["canal"] and not self._audio.is_active(self._active_canal):
+            self._audio.stop(self._active_canal)
+        elif self._current_track and self._active_canal != c["canal"]:
+            # la voz termina sola en su canal; queda como crossfade corto
+            self._xfade = {"canal": self._active_canal, "until": time.monotonic() + 0.5, "track": self._current_track}
+        self._active_canal  = c["canal"]
+        self._current_track = c["track"]
+        self._current_item  = c["item"]
+        self._duration      = self._audio.get_duration_sec(c["canal"]) or float(c["track"].get("duracion") or 0)
+        self._mix_point     = float("inf")       # ya pasó su mezcla: termina completa
+        self._hard_end      = float("inf")
+        self._mix_fired     = True
+        self._outro_voz     = None
+        self._audio.slide_volume(c["canal"], self._target_volume(c["track"]), self.VOZ_BAJAR_MS)
+        self.bus.emit("voz_fin_sin_siguiente", {"musica_id": c["track"].get("id")})
+        return True
+
     def _do_stop(self, reason: str):
         self._finish_crossfade(force=True)
+        self._cama = None                        # A y B se detienen abajo
         if self._pausado:
             self._pausado, self._pausado_desde = False, None
             self.bus.emit("pausa", {"activo": False})
@@ -1917,6 +2035,11 @@ class AudioEngine:
             return self.SPOT_FADE_IN, self.SPOT_FADE_IN
         if prev_item and self._is_spot(prev_item):
             return self.SPOT_FADE_OUT, self.SPOT_FADE_OUT
+        if self._is_voz(item):
+            return 0.1, 0.5                      # la voz entra limpia
+        if prev_item and self._is_voz(prev_item):
+            # tras la voz, la canción entra casi a pleno (como el locutor que "pisa" la intro)
+            return (float(item["track"].get("fade_in") or 0) or 0.3), 0.3
         fade_in  = float(item["track"].get("fade_in") or 0) or self._crossfade_secs
         fade_out = (float(prev_item["track"].get("fade_out") or 0) if prev_item else 0) \
             or self._crossfade_secs
@@ -2384,7 +2507,7 @@ class AudioEngine:
     def _on_track_started(self, track: dict, item: dict, duracion: float):
         origen     = item.get("origen", "manual")
         tipo_audio = track.get("tipo_audio") or TIPO_MUSICA
-        tipo       = "pauta" if origen == "pauta" else "musica"
+        tipo       = "pauta" if origen == "pauta" else ("voz" if tipo_audio == TIPO_VOZ else "musica")
 
         if tipo_audio == TIPO_MUSICA and tipo == "musica":
             self._recent_history.append({
@@ -2548,6 +2671,9 @@ class AudioEngine:
             } if self._cue_track else None,
             "proxima_tanda":     self._proxima_tanda(),
             "crossfade_active":  self._xfade is not None,
+            # Voice track al aire sobre la canción anterior (que sigue bajita)
+            "voz_sobre":         {"audio_id": self._cama["track"].get("id"),
+                                  "titulo": self._cama["track"].get("titulo", "")} if self._cama else None,
             "crossfade_seg":     self._crossfade_secs,
             "should_be_playing": self._should_be_playing,
             "detener_al_terminar": self._detener_al_terminar,

@@ -862,3 +862,84 @@ def test_audio_del_programa_pasa_a_la_cola_para_sonar_a_continuacion(engine, med
     assert [q["titulo"] for q in cola][:2] == [elegido["titulo"], "PEDIDO"]
     assert elegido["uid"] not in [i["uid"] for i in engine.programa()["items"]]
     assert engine._advance() and engine._current_track["titulo"] == elegido["titulo"]
+
+
+# ── Voice tracker: la voz entra sobre el final de la canción ────────────────
+
+def _al(engine, seg):
+    engine._audio.set_position_sec(engine._active_canal, seg)
+    engine._tick()
+
+
+def test_voice_track_entra_sobre_el_outro_con_la_musica_abajo(engine, media):
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_outro=40.0, cue_mezcla=55.0)
+    voz = add_audio(engine, media, "VT 1", tipo="Locucion", seconds=8.0)
+    otro = add_audio(engine, media, "OTRO", seconds=60.0)
+    engine._mode = "manual"
+    assert engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    canal_tema = engine._active_canal
+    engine.queue_track(voz); engine.queue_track(otro); engine._drain_commands()
+
+    _al(engine, 39.0)
+    assert engine._current_track["id"] == tema               # antes del fin de la voz del cantante, nada
+    _al(engine, 40.5)                                        # terminó de cantar y lo que sigue es una voz
+    assert engine._current_track["id"] == voz
+    st = engine.status
+    assert st["voz_sobre"]["audio_id"] == tema and engine._cama["canal"] == canal_tema
+    assert engine._audio.is_active(canal_tema)               # la canción sigue sonando debajo
+    assert engine._xfade is None
+
+    _al(engine, 8.0 - engine.VOZ_FIN)                        # termina la voz → entra la siguiente
+    assert engine._current_track["id"] == otro
+    assert engine._cama is None and engine.status["voz_sobre"] is None
+    hist = [r[0] for r in db(engine).execute("SELECT tipo FROM historial_emision ORDER BY id")]
+    assert hist == ["musica", "voz", "musica"]
+
+
+def test_sin_voice_track_la_cancion_no_se_corta_en_su_outro(engine, media):
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_outro=40.0, cue_mezcla=55.0)
+    otro = add_audio(engine, media, "OTRO", seconds=60.0)
+    engine._mode = "manual"
+    engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    engine.queue_track(otro); engine._drain_commands()
+    _al(engine, 41.0)
+    assert engine._current_track["id"] == tema               # la mezcla normal sigue en 55
+    _al(engine, 55.5)
+    assert engine._current_track["id"] == otro
+
+
+def test_voz_sin_nada_despues_en_manual_devuelve_la_cancion(engine, media):
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_outro=40.0, cue_mezcla=55.0)
+    voz = add_audio(engine, media, "VT 2", tipo="Locucion", seconds=6.0)
+    engine._mode = "manual"
+    engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    engine.queue_track(voz); engine._drain_commands()
+    _al(engine, 40.5)
+    assert engine._current_track["id"] == voz
+    _al(engine, 6.0 - engine.VOZ_FIN)                        # termina la voz y la cola está vacía
+    assert engine._current_track["id"] == tema and engine._cama is None
+    assert engine._mix_point == float("inf")                 # la canción termina completa
+
+
+def test_pausa_y_stop_alcanzan_a_la_musica_bajo_la_voz(engine, media):
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_mezcla=50.0)
+    voz = add_audio(engine, media, "VT 3", tipo="Locucion", seconds=6.0)
+    engine._mode = "manual"
+    engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    engine.queue_track(voz); engine._drain_commands()
+    _al(engine, 50.5)                                        # sin outro marcado: entra en la mezcla
+    assert engine._current_track["id"] == voz
+    cama = engine._cama["canal"]
+    engine.pausar(True); engine._drain_commands()
+    assert not engine._audio.is_playing(cama)
+    engine.pausar(False); engine._drain_commands()
+    assert engine._audio.is_playing(cama)
+    engine.stop_playback(); engine._drain_commands()
+    assert engine._cama is None and not engine._audio.is_active(cama)
+
+
+def test_voz_sin_musica_antes_suena_sola(engine, media):
+    voz = add_audio(engine, media, "VT 4", tipo="Locucion", seconds=6.0)
+    assert engine._start({"track": engine._fetch_track(voz), "origen": "manual"})
+    assert engine._cama is None and engine._current_track["id"] == voz
+    assert abs(engine._mix_point - (6.0 - engine.VOZ_FIN)) < 0.01

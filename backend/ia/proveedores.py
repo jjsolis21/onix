@@ -137,3 +137,101 @@ def generar_texto(prompt: str, sistema: str = "", db_path: str = DB_PATH) -> dic
         raise IAError("Ninguna IA respondió: " + " | ".join(f"{i['nombre']}: {i['error']}" for i in intentos))
     finally:
         conn.close()
+
+
+# ── Voz (texto → audio) ─────────────────────────────────────────────────────
+# Solo Gemini y OpenAI tienen voz; Groq / OpenRouter / otros se saltan.
+GEMINI_TTS_MODELO = "gemini-2.5-flash-preview-tts"
+GEMINI_TTS_HZ = 24000                  # Gemini devuelve PCM 16 bits mono a 24 kHz
+VOCES = {
+    "gemini": ["Kore", "Puck", "Charon", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"],
+    "openai": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+}
+
+
+def http_post_bytes(url: str, cabeceras: dict, cuerpo: dict, tiempo: int = 60) -> bytes:
+    """POST JSON → bytes (audio). Los tests lo sustituyen."""
+    req = urllib.request.Request(url, data=json.dumps(cuerpo).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", **cabeceras}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=tiempo) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode("utf-8", "replace")).get("error", {})
+            detalle = err.get("message", "") if isinstance(err, dict) else str(err)
+        except Exception:
+            detalle = ""
+        raise RuntimeError(f"HTTP {e.code}: {' '.join(detalle.split())[:200]}".strip())
+    except Exception as e:
+        raise RuntimeError(str(e) or e.__class__.__name__)
+
+
+def pcm_a_wav(pcm: bytes, hz: int = GEMINI_TTS_HZ) -> bytes:
+    import io
+    import wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(hz)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
+def _voz_con(k: dict, texto: str, voz: str, estilo: str) -> bytes:
+    import base64
+    if k["proveedor"] == "gemini":
+        voz = voz if voz in VOCES["gemini"] else VOCES["gemini"][0]
+        prompt = f"{estilo.strip()}: {texto}" if estilo.strip() else texto
+        d = http_post(GEMINI_URL.format(modelo=GEMINI_TTS_MODELO), {"x-goog-api-key": k["clave"]}, {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["AUDIO"],
+                                 "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voz}}}},
+        }, tiempo=60)
+        partes = (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+        datos = next((p["inlineData"]["data"] for p in partes if p.get("inlineData", {}).get("data")), None)
+        if not datos:
+            raise RuntimeError("Gemini no devolvió audio")
+        return pcm_a_wav(base64.b64decode(datos))
+    base = (k["base_url"] or PROVEEDORES["openai"]["base_url"]).rstrip("/")
+    voz = voz if voz in VOCES["openai"] else VOCES["openai"][0]
+    cuerpo = {"model": "gpt-4o-mini-tts", "input": texto, "voice": voz, "response_format": "wav"}
+    if estilo.strip():
+        cuerpo["instructions"] = estilo.strip()
+    audio = http_post_bytes(f"{base}/audio/speech", {"Authorization": f"Bearer {k['clave']}"}, cuerpo)
+    if not audio.startswith(b"RIFF"):
+        raise RuntimeError("La voz no devolvió un WAV")
+    return audio
+
+
+def generar_voz(texto: str, voz: str = "", estilo: str = "", db_path: str = DB_PATH) -> dict:
+    """
+    Texto → WAV con la primera clave con voz que responda (Gemini u OpenAI), en el orden de la sección IA.
+    Devuelve {"wav": bytes, "proveedor", "clave_id", "intentos"}. Sin ninguna: IAError.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        claves = [dict(r) for r in conn.execute(
+            "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor IN ('gemini', 'openai') ORDER BY orden, id")]
+        if not claves:
+            raise IAError("No hay claves de IA con voz (Gemini u OpenAI) activas")
+        # Una voz elegida de un proveedor va primero con ese proveedor
+        prefer = "gemini" if voz in VOCES["gemini"] else "openai" if voz in VOCES["openai"] else None
+        if prefer:
+            claves.sort(key=lambda k: k["proveedor"] != prefer)
+        intentos = []
+        for k in claves:
+            try:
+                wav = _voz_con(k, texto, voz, estilo)
+            except Exception as e:
+                err = _limpio(str(e), k["clave"])
+                _marcar(conn, k, err)
+                intentos.append({"id": k["id"], "nombre": k["nombre"], "error": err})
+                continue
+            _marcar(conn, k, None)
+            return {"wav": wav, "proveedor": k["proveedor"], "clave_id": k["id"], "intentos": intentos}
+        raise IAError("Ninguna voz respondió: " + " | ".join(f"{i['nombre']}: {i['error']}" for i in intentos))
+    finally:
+        conn.close()

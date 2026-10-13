@@ -60,6 +60,7 @@ from backend.api import relojes as relojes_api
 from backend.api import playlists as playlists_api
 from backend.api import identificadores as identificadores_api
 from backend.api import ia as ia_api
+from backend.api import voicetrack as voicetrack_api
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
@@ -200,6 +201,7 @@ playlists_api.engine = engine
 app.include_router(playlists_api.router)
 app.include_router(identificadores_api.router)
 app.include_router(ia_api.router)
+app.include_router(voicetrack_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)
@@ -755,7 +757,7 @@ class AudioUpdateRequest(BaseModel):
 
 
 # Tipos de audio válidos (audios.tipo_audio). Solo 'Musica' entra en rotación.
-TIPOS_AUDIO = ("Musica", "Cuña", "Efecto", "Sweeper", "Programa", "Tips")
+TIPOS_AUDIO = ("Musica", "Cuña", "Efecto", "Sweeper", "Programa", "Tips", "Locucion")   # Locucion = voice track
 
 
 def _validate_tipo_audio(valor: Optional[str]) -> Optional[str]:

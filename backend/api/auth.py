@@ -113,7 +113,7 @@ def usuario_de(request) -> Optional[dict]:
 # ── Permisos ────────────────────────────────────────────────────────────────
 
 # El operador carga sus paletas arrastrando desde la biblioteca; programación también
-_BOTONES = re.compile(r"^/api/v1/cartuchera/")
+_BOTONES = re.compile(r"^/api/v1/(cartuchera|voicetrack)(/|$)")     # cartuchera y voice tracker
 _AIRE = re.compile(r"^/api/v1/(player/|programa/|playlists/\d+/lanzar$)")
 _SISTEMA = re.compile(r"^/api/v1/(usuarios|respaldos|audio/|config/motor|ia/|tandas/secciones|normalizacion)")
 
