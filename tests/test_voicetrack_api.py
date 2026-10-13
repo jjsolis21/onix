@@ -113,3 +113,30 @@ def test_operador_puede_usar_el_voice_tracker():
     assert permiso("operador", "POST", "/api/v1/voicetrack/grabar")
     assert permiso("programacion", "POST", "/api/v1/voicetrack/ia")
     assert not permiso("operador", "GET", "/api/v1/ia/claves")
+
+
+def test_fish_audio_voces_propias_con_nombre(client, monkeypatch):
+    # sin voces cargadas no se acepta
+    assert client.post("/api/v1/ia/claves", json={"nombre": "F", "proveedor": "fish", "clave": "fk-12345678"}).status_code == 422
+    r = client.post("/api/v1/ia/claves", json={"nombre": "Fish", "proveedor": "fish", "clave": "fk-12345678",
+                                               "voces": "Britny=593ff7fee8fb4b3b83fe4d91fca3cb51, Dag=629d3e19ba044b7fa03269896deec727"})
+    assert r.status_code == 201, r.text
+    v = client.get("/api/v1/voicetrack/voces").json()
+    assert [x["nombre"] for x in v["voces"]] == ["Britny", "Dag"]
+    assert v["texto_ia"] is False                       # Fish solo hace voz: escribir usa la plantilla
+    pedidos = []
+
+    def falso(url, cab, cuerpo, tiempo=60):
+        pedidos.append((url, cab, cuerpo))
+        return _wav(1.0)
+    monkeypatch.setattr(proveedores, "http_post_bytes", falso)
+    r = client.post("/api/v1/voicetrack/ia", json={"texto": "Hola", "voz": "fish:629d3e19ba044b7fa03269896deec727"})
+    assert r.status_code == 201, r.text
+    url, cab, cuerpo = pedidos[0]
+    assert url == "https://api.fish.audio/v1/tts" and cab["Authorization"] == "Bearer fk-12345678"
+    assert cuerpo["reference_id"] == "629d3e19ba044b7fa03269896deec727" and cuerpo["format"] == "wav"
+    assert r.json()["proveedor"] == "fish"
+    # «Probar» en Fish hace una voz corta con la primera voz
+    kid = client.get("/api/v1/ia/claves").json()[0]["id"]
+    assert client.post(f"/api/v1/ia/claves/{kid}/probar").json()["ok"] is True
+    assert pedidos[-1][2]["reference_id"] == "593ff7fee8fb4b3b83fe4d91fca3cb51"

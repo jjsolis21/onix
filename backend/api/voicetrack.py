@@ -107,13 +107,21 @@ def listar(limit: int = 40):
 def voces():
     c = _conn()
     try:
-        provs = {r[0] for r in c.execute("SELECT DISTINCT proveedor FROM ia_claves WHERE activo = 1")}
+        claves = [dict(r) for r in c.execute("SELECT * FROM ia_claves WHERE activo = 1 ORDER BY orden, id")]
     except sqlite3.OperationalError:
-        provs = set()
+        claves = []
     finally:
         c.close()
-    return {"voces": [{"proveedor": p, "voz": v} for p in ("gemini", "openai") if p in provs for v in proveedores.VOCES[p]],
-            "texto_ia": bool(provs)}
+    provs = {k["proveedor"] for k in claves}
+    propias, vistas = [], set()
+    for k in claves:                      # voces propias (Fish Audio) primero, con su nombre
+        if k["proveedor"] == "fish":
+            for nombre, vid in proveedores.voces_de(k):
+                if vid not in vistas:
+                    vistas.add(vid)
+                    propias.append({"proveedor": "fish", "voz": f"fish:{vid}", "nombre": nombre})
+    catalogo = [{"proveedor": p, "voz": v, "nombre": v} for p in ("gemini", "openai") if p in provs for v in proveedores.VOCES[p]]
+    return {"voces": propias + catalogo, "texto_ia": bool(provs - set(proveedores.SOLO_VOZ))}
 
 
 class TextoIn(BaseModel):

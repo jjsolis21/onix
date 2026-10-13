@@ -818,6 +818,14 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     """)
     logger.info("  → ia_claves: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 36 — Voces propias por clave (Fish Audio: "Nombre=id_de_voz, …")
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(ia_claves)")
+    if "voces" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE ia_claves ADD COLUMN voces TEXT NOT NULL DEFAULT ''")
+    logger.info("  → ia_claves.voces: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

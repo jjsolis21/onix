@@ -11,6 +11,7 @@ Proveedores:
 """
 
 import json
+import re
 import sqlite3
 import time
 import urllib.error
@@ -26,7 +27,10 @@ PROVEEDORES = {
     "groq": {"nombre": "Groq", "modelo": "llama-3.3-70b-versatile", "base_url": "https://api.groq.com/openai/v1"},
     "openrouter": {"nombre": "OpenRouter", "modelo": "", "base_url": "https://openrouter.ai/api/v1"},
     "otro": {"nombre": "Otro (compatible con OpenAI)", "modelo": "", "base_url": ""},
+    # Solo voz (no escribe textos): voces clonadas o de su catálogo, por su id
+    "fish": {"nombre": "Fish Audio (solo voz)", "modelo": "s1", "base_url": "https://api.fish.audio"},
 }
+SOLO_VOZ = ("fish",)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
 ESPERA_TRAS_FALLO = 300          # segundos que una clave fallida se salta mientras haya otras
 TIEMPO_LIMITE = 20               # segundos por intento
@@ -104,7 +108,11 @@ def probar(k: dict) -> dict:
     """Prueba una clave concreta (botón «Probar»). No toca el orden ni el enfriamiento."""
     t0 = time.monotonic()
     try:
-        _llamar(k, "Responde solo con la palabra OK.", "")
+        if k["proveedor"] in SOLO_VOZ:
+            v = voces_de(k)
+            _voz_con(k, "Prueba.", f"fish:{v[0][1]}" if v else "", "")
+        else:
+            _llamar(k, "Responde solo con la palabra OK.", "")
         return {"ok": True, "ms": int((time.monotonic() - t0) * 1000)}
     except Exception as e:
         return {"ok": False, "error": _limpio(str(e), k["clave"])}
@@ -118,9 +126,10 @@ def generar_texto(prompt: str, sistema: str = "", db_path: str = DB_PATH) -> dic
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        claves = [dict(r) for r in conn.execute("SELECT * FROM ia_claves WHERE activo = 1 ORDER BY orden, id")]
+        claves = [dict(r) for r in conn.execute(
+            "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor NOT IN ('fish') ORDER BY orden, id")]
         if not claves:
-            raise IAError("No hay claves de IA activas")
+            raise IAError("No hay claves de IA activas para escribir textos")
         ahora = time.monotonic()
         sanas = [k for k in claves if ahora - _fallos.get(k["id"], -1e9) > ESPERA_TRAS_FALLO]
         intentos = []
@@ -179,8 +188,31 @@ def pcm_a_wav(pcm: bytes, hz: int = GEMINI_TTS_HZ) -> bytes:
     return buf.getvalue()
 
 
+def voces_de(k: dict) -> list[tuple[str, str]]:
+    """Voces propias de una clave: "Britny=593f…, Dag=629d…" → [("Britny", "593f…"), …]"""
+    out = []
+    for parte in re.split(r"[,;\n]+", k.get("voces") or ""):
+        if "=" in parte:
+            nombre, vid = (x.strip() for x in parte.split("=", 1))
+            if nombre and re.fullmatch(r"[A-Za-z0-9_-]{6,64}", vid):
+                out.append((nombre, vid))
+    return out
+
+
 def _voz_con(k: dict, texto: str, voz: str, estilo: str) -> bytes:
     import base64
+    if k["proveedor"] == "fish":
+        ids = [vid for _, vid in voces_de(k)]
+        vid = voz[5:] if voz.startswith("fish:") and voz[5:] in ids else (ids[0] if ids else "")
+        if not vid:
+            raise RuntimeError("Esta clave de Fish Audio no tiene voces cargadas")
+        base = (k["base_url"] or PROVEEDORES["fish"]["base_url"]).rstrip("/")
+        audio = http_post_bytes(f"{base}/v1/tts", {"Authorization": f"Bearer {k['clave']}",
+                                                  "model": k["modelo"] or PROVEEDORES["fish"]["modelo"]},
+                                {"text": texto, "reference_id": vid, "format": "wav", "normalize": True})
+        if not audio.startswith(b"RIFF"):
+            raise RuntimeError("Fish Audio no devolvió un WAV")
+        return audio
     if k["proveedor"] == "gemini":
         voz = voz if voz in VOCES["gemini"] else VOCES["gemini"][0]
         prompt = f"{estilo.strip()}: {texto}" if estilo.strip() else texto
@@ -214,11 +246,12 @@ def generar_voz(texto: str, voz: str = "", estilo: str = "", db_path: str = DB_P
     conn.row_factory = sqlite3.Row
     try:
         claves = [dict(r) for r in conn.execute(
-            "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor IN ('gemini', 'openai') ORDER BY orden, id")]
+            "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor IN ('gemini', 'openai', 'fish') ORDER BY orden, id")]
         if not claves:
-            raise IAError("No hay claves de IA con voz (Gemini u OpenAI) activas")
+            raise IAError("No hay claves de IA con voz (Fish Audio, Gemini u OpenAI) activas")
         # Una voz elegida de un proveedor va primero con ese proveedor
-        prefer = "gemini" if voz in VOCES["gemini"] else "openai" if voz in VOCES["openai"] else None
+        prefer = ("fish" if voz.startswith("fish:") else "gemini" if voz in VOCES["gemini"]
+                  else "openai" if voz in VOCES["openai"] else None)
         if prefer:
             claves.sort(key=lambda k: k["proveedor"] != prefer)
         intentos = []

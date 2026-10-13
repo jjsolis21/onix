@@ -38,6 +38,7 @@ class ClaveIn(BaseModel):
     base_url:  str = Field(default="", max_length=300)
     clave:     str = Field(default="", max_length=400)
     activo:    bool = True
+    voces:     str = Field(default="", max_length=2000)    # Fish Audio: "Nombre=id, Nombre=id"
 
 
 def _publica(r) -> dict:
@@ -45,12 +46,15 @@ def _publica(r) -> dict:
     return {"id": r["id"], "nombre": r["nombre"], "proveedor": r["proveedor"], "modelo": r["modelo"],
             "base_url": r["base_url"], "activo": bool(r["activo"]), "orden": r["orden"],
             "clave_fin": ("•••• " + k[-4:]) if len(k) >= 8 else "••••",
+            "voces": r["voces"] if "voces" in r.keys() else "",
             "ultimo_ok": r["ultimo_ok"], "ultimo_error": r["ultimo_error"], "ultimo_error_en": r["ultimo_error_en"]}
 
 
 def _validar(b: ClaveIn):
     if b.proveedor not in proveedores.PROVEEDORES:
         raise HTTPException(status_code=422, detail="Proveedor no válido")
+    if b.proveedor == "fish" and not proveedores.voces_de({"voces": b.voces}):
+        raise HTTPException(status_code=422, detail="Fish Audio: agrega al menos una voz como Nombre=id")
     if b.proveedor not in ("gemini",) and b.base_url and not b.base_url.startswith(("https://", "http://")):
         raise HTTPException(status_code=422, detail="La dirección base debe empezar con https://")
 
@@ -77,9 +81,10 @@ def agregar(b: ClaveIn):
     c = _conn()
     try:
         orden = (c.execute("SELECT COALESCE(MAX(orden), -1) + 1 FROM ia_claves").fetchone()[0])
-        cur = c.execute("INSERT INTO ia_claves (nombre, proveedor, modelo, base_url, clave, orden, activo)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (b.nombre.strip(), b.proveedor, b.modelo.strip(), b.base_url.strip(), b.clave.strip(), orden, int(b.activo)))
+        cur = c.execute("INSERT INTO ia_claves (nombre, proveedor, modelo, base_url, clave, orden, activo, voces)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (b.nombre.strip(), b.proveedor, b.modelo.strip(), b.base_url.strip(), b.clave.strip(), orden,
+                         int(b.activo), b.voces.strip()))
         c.commit()
         return _publica(c.execute("SELECT * FROM ia_claves WHERE id = ?", (cur.lastrowid,)).fetchone())
     finally:
@@ -93,8 +98,8 @@ def editar(cid: int, b: ClaveIn):
     try:
         if not c.execute("SELECT 1 FROM ia_claves WHERE id = ?", (cid,)).fetchone():
             raise HTTPException(status_code=404, detail="Clave no encontrada")
-        campos = "nombre = ?, proveedor = ?, modelo = ?, base_url = ?, activo = ?"
-        vals = [b.nombre.strip(), b.proveedor, b.modelo.strip(), b.base_url.strip(), int(b.activo)]
+        campos = "nombre = ?, proveedor = ?, modelo = ?, base_url = ?, activo = ?, voces = ?"
+        vals = [b.nombre.strip(), b.proveedor, b.modelo.strip(), b.base_url.strip(), int(b.activo), b.voces.strip()]
         if b.clave.strip():
             campos += ", clave = ?, ultimo_error = NULL, ultimo_error_en = NULL"
             vals.append(b.clave.strip())

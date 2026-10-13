@@ -216,11 +216,11 @@ const VoiceTracker = (() => {
       voces = d.voces || []; textoIA = !!d.texto_ia;
     } catch { voces = []; }
     $("vtVoz").innerHTML = voces.length
-      ? voces.map(v => `<option value="${esc(v.voz)}">${esc(v.voz)} · ${v.proveedor === "gemini" ? "Gemini" : "OpenAI"}</option>`).join("")
+      ? voces.map(v => `<option value="${esc(v.voz)}">${esc(v.nombre || v.voz)} · ${({ gemini: "Gemini", openai: "OpenAI", fish: "Fish Audio" })[v.proveedor] || v.proveedor}</option>`).join("")
       : `<option value="">Sin voz de IA</option>`;
     $("vtCrear").disabled = !voces.length;
     $("vtNotaIA").textContent = voces.length ? "" :
-      "Para la voz de IA, el administrador debe cargar una clave de Gemini u OpenAI en Admin › IA." +
+      "Para la voz de IA, el administrador debe cargar una clave de Fish Audio, Gemini u OpenAI en Admin › IA." +
       (textoIA ? "" : " Sin claves, «Escribir» usa una frase de plantilla.");
   }
 

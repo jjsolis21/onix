@@ -59,6 +59,8 @@
       <label>Modelo <input id="iazModelo" maxlength="120" placeholder="(el sugerido)"></label>
       <label id="iazBaseL">Dirección base <input id="iazBase" maxlength="300" placeholder="https://…/v1"></label>
       <label>Clave (API key) <input id="iazClave" type="password" autocomplete="new-password" placeholder="pégala aquí"></label>
+      <label id="iazVocesL" style="grid-column: 1 / -1">Voces (Nombre=id, separadas por coma)
+        <input id="iazVoces" maxlength="2000" placeholder="Britny=593ff7fee8fb4b3b83fe4d91fca3cb51, Dag=629d3e19ba044b7fa03269896deec727"></label>
       <label>Estado <select id="iazActivo"><option value="1">Activa</option><option value="0">Apagada</option></select></label>
       <div class="pie">
         <button type="submit" class="iaz-btn iaz-btn--pri" style="margin-left:0" id="iazGuardar">Guardar</button>
@@ -96,7 +98,7 @@
       <div class="iaz-fila ${k.activo ? "" : "apagada"}" data-id="${k.id}">
         <span class="iaz-n">${i + 1}</span>
         <div><b>${esc(k.nombre)}</b><small>${esc(prov(k.proveedor).nombre || k.proveedor)}</small></div>
-        <div>${esc(k.modelo || prov(k.proveedor).modelo || "—")}<small>${esc(k.base_url || "")}</small></div>
+        <div>${esc(k.modelo || prov(k.proveedor).modelo || "—")}<small>${esc(k.proveedor === "fish" ? (k.voces || "").split(/[,;]/).map(v => v.split("=")[0].trim()).filter(Boolean).join(" · ") : (k.base_url || ""))}</small></div>
         <div style="font-family:monospace">${esc(k.clave_fin)}</div>
         <div>${k.ultimo_error
           ? `<span class="iaz-mal">✕ ${esc(k.ultimo_error.slice(0, 90))}</span><small>${esc((k.ultimo_error_en || "").replace("T", " "))}</small>`
@@ -119,7 +121,9 @@
 
   function ajustarForm() {
     const p = prov($("iazProv").value);
-    $("iazBaseL").style.display = $("iazProv").value === "gemini" ? "none" : "";
+    $("iazBaseL").style.display = ["gemini", "fish"].includes($("iazProv").value) ? "none" : "";
+    $("iazVocesL").style.display = $("iazProv").value === "fish" ? "" : "none";
+    if ($("iazProv").value === "fish" && !$("iazVoces").value) $("iazVoces").value = $("iazVoces").placeholder;
     $("iazModelo").placeholder = p.modelo || "nombre del modelo";
     if (!editando) $("iazBase").value = p.base_url || "";
   }
@@ -127,7 +131,7 @@
     editando = k || null;
     $("iazForm").classList.add("abierto");
     $("iazNombre").value = k?.nombre || ""; $("iazProv").value = k?.proveedor || "gemini";
-    $("iazModelo").value = k?.modelo || ""; $("iazBase").value = k?.base_url || "";
+    $("iazModelo").value = k?.modelo || ""; $("iazBase").value = k?.base_url || ""; $("iazVoces").value = k?.voces || "";
     $("iazClave").value = ""; $("iazClave").placeholder = k ? "déjala vacía para conservar la actual" : "pégala aquí";
     $("iazActivo").value = k && !k.activo ? "0" : "1";
     ajustarForm(); if (k) $("iazBase").value = k.base_url || "";
@@ -141,7 +145,8 @@
   $("iazForm").addEventListener("submit", async e => {
     e.preventDefault();
     const cuerpo = { nombre: $("iazNombre").value, proveedor: $("iazProv").value, modelo: $("iazModelo").value,
-                     base_url: $("iazProv").value === "gemini" ? "" : $("iazBase").value, clave: $("iazClave").value, activo: $("iazActivo").value === "1" };
+                     base_url: ["gemini", "fish"].includes($("iazProv").value) ? "" : $("iazBase").value, clave: $("iazClave").value,
+                     activo: $("iazActivo").value === "1", voces: $("iazProv").value === "fish" ? $("iazVoces").value : "" };
     try {
       await api(editando ? `/api/v1/ia/claves/${editando.id}` : "/api/v1/ia/claves", json(editando ? "PUT" : "POST", cuerpo));
       cerrarForm(); await cargar(); msg(editando ? "✓ Clave actualizada" : "✓ Clave guardada: pulsa «Probar» para comprobarla");
