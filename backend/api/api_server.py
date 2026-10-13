@@ -62,6 +62,7 @@ from backend.api import identificadores as identificadores_api
 from backend.api import ia as ia_api
 from backend.api import voicetrack as voicetrack_api
 from backend.api import locutor as locutor_api
+from backend.api import cartuchera as cartuchera_api
 from backend.locutor.servicio import Servicio as LocutorServicio
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
@@ -209,6 +210,7 @@ app.include_router(ia_api.router)
 locutor_api.engine = engine
 locutor_api.servicio = _locutor
 app.include_router(locutor_api.router)
+app.include_router(cartuchera_api.router)
 app.include_router(voicetrack_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
@@ -2214,8 +2216,8 @@ def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
     """Devuelve las paletas (en orden) y, por paleta, los botones que tienen audio asignado."""
     rows = conn.execute(
         """
-        SELECT c.banco, c.slot, c.audio_id, c.etiqueta,
-               a.titulo, a.artista, a.duracion, a.tipo_audio
+        SELECT c.banco, c.slot, c.audio_id, c.etiqueta, c.color, c.mark_in, c.mark_out, c.volumen,
+               a.titulo, a.artista, a.duracion, a.tipo_audio, a.archivo_path
         FROM cartuchera c
         JOIN audios a ON a.id = c.audio_id AND a.activo = 1
         ORDER BY c.banco, c.slot
@@ -2291,7 +2293,7 @@ async def set_cartuchera_slot(
         INSERT INTO cartuchera (banco, slot, audio_id, etiqueta) VALUES (?, ?, ?, ?)
         ON CONFLICT(banco, slot) DO UPDATE SET
             audio_id = excluded.audio_id, etiqueta = excluded.etiqueta,
-            updated_at = datetime('now')
+            mark_in = NULL, mark_out = NULL, updated_at = datetime('now')
         """,
         (banco, slot, body.audio_id, body.etiqueta.strip()),
     )

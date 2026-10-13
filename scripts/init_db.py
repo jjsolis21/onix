@@ -826,6 +826,18 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE ia_claves ADD COLUMN voces TEXT NOT NULL DEFAULT ''")
     logger.info("  → ia_claves.voces: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 37 — Botones de la cartuchera como Soho: color, marca in / out y volumen propios
+    #   mark_in / mark_out en segundos (NULL = todo el archivo) · volumen en % (100 = normal)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(cartuchera)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    for col, definicion in (("color", "TEXT NOT NULL DEFAULT ''"), ("mark_in", "REAL DEFAULT NULL"),
+                            ("mark_out", "REAL DEFAULT NULL"), ("volumen", "INTEGER NOT NULL DEFAULT 100")):
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE cartuchera ADD COLUMN {col} {definicion}")
+    logger.info("  → cartuchera.color / mark_in / mark_out / volumen: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -40,7 +40,15 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 1. Locutor IA: pantallas hechas (Studio › 🎙 VOZ: por aprobar/listas/probar; Admin › 12 Locutor IA: encender, auto/manual, turnos, patrocinios, fuentes, saludos). Falta: probarlo en el aire con claves reales y el canal de entrada de mensajes de oyentes. Su código está en
    `C:\Users\REDESSOCIALES\Desktop\SOLIS FM DIGITAL\SOLISFM\solis fm digital\LOCUTOR IA` (leerlo, sin copiar claves).
    Regla: la voz se genera antes de salir al aire, nunca en el momento; mensajes de oyentes con aprobación previa.
-2. Cartuchera: botón «Editar» como Soho (color y título; marca in/out y volumen respetados al disparar = motor).
+2. Cartuchera como Soho. HECHO (Sonnet): clic derecho en cualquier botón › Cargar efecto (sube un archivo y queda como
+   «Efecto» en library/efectos), Editar (título, color, marca in/out con preescucha, volumen) y Vaciar;
+   `backend/api/cartuchera.py`, `frontend/studio/cartuchera.js`, columnas nuevas en `cartuchera`.
+   FALTA (motor, Opus): `fire_effect` hoy ignora todo eso. El UI ya manda `banco` y `slot` en el comando.
+   - Pulsar otra vez el mismo botón mientras suena = DETENER (hoy lo vuelve a lanzar). Avisar con evento
+     `effect_stopped {audio_id}` (el UI ya lo escucha) y `effect_fired` con `duracion`.
+   - Respetar `mark_in`, `mark_out` y `volumen` (%) del botón al disparar (leerlos de `cartuchera` por banco/slot).
+   - Revisar el ducking de la música (`_duck_until`) cuando el efecto se corta antes.
+   - Tocar también `engine_client.fire_effect` y la lista de `engine_service` (motor remoto).
 3. RDS + encoder propio (falta saber marca/modelo y cómo recibe el texto: red, puerto COM o archivo).
 4. Página de salud y prueba de 72 h seguidas (lo último antes de publicar).
 5. Voice tracking de días futuros: hoy el programa vive en memoria unas horas; hace falta guardar la programación diaria.

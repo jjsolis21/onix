@@ -649,3 +649,30 @@ kbd {
 .lia-cab { font-size: 12px; color: var(--txt-hi); }
 .lia-cab small { display: block; color: var(--txt-lo); font-size: 10px; }
 .lia-txt { width: 100%; box-sizing: border-box; }
+
+/* ── Cartuchera: menú de clic derecho y ventana «Editar» (como Soho) ── */
+.cm-menu { position: fixed; z-index: 80; background: var(--bg-2); border: 1px solid var(--ambar); border-radius: 6px;
+  padding: 4px; display: flex; flex-direction: column; min-width: 170px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+.cm-menu button { background: transparent; border: 0; color: var(--txt-hi); text-align: left; padding: 8px 10px; font: inherit;
+  font-size: 13px; border-radius: 4px; cursor: pointer; }
+.cm-menu button:hover { background: var(--bg-3); color: var(--ambar-vivo); }
+.cm-menu .cm-peligro:hover { color: var(--rojo); }
+.cm-ed { width: min(560px, 94vw); }
+.cm-fila { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.cm-fila > label, .cm-marcas label { min-width: 120px; font-size: 12px; color: var(--txt-lo); letter-spacing: .04em; }
+.cm-fila input[type=text], .cm-fila input:not([type]), .cm-marcas input { background: var(--bg-0); border: 1px solid var(--line);
+  border-radius: 5px; color: var(--txt-hi); padding: 7px 9px; font: inherit; color-scheme: dark; flex: 1; min-width: 0; }
+.cm-fila input[type=range] { flex: 1; }
+.cm-ruta { flex: 1; min-width: 0; font-size: 12px; color: var(--txt-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-colores { display: flex; flex-wrap: wrap; gap: 5px; }
+.cm-color { width: 26px; height: 26px; border-radius: 4px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.cm-color.sel { border-color: var(--ambar-vivo); }
+.cm-marcas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.cm-marcas > div { display: flex; flex-direction: column; gap: 5px; }
+.cm-marcas .sec { align-self: flex-start; padding: 5px 10px; }
+.cm-nota { font-size: 12px; color: var(--txt-lo); margin: 4px 0; }
+.cm-nota a { color: var(--ambar); }
+.cm-err { color: var(--rojo); font-size: 12px; min-height: 16px; margin: 4px 0; }
+.cm-pie { display: flex; gap: 8px; }
+.cart-btn.sonando { outline: 2px solid var(--ambar-vivo); outline-offset: -3px; animation: parpadeo 1s steps(2) infinite; }
+
