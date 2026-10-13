@@ -22,7 +22,7 @@ from typing import Optional
 from backend.paths import DB_PATH
 
 PROVEEDORES = {
-    "gemini": {"nombre": "Google Gemini", "modelo": "gemini-3.5-flash", "base_url": ""},
+    "gemini": {"nombre": "Google Gemini", "modelo": "gemini-3.8-flash", "base_url": ""},
     "openai": {"nombre": "OpenAI", "modelo": "gpt-4o-mini", "base_url": "https://api.openai.com/v1"},
     "groq": {"nombre": "Groq", "modelo": "llama-3.3-70b-versatile", "base_url": "https://api.groq.com/openai/v1"},
     "openrouter": {"nombre": "OpenRouter", "modelo": "", "base_url": "https://openrouter.ai/api/v1"},
@@ -72,7 +72,19 @@ def _llamar(k: dict, prompt: str, sistema: str) -> str:
         cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
         if sistema:
             cuerpo["systemInstruction"] = {"parts": [{"text": sistema}]}
-        d = http_post(GEMINI_URL.format(modelo=modelo or PROVEEDORES["gemini"]["modelo"]), {"x-goog-api-key": k["clave"]}, cuerpo)
+        # Sin modelo propio en la clave: el vigente y, si Google lo tiene saturado (503) o retirado (404), el anterior
+        modelos = [modelo] if modelo else [PROVEEDORES["gemini"]["modelo"], "gemini-3.5-flash"]
+        d, ultimo = None, None
+        for m in modelos:
+            try:
+                d = http_post(GEMINI_URL.format(modelo=m), {"x-goog-api-key": k["clave"]}, cuerpo)
+                break
+            except RuntimeError as e:
+                ultimo = e
+                if not str(e).startswith(("HTTP 404", "HTTP 503", "HTTP 429")):
+                    raise
+        if d is None:
+            raise ultimo
         partes = (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
         texto = "".join(p.get("text", "") for p in partes).strip()
     else:
