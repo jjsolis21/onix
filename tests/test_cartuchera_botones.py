@@ -100,3 +100,29 @@ def test_al_disparar_el_motor_recibe_las_marcas_y_el_volumen_del_boton(client, p
     finally:
         api_server.engine.fire_effect = real
     assert visto["a"] == aid and visto["o"]["mark_out"] == 3.0 and visto["o"]["boton"] == f"{paleta}/1"
+
+
+def test_cargar_y_editar_avisan_al_studio_por_websocket(client, paleta, tmp_path):
+    """El Studio se entera solo (sin recargar): cada cambio emite `cartuchera_updated` por el WebSocket del servidor."""
+    with client.websocket_connect("/ws") as ws:
+        def esperar(evento):
+            for _ in range(30):
+                m = ws.receive_json()
+                if m.get("event") == evento:
+                    return m
+            raise AssertionError(f"no llegó {evento}")
+        client.post(f"/api/v1/cartuchera/{paleta}/2/archivo", files={"file": ("x.wav", _wav_bytes(tmp_path), "audio/wav")})
+        assert esperar("cartuchera_updated")["data"] == {"banco": paleta, "slot": 2}
+        client.patch(f"/api/v1/cartuchera/{paleta}/2", json={"color": "#0050c8"})
+        assert esperar("cartuchera_updated")["data"]["slot"] == 2
+
+
+def test_los_routers_no_importan_api_server_por_otro_nombre():
+    """El servidor arranca como «api_server:app»; importarlo como backend.api.api_server crearía otra copia
+    (otro WebSocket sin clientes y otro motor), y los avisos no llegarían al Studio."""
+    from pathlib import Path
+    raiz = Path(__file__).resolve().parent.parent / "backend"
+    for f in [raiz / "api" / "cartuchera.py", raiz / "api" / "voicetrack.py", raiz / "api" / "locutor.py",
+              *(raiz / "locutor").glob("*.py")]:
+        codigo = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines() if not l.strip().startswith("#"))
+        assert "import api_server" not in codigo, f.name

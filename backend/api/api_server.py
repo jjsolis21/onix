@@ -210,6 +210,11 @@ app.include_router(ia_api.router)
 locutor_api.engine = engine
 locutor_api.servicio = _locutor
 app.include_router(locutor_api.router)
+cartuchera_api.normalizar_nombre = lambda nombre: _normalize_filename(nombre)
+cartuchera_api.leer_duracion = lambda ruta: _probe_duration(ruta)
+cartuchera_api.medir_volumen = _normalizador.avisar
+cartuchera_api.difundir = lambda evento, datos: _manager.broadcast(_ws_message(evento, datos))
+voicetrack_api.medir_volumen = _normalizador.avisar
 app.include_router(cartuchera_api.router)
 app.include_router(voicetrack_api.router)
 problemas_api.engine = engine

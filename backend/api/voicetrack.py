@@ -26,6 +26,7 @@ from backend.paths import DB_PATH, MEDIA_ROOT, to_stored
 router = APIRouter(tags=["Voice Tracker"])
 
 TIPO_VOZ = "Locucion"
+medir_volumen = None                  # lo asigna api_server (avisa al normalizador)
 MAX_BYTES = 40 * 1024 * 1024          # ~4 min de WAV estéreo 44,1 kHz
 SISTEMA = ("Eres el locutor de una radio FM latina. Escribes lo que el locutor dice al aire entre dos canciones: "
            "español neutro, cercano y con energía, frases cortas, sin emojis, sin comillas, sin acotaciones "
@@ -84,11 +85,11 @@ def _guardar(c, wav: bytes, titulo: str, artista: str) -> dict:
     cur = c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio)"
                     " VALUES (?, ?, ?, ?, ?)", (titulo, artista, int(round(dur)), to_stored(ruta), TIPO_VOZ))
     c.commit()
-    try:                                      # que se mida su volumen como cualquier audio
-        from backend.api import api_server
-        api_server._normalizador.avisar()
-    except Exception:
-        pass
+    if medir_volumen:                         # que se mida su volumen como cualquier audio
+        try:
+            medir_volumen()
+        except Exception:
+            pass
     return {"audio_id": cur.lastrowid, "titulo": titulo, "duracion": round(dur, 1), "archivo_path": to_stored(ruta)}
 
 

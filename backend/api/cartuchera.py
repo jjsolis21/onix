@@ -31,17 +31,32 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _nombre(original: str) -> str:
+    if normalizar_nombre:
+        return normalizar_nombre(original)
+    return re.sub(r"[^\w\-.]", "_", Path(original).name) or "audio"
+
+
 def _boton(c: sqlite3.Connection, banco: str, slot: int) -> None:
     r = c.execute("SELECT slots FROM paletas WHERE clave = ?", (banco,)).fetchone()
     if not r or not (1 <= slot <= r["slots"]):
         raise HTTPException(status_code=404, detail=f"Botón inexistente: {banco}/{slot}")
 
 
+# Lo asigna api_server al registrar el router (no se importa api_server desde aquí: el servidor arranca como
+# "api_server:app" y un import por otro nombre crearía una segunda copia, con su propio WebSocket sin clientes).
+difundir = None            # async (evento, datos) → aviso por WebSocket al Studio y al Admin
+normalizar_nombre = None   # nombre de archivo sin tildes ni espacios
+leer_duracion = None       # Path → segundos
+medir_volumen = None       # avisa al normalizador de que hay un audio nuevo
+
+
 async def _avisar(banco: str, slot: int, **extra) -> None:
-    from backend.api import api_server
-    await api_server._manager.broadcast(api_server._ws_message("cartuchera_updated", {"banco": banco, "slot": slot}))
+    if difundir is None:
+        return
+    await difundir("cartuchera_updated", {"banco": banco, "slot": slot})
     if extra:
-        await api_server._manager.broadcast(api_server._ws_message("library_updated", extra))
+        await difundir("library_updated", extra)
 
 
 class BotonIn(BaseModel):
@@ -88,7 +103,6 @@ async def editar(banco: str, slot: int, b: BotonIn):
 @router.post("/api/v1/cartuchera/{banco}/{slot}/archivo", status_code=201,
              summary="Cargar un efecto desde un archivo y dejarlo en el botón")
 async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), etiqueta: str = Form("")):
-    from backend.api import api_server
     if not file.filename or not file.filename.lower().endswith(EXTENSIONES):
         raise HTTPException(status_code=415, detail="Se aceptan archivos de audio (mp3, wav, ogg, flac, aac, m4a, wma)")
     c = _conn()
@@ -98,10 +112,10 @@ async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), et
         c.close()
     carpeta = MEDIA_ROOT / "library" / "efectos"
     carpeta.mkdir(parents=True, exist_ok=True)
-    dest = carpeta / api_server._normalize_filename(file.filename)
+    dest = carpeta / _nombre(file.filename)
     n = 1
     while dest.exists():
-        dest = carpeta / f"{Path(api_server._normalize_filename(file.filename)).stem}_{n}{dest.suffix}"
+        dest = carpeta / f"{Path(_nombre(file.filename)).stem}_{n}{dest.suffix}"
         n += 1
     try:
         with open(dest, "wb") as out:
@@ -120,7 +134,7 @@ async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), et
     except OSError as e:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"No se pudo guardar el archivo: {e}")
-    dur = api_server._probe_duration(dest)
+    dur = int(leer_duracion(dest)) if leer_duracion else 0
     if dur <= 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="No se pudo leer el audio: ¿está dañado o es otro formato?")
@@ -139,7 +153,8 @@ async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), et
         c.commit()
     finally:
         c.close()
-    api_server._normalizador.avisar()
+    if medir_volumen:
+        medir_volumen()
     await _avisar(banco, slot, action="create", id=aid, titulo=titulo)
     return {"banco": banco, "slot": slot, "audio_id": aid, "titulo": titulo, "duracion": dur,
             "archivo_path": to_stored(dest)}

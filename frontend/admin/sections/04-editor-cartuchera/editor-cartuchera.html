@@ -35,7 +35,8 @@
         <label for="cartEtiqueta">Etiqueta del botón</label>
         <input class="ox-input" id="cartEtiqueta" maxlength="40" placeholder="(opcional)">
       </div>
-      <button class="ox-btn" id="cartPreescuchar" title="Suena por la salida de preescucha, no al aire">🎧 Preescuchar</button>
+      <button class="ox-btn" id="cartPreescuchar" title="Suena por la salida de preescucha, no al aire">▶ Escuchar</button>
+      <button class="ox-btn" id="cartParar" title="Detener la escucha">■ Detener</button>
       <button class="ox-btn ox-btn--primary" id="cartGuardar">Asignar</button>
     </div>
     <p class="ox-msg" id="cartMsg"></p>
@@ -111,7 +112,8 @@
           <span class="ox-slot__meta">${s ? `${esc(s.titulo)} · ${esc(s.tipo_audio)} · ${fmt(s.duracion)}` : "&nbsp;"}</span>
           <div class="ox-slot__actions">
             <button class="ox-btn ox-btn--sm" data-editar="${banco}:${n}">Editar</button>
-            ${s ? `<button class="ox-btn ox-btn--sm" data-cue="${s.audio_id}">🎧</button>
+            ${s ? `<button class="ox-btn ox-btn--sm" data-cue="${s.audio_id}" data-desde="${s.mark_in || 0}" title="Escuchar (salida de preescucha, no sale al aire)">▶</button>
+                   <button class="ox-btn ox-btn--sm" data-parar="1" title="Detener la escucha">■</button>
                    <button class="ox-btn ox-btn--sm ox-btn--danger" data-vaciar="${banco}:${n}">Vaciar</button>` : ""}
           </div>
         </div>`;
@@ -119,9 +121,13 @@
     }
   }
 
-  function cue(id) {
-    window.ShellWS?.send({ cmd: "cue", audio_id: id });
-    msg("🎧 Sonando por la salida de preescucha (no sale al aire)");
+  function cue(id, desde = 0) {
+    window.ShellWS?.send({ cmd: "cue", audio_id: id, desde });
+    msg("▶ Sonando por la salida de preescucha (no sale al aire). ■ lo detiene.");
+  }
+  function parar() {
+    window.ShellWS?.send({ cmd: "cue_stop" });
+    msg("■ Escucha detenida");
   }
 
   async function paleta(metodo, clave, cuerpo) {
@@ -139,6 +145,7 @@
   });
   $("cartBanco").addEventListener("change", () => { $("cartSlot").value = ""; llenarSelects(); });
   $("cartReload").addEventListener("click", cargar);
+  $("cartParar").addEventListener("click", parar);
   $("cartPreescuchar").addEventListener("click", () => {
     const a = audioElegido();
     a ? cue(a.id) : msg("Elige un audio de la lista", false);
@@ -161,7 +168,8 @@
   document.getElementById("cartRoot").addEventListener("click", async (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b.dataset.cue) cue(parseInt(b.dataset.cue));
+    if (b.dataset.cue) cue(parseInt(b.dataset.cue), parseFloat(b.dataset.desde) || 0);
+    if (b.dataset.parar) parar();
     if (b.dataset.ren) {
       const nombre = prompt("Nombre de la paleta:", NOMBRES[b.dataset.ren] || "");
       if (nombre?.trim()) await paleta("PUT", b.dataset.ren, { nombre: nombre.trim() });
