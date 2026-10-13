@@ -134,6 +134,56 @@ def turnos():
         c.close()
 
 
+@router.get("/api/v1/locutor/voces", summary="Voces que se pueden asignar a un locutor")
+def voces():
+    """
+    Las del catálogo del Locutor (importadas o usadas en turnos) más las de las claves de Admin › IA.
+    `disponible` dice si hoy hay una clave activa de ese proveedor: sin ella, esa voz no puede sonar.
+    """
+    from backend.ia import proveedores
+    c = _c()
+    try:
+        try:
+            claves = [dict(r) for r in c.execute("SELECT * FROM ia_claves WHERE activo = 1 ORDER BY orden, id")]
+        except sqlite3.OperationalError:
+            claves = []
+        activos = {k["proveedor"] for k in claves}
+        out, vistas = [], set()
+
+        def poner(nombre, voz, proveedor, genero=""):
+            if voz and voz not in vistas:
+                vistas.add(voz)
+                out.append({"nombre": nombre, "voz": voz, "proveedor": proveedor, "genero": genero,
+                            "disponible": proveedor in activos})
+        for v in almacen.leer(c, "voces", []) or []:
+            poner(v.get("nombre") or v.get("voz"), v.get("voz"), v.get("proveedor") or "fish", v.get("genero") or "")
+        for k in claves:
+            if k["proveedor"] == "fish":
+                for nombre, vid in proveedores.voces_de(k):
+                    poner(nombre, f"fish:{vid}", "fish")
+        for t in c.execute("SELECT nombre, voz FROM locutor_turnos"):
+            poner(t["nombre"], t["voz"], "fish" if t["voz"].startswith("fish:") else "otro")
+        for p in ("gemini", "openai"):
+            for v in proveedores.VOCES[p]:
+                poner(v, v, p)
+        return {"voces": out, "proveedores_activos": sorted(activos)}
+    finally:
+        c.close()
+
+
+@router.put("/api/v1/locutor/turnos/{rid}", summary="Cambiar un turno (horario, locutor o voz)")
+def editar_turno(rid: int, b: TurnoIn):
+    c = _c()
+    try:
+        if not c.execute("UPDATE locutor_turnos SET desde = ?, hasta = ?, nombre = ?, voz = ?, personalidad = ?"
+                         " WHERE id = ?", (b.desde, b.hasta, b.nombre, b.voz, b.personalidad, rid)).rowcount:
+            raise HTTPException(status_code=404, detail="No existe")
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
 @router.post("/api/v1/locutor/turnos", status_code=201)
 def crear_turno(b: TurnoIn):
     c = _c()

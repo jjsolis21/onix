@@ -282,6 +282,13 @@ def importar_de_azuracast(c: sqlite3.Connection, origen: Any, slug: str = "solis
                     reg[campo] = r[campo]
             guardar(c, "reglas", reg)
 
+        # Catálogo de voces registradas (nombre → voz). Son identificadores del proveedor, no claves.
+        if o.execute("SELECT 1 FROM sqlite_master WHERE name = 'voces'").fetchone():
+            guardar(c, "voces", [
+                {"nombre": v["nombre"], "voz": f"fish:{v['voz_id']}" if v["proveedor"] == "fish" else v["voz_id"],
+                 "proveedor": v["proveedor"], "genero": v["genero"]}
+                for v in o.execute("SELECT nombre, voz_id, proveedor, genero FROM voces ORDER BY nombre")])
+
         n_turnos = n_pat = n_fue = 0
         for t in o.execute("SELECT * FROM turnos WHERE cliente_id = ? ORDER BY desde", (cid,)):
             vid = t["voz_id"]

@@ -75,7 +75,7 @@
       <button class="lcz-btn lcz-btn--pri lcz-der" id="lczCfgGuardar">Guardar</button></div>
     <div class="lcz-cuerpo">
       <label>Nombre <input id="lczNombre" maxlength="60"></label>
-      <label>Voz (fish:ID, o nombre de voz de Gemini/OpenAI) <input id="lczVoz" maxlength="80" placeholder="fish:9ea79fe3…"></label>
+      <label>Voz <select id="lczVoz"></select></label>
       <label>Habla cada N canciones <input id="lczCada" type="number" min="1" max="12"></label>
       <label>Noticias cada (min) <input id="lczNotMin" type="number" min="5" max="720"></label>
       <label>Franja desde <input id="lczDesde" type="time"></label>
@@ -92,10 +92,11 @@
       <label>Desde <input id="lczTDesde" type="time" required></label>
       <label>Hasta <input id="lczTHasta" type="time" required></label>
       <label>Nombre <input id="lczTNombre" maxlength="60" required></label>
-      <label>Voz <input id="lczTVoz" maxlength="80" placeholder="fish:ID" required></label>
+      <label>Voz <select id="lczTVoz" required></select></label>
       <label style="grid-column:1/-1">Personalidad <input id="lczTPers" maxlength="600"></label>
       <div class="pie"><button class="lcz-btn lcz-btn--pri">Guardar turno</button>
-        <button type="button" class="lcz-btn" id="lczTurCancelar">Cancelar</button></div>
+        <button type="button" class="lcz-btn" id="lczTurCancelar">Cancelar</button>
+        <small id="lczVozNota" style="color:var(--text-lo)"></small></div>
     </form>
     <div id="lczTurnos"></div>
   </div>
@@ -154,7 +155,21 @@
   const TIPOS = { corta: "Presentación corta de canciones", contenido: "Presentación con dato verificado", hora_clima: "Hora y clima",
     identificacion: "Identificación de la emisora", apertura: "Apertura del bloque", patrocinio: "Patrocinio / publicidad",
     noticia: "Noticias", complacencia: "Saludos de oyentes" };
-  let activo = false;
+  let activo = false, vocesLista = [], turnosLista = [], turnoEditando = null;
+  const PROV = { fish: "Fish Audio", gemini: "Gemini", openai: "OpenAI", elevenlabs: "ElevenLabs" };
+
+  function opcionesVoz(actual) {
+    const lista = vocesLista.slice();
+    if (actual && !lista.some(v => v.voz === actual)) lista.unshift({ nombre: actual, voz: actual, proveedor: "", disponible: false });
+    return lista.map(v => `<option value="${esc(v.voz)}" ${v.voz === actual ? "selected" : ""}>${esc(v.nombre)}${v.proveedor ? " · " + (PROV[v.proveedor] || v.proveedor) : ""}${v.genero ? " · " + esc(v.genero) : ""}${v.disponible ? "" : " (sin clave activa)"}</option>`).join("");
+  }
+  const nombreVoz = voz => { const v = vocesLista.find(x => x.voz === voz); return v ? `${v.nombre}${v.disponible ? "" : " (sin clave activa)"}` : voz; };
+  async function voces() {
+    const d = await api("/api/v1/locutor/voces");
+    vocesLista = d.voces || [];
+    const faltan = [...new Set(vocesLista.filter(v => !v.disponible && ["fish", "elevenlabs"].includes(v.proveedor)).map(v => PROV[v.proveedor]))];
+    $("lczVozNota").textContent = faltan.length ? `Las voces de ${faltan.join(" y ")} no sonarán hasta que haya una clave activa de ese proveedor en la sección 11 (IA).` : "";
+  }
 
   async function api(url, opts) {
     const r = await fetch(url, opts);
@@ -194,7 +209,7 @@
         <select data-tipo="${t}"><option value="auto" ${d.aprobacion[t] === "auto" ? "selected" : ""}>Sale solo</option>
           <option value="manual" ${d.aprobacion[t] === "manual" ? "selected" : ""}>Pide aprobación</option></select></label>`).join("");
     const p = d.persona, r = d.reglas;
-    $("lczNombre").value = p.nombre || ""; $("lczVoz").value = p.voz || ""; $("lczPers").value = p.personalidad || "";
+    $("lczNombre").value = p.nombre || ""; $("lczVoz").innerHTML = opcionesVoz(p.voz || ""); $("lczPers").value = p.personalidad || "";
     $("lczProh").value = (p.prohibidos || []).join(", ");
     $("lczCada").value = r.cada_canciones; $("lczNotMin").value = r.noticias_cada_min;
     const f = (r.franjas || [])[0];
@@ -202,12 +217,20 @@
   }
 
   async function turnos() {
-    const t = await api("/api/v1/locutor/turnos");
+    const t = turnosLista = await api("/api/v1/locutor/turnos");
     $("lczTurnos").innerHTML = lista(t.map(x => `
-      <div class="lcz-fila" data-id="${x.id}"><div class="t"><b>${esc(x.nombre)}</b> · ${esc(x.desde)}–${esc(x.hasta)}
-        <small>${esc(x.voz)}${x.personalidad ? " · " + esc(x.personalidad.slice(0, 70)) : ""}</small></div>
+      <div class="lcz-fila" data-id="${x.id}"><div class="t"><b>${esc(x.desde)}–${esc(x.hasta)}</b> · ${esc(x.nombre)}
+        <small>Voz: ${esc(nombreVoz(x.voz))}${x.personalidad ? " · " + esc(x.personalidad.slice(0, 70)) : ""}</small></div>
+        <button class="lcz-btn" data-a="editar">Editar</button>
         <button class="lcz-btn lcz-btn--peligro" data-a="quitar">Quitar</button></div>`).join(""),
       "Sin turnos: habla siempre el locutor base.");
+  }
+  function abrirTurno(x) {
+    turnoEditando = x ? x.id : null;
+    $("lczTDesde").value = x?.desde || ""; $("lczTHasta").value = x?.hasta || ""; $("lczTNombre").value = x?.nombre || "";
+    $("lczTVoz").innerHTML = opcionesVoz(x?.voz || ""); $("lczTPers").value = x?.personalidad || "";
+    abrir("lczTurForm", true);
+    $("lczTDesde").focus();
   }
   async function patrocinios() {
     const t = await api("/api/v1/locutor/patrocinios");
@@ -259,15 +282,19 @@
   });
 
   const form = (btn, f, cancel) => { $(btn).addEventListener("click", () => abrir(f, true)); $(cancel).addEventListener("click", () => abrir(f, false)); };
-  form("lczTurNuevo", "lczTurForm", "lczTurCancelar"); form("lczPatNuevo", "lczPatForm", "lczPatCancelar");
+  $("lczTurNuevo").addEventListener("click", () => abrirTurno(null));
+  $("lczTurCancelar").addEventListener("click", () => abrir("lczTurForm", false));
+  form("lczPatNuevo", "lczPatForm", "lczPatCancelar");
   form("lczFueNueva", "lczFueForm", "lczFueCancelar"); form("lczMenNuevo", "lczMenForm", "lczMenCancelar");
 
   $("lczTurForm").addEventListener("submit", async e => {
     e.preventDefault();
     try {
-      await api("/api/v1/locutor/turnos", json("POST", { desde: $("lczTDesde").value, hasta: $("lczTHasta").value,
-        nombre: $("lczTNombre").value, voz: $("lczTVoz").value, personalidad: $("lczTPers").value }));
-      abrir("lczTurForm", false); await turnos(); msg("lczTurMsg", "✓ Turno agregado");
+      const cuerpo = { desde: $("lczTDesde").value, hasta: $("lczTHasta").value,
+        nombre: $("lczTNombre").value, voz: $("lczTVoz").value, personalidad: $("lczTPers").value };
+      if (turnoEditando) await api(`/api/v1/locutor/turnos/${turnoEditando}`, json("PUT", cuerpo));
+      else await api("/api/v1/locutor/turnos", json("POST", cuerpo));
+      abrir("lczTurForm", false); await turnos(); msg("lczTurMsg", turnoEditando ? "✓ Turno cambiado" : "✓ Turno agregado");
     } catch (err) { msg("lczTurMsg", err.message, false); }
   });
   $("lczPatForm").addEventListener("submit", async e => {
@@ -305,6 +332,7 @@
     const b = e.target.closest("button[data-a]"); if (!b) return;
     const id = +b.closest(".lcz-fila").dataset.id, a = b.dataset.a;
     try {
+      if (a === "editar") { abrirTurno(turnosLista.find(x => x.id === id)); return; }
       if (a === "quitar") { if (!confirm(`¿Quitar ${nombre}?`)) return; await api(`${base}/${id}`, { method: "DELETE" }); }
       else if (a === "alternar") {
         const activo = !b.closest(".lcz-fila").classList.contains("apagada");
@@ -318,7 +346,7 @@
   delegar("lczFuentes", "/api/v1/locutor/fuentes", fuentes, "lczFueMsg", "esta fuente");
   delegar("lczMensajes", "/api/v1/locutor/mensajes", mensajes, "lczMenMsg", "este saludo");
 
-  Promise.all([estado(), config(), turnos(), patrocinios(), fuentes(), mensajes()])
+  voces().catch(() => { }).then(() => Promise.all([estado(), config(), turnos(), patrocinios(), fuentes(), mensajes()]))
     .catch(e => msg("lczMsg", e.message, false));
   setInterval(() => { if ($("lczEstado")?.isConnected) estado().catch(() => { }); }, 15000);
 })();

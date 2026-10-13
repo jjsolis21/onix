@@ -305,3 +305,20 @@ def test_api_importar_hace_copia_previa(client, tmp_path):
     from pathlib import Path
     assert Path(d["copia_previa"]).is_file()
     assert client.post("/api/v1/locutor/importar", json={"origen": str(tmp_path / "no.db")}).status_code == 404
+
+
+def test_api_voces_para_elegir_y_editar_turno(client):
+    c = almacen.conectar(__import__("backend.paths", fromlist=["DB_PATH"]).DB_PATH)
+    almacen.guardar(c, "voces", [{"nombre": "Karen", "voz": "fish:629d", "proveedor": "fish", "genero": "femenina"}])
+    c.commit(); c.close()
+    v = client.get("/api/v1/locutor/voces").json()["voces"]
+    karen = next(x for x in v if x["nombre"] == "Karen")
+    assert karen["voz"] == "fish:629d" and karen["disponible"] is False      # no hay clave de Fish en las pruebas
+    assert any(x["proveedor"] == "gemini" for x in v)
+    t = client.post("/api/v1/locutor/turnos", json={"desde": "08:00", "hasta": "12:00", "nombre": "Néstor", "voz": "fish:def"}).json()
+    r = client.put(f"/api/v1/locutor/turnos/{t['id']}", json={"desde": "09:00", "hasta": "13:00", "nombre": "Karen", "voz": "fish:629d"})
+    assert r.status_code == 200
+    fila = next(x for x in client.get("/api/v1/locutor/turnos").json() if x["id"] == t["id"])
+    assert (fila["desde"], fila["nombre"], fila["voz"]) == ("09:00", "Karen", "fish:629d")
+    assert client.put("/api/v1/locutor/turnos/99999", json={"desde": "09:00", "hasta": "13:00", "nombre": "X", "voz": "y"}).status_code == 404
+    client.delete(f"/api/v1/locutor/turnos/{t['id']}")
