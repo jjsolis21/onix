@@ -483,6 +483,66 @@ def acoustid_guardar(body: ClaveAcoustIn):
     return {"configurada": bool(clave)}
 
 
+class AnalisisConfIn(BaseModel):
+    itunes: Optional[bool] = None
+    deezer: Optional[bool] = None
+
+
+def _fuentes_analisis() -> dict:
+    conn = _conn()
+    try:
+        v = {r["clave"]: r["valor"] for r in conn.execute("SELECT clave, valor FROM config WHERE clave IN ('analisis_itunes', 'analisis_deezer')")}
+    finally:
+        conn.close()
+    return {"itunes": v.get("analisis_itunes", "1") != "0", "deezer": v.get("analisis_deezer", "1") != "0"}
+
+
+@router.get("/api/v1/config/analisis", summary="Fuentes extra del análisis (iTunes, Deezer) y si hay clave de AcoustID")
+def analisis_config():
+    return {**_fuentes_analisis(), "acoustid": bool(_clave_acoustid())}
+
+
+@router.put("/api/v1/config/analisis", summary="Encender o apagar iTunes y Deezer en el análisis")
+def analisis_config_guardar(body: AnalisisConfIn):
+    conn = _conn()
+    try:
+        for clave, v in (("analisis_itunes", body.itunes), ("analisis_deezer", body.deezer)):
+            if v is not None:
+                conn.execute("INSERT INTO config (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                             (clave, "1" if v else "0"))
+        conn.commit()
+    finally:
+        conn.close()
+    return {**_fuentes_analisis(), "acoustid": bool(_clave_acoustid())}
+
+
+class CaratulaUrlIn(BaseModel):
+    url: str = Field(..., max_length=500)
+
+
+@router.post("/api/v1/audios/{audio_id}/caratula-url", summary="Poner de carátula una imagen de iTunes o Deezer")
+def caratula_desde_url(audio_id: int, body: CaratulaUrlIn):
+    from backend.audio import metadatos
+    conn = _conn()
+    try:
+        if not conn.execute("SELECT 1 FROM audios WHERE id = ? AND activo = 1", (audio_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Audio no encontrado")
+    finally:
+        conn.close()
+    try:
+        datos, ext = metadatos.descargar_imagen(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except metadatos.SinConexion:
+        raise HTTPException(status_code=503, detail="No se pudo bajar la imagen (sin conexión)")
+    cache = MEDIA_ROOT / ".caratulas"
+    cache.mkdir(parents=True, exist_ok=True)
+    for e in ("jpg", "png", "none"):
+        (cache / f"{audio_id}.{e}").unlink(missing_ok=True)
+    (cache / f"{audio_id}.{ext}").write_bytes(datos)
+    return {"ok": True}
+
+
 # Para poder probar sin internet: los tests cambian esta función
 def _http_externo():
     from backend.audio import metadatos
@@ -508,12 +568,15 @@ def analizar(audio_id: int, en_linea: bool = True):
     ruta = resolve_media(r["archivo_path"] or "")
     if not ruta.is_file():
         raise HTTPException(status_code=404, detail="No se encuentra el archivo de audio")
-    actual = {"titulo": r["titulo"], "artista": r["artista"], "album": r["album"],
+    tiene_cover = any((MEDIA_ROOT / ".caratulas" / f"{audio_id}.{e}").is_file() for e in ("jpg", "png")) or _extraer_caratula(ruta) is not None
+    actual = {"tiene_caratula": tiene_cover, "titulo": r["titulo"], "artista": r["artista"], "album": r["album"],
               "anio": (r["fecha_lanzamiento"] or "")[:4], "bpm": r["bpm"], "energia": r["energia"],
               "cue_inicio": r["cue_inicio"], "cue_intro": r["cue_intro"], "cue_outro": r["cue_outro"], "cue_mezcla": r["cue_mezcla"]}
-    out = sugerencias.sugerir(ruta, ruta.name, actual, find_ffmpeg(), _clave_acoustid(), en_linea, _http_externo())
+    out = sugerencias.sugerir(ruta, ruta.name, actual, find_ffmpeg(), _clave_acoustid(), en_linea, _http_externo(),
+                            _fuentes_analisis())
     out["id"] = audio_id
     out["acoustid"] = bool(_clave_acoustid())
+    out["fuentes"] = _fuentes_analisis()
     return out
 
 

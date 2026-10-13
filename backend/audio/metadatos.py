@@ -171,3 +171,117 @@ def buscar_acoustid(duracion: int, h: str, clave: str, http: Callable = http_jso
         mejor["confianza"] = "alta" if mejor["score"] >= 0.95 else "media"
         return mejor
     return None
+
+
+# ── iTunes y Deezer (texto, gratis, sin clave) ──────────────────────────────
+# Solo para el análisis de UNA canción (no para lotes). No reconocen el audio: buscan por artista y título.
+
+ITUNES_URL = "https://itunes.apple.com/search"
+DEEZER_URL = "https://api.deezer.com/search"
+DEEZER_TRACK = "https://api.deezer.com/track/{}"
+HOSTS_CARATULA = ("mzstatic.com", "dzcdn.net", "deezer.com")      # de dónde se acepta bajar una carátula
+
+
+def _norm(s: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", s or "")
+    t = "".join(c for c in t if not unicodedata.combining(c)).lower()
+    t = re.sub(r"[\(\[].*?[\)\]]", " ", t)                           # (feat. X) [Remastered]
+    t = re.sub(r"\b(feat|ft|featuring)\b.*$", " ", t)
+    t = re.sub(r"\s-\s(remaster|remastered|version|versi.n|live|en vivo|radio edit|single)\b.*$", " ", t)
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def _parecido(a: str, b: str) -> float:
+    import difflib
+    a, b = _norm(a), _norm(b)
+    if not a or not b:
+        return 0.0
+    if a == b or a in b.split(" - ") or (len(a) > 4 and (a in b or b in a) and abs(len(a) - len(b)) <= 12):
+        return 1.0 if a == b else 0.93
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _elegir(cands: list[tuple[str, str, dict]], artista: str, titulo: str) -> Optional[tuple[dict, float]]:
+    """cands = [(título, artista, datos)] → el que mejor coincide con lo buscado, o None (se descarta lo dudoso)."""
+    mejor, puntaje = None, 0.0
+    for t, a, d in cands:
+        pt = _parecido(t, titulo)
+        pa = _parecido(a, artista) if artista else 1.0
+        if pt >= 0.88 and pa >= 0.7 and pt + pa > puntaje:
+            mejor, puntaje = d, pt + pa
+    return (mejor, puntaje) if mejor else None
+
+
+def buscar_itunes(artista: str, titulo: str, http: Callable = http_json) -> Optional[dict]:
+    if not titulo:
+        return None
+    url = ITUNES_URL + "?" + urllib.parse.urlencode({"term": f"{artista} {titulo}".strip(), "media": "music", "entity": "song", "limit": 10})
+    d = http(url)
+    elegido = _elegir([(r.get("trackName", ""), r.get("artistName", ""), r) for r in d.get("results", [])], artista, titulo)
+    if not elegido:
+        return None
+    r, punt = elegido
+    album = r.get("collectionName", "") or ""
+    if re.search(r"\s-\s(single|ep)$", album, re.I):
+        album = ""                                                     # un sencillo no es el álbum de la canción
+    fecha = r.get("releaseDate", "") or ""
+    cover = (r.get("artworkUrl100") or "").replace("100x100bb", "600x600bb")
+    return {"titulo": r.get("trackName", ""), "artista": r.get("artistName", ""), "album": album,
+            "anio": fecha[:4] if re.match(r"\d{4}", fecha) else "", "caratula": cover, "fuente": "iTunes",
+            "confianza": "alta" if punt >= 1.9 else "media"}
+
+
+def buscar_deezer(artista: str, titulo: str, http: Callable = http_json) -> Optional[dict]:
+    if not titulo:
+        return None
+    q = f'track:"{titulo}"' + (f' artist:"{artista}"' if artista else "")
+    d = http(DEEZER_URL + "?" + urllib.parse.urlencode({"q": q, "limit": 10}))
+    elegido = _elegir([(r.get("title", ""), (r.get("artist") or {}).get("name", ""), r) for r in d.get("data", [])], artista, titulo)
+    if not elegido:
+        return None
+    r, punt = elegido
+    bpm, fecha = None, ""
+    try:
+        t = http(DEEZER_TRACK.format(r["id"]))
+        b = float(t.get("bpm") or 0)
+        bpm = round(b) if 40 <= b <= 300 else None                     # Deezer pone 0 cuando no lo sabe
+        fecha = t.get("release_date", "") or ""
+    except (SinConexion, KeyError, ValueError, TypeError):
+        pass
+    alb = r.get("album") or {}
+    return {"titulo": r.get("title", ""), "artista": (r.get("artist") or {}).get("name", ""), "album": alb.get("title", ""),
+            "anio": fecha[:4] if re.match(r"\d{4}", fecha) else "", "bpm": bpm, "caratula": alb.get("cover_xl") or alb.get("cover_big") or "",
+            "fuente": "Deezer", "confianza": "alta" if punt >= 1.9 else "media"}
+
+
+class _SoloHostsPermitidos(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not host_permitido(newurl):
+            raise urllib.error.URLError("redirección a un sitio no permitido")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def host_permitido(url: str) -> bool:
+    p = urllib.parse.urlparse(url)
+    h = (p.hostname or "").lower()
+    return p.scheme == "https" and any(h == d or h.endswith("." + d) for d in HOSTS_CARATULA)
+
+
+def descargar_imagen(url: str, maximo: int = 5 * 1024 * 1024, timeout: float = TIMEOUT) -> tuple[bytes, str]:
+    """Baja una carátula SOLO de iTunes o Deezer (nunca de una dirección cualquiera). Devuelve (bytes, 'jpg'|'png')."""
+    if not host_permitido(url):
+        raise ValueError("Esa dirección no es de iTunes ni de Deezer")
+    op = urllib.request.build_opener(_SoloHostsPermitidos())
+    try:
+        with op.open(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout) as r:
+            datos = r.read(maximo + 1)
+    except (urllib.error.URLError, OSError) as exc:
+        raise SinConexion(str(exc)) from exc
+    if len(datos) > maximo:
+        raise ValueError("La imagen es demasiado grande")
+    if datos[:3] == b"\xff\xd8\xff":
+        return datos, "jpg"
+    if datos[:8] == b"\x89PNG\r\n\x1a\n":
+        return datos, "png"
+    raise ValueError("No es una imagen JPG o PNG")

@@ -318,7 +318,7 @@
         case 'valor': E.sel = marca; break;
         case 'autocue': await autoCue(); break;
         case 'analizar': await analizar(); break;
-        case 'sug-aplicar': aplicarSugerencias(); break;
+        case 'sug-aplicar': await aplicarSugerencias(); break;
         case 'sug-cerrar': R.querySelector('#ecSug').hidden = true; break;
         case 'sug-clave': await guardarClaveAcoustid(); break;
         case 'guardar': guardar(false); break;
@@ -329,6 +329,7 @@
       }
       if (marca) R.querySelectorAll('.ec-marca').forEach(x => x.classList.toggle('sel', x.dataset.m === E.sel));
     });
+    R.addEventListener('change', e => { if (e.target.id === 'ecSugItunes' || e.target.id === 'ecSugDeezer') cambiarFuentes(); });
     R.querySelector('#ecMarcas').addEventListener('change', e => {
       const inp = e.target.closest('.ec-marca-v');
       if (!inp) return;
@@ -393,7 +394,8 @@
 
   // ── Análisis: sugerencias que el operador aprueba (nada se aplica solo) ──
   const CAMPOS_FICHA = { titulo: '#ecTitulo', artista: '#ecArtista', album: '#ecAlbum', anio: '#ecAnio', bpm: '#ecBpm', energia: '#ecEnergia' };
-  const verSug = c => c.campo.startsWith('cue_') ? marcasDe().some(m => m.k === c.campo)
+  const verSug = c => c.campo === 'caratula' ? !!E.id && !!E.raiz.querySelector('#ecTapa')
+    : c.campo.startsWith('cue_') ? marcasDe().some(m => m.k === c.campo)
     : (el => !!el && !el.closest('[hidden]'))(E.raiz.querySelector(CAMPOS_FICHA[c.campo]));   // jingles: sin álbum/BPM/energía
   const nombreActual = (c, v) => c.campo === 'energia' ? ({ 1: '1 · Lenta', 2: '2 · Suave', 3: '3 · Media', 4: '4 · Movida', 5: '5 · Rápida' }[v] || '—')
     : c.campo.startsWith('cue_') ? (v ? fmt(v) : '—') : (v || '—');
@@ -415,16 +417,22 @@
     cont.hidden = false;
     cont.innerHTML = `
       <div class="ec-sug-cab"><b>🔎 Sugerencias</b><span>Nada se cambia hasta que marques lo que quieres y presiones «Aplicar»; luego guarda.</span>
+        ${filas.length ? '<button class="ec-btn ec-pri" data-acc="sug-aplicar">Aplicar las marcadas</button>' : ''}
         <button class="ec-btn" data-acc="sug-cerrar" title="Cerrar">✕</button></div>
       ${filas.length ? `<table class="ec-sug-tabla"><thead><tr><th></th><th>Dato</th><th>Ahora</th><th>Sugerido</th><th>De dónde</th></tr></thead><tbody>
         ${filas.map(c => `<tr data-campo="${c.campo}"><td><input type="checkbox" ${marcada(c) ? 'checked' : ''}></td>
-          <td>${esc(c.etiqueta)}</td><td class="ec-sug-ahora">${esc(nombreActual(c, c.actual))}</td>
-          <td class="ec-sug-nuevo"><b>${esc(c.texto || nombreActual(c, c.sugerido))}</b></td>
+          <td>${esc(c.etiqueta)}</td><td class="ec-sug-ahora">${c.campo === 'caratula' ? 'sin carátula' : esc(nombreActual(c, c.actual))}</td>
+          <td class="ec-sug-nuevo">${c.campo === 'caratula' ? `<img class="ec-sug-tapa" src="${esc(c.sugerido)}" alt="carátula sugerida" referrerpolicy="no-referrer">` : `<b>${esc(c.texto || nombreActual(c, c.sugerido))}</b>`}</td>
           <td><span class="ec-sug-conf" style="--cc:${CONF[c.confianza][1]}">${CONF[c.confianza][0]}</span> <small>${esc(c.fuente)}</small></td></tr>`).join('')}
         </tbody></table>` : '<p class="ec-sug-vacio">No hay nada nuevo que proponer: lo que se pudo detectar ya está en la ficha.</p>'}
       ${(d.avisos || []).map(a => `<p class="ec-sug-aviso">ℹ ${esc(a)}</p>`).join('')}
       ${d.acoustid || R.querySelector('#ecTitulo') === null ? '' : `<div class="ec-sug-clave"><input id="ecAcoustKey" placeholder="Clave gratuita de AcoustID (acoustid.org/new-application)"><button class="ec-btn" data-acc="sug-clave">Guardar clave y analizar de nuevo</button></div>`}
-      <div class="ec-sug-pie">${filas.length ? '<button class="ec-btn ec-pri" data-acc="sug-aplicar">Aplicar las marcadas</button>' : ''}</div>`;
+      ${R.querySelector('#ecTitulo') === null ? '' : `<div class="ec-sug-fuentes">Buscar también en:
+        <label><input type="checkbox" id="ecSugItunes" ${d.fuentes?.itunes ? 'checked' : ''}> iTunes</label>
+        <label><input type="checkbox" id="ecSugDeezer" ${d.fuentes?.deezer ? 'checked' : ''}> Deezer</label>
+        <small>Buscan por título y artista (no escuchan el audio). Solo en el análisis de una canción.</small></div>`}
+      `;
+    cont.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   async function guardarClaveAcoustid() {
@@ -436,18 +444,35 @@
     await analizar();
   }
 
-  function aplicarSugerencias() {
+  async function cambiarFuentes() {
+    const R = E.raiz;
+    const r = await fetch('/api/v1/config/analisis', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itunes: R.querySelector('#ecSugItunes').checked, deezer: R.querySelector('#ecSugDeezer').checked }) });
+    if (!r.ok) { toast('No se pudo guardar', 'error'); return; }
+    await analizar();
+  }
+
+  async function aplicarSugerencias() {
     const R = E.raiz, marcadas = [...R.querySelectorAll('#ecSug tbody tr')].filter(tr => tr.querySelector('input').checked);
     if (!marcadas.length) { toast('Marca lo que quieres aplicar', 'error'); return; }
-    let n = 0;
+    let n = 0, cover = null;
     marcadas.forEach(tr => {
       const c = E.sug.campos.find(x => x.campo === tr.dataset.campo);
       if (!c) return;
-      if (c.campo.startsWith('cue_')) { E.valores[c.campo] = +(+c.sugerido).toFixed(2); n++; }
+      if (c.campo === 'caratula') { cover = c.sugerido; n++; }
+      else if (c.campo.startsWith('cue_')) { E.valores[c.campo] = +(+c.sugerido).toFixed(2); n++; }
       else { const el = R.querySelector(CAMPOS_FICHA[c.campo]); if (el) { el.value = c.sugerido; n++; } }
     });
     E.sucio = true;
     pintarMarcas(); dibujarMarcas();
+    if (cover) {                       // la carátula se guarda enseguida (como «Importar imagen»); lo demás espera a Guardar
+      const r = await fetch(`/api/v1/audios/${E.id}/caratula-url`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: cover }) });
+      if (r.ok) {
+        const img = `<img src="/api/v1/audios/${E.id}/caratula?t=${Date.now()}" onerror="this.remove()" alt="">`;
+        R.querySelector('#ecTapa').innerHTML = img + '<span>♪</span>'; R.querySelector('#ecTapaMini').innerHTML = img + '♪';
+        window.BibliotecaVista?.recargar?.();
+      } else toast((await r.json().catch(() => ({}))).detail || 'No se pudo poner la carátula', 'error');
+    }
     R.querySelector('#ecEstado').textContent = `✓ ${n} dato(s) aplicados a la ficha: revisa y guarda`;
     R.querySelector('#ecSug').hidden = true;
   }

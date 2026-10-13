@@ -15,7 +15,7 @@ log = logging.getLogger("Sugerencias")
 # (campo, etiqueta que ve el operador)
 ETIQUETAS = {
     "titulo": "Título", "artista": "Artista", "album": "Álbum", "anio": "Año", "bpm": "BPM", "energia": "Energía",
-    "cue_inicio": "Inicio", "cue_intro": "Intro", "cue_outro": "Outro", "cue_mezcla": "Mezcla",
+    "cue_inicio": "Inicio", "cue_intro": "Intro", "cue_outro": "Outro", "cue_mezcla": "Mezcla", "caratula": "Carátula",
 }
 NOMBRE_ENERGIA = {1: "1 · Lenta", 2: "2 · Suave", 3: "3 · Media", 4: "4 · Movida", 5: "5 · Rápida"}
 
@@ -26,8 +26,13 @@ def _igual(campo, a, b) -> bool:
     return str(a or "").strip().lower() == str(b or "").strip().lower()
 
 
+def _compatible_bpm(a: float, b: float) -> bool:
+    """¿Dos ritmos son el mismo? (con 3 BPM de margen, o uno la mitad/el doble del otro)"""
+    return any(abs(a - b * k) <= 3 * max(k, 1) for k in (1, 2, 0.5))
+
+
 def sugerir(path, nombre_archivo: str, actual: dict, ffmpeg: Optional[str], clave_acoustid: str = "",
-            en_linea: bool = True, http: Callable = metadatos.http_json) -> dict:
+            en_linea: bool = True, http: Callable = metadatos.http_json, fuentes: Optional[dict] = None) -> dict:
     """
     actual: valores hoy en la ficha (titulo, artista, album, anio, bpm, energia, cue_*).
     Devuelve {campos: [{campo, etiqueta, actual, sugerido, mostrar, fuente, confianza}], avisos: [...], en_linea: bool}
@@ -60,6 +65,8 @@ def sugerir(path, nombre_archivo: str, actual: dict, ffmpeg: Optional[str], clav
 
     # 2-3. En línea: huella (AcoustID) y MusicBrainz
     conexion = False
+    caratula_url = None                              # (dirección, fuente) de iTunes o Deezer
+    bpm_deezer = None
     if en_linea:
         try:
             if clave_acoustid:
@@ -84,6 +91,24 @@ def sugerir(path, nombre_archivo: str, actual: dict, ffmpeg: Optional[str], clav
                         poner(k, r.get(k), r["fuente"], r["confianza"])
                 elif not any(k in prop for k in ("album", "anio")):
                     avisos.append("MusicBrainz no encontró esta canción: revisa que el título y el artista estén bien escritos.")
+            # iTunes y Deezer (solo en el análisis de una canción; se pueden apagar)
+            for nombre, buscar in (("itunes", metadatos.buscar_itunes), ("deezer", metadatos.buscar_deezer)):
+                if not (fuentes or {}).get(nombre, True) or not titulo:
+                    continue
+                try:
+                    r = buscar(artista, titulo, http)
+                except metadatos.SinConexion:
+                    avisos.append(f"No se pudo consultar {'iTunes' if nombre == 'itunes' else 'Deezer'} (sin respuesta).")
+                    continue
+                if not r:
+                    continue
+                conexion = True
+                for k in ("album", "anio"):
+                    poner(k, r.get(k), r["fuente"], "media")       # el año de un álbum puede ser de una reedición: por eso no pasa de «probable»
+                if r.get("caratula") and not caratula_url:
+                    caratula_url = (r["caratula"], r["fuente"])
+                if r.get("bpm"):
+                    bpm_deezer = r["bpm"]
         except metadatos.SinConexion:
             avisos.append("Sin conexión a internet: se omitió la búsqueda en línea (álbum, año y reconocimiento).")
             conexion = False
@@ -104,6 +129,20 @@ def sugerir(path, nombre_archivo: str, actual: dict, ffmpeg: Optional[str], clav
         poner("cue_mezcla", a["cue_mezcla"], "Análisis del volumen", "media")
         poner("cue_intro", a["cue_intro"], "Estimación: dónde entra la parte fuerte (ajústalo de oído)", "baja")
         poner("cue_outro", a["cue_outro"], "Estimación: dónde empieza el final (ajústalo de oído)", "baja")
+
+    # Ritmo de Deezer: si coincide con el calculado, es seguro; si no, se propone igual y se avisa de la diferencia
+    etiquetas_bpm = prop.get("bpm", (None, ""))[1].startswith("Etiquetas")
+    if bpm_deezer and not etiquetas_bpm:
+        calculado = a["bpm"] if a else None
+        if calculado and _compatible_bpm(bpm_deezer, calculado):
+            prop["bpm"] = (bpm_deezer, "Deezer y el análisis del ritmo coinciden", "alta")
+        else:
+            prop["bpm"] = (bpm_deezer, "Deezer", "media")
+            if calculado:
+                avisos.append(f"Deezer dice {bpm_deezer} BPM y el análisis del audio calculó {calculado}: escucha y decide.")
+        prop["energia"] = (analisis.energia_de_bpm(bpm_deezer), f"Según el ritmo ({bpm_deezer} BPM)", "media")
+    if caratula_url and not actual.get("tiene_caratula"):
+        prop["caratula"] = (caratula_url[0], caratula_url[1], "media")
 
     campos = []
     for campo, (valor, fuente, conf) in prop.items():

@@ -120,3 +120,89 @@ def test_clave_acoustid_nunca_se_devuelve(client):
     assert client.put("/api/v1/config/acoustid", json={"clave": "ABC123"}).json() == {"configurada": True}
     assert "ABC123" not in client.get("/api/v1/config/acoustid").text
     assert client.put("/api/v1/config/acoustid", json={"clave": ""}).json() == {"configurada": False}
+
+
+# ── iTunes y Deezer ─────────────────────────────────────────────────────────
+ITUNES = {"resultCount": 2, "results": [
+    {"trackName": "Otra Canción Distinta", "artistName": "Los Tests", "collectionName": "Otro", "releaseDate": "2000-01-01T08:00:00Z"},
+    {"trackName": "Canción Falsa (Remastered 2015)", "artistName": "Los Tests", "collectionName": "El Disco de Verdad",
+     "releaseDate": "2015-06-01T07:00:00Z", "primaryGenreName": "Pop",
+     "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music/abc/100x100bb.jpg"}]}
+DEEZER_BUSCA = {"data": [{"id": 77, "title": "Cancion Falsa", "artist": {"name": "Los Tests"},
+                          "album": {"title": "El Disco de Verdad", "cover_xl": "https://e-cdns-images.dzcdn.net/images/cover/xyz/1000x1000.jpg"}}]}
+
+
+def test_itunes_elige_la_cancion_correcta_y_descarta_las_dudosas():
+    r = metadatos.buscar_itunes("Los Tests", "Canción Falsa", lambda u: ITUNES)
+    assert (r["album"], r["anio"], r["fuente"]) == ("El Disco de Verdad", "2015", "iTunes")
+    assert r["caratula"].endswith("600x600bb.jpg")
+    assert metadatos.buscar_itunes("Los Tests", "Algo Que No Existe", lambda u: ITUNES) is None
+    # otro artista con el mismo título: no se acepta
+    assert metadatos.buscar_itunes("Banda Ajena", "Canción Falsa", lambda u: ITUNES) is None
+    # un sencillo no se toma como álbum
+    solo = {"results": [{"trackName": "Canción Falsa", "artistName": "Los Tests", "collectionName": "Canción Falsa - Single", "releaseDate": "2020-01-01T00:00:00Z"}]}
+    assert metadatos.buscar_itunes("Los Tests", "Canción Falsa", lambda u: solo)["album"] == ""
+
+
+def test_deezer_trae_bpm_solo_si_lo_sabe():
+    def http(url):
+        return DEEZER_BUSCA if "search" in url else {"id": 77, "bpm": 118.4, "release_date": "2014-02-03"}
+    r = metadatos.buscar_deezer("Los Tests", "Canción Falsa", http)
+    assert (r["bpm"], r["anio"], r["album"]) == (118, "2014", "El Disco de Verdad")
+    cero = metadatos.buscar_deezer("Los Tests", "Canción Falsa", lambda u: DEEZER_BUSCA if "search" in u else {"bpm": 0, "release_date": ""})
+    assert cero["bpm"] is None
+
+
+def test_caratulas_solo_de_itunes_o_deezer():
+    assert metadatos.host_permitido("https://is1-ssl.mzstatic.com/a.jpg")
+    assert metadatos.host_permitido("https://e-cdns-images.dzcdn.net/b.jpg")
+    for malo in ("http://is1-ssl.mzstatic.com/a.jpg", "https://evil.com/mzstatic.com/a.jpg", "https://mzstatic.com.evil.com/a.jpg", "file:///etc/passwd"):
+        assert not metadatos.host_permitido(malo), malo
+    with pytest.raises(ValueError):
+        metadatos.descargar_imagen("https://evil.com/a.jpg")
+
+
+@sin_ffmpeg
+def test_sugerir_con_itunes_y_deezer_y_cruce_de_ritmo(tmp_path):
+    ruta = pista(tmp_path / "Los Tests - Cancion Falsa.wav", bpm=120)
+
+    def http(url):
+        if "musicbrainz" in url:
+            return {"recordings": []}
+        if "itunes" in url:
+            return ITUNES
+        if "api.deezer.com/search" in url:
+            return DEEZER_BUSCA
+        return {"bpm": 119.6, "release_date": "2014-02-03"}                       # Deezer: ritmo de la canción
+    r = sugerencias.sugerir(ruta, ruta.name, {"titulo": "", "artista": "", "tiene_caratula": False}, FFMPEG, "", True, http)
+    por = {c["campo"]: c for c in r["campos"]}
+    assert por["album"]["sugerido"] == "El Disco de Verdad" and por["album"]["confianza"] == "media"
+    assert por["caratula"]["sugerido"].startswith("https://is1-ssl.mzstatic.com") and por["caratula"]["fuente"] == "iTunes"
+    assert por["bpm"]["sugerido"] == 120 or por["bpm"]["sugerido"] == 119
+    assert por["bpm"]["confianza"] == "alta" and "coinciden" in por["bpm"]["fuente"]          # Deezer y la señal coinciden
+    # Apagadas: no se consultan
+    visto = []
+    sugerencias.sugerir(ruta, ruta.name, {"tiene_caratula": False}, FFMPEG, "", True, lambda u: visto.append(u) or {"recordings": []},
+                        {"itunes": False, "deezer": False})
+    assert all("itunes" not in u and "deezer" not in u for u in visto)
+    # Con carátula propia no se propone otra
+    r2 = sugerencias.sugerir(ruta, ruta.name, {"tiene_caratula": True}, FFMPEG, "", True, http)
+    assert "caratula" not in {c["campo"] for c in r2["campos"]}
+    # Si no coinciden, se avisa de la diferencia
+    def http2(url):
+        return {"bpm": 90.0, "release_date": "2014-02-03"} if "api.deezer.com/track" in url else http(url)
+    r3 = sugerencias.sugerir(ruta, ruta.name, {"tiene_caratula": False}, FFMPEG, "", True, http2)
+    assert any("Deezer dice 90" in a for a in r3["avisos"])
+
+
+def test_config_de_fuentes_y_caratula_por_url(client, tmp_path, monkeypatch):
+    from backend.api import biblioteca
+    assert client.get("/api/v1/config/analisis").json()["itunes"] is True
+    assert client.put("/api/v1/config/analisis", json={"itunes": False}).json() == {"itunes": False, "deezer": True, "acoustid": False}
+    client.put("/api/v1/config/analisis", json={"itunes": True})
+    aid = subir(client, tmp_path, "CARATULA URL", seconds=3)
+    assert client.post(f"/api/v1/audios/{aid}/caratula-url", json={"url": "https://evil.com/x.jpg"}).status_code == 422
+    jpg = b"\xff\xd8\xff" + b"0" * 50
+    monkeypatch.setattr("backend.audio.metadatos.descargar_imagen", lambda url: (jpg, "jpg"))
+    assert client.post(f"/api/v1/audios/{aid}/caratula-url", json={"url": "https://is1-ssl.mzstatic.com/a/600x600bb.jpg"}).status_code == 200
+    assert client.get(f"/api/v1/audios/{aid}/caratula").content == jpg
