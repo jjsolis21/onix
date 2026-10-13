@@ -21,13 +21,23 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   terminar la voz). `backend/api/voicetrack.py`, `frontend/studio/voicetracker.js`, `audio_engine.py` (_cama).
 - Publicidad/Biblioteca: las marcas suenan justo desde donde están; cerrar la ventana corta el audio.
 
+- Locutor IA (paso 1-2, sin pantalla todavía): `backend/locutor/` (guion, validador «cero datos inventados»,
+  plantillas de emergencia, noticias RSS, moderación, `almacen.py`, `servicio.py`) + `backend/api/locutor.py`.
+  Hilo de fondo que, si está encendido (`POST /api/v1/locutor/activar`), llena huecos del programa con locuciones
+  `Locucion` generadas ANTES de salir al aire. Aprobación `auto`/`manual` por tipo (por defecto manual: noticia,
+  patrocinio, complacencia). La configuración de AzuraCast ya está importada (turnos, patrocinio, 4 fuentes, reglas).
+  Nace APAGADO. Los mensajes de oyentes aún no llegan (no hay canal de entrada): se cargan a mano por API.
+  Arreglo de paso: `MockBackend.get_position_sec` perdía precisión en Windows (2 pruebas del talk-over fallaban).
+
 ## No verificado todavía
+- Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
+- Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
 - Talk-over con la tarjeta real (BASS): volumen al 30 % y salida de 1,5 s pueden necesitar ajuste de oído.
 - Fish Audio y Gemini TTS con claves reales (la nube no llegaba a Fish; Gemini solo validó el formato).
 - El micrófono solo funciona con el Studio abierto como http://localhost (por IP de red local el navegador lo bloquea).
 
 ## Pendiente (en este orden sugerido)
-1. Locutor IA: integrar el panel que hoy funciona en AzuraCast. Su código está en
+1. Locutor IA (paso 3 pendiente: pantallas Studio › 🎙 VOZ y Admin › Locutor IA; canal de entrada de mensajes). Integrar el panel que hoy funciona en AzuraCast. Su código está en
    `C:\Users\REDESSOCIALES\Desktop\SOLIS FM DIGITAL\SOLISFM\solis fm digital\LOCUTOR IA` (leerlo, sin copiar claves).
    Regla: la voz se genera antes de salir al aire, nunca en el momento; mensajes de oyentes con aprobación previa.
 2. Cartuchera: botón «Editar» como Soho (color y título; marca in/out y volumen respetados al disparar = motor).

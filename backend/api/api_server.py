@@ -61,6 +61,8 @@ from backend.api import playlists as playlists_api
 from backend.api import identificadores as identificadores_api
 from backend.api import ia as ia_api
 from backend.api import voicetrack as voicetrack_api
+from backend.api import locutor as locutor_api
+from backend.locutor.servicio import Servicio as LocutorServicio
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
@@ -106,6 +108,7 @@ MUSICA_DIR   = LIBRARY_DIR / "musica"   # destino para archivos subidos via /upl
 
 # Medición de sonoridad (LUFS) para la normalización de volumen
 _normalizador = NormalizadorWorker(DB_PATH, resolve_media)
+_locutor = LocutorServicio(lambda: engine, DB_PATH)
 
 # Eventos del motor que se retransmiten a los clientes WebSocket
 ENGINE_EVENTS = (
@@ -152,6 +155,7 @@ async def lifespan(app: FastAPI):
     _backfill_durations()
     _normalizador.start()     # mide en segundo plano los audios sin LUFS
     _respaldos.start()        # copia diaria de la base de datos
+    _locutor.start()          # Locutor IA: solo actúa si está encendido en Admin
 
     # Puente EventBus (hilos del motor) -> WebSocket (event loop de Uvicorn).
     # Los callbacks del EventBus corren en hilos del motor, así que el
@@ -182,6 +186,7 @@ async def lifespan(app: FastAPI):
     engine.stop()
     _normalizador.stop()
     _respaldos.stop()
+    _locutor.stop()
     for ev in ENGINE_EVENTS:
         engine.bus.unsubscribe(ev, _on_engine_event)
 
@@ -201,6 +206,9 @@ playlists_api.engine = engine
 app.include_router(playlists_api.router)
 app.include_router(identificadores_api.router)
 app.include_router(ia_api.router)
+locutor_api.engine = engine
+locutor_api.servicio = _locutor
+app.include_router(locutor_api.router)
 app.include_router(voicetrack_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)

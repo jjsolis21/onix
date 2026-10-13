@@ -659,7 +659,8 @@ class MockBackend:
             return 0.0
         if ch["started"] is None:              # sin arrancar o en pausa: donde quedó
             return ch["offset"]
-        return min(ch["dur"], ch["offset"] + time.monotonic() - ch["started"])
+        # el paréntesis importa: (offset + ahora) - inicio pierde precisión y da 5.79999 en vez de 5.8
+        return min(ch["dur"], ch["offset"] + (time.monotonic() - ch["started"]))
 
     def set_position_sec(self, channel_idx: int, sec: float) -> bool:
         ch = self._ch.get(channel_idx)
