@@ -744,6 +744,31 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             cursor.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, 15, ?)", (clave, nombre, n))
     logger.info("  → paletas de la cartuchera: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 33 — Búsqueda rápida (la emisora maneja ~20 000 audios)
+    #   audios.busq = título + artista + género + rotación, en minúsculas y
+    #   sin tildes. Lo mantienen triggers, así que ningún código de carga o
+    #   edición tiene que acordarse de actualizarlo.
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "busq" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN busq TEXT NOT NULL DEFAULT ''")
+    pares = list(zip("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN"))
+    expr = "(COALESCE({p}titulo, '') || ' ' || COALESCE({p}artista, '') || ' ' || COALESCE({p}subgenero, '') || ' ' || COALESCE({p}categoria, ''))"
+    def _busq(prefijo: str) -> str:
+        e = expr.format(p=prefijo)
+        for con, sin in pares:
+            e = f"replace({e}, '{con}', '{sin}')"
+        return f"lower({e})"
+    cursor.execute("DROP TRIGGER IF EXISTS trg_audios_busq_ins")
+    cursor.execute("DROP TRIGGER IF EXISTS trg_audios_busq_upd")
+    cursor.execute(f"CREATE TRIGGER trg_audios_busq_ins AFTER INSERT ON audios BEGIN "
+                   f"UPDATE audios SET busq = {_busq('NEW.')} WHERE id = NEW.id; END")
+    cursor.execute(f"CREATE TRIGGER trg_audios_busq_upd AFTER UPDATE OF titulo, artista, subgenero, categoria ON audios BEGIN "
+                   f"UPDATE audios SET busq = {_busq('NEW.')} WHERE id = NEW.id; END")
+    cursor.execute(f"UPDATE audios SET busq = {_busq('')} WHERE busq = '' OR busq != {_busq('')}")
+    logger.info("  → audios.busq (búsqueda rápida): OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

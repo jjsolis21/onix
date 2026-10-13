@@ -1367,6 +1367,8 @@ def list_audios(
     tipo: Optional[str] = None,   # Musica | Cuña | Efecto | Sweeper | Programa | Tips
     sin_tipo: Optional[str] = None,   # excluir un tipo (la Biblioteca musical no muestra cuñas)
     busqueda: Optional[str] = None,
+    # Búsqueda del Studio: sin tildes ni mayúsculas, todas las palabras, en título/artista/categorías
+    q: Optional[str] = None,
     limit: int = Query(500, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_db),
@@ -1410,14 +1412,21 @@ def list_audios(
         query += " AND genero_vocal = ?"
         params.append(voz)
     if tipo:
-        query += " AND tipo_audio = ?"
-        params.append(_validate_tipo_audio(tipo))
+        # Uno o varios separados por coma (el Studio junta jingles, sweepers y tips)
+        tipos = [_validate_tipo_audio(t) for t in tipo.split(",") if t.strip()]
+        if tipos:
+            query += f" AND tipo_audio IN ({', '.join('?' * len(tipos))})"
+            params.extend(tipos)
     if sin_tipo:
         query += " AND tipo_audio != ?"
         params.append(_validate_tipo_audio(sin_tipo))
     if busqueda:
         query += " AND (titulo LIKE ? OR artista LIKE ?)"
         params.extend([f"%{busqueda}%", f"%{busqueda}%"])
+    # Búsqueda del Studio sobre audios.busq (indexada por triggers): cada palabra debe aparecer
+    for palabra in (_sin_acentos(q).split() if q else []):
+        query += " AND busq LIKE ? ESCAPE '\\'"
+        params.append("%" + palabra.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
 
     # Contar total
     count_query = "SELECT COUNT(*) AS total " + query[query.index("FROM audios"):]
@@ -1434,6 +1443,30 @@ def list_audios(
         "offset": offset,
         "data": [dict(a) for a in audios],
     }
+
+
+_SIN_TILDES = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+
+
+def _sin_acentos(texto: Optional[str]) -> str:
+    """Minúsculas y sin tildes, igual que audios.busq (migración 33): «cancion» encuentra «Canción»."""
+    return (texto or "").translate(_SIN_TILDES).lower()
+
+
+@app.get("/api/v1/biblioteca/conteos", tags=["Audios"], summary="Cuántos audios hay de cada tipo")
+def conteos_biblioteca(conn: sqlite3.Connection = Depends(get_db)):
+    filas = conn.execute("SELECT tipo_audio, COUNT(*) AS n FROM audios WHERE activo = 1 GROUP BY tipo_audio")
+    return {r["tipo_audio"]: r["n"] for r in filas}
+
+
+@app.get("/api/v1/biblioteca/filtros", tags=["Audios"], summary="Valores para los filtros (género, rotación, voz)")
+def filtros_biblioteca(tipo: str = "Musica", conn: sqlite3.Connection = Depends(get_db)):
+    t = _validate_tipo_audio(tipo)
+    def distintos(col: str) -> list[str]:
+        return [r[0] for r in conn.execute(
+            f"SELECT DISTINCT {col} FROM audios WHERE activo = 1 AND tipo_audio = ? "
+            f"AND COALESCE({col}, '') != '' ORDER BY {col}", (t,))]
+    return {"cat1": distintos("subgenero"), "cat2": distintos("categoria"), "voz": distintos("genero_vocal")}
 
 
 @app.get("/api/v1/artistas", tags=["Audios"], summary="Artistas ya cargados (para autocompletar)")

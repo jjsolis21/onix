@@ -596,12 +596,13 @@ const Biblioteca = (() => {
   const TABS = [["Musica", "MÚSICA"], ["Imagen", "SEPARADORES"], ["Cuña", "CUÑAS"],
                 ["Programa", "PROGRAMAS"], ["Playlist", "LISTAS"]];
   const enTab = (a, t) => t === "Imagen" ? IMAGEN.includes(a.tipo_audio) : a.tipo_audio === t;
-  const MAX_FILAS = 300;
-  let audios = [], tab = "Musica", alAire = null, enCue = null, playlists = [], totalBiblioteca = 0;
+  // La biblioteca NO se baja entera: el servidor busca y filtra (hay decenas de miles de audios)
+  // y el Studio pide 100 filas por vez, y más al llegar al final de la lista.
+  const PAGINA = 100;
+  let filas = [], totalFiltro = 0, conteos = {}, gen = 0, cargandoMas = false;
+  const cache = new Map();                       // todo audio visto: para títulos de cola/aire y el reproductor
+  let tab = "Musica", alAire = null, enCue = null, playlists = [];
   const num = n => n.toLocaleString("es");
-  // La biblioteca se baja entera al navegador (hasta 10 000): si hay más, hay que avisarlo
-  const avisoBiblioteca = () => totalBiblioteca > audios.length
-    ? `⚠ Hay ${num(totalBiblioteca)} audios y solo se cargaron ${num(audios.length)}.` : "";
   const P = { id: null, pos: 0, activo: false, recibido: 0, dur: 0, pausado: false };
 
   // Playlists generadas en Admin › Relojes desde el patrón de un reloj
@@ -660,26 +661,75 @@ const Biblioteca = (() => {
     } catch (err) { toast(`No se pudo lanzar: ${err.message}`, "error"); }
   }
 
+  /** Totales por tipo y valores de los filtros (poco datos: no depende del tamaño de la biblioteca) */
   async function cargar() {
     try {
-      const r = await api("/api/v1/audios?limit=10000");
-      audios = r.data ?? []; totalBiblioteca = r.total ?? audios.length;
+      const [c, f] = await Promise.all([api("/api/v1/biblioteca/conteos"), api("/api/v1/biblioteca/filtros?tipo=Musica")]);
+      conteos = c;
+      const opciones = (sel, valores, nombre) => {
+        const prev = $(sel).value;
+        $(sel).innerHTML = `<option value="">${nombre}</option>` + valores.map(v => `<option>${esc(v)}</option>`).join("");
+        $(sel).value = valores.includes(prev) ? prev : "";
+      };
+      opciones("libCat1", f.cat1 ?? [], "Género");
+      opciones("libCat2", f.cat2 ?? [], "Rotación");
+      opciones("libVoz", f.voz ?? [], "Voz");
     } catch (err) {
       $("libFilas").innerHTML = `<tr><td colspan="6" class="vacio">No se pudo cargar la biblioteca: ${esc(err.message)}</td></tr>`;
       return;
     }
-    const opciones = (sel, campo, nombre) => {
-      const valores = [...new Set(audios.filter(a => a.tipo_audio === "Musica").map(a => a[campo]).filter(Boolean))].sort();
-      const prev = $(sel).value;
-      $(sel).innerHTML = `<option value="">${nombre}</option>` + valores.map(v => `<option>${esc(v)}</option>`).join("");
-      $(sel).value = valores.includes(prev) ? prev : "";
-    };
-    opciones("libCat1", "cat1", "Género");
-    opciones("libCat2", "cat2", "Rotación");
-    opciones("libVoz", "voz", "Voz");
     await cargarPlaylists();
     pintarTabs();
     pintar();
+  }
+
+  /** Parámetros de la consulta según la pestaña y los filtros */
+  function consulta(offset) {
+    const p = new URLSearchParams({ limit: PAGINA, offset });
+    const q = $("libBuscar").value.trim();
+    if (q) p.set("q", q);
+    if (tab === "Imagen") p.set("tipo", $("libTipo").value || IMAGEN.join(","));
+    else p.set("tipo", tab);
+    if (tab === "Musica") {
+      if ($("libCat1").value) p.set("cat1", $("libCat1").value);
+      if ($("libCat2").value) p.set("cat2", $("libCat2").value);
+      if ($("libVoz").value) p.set("voz", $("libVoz").value);
+    }
+    return `/api/v1/audios?${p}`;
+  }
+  const totalDeTab = () => tab === "Imagen" ? IMAGEN.reduce((s, t) => s + (conteos[t] ?? 0), 0) : (conteos[tab] ?? 0);
+
+  /** Pide la primera página de lo que se está buscando (las respuestas viejas se descartan) */
+  async function recargar() {
+    const mia = ++gen;
+    $("libFilas").innerHTML = `<tr><td colspan="6" class="vacio">Buscando…</td></tr>`;
+    try {
+      const r = await api(consulta(0));
+      if (mia !== gen) return;
+      filas = r.data ?? []; totalFiltro = r.total ?? filas.length;
+      filas.forEach(a => cache.set(a.id, a));
+    } catch (err) {
+      if (mia === gen) $("libFilas").innerHTML = `<tr><td colspan="6" class="vacio">No se pudo buscar: ${esc(err.message)}</td></tr>`;
+      return;
+    }
+    $("libFilas").closest(".lib-tabla-wrap").scrollTop = 0;
+    pintarFilas();
+  }
+  async function masFilas() {
+    if (cargandoMas || tab === "Playlist" || filas.length >= totalFiltro) return;
+    cargandoMas = true;
+    const mia = gen;
+    try {
+      const r = await api(consulta(filas.length));
+      if (mia !== gen) return;
+      const nuevas = r.data ?? [];
+      nuevas.forEach(a => cache.set(a.id, a));
+      filas = filas.concat(nuevas);
+      $("libFilas").querySelector(".lib-mas")?.remove();
+      $("libFilas").insertAdjacentHTML("beforeend", nuevas.map(htmlFila).join(""));
+      pintarCuenta();
+    } catch { /* se reintenta al seguir bajando */ }
+    finally { cargandoMas = false; }
   }
 
   function pintarTabs() {
@@ -693,13 +743,11 @@ const Biblioteca = (() => {
   function pintar() {
     const q = norm($("libBuscar").value.trim());
     if (tab === "Playlist") { pintarPlaylists(q); return; }
-    const c1 = $("libCat1").value, c2 = $("libCat2").value, voz = $("libVoz").value;
-    const tipo = $("libTipo").value;
-    const lista = audios.filter(a => enTab(a, tab) && (tab !== "Imagen" || !tipo || a.tipo_audio === tipo)
-      && (!q || norm(`${a.titulo} ${a.artista} ${a.cat1 ?? ""} ${a.cat2 ?? ""}`).includes(q))
-      && (tab !== "Musica" || ((!c1 || a.cat1 === c1) && (!c2 || a.cat2 === c2) && (!voz || a.voz === voz))));
-    const filas = lista.slice(0, MAX_FILAS);
-    $("libFilas").innerHTML = filas.length ? filas.map(a => `
+    recargar();
+  }
+
+  function htmlFila(a) {
+    return `
       <tr draggable="true" data-id="${a.id}" class="${a.id === alAire ? "al-aire" : ""} ${a.id === P.id ? "elegida" : ""}">
         <td><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${tab === "Imagen" ? `<em class="lib-tipo">${NOMBRE_TIPO[a.tipo_audio] ?? ""}</em> ` : ""}${esc(a.artista)}</div></td>
         <td>${esc(a.cat2 ?? "")}</td>
@@ -710,18 +758,35 @@ const Biblioteca = (() => {
           <button data-cue="${a.id}" class="${a.id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${a.id === enCue ? "■" : "🎧"}</button>
           <button data-cola="${a.id}" title="Agregar a la cola">+ COLA</button>
           <button data-aire="${a.id}" class="aire" title="Poner al aire ahora">▶ AIRE</button>
-        </td></tr>`).join("")
-      : `<tr><td colspan="6" class="vacio">Sin resultados</td></tr>`;
-    // El contador va dentro de la sección (junto al buscador), no en las pestañas
-    const deTab = audios.filter(a => enTab(a, tab)).length;
-    $("libCuenta").textContent = lista.length === deTab ? `${num(deTab)} archivos` : `${num(lista.length)} de ${num(deTab)}`;
-    $("libInfo").textContent = (lista.length > MAX_FILAS ? `Mostrando ${MAX_FILAS}: afina la búsqueda. ` : "") + avisoBiblioteca();
+        </td></tr>`;
   }
+  function pintarFilas() {
+    $("libFilas").innerHTML = filas.length ? filas.map(htmlFila).join("")
+      : `<tr><td colspan="6" class="vacio">Sin resultados</td></tr>`;
+    pintarCuenta();
+  }
+  /** El total va dentro de la sección, junto al buscador (no en las pestañas) */
+  function pintarCuenta() {
+    const deTab = totalDeTab();
+    $("libCuenta").textContent = totalFiltro === deTab ? `${num(deTab)} archivos` : `${num(totalFiltro)} de ${num(deTab)}`;
+    $("libInfo").textContent = filas.length < totalFiltro ? `Mostrando ${num(filas.length)}: sigue bajando para ver más` : "";
+  }
+  // Al llegar casi al final de la lista se piden las siguientes 100
+  $("libFilas").closest(".lib-tabla-wrap").addEventListener("scroll", e => {
+    const w = e.currentTarget;
+    if (w.scrollTop + w.clientHeight >= w.scrollHeight - 300) masFilas();
+  });
 
+  /** Marca la fila al aire y la que suena en preescucha, sin rehacer la lista */
   function marcar(aireId, cueId) {
     if (aireId === alAire && cueId === enCue) return;
     alAire = aireId ?? null; enCue = cueId ?? null;
-    pintar();
+    document.querySelectorAll("#libFilas tr[data-id]").forEach(tr => {
+      const id = +tr.dataset.id;
+      tr.classList.toggle("al-aire", id === alAire);
+      const b = tr.querySelector("button[data-cue]");
+      if (b) { b.classList.toggle("cue-on", id === enCue); b.textContent = id === enCue ? "■" : "🎧"; }
+    });
   }
 
   $("libTabs").addEventListener("click", e => {
@@ -732,7 +797,7 @@ const Biblioteca = (() => {
     else { pintarTabs(); pintar(); }
   });
   let t;
-  $("libBuscar").addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintar, 150); });
+  $("libBuscar").addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintar, 250); });
   ["libCat1", "libCat2", "libVoz", "libTipo"].forEach(id => $(id).addEventListener("change", pintar));
 
   $("libFilas").addEventListener("click", e => {
@@ -740,7 +805,7 @@ const Biblioteca = (() => {
     if (!b) return;
     if (b.dataset.plcola) { lanzarPlaylist(+b.dataset.plcola, false); return; }
     if (b.dataset.plreemp) { lanzarPlaylist(+b.dataset.plreemp, true); return; }
-    const a = audios.find(x => x.id === +(b.dataset.cue || b.dataset.cola || b.dataset.aire));
+    const a = cache.get(+(b.dataset.cue || b.dataset.cola || b.dataset.aire));
     if (b.dataset.cue) WS.send(enCue === +b.dataset.cue ? { cmd: "cue_stop" } : { cmd: "cue", audio_id: +b.dataset.cue });
     if (b.dataset.cola) { WS.send({ cmd: "queue", audio_id: +b.dataset.cola }); toast(`+ Cola: ${a?.titulo ?? ""}`, "info", 2000); }
     if (b.dataset.aire) {
@@ -754,7 +819,7 @@ const Biblioteca = (() => {
     const tr = e.target.closest("tr[data-id]");
     if (!tr || e.target.closest("button")) return;
     WS.send({ cmd: "queue", audio_id: +tr.dataset.id });
-    toast(`+ Cola: ${audios.find(x => x.id === +tr.dataset.id)?.titulo ?? ""}`, "info", 2000);
+    toast(`+ Cola: ${cache.get(+tr.dataset.id)?.titulo ?? ""}`, "info", 2000);
   });
   $("libFilas").addEventListener("dragstart", e => {
     const tr = e.target.closest("tr[data-id]");
@@ -765,13 +830,13 @@ const Biblioteca = (() => {
 
   /* ── Reproductor de preescucha: manda al motor (salida interna, nunca al aire) ── */
   const mmss = t => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
-  const audioDe = id => audios.find(x => x.id === id);
-  function elegir(id) {
+  const audioDe = id => cache.get(id);
+  function elegir(id, titulo) {
     if (P.id === id) return;
     P.id = id; P.pos = 0; P.pausado = false;
     const a = audioDe(id);
     P.dur = a?.duracion ?? 0;
-    $("spTitulo").textContent = a?.titulo ?? "";
+    $("spTitulo").textContent = a?.titulo ?? titulo ?? "";
     $("spArtista").textContent = a?.artista ?? "";
     document.querySelectorAll("#libFilas tr[data-id]").forEach(tr => tr.classList.toggle("elegida", +tr.dataset.id === id));
     pintarPlayer();
@@ -791,7 +856,7 @@ const Biblioteca = (() => {
   /** Lo llama el sondeo del estado con st.preescucha */
   function estadoCue(cue) {
     if (cue) {
-      if (P.id !== cue.audio_id) elegir(cue.audio_id);
+      if (P.id !== cue.audio_id) elegir(cue.audio_id, cue.titulo);
       Object.assign(P, { activo: true, pausado: false, pos: cue.posicion, dur: cue.duracion || P.dur, recibido: performance.now() });
     } else if (P.activo) {
       // Terminó solo (o lo paró otro): si no fue la pausa del operador, vuelve al inicio
@@ -1203,7 +1268,8 @@ WS.on("pausa", () => Estado.poll());
 WS.on("cue_started", () => Estado.poll());
 WS.on("cue_stopped", () => Estado.poll());
 WS.on("cartuchera_updated", () => Derecha.cartuchera());
-WS.on("library_updated", () => Biblioteca.cargar());
+let _libT;     // al subir muchos audios llegan avisos seguidos: se juntan en una sola recarga
+WS.on("library_updated", () => { clearTimeout(_libT); _libT = setTimeout(() => Biblioteca.cargar(), 1000); });
 WS.on("effect_fired", () => {});
 WS.on("engine_stopped", () => toast("⚠ Motor de audio detenido o desconectado", "error", 8000));
 WS.on("engine_connected", () => { toast("✓ Motor de audio conectado", "info", 3000); Estado.refrescarTodo(); });
