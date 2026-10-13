@@ -603,6 +603,10 @@ const Biblioteca = (() => {
   const cache = new Map();                       // todo audio visto: para títulos de cola/aire y el reproductor
   let tab = "Musica", alAire = null, enCue = null, playlists = [];
   const num = n => n.toLocaleString("es");
+  /** Contador de dos líneas: el número arriba y debajo "ARCHIVOS" (o "DE 15.000" si hay un filtro) */
+  function cuenta(n, total, nombre) {
+    $("libCuenta").innerHTML = `<b>${num(n)}</b><small>${n === total ? nombre : `de ${num(total)}`}</small>`;
+  }
   const P = { id: null, pos: 0, activo: false, recibido: 0, dur: 0, pausado: false };
 
   // Playlists generadas en Admin › Relojes desde el patrón de un reloj
@@ -647,7 +651,7 @@ const Biblioteca = (() => {
           <button data-plreemp="${p.id}" class="aire" title="Vaciar la cola y poner esta lista">▶ LANZAR</button>
         </td></tr>${plAbiertas.has(p.id) ? filasDeLista(p.id) : ""}`).join("")
       : `<tr><td colspan="6" class="vacio">${playlists.length ? "Sin resultados" : "No hay listas. Créalas en Admin › Listas."}</td></tr>`;
-    $("libCuenta").textContent = lista.length === playlists.length ? `${num(playlists.length)} listas` : `${num(lista.length)} de ${num(playlists.length)}`;
+    cuenta(lista.length, playlists.length, "listas");
     $("libInfo").textContent = "Clic en una lista para ver sus archivos";
   }
   async function lanzarPlaylist(id, reemplazar) {
@@ -768,7 +772,7 @@ const Biblioteca = (() => {
   /** El total va dentro de la sección, junto al buscador (no en las pestañas) */
   function pintarCuenta() {
     const deTab = totalDeTab();
-    $("libCuenta").textContent = totalFiltro === deTab ? `${num(deTab)} archivos` : `${num(totalFiltro)} de ${num(deTab)}`;
+    cuenta(totalFiltro, deTab, "archivos");
     $("libInfo").textContent = filas.length < totalFiltro ? `Mostrando ${num(filas.length)}: sigue bajando para ver más` : "";
   }
   // Al llegar casi al final de la lista se piden las siguientes 100
