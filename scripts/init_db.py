@@ -796,6 +796,28 @@ def run_migrations(conn: sqlite3.Connection) -> None:
                 cursor.execute("INSERT INTO ident_categorias (tipo_audio, nombre, orden) VALUES (?, ?, ?)", (tipo, nombre, n))
     logger.info("  → identificadores (categorías): OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 35 — Claves de IA (Gemini y compatibles) con orden de respaldo
+    #   Varias claves: si la primera falla, se usa la siguiente. La clave nunca se devuelve por la API.
+    # ------------------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ia_claves (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre       TEXT    NOT NULL,
+            proveedor    TEXT    NOT NULL,
+            modelo       TEXT    NOT NULL DEFAULT '',
+            base_url     TEXT    NOT NULL DEFAULT '',
+            clave        TEXT    NOT NULL,
+            orden        INTEGER NOT NULL DEFAULT 0,
+            activo       INTEGER NOT NULL DEFAULT 1,
+            ultimo_ok    TEXT,
+            ultimo_error TEXT,
+            ultimo_error_en TEXT,
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    logger.info("  → ia_claves: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -115,7 +115,7 @@ def usuario_de(request) -> Optional[dict]:
 # El operador carga sus paletas arrastrando desde la biblioteca; programación también
 _BOTONES = re.compile(r"^/api/v1/cartuchera/")
 _AIRE = re.compile(r"^/api/v1/(player/|programa/|playlists/\d+/lanzar$)")
-_SISTEMA = re.compile(r"^/api/v1/(usuarios|respaldos|audio/|config/motor|tandas/secciones|normalizacion)")
+_SISTEMA = re.compile(r"^/api/v1/(usuarios|respaldos|audio/|config/motor|ia/|tandas/secciones|normalizacion)")
 
 
 def permiso(rol: str, metodo: str, ruta: str) -> bool:
@@ -128,7 +128,7 @@ def permiso(rol: str, metodo: str, ruta: str) -> bool:
     if not ruta.startswith("/api/"):
         return True                              # /static, /stream…
     if metodo in ("GET", "HEAD", "OPTIONS"):
-        return not ruta.startswith("/api/v1/usuarios")
+        return not ruta.startswith(("/api/v1/usuarios", "/api/v1/ia/"))   # claves de IA: solo admin
     if ruta.startswith("/api/v1/problemas"):
         return True                              # marcar avisos como vistos
     if _BOTONES.match(ruta):

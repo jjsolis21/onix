@@ -1,0 +1,171 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 11 — Inteligencia artificial (claves y respaldo)
+     Pega aquí las claves de Gemini u otras IA. El sistema las usa EN ESTE ORDEN: si una falla
+     (cuota, red, clave mala), pasa a la siguiente. Si fallan todas, lo que salga al aire usa su plantilla.
+     API: /api/v1/ia/claves · /api/v1/ia/proveedores   (solo administrador; la clave nunca se muestra)
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .iaz-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 12px; overflow-y: auto; }
+  .iaz-root h2 { margin: 0; font-size: 1.35rem; color: var(--text-hi); }
+  .iaz-root p.sub { margin: 2px 0 0; color: var(--text-lo); font-size: .82rem; }
+  .iaz-aviso { background: var(--choc-2); border: 1px solid var(--choc-4); border-left: 3px solid var(--gold-0); border-radius: 6px; padding: 9px 12px; font-size: .8rem; color: var(--text-mid); line-height: 1.45; }
+  .iaz-card { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; }
+  .iaz-barra { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--choc-4); }
+  .iaz-barra b { color: var(--gold-1); letter-spacing: .08em; text-transform: uppercase; font-size: .74rem; }
+  .iaz-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 7px 11px; font: 600 .8rem inherit; cursor: pointer; }
+  .iaz-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .iaz-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .iaz-btn--pri { background: var(--gold-0); color: #000; border-color: var(--gold-0); margin-left: auto; }
+  .iaz-btn--pri:hover:not(:disabled) { color: #000; filter: brightness(1.1); }
+  .iaz-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .iaz-fila { display: grid; grid-template-columns: 28px minmax(140px, 1.2fr) minmax(140px, 1fr) 110px minmax(160px, 1.4fr) auto; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--choc-3); font-size: .86rem; }
+  .iaz-fila:last-child { border-bottom: 0; }
+  .iaz-fila.apagada { opacity: .5; }
+  .iaz-n { width: 24px; height: 24px; border-radius: 50%; background: var(--gold-0); color: #000; font-weight: 700; display: grid; place-items: center; font-size: .78rem; }
+  .iaz-fila small { display: block; color: var(--text-lo); font-size: .72rem; }
+  .iaz-ok { color: #52d273; } .iaz-mal { color: var(--red-live); }
+  .iaz-acc { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
+  .iaz-vacio { padding: 26px; text-align: center; color: var(--text-lo); font-size: .88rem; }
+  .iaz-form { padding: 14px; display: none; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; border-bottom: 1px solid var(--choc-4); }
+  .iaz-form.abierto { display: grid; }
+  .iaz-form label { display: flex; flex-direction: column; gap: 4px; font-size: .72rem; color: var(--text-lo); letter-spacing: .06em; text-transform: uppercase; }
+  .iaz-form input, .iaz-form select { background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi); padding: 8px 9px; font: inherit; font-size: .86rem; text-transform: none; letter-spacing: 0; color-scheme: dark; }
+  .iaz-form .pie { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .iaz-msg { font-size: .8rem; } .iaz-msg.ok { color: #52d273; } .iaz-msg.err { color: var(--red-live); }
+  @media (max-width: 900px) { .iaz-fila { grid-template-columns: 28px 1fr; } }
+</style>
+
+<div class="iaz-root">
+  <div>
+    <h2>Inteligencia artificial</h2>
+    <p class="sub">Claves para el Locutor IA, el Voice Tracker y las sugerencias. Se usan en orden: si una falla, entra la siguiente.</p>
+  </div>
+  <div class="iaz-aviso">
+    <b>Antes de pegar tu clave:</b> el texto que ONIX le manda a la IA (título y artista de la canción, mensajes de oyentes) sale a los servidores del proveedor.
+    Los planes gratuitos tienen cuota limitada y pueden cambiar sus condiciones; por eso conviene tener más de una clave, y por eso
+    lo que sale al aire nunca depende de que la IA responda: si fallan todas, se usa una frase de plantilla.
+    La clave se guarda en la base de datos de esta emisora (también va en sus respaldos) y no vuelve a mostrarse completa.
+  </div>
+
+  <div class="iaz-card">
+    <div class="iaz-barra">
+      <b>Claves (en orden de uso)</b><span class="iaz-msg" id="iazMsg"></span>
+      <button class="iaz-btn iaz-btn--pri" id="iazNueva">+ Agregar clave</button>
+    </div>
+    <form class="iaz-form" id="iazForm" autocomplete="off">
+      <label>Nombre <input id="iazNombre" maxlength="60" placeholder="Gemini principal" required></label>
+      <label>Proveedor <select id="iazProv"></select></label>
+      <label>Modelo <input id="iazModelo" maxlength="120" placeholder="(el sugerido)"></label>
+      <label id="iazBaseL">Dirección base <input id="iazBase" maxlength="300" placeholder="https://…/v1"></label>
+      <label>Clave (API key) <input id="iazClave" type="password" autocomplete="new-password" placeholder="pégala aquí"></label>
+      <label>Estado <select id="iazActivo"><option value="1">Activa</option><option value="0">Apagada</option></select></label>
+      <div class="pie">
+        <button type="submit" class="iaz-btn iaz-btn--pri" style="margin-left:0" id="iazGuardar">Guardar</button>
+        <button type="button" class="iaz-btn" id="iazCancelar">Cancelar</button>
+        <span class="iaz-msg" id="iazFormMsg"></span>
+      </div>
+    </form>
+    <div id="iazLista"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const json = (m, b) => ({ method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+  let claves = [], provs = [], editando = null;
+
+  async function api(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+    return d;
+  }
+  function msg(texto, ok = true, id = "iazMsg") {
+    const el = $(id); el.textContent = texto; el.className = `iaz-msg ${ok ? "ok" : "err"}`;
+    clearTimeout(msg.t); msg.t = setTimeout(() => { el.textContent = ""; }, 6000);
+  }
+  const prov = k => provs.find(p => p.clave === k) || {};
+
+  function pintar() {
+    if (!claves.length) { $("iazLista").innerHTML = '<div class="iaz-vacio">Sin claves. Agrega al menos una para activar el Locutor IA y el Voice Tracker con voz de IA.</div>'; return; }
+    $("iazLista").innerHTML = claves.map((k, i) => `
+      <div class="iaz-fila ${k.activo ? "" : "apagada"}" data-id="${k.id}">
+        <span class="iaz-n">${i + 1}</span>
+        <div><b>${esc(k.nombre)}</b><small>${esc(prov(k.proveedor).nombre || k.proveedor)}</small></div>
+        <div>${esc(k.modelo || prov(k.proveedor).modelo || "—")}<small>${esc(k.base_url || "")}</small></div>
+        <div style="font-family:monospace">${esc(k.clave_fin)}</div>
+        <div>${k.ultimo_error
+          ? `<span class="iaz-mal">✕ ${esc(k.ultimo_error.slice(0, 90))}</span><small>${esc((k.ultimo_error_en || "").replace("T", " "))}</small>`
+          : k.ultimo_ok ? `<span class="iaz-ok">✓ funcionó</span><small>${esc(k.ultimo_ok.replace("T", " "))}</small>` : '<small>sin probar</small>'}</div>
+        <div class="iaz-acc">
+          <button class="iaz-btn" data-a="sube" ${i === 0 ? "disabled" : ""} title="Usar antes">▲</button>
+          <button class="iaz-btn" data-a="baja" ${i === claves.length - 1 ? "disabled" : ""} title="Usar después">▼</button>
+          <button class="iaz-btn" data-a="probar">Probar</button>
+          <button class="iaz-btn" data-a="editar">Editar</button>
+          <button class="iaz-btn iaz-btn--peligro" data-a="quitar">Quitar</button>
+        </div>
+      </div>`).join("");
+  }
+
+  async function cargar() {
+    [provs, claves] = await Promise.all([api("/api/v1/ia/proveedores"), api("/api/v1/ia/claves")]);
+    $("iazProv").innerHTML = provs.map(p => `<option value="${p.clave}">${esc(p.nombre)}</option>`).join("");
+    pintar();
+  }
+
+  function ajustarForm() {
+    const p = prov($("iazProv").value);
+    $("iazBaseL").style.display = $("iazProv").value === "gemini" ? "none" : "";
+    $("iazModelo").placeholder = p.modelo || "nombre del modelo";
+    if (!editando) $("iazBase").value = p.base_url || "";
+  }
+  function abrirForm(k) {
+    editando = k || null;
+    $("iazForm").classList.add("abierto");
+    $("iazNombre").value = k?.nombre || ""; $("iazProv").value = k?.proveedor || "gemini";
+    $("iazModelo").value = k?.modelo || ""; $("iazBase").value = k?.base_url || "";
+    $("iazClave").value = ""; $("iazClave").placeholder = k ? "déjala vacía para conservar la actual" : "pégala aquí";
+    $("iazActivo").value = k && !k.activo ? "0" : "1";
+    ajustarForm(); if (k) $("iazBase").value = k.base_url || "";
+    $("iazNombre").focus();
+  }
+  const cerrarForm = () => { $("iazForm").classList.remove("abierto"); editando = null; };
+
+  $("iazNueva").addEventListener("click", () => abrirForm(null));
+  $("iazCancelar").addEventListener("click", cerrarForm);
+  $("iazProv").addEventListener("change", ajustarForm);
+  $("iazForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const cuerpo = { nombre: $("iazNombre").value, proveedor: $("iazProv").value, modelo: $("iazModelo").value,
+                     base_url: $("iazProv").value === "gemini" ? "" : $("iazBase").value, clave: $("iazClave").value, activo: $("iazActivo").value === "1" };
+    try {
+      await api(editando ? `/api/v1/ia/claves/${editando.id}` : "/api/v1/ia/claves", json(editando ? "PUT" : "POST", cuerpo));
+      cerrarForm(); await cargar(); msg(editando ? "✓ Clave actualizada" : "✓ Clave guardada: pulsa «Probar» para comprobarla");
+    } catch (err) { msg(err.message, false, "iazFormMsg"); }
+  });
+
+  $("iazLista").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-a]"); if (!b) return;
+    const id = +b.closest(".iaz-fila").dataset.id, k = claves.find(x => x.id === id), a = b.dataset.a;
+    try {
+      if (a === "editar") return abrirForm(k);
+      if (a === "sube" || a === "baja") { await api(`/api/v1/ia/claves/${id}/mover`, json("POST", { dir: a === "sube" ? -1 : 1 })); await cargar(); return; }
+      if (a === "quitar") {
+        if (!confirm(`¿Quitar la clave «${k.nombre}»?`)) return;
+        await api(`/api/v1/ia/claves/${id}`, { method: "DELETE" }); await cargar(); return msg("Clave quitada");
+      }
+      if (a === "probar") {
+        b.disabled = true; b.textContent = "Probando…";
+        const r = await api(`/api/v1/ia/claves/${id}/probar`, { method: "POST" });
+        await cargar(); msg(r.ok ? `✓ «${k.nombre}» respondió en ${r.ms} ms` : `✕ «${k.nombre}»: ${r.error}`, r.ok);
+      }
+    } catch (err) { msg(err.message, false); await cargar().catch(() => { }); }
+  });
+
+  cargar().catch(err => msg(err.message, false));
+})();
+</script>
