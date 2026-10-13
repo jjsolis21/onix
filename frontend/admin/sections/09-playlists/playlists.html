@@ -213,7 +213,8 @@
   const fechaHora = v => v ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)} ${v.slice(11, 16)}` : "";
   const TIPOS = [["Musica", "🎵 Música"], ["Efecto", "🔔 Jingles"], ["Cuña", "💲 Cuñas"], ["Tips", "🎙 Tips"], ["Sweeper", "〰 Sweepers"], ["Programa", "📼 Programas"]];
 
-  let lista = [], sel = null, relojes = [], audios = [];
+  let lista = [], sel = null, relojes = [];
+  const audioCache = OnixBuscador.cache;      // la biblioteca no se baja entera: se consulta al servidor
 
   // ── Lista ───────────────────────────────────────────────
   async function cargar(elegir) {
@@ -310,15 +311,18 @@
   });
 
   // ── Editor manual ───────────────────────────────────────
-  let ed = { id: null, items: [], cursor: -1 }, tab = "Musica", previa = null;
+  let ed = { id: null, items: [], cursor: -1 }, tab = "Musica", previa = null, filtrosListos = false;
   async function editor(p) {
-    if (!audios.length) {
-      audios = (await fetch("/api/v1/audios?limit=10000").then(r => r.json())).data || [];
-      const ops = (campo, nombre) => `<option value="">${nombre}</option>` + [...new Set(audios.filter(a => a.tipo_audio === "Musica").map(a => a[campo]).filter(Boolean))].sort().map(v => `<option>${esc(v)}</option>`).join("");
-      $("edCat1").innerHTML = ops("cat1", "Género (todos)"); $("edCat2").innerHTML = ops("cat2", "Rotación (todas)");
+    if (!filtrosListos) {
+      const f = await fetch("/api/v1/biblioteca/filtros?tipo=Musica").then(r => r.json()).catch(() => ({}));
+      const ops = (vals, nombre) => `<option value="">${nombre}</option>` + (vals || []).map(v => `<option>${esc(v)}</option>`).join("");
+      $("edCat1").innerHTML = ops(f.cat1, "Género (todos)"); $("edCat2").innerHTML = ops(f.cat2, "Rotación (todas)");
+      filtrosListos = true;
     }
+    await OnixBuscador.porIds((p?.items || []).map(it => it.audio_id));
     ed = { id: p?.id ?? null, cursor: -1, items: (p?.items || []).map(it => ({
-      ...(audios.find(a => a.id === it.audio_id) || { id: it.audio_id, titulo: it.titulo, artista: it.artista, duracion: it.duracion, tipo_audio: it.tipo_audio }),
+      ...(audioCache.get(it.audio_id) || { id: it.audio_id, titulo: it.titulo, artista: it.artista, duracion: it.duracion,
+        tipo_audio: it.tipo_audio, cue_intro: it.cue_intro, ultima_reproduccion: it.ultima_reproduccion }),
       nota: it.nota || "" })) };
     $("edTitulo").textContent = p ? `Editar playlist: ${p.nombre}` : "Nueva playlist";
     $("edNombre").value = p?.nombre || ""; $("edProg").value = p?.programada || ""; $("edInm").checked = !!p?.inmediato;
@@ -331,15 +335,28 @@
     $("edTabs").innerHTML = TIPOS.map(([k, n]) => `<button type="button" data-t="${k}" class="${k === tab ? "activo" : ""}">${n}</button>`).join("");
     $("edCat1").hidden = $("edCat2").hidden = tab !== "Musica";
   }
-  function pintarBib() {
-    const q = $("edBuscar").value.trim().toUpperCase(), c1 = $("edCat1").value, c2 = $("edCat2").value;
-    const vis = audios.filter(a => a.tipo_audio === tab && (!q || `${a.titulo} ${a.artista}`.toUpperCase().includes(q))
-      && (tab !== "Musica" || ((!c1 || a.cat1 === c1) && (!c2 || a.cat2 === c2)))).slice(0, 400);
-    $("edBib").innerHTML = vis.map(a => `<tr data-id="${a.id}"><td><b>${esc(a.artista)}</b></td><td>${esc(a.titulo)}</td>
+  // Biblioteca del editor: la busca el servidor y se pide de 100 en 100 ("Cargar más")
+  const bib = { filas: [], total: 0, n: 0 };
+  const filaBib = a => `<tr data-id="${a.id}"><td><b>${esc(a.artista)}</b></td><td>${esc(a.titulo)}</td>
       <td>${esc(a.cat2 || "")}</td><td class="ox-mono">${mmss(a.duracion)}</td>
       <td class="ox-mono">${a.ultima_reproduccion ? esc(String(a.ultima_reproduccion).slice(0, 16).replace("T", " ")) : "—"}</td>
-      <td><button class="pl-btn" data-add="${a.id}" style="padding:3px 9px">＋</button></td></tr>`).join("")
-      || '<tr><td colspan="6" class="pl-vacio">Sin audios</td></tr>';
+      <td><button class="pl-btn" data-add="${a.id}" style="padding:3px 9px">＋</button></td></tr>`;
+  async function pintarBib(mas = false) {
+    const mia = ++bib.n;
+    const p = new URLSearchParams({ tipo: tab, limit: 100, offset: mas ? bib.filas.length : 0 });
+    if ($("edBuscar").value.trim()) p.set("q", $("edBuscar").value.trim());
+    if (tab === "Musica") { if ($("edCat1").value) p.set("cat1", $("edCat1").value); if ($("edCat2").value) p.set("cat2", $("edCat2").value); }
+    if (!mas) $("edBib").innerHTML = '<tr><td colspan="6" class="pl-vacio">Buscando…</td></tr>';
+    let r;
+    try { r = await fetch(`/api/v1/audios?${p}`).then(x => x.json()); } catch (_) { return; }
+    if (mia !== bib.n) return;                      // llegó tarde: ya se pidió otra cosa
+    const nuevas = r.data || [];
+    nuevas.forEach(a => audioCache.set(a.id, a));
+    bib.filas = mas ? bib.filas.concat(nuevas) : nuevas; bib.total = r.total ?? bib.filas.length;
+    $("edBib").innerHTML = bib.filas.map(filaBib).join("") || '<tr><td colspan="6" class="pl-vacio">Sin audios</td></tr>';
+    if (bib.filas.length < bib.total) {
+      $("edBib").insertAdjacentHTML("beforeend", `<tr><td colspan="6" class="pl-vacio"><button class="pl-btn" data-mas>Cargar más (${(bib.total - bib.filas.length).toLocaleString("es")} restantes)</button></td></tr>`);
+    }
   }
   function pintarItems() {
     let t = 0;
@@ -353,7 +370,7 @@
     $("edTotal").textContent = hms(t);
   }
   function agregar(id) {
-    const a = audios.find(x => x.id === id);
+    const a = audioCache.get(id);
     if (!a) return;
     const pos = ed.cursor >= 0 ? ed.cursor + 1 : ed.items.length;
     ed.items.splice(pos, 0, { ...a, nota: "" });
@@ -365,9 +382,10 @@
       ? ` · última vez al aire: <span class="${Date.now() - ult < 864e5 ? "rec" : ""}">${ult.toLocaleString("es")}</span>` : " · nunca sonó");
   }
   $("edTabs").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) { tab = b.dataset.t; pintarTabs(); pintarBib(); } });
-  $("edBuscar").addEventListener("input", pintarBib);
-  $("edCat1").addEventListener("change", pintarBib); $("edCat2").addEventListener("change", pintarBib);
+  let tBib; $("edBuscar").addEventListener("input", () => { clearTimeout(tBib); tBib = setTimeout(() => pintarBib(), 250); });
+  $("edCat1").addEventListener("change", () => pintarBib()); $("edCat2").addEventListener("change", () => pintarBib());
   $("edBib").addEventListener("click", e => {
+    if (e.target.closest("[data-mas]")) { pintarBib(true); return; }
     const b = e.target.closest("[data-add]");
     if (b) { agregar(+b.dataset.add); return; }
     const tr = e.target.closest("tr[data-id]");
@@ -419,7 +437,7 @@
 
   // Preescucha en el navegador
   function escuchar(id) {
-    const a = audios.find(x => x.id === id);
+    const a = audioCache.get(id);
     if (!previa) {
       previa = new Audio();
       previa.addEventListener("timeupdate", () => { $("edFill").style.width = previa.duration ? `${previa.currentTime / previa.duration * 100}%` : "0"; });

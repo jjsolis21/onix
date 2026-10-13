@@ -52,3 +52,11 @@ def test_busq_se_mantiene_sola_al_editar_y_aguanta_comodines(client, tmp_path):
     assert hallar("corazon nono") and hallar("100%")
     assert not hallar("nombre original")             # ya no se llama así
     assert not hallar("cora_on")                     # _ y % no son comodines del usuario
+
+
+def test_pedir_audios_por_id(client, tmp_path):
+    a = subir(client, tmp_path, "POR ID UNO")
+    b = subir(client, tmp_path, "POR ID DOS")
+    r = client.get("/api/v1/audios", params={"ids": f"{a},{b},999999,xx"}).json()
+    assert sorted(x["id"] for x in r["data"]) == sorted([a, b])
+    assert client.get("/api/v1/audios", params={"ids": "xx"}).json()["data"] == []

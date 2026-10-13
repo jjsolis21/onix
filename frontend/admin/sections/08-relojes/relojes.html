@@ -261,21 +261,21 @@
   const TIPOS = { Musica: "🎵 Música", Efecto: "⚡ Jingle / ID", Sweeper: "〰 Sweeper", Tips: "💡 Tips", Programa: "🎙 Programa" };
   const FILTROS = [["cat1", "Género"], ["cat2", "Rotación"], ["cat3", "Subgénero"], ["voz", "Voz"], ["origen", "Origen"]];
 
-  let relojes = [], grilla = [], valores = {}, audios = [], actual = null, filas = [];
+  let relojes = [], grilla = [], valores = {}, actual = null, filas = [];
+  const audioCache = OnixBuscador.cache;      // audios ya vistos (la biblioteca no se baja entera)
   let eventos = [], evActual = null;
   let modo = "semana", diaFecha = "", diaHoras = [], fechasConCambios = [];
   const hoyIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
   // ── Carga ────────────────────────────────────────────────
   async function cargar(seleccionar) {
-    const [rel, gr, schema, lib, evs] = await Promise.all([
+    const [rel, gr, schema, evs] = await Promise.all([
       fetch("/api/v1/relojes").then(r => r.json()),
       fetch("/api/v1/relojes/grilla").then(r => r.json()),
       fetch("/api/v1/config/biblioteca/schema").then(r => r.json()).catch(() => ({ categorias: [] })),
-      fetch("/api/v1/audios?limit=5000").then(r => r.json()),
       fetch("/api/v1/relojes/eventos").then(r => r.ok ? r.json() : []),
     ]);
-    relojes = rel; grilla = gr; audios = lib.data || []; eventos = evs;
+    relojes = rel; grilla = gr; eventos = evs;
     valores = { origen: ["NACIONAL", "INTERNACIONAL"] };
     for (const c of schema.categorias || []) valores[c.nombre_interno] = (c.valores || []).map(v => v.valor);
     pintarLista();
@@ -305,7 +305,7 @@
       ${actualEnLista ? `<option selected>${esc(valor)}</option>` : ""}</select>`;
   }
 
-  const audioLabel = a => `${a.titulo} — ${a.artista} #${a.id}`;
+  const audioLabel = a => OnixBuscador.etiqueta(a);
   // Energía: 1 Lenta · 2 Suave · 3 Media · 4 Movida · 5 Rápida
   const selectEnergia = (campo, txt, valor) => `<select class="ox-select" data-filtro="${campo}" title="${txt}">
     <option value="">${txt}: todas</option>${[1, 2, 3, 4, 5].map(n =>
@@ -320,7 +320,7 @@
     tb.innerHTML = filas.map((f, i) => {
       const v = vista?.filas?.[i];
       const fijo = f.fijo;
-      const audio = fijo ? audios.find(a => a.id === f.audio_id) : null;
+      const audio = fijo ? audioCache.get(f.audio_id) : null;
       const resumen = [...FILTROS.map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
         f.filtros.energia_min || f.filtros.energia_max ? `<span class="chip">Energía ${f.filtros.energia_min || 1}–${f.filtros.energia_max || 5}</span>` : ""].join("");
       return `<tr data-i="${i}">
@@ -331,8 +331,8 @@
         </select>
         <label style="display:block;font-size:.65rem;margin-top:3px"><input type="checkbox" data-campo="fijo" ${fijo ? "checked" : ""}> audio fijo</label></td>
         <td>${fijo
-          ? `<input class="ox-input" data-campo="audio" list="rjAudios" style="width:100%" placeholder="Buscar audio…"
-               value="${audio ? esc(audioLabel(audio)) : ""}">`
+          ? `<input class="ox-input" data-campo="audio" style="width:100%" placeholder="Buscar audio…"
+               value="${audio ? esc(audioLabel(audio)) : ""}" data-audio-id="${f.audio_id ?? ""}">`
           : `<button type="button" class="rj-resumen" data-acc="filtros">${resumen || '<span class="todo">Cualquier ' + (f.tipo_audio === "Musica" ? "canción" : "audio de este tipo") + '</span>'}</button>
              <div class="rj-pop" hidden><div class="rj-filtros">${FILTROS.map(([k]) => selectValores(k, f.filtros[k])).join("")}
                ${selectEnergia("energia_min", "Energía desde", f.filtros.energia_min)}
@@ -345,10 +345,11 @@
           <button class="ox-btn ox-btn--sm ox-btn--danger" data-acc="quitar">✕</button>
         </td></tr>`;
     }).join("");
-    if (!$("rjAudios")) {
-      const dl = document.createElement("datalist"); dl.id = "rjAudios"; $("rjRoot").appendChild(dl);
-    }
-    $("rjAudios").innerHTML = audios.map(a => `<option value="${esc(audioLabel(a))}">`).join("");
+    // Autocompletar contra el servidor, solo de audios del tipo de esa fila
+    tb.querySelectorAll('input[data-campo="audio"]').forEach(inp => {
+      const tr = inp.closest("tr");
+      OnixBuscador.attach(inp, { tipos: () => tr.querySelector('[data-campo="tipo_audio"]').value });
+    });
   }
 
   // Vista de la hora en vivo: pide al servidor cómo queda con las filas
@@ -423,6 +424,7 @@
 
   async function abrir(r) {
     actual = r;
+    await OnixBuscador.porIds(r.filas.map(f => f.audio_id));      // nombres de los audios fijos
     filas = r.filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: { ...f.filtros },
                                 audio_id: f.audio_id, fijo: f.audio_id != null }));
     $("rjTituloEditor").textContent = `Reloj: ${r.nombre}`;
@@ -439,7 +441,7 @@
       f.tipo_audio = tr.querySelector('[data-campo="tipo_audio"]').value;
       const inp = tr.querySelector('[data-campo="audio"]');
       if (inp) {
-        const id = parseInt((inp.value.match(/#(\d+)$/) || [])[1]);
+        const id = parseInt(inp.dataset.audioId);
         f.audio_id = Number.isFinite(id) ? id : null;
         f.fijo = true;
         f.filtros = {};

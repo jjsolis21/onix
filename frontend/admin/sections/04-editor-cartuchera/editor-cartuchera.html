@@ -29,8 +29,7 @@
       </div>
       <div class="ox-field" style="flex:3 1 260px">
         <label for="cartBuscar">Audio (escribe para buscar)</label>
-        <input class="ox-input" id="cartBuscar" list="cartAudios" placeholder="Título o artista…" autocomplete="off">
-        <datalist id="cartAudios"></datalist>
+        <input class="ox-input" id="cartBuscar" placeholder="Título o artista…" autocomplete="off">
       </div>
       <div class="ox-field">
         <label for="cartEtiqueta">Etiqueta del botón</label>
@@ -54,7 +53,7 @@
   const fmt = s => s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "—";
   let NOMBRES = {};
 
-  let bancos = {}, slots = {}, audios = [];
+  let bancos = {}, slots = {}, elegido = null;     // elegido = audio escogido en el buscador
 
   function msg(texto, ok = true) {
     const el = $("cartMsg");
@@ -62,19 +61,17 @@
     el.className = `ox-msg ${ok ? "ok" : "err"}`;
   }
 
-  const etiquetaAudio = a => `${a.titulo} — ${a.artista} [${a.tipo_audio}] #${a.id}`;
+  // Con decenas de miles de audios no se baja la biblioteca: el buscador consulta al servidor.
+  // Primero jingles, efectos, sweepers… (lo que suele ir en una cartuchera) y luego la música.
+  OnixBuscador.attach($("cartBuscar"), { primero: "Efecto,Sweeper,Tips,Programa,Cuña", onElegir: a => { elegido = a; } });
   function audioElegido() {
-    const v = $("cartBuscar").value.trim();
-    const id = parseInt((v.match(/#(\d+)$/) || [])[1]);
-    return audios.find(a => a.id === id) || null;
+    const id = parseInt($("cartBuscar").dataset.audioId);
+    return Number.isFinite(id) && elegido?.id === id ? elegido : null;
   }
 
   async function cargar() {
     try {
-      const [cart, lib] = await Promise.all([
-        fetch("/api/v1/cartuchera").then(r => r.json()),
-        fetch("/api/v1/audios?limit=5000").then(r => r.json()),
-      ]);
+      const cart = await fetch("/api/v1/cartuchera").then(r => r.json());
       bancos = cart.bancos || {};
       NOMBRES = cart.nombres || {};
       $("cartPaginas").innerHTML = Object.keys(bancos).map((b, i) => `<section class="ox-card">
@@ -85,11 +82,6 @@
           <button class="ox-btn ox-btn--sm ox-btn--danger" data-del="${b}">Eliminar</button>
         </h3><div class="ox-cart-grid" id="cartGrid-${b}"></div></section>`).join("");
       slots = cart.slots || {};
-      // Primero lo que suele ir en la cartuchera; la música al final
-      const orden = { Efecto: 0, Sweeper: 1, Cuña: 2, Tips: 3, Programa: 4, Musica: 5 };
-      audios = (lib.data || []).sort((a, b) => (orden[a.tipo_audio] ?? 9) - (orden[b.tipo_audio] ?? 9)
-        || a.titulo.localeCompare(b.titulo));
-      $("cartAudios").innerHTML = audios.map(a => `<option value="${esc(etiquetaAudio(a))}">`).join("");
       llenarSelects();
       pintar();
     } catch (err) {
@@ -162,7 +154,7 @@
     });
     if (!res.ok) { msg("No se pudo asignar", false); return; }
     msg(`✓ ${a.titulo} asignado a ${NOMBRES[banco]} ${slot}`);
-    $("cartBuscar").value = ""; $("cartEtiqueta").value = "";
+    $("cartBuscar").value = ""; $("cartBuscar").dataset.audioId = ""; elegido = null; $("cartEtiqueta").value = "";
     cargar();
   });
 
@@ -186,8 +178,10 @@
       const [banco, n] = b.dataset.editar.split(":");
       $("cartBanco").value = banco; llenarSelects(); $("cartSlot").value = n;
       const s = (slots[banco] || []).find(x => x.slot === parseInt(n));
-      const a = s && audios.find(x => x.id === s.audio_id);
-      $("cartBuscar").value = a ? etiquetaAudio(a) : "";
+      // El botón ya trae título y artista: no hace falta buscarlo
+      elegido = s ? { id: s.audio_id, titulo: s.titulo, artista: s.artista, tipo_audio: s.tipo_audio } : null;
+      $("cartBuscar").value = elegido ? OnixBuscador.etiqueta(elegido) : "";
+      $("cartBuscar").dataset.audioId = elegido ? elegido.id : "";
       $("cartEtiqueta").value = s?.etiqueta || "";
       $("cartBuscar").focus();
     }

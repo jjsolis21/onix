@@ -1369,6 +1369,7 @@ def list_audios(
     busqueda: Optional[str] = None,
     # Búsqueda del Studio: sin tildes ni mayúsculas, todas las palabras, en título/artista/categorías
     q: Optional[str] = None,
+    ids: Optional[str] = None,     # "3,17,42": esos audios exactos (para mostrar nombres ya guardados)
     limit: int = Query(500, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_db),
@@ -1423,6 +1424,10 @@ def list_audios(
     if busqueda:
         query += " AND (titulo LIKE ? OR artista LIKE ?)"
         params.extend([f"%{busqueda}%", f"%{busqueda}%"])
+    if ids:
+        lista_ids = [int(x) for x in ids.split(",") if x.strip().isdigit()][:500]
+        query += f" AND id IN ({', '.join('?' * len(lista_ids))})" if lista_ids else " AND 0"
+        params.extend(lista_ids)
     # Búsqueda del Studio sobre audios.busq (indexada por triggers): cada palabra debe aparecer
     for palabra in (_sin_acentos(q).split() if q else []):
         query += " AND busq LIKE ? ESCAPE '\\'"
