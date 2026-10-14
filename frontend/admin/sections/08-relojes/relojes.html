@@ -73,62 +73,85 @@
   .rj-fechas button.activo { border-color: var(--gold-0); color: var(--gold-1); }
   .rj-grilla td.semana { opacity: .35; }
   .rj-grilla td.exc { box-shadow: inset 0 -3px 0 var(--gold-2); }
-  /* Constructor (como el editor de Soho): paleta + filtros + contador en vivo · botones · reloj circular */
-  .rj-cons { display: grid; grid-template-columns: minmax(300px, 1.3fr) 118px minmax(250px, 340px); gap: var(--s4);
-    margin-top: var(--s3); padding: var(--s3); background: var(--choc-0); border: 1px solid var(--choc-4); border-radius: 8px; }
-  @media (max-width: 1100px) { .rj-cons { grid-template-columns: 1fr; } }
-  .rj-paleta { display: flex; gap: 6px; flex-wrap: wrap; }
-  .rj-pal { flex: 1 1 74px; min-width: 66px; background: var(--choc-2); border: 1px solid var(--choc-5); border-radius: 6px; color: var(--text-hi);
-    padding: 8px 4px 6px; cursor: pointer; font-size: 1.35rem; line-height: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .rj-pal span { font-size: .62rem; color: var(--text-mid); letter-spacing: .04em; text-transform: uppercase; }
+  /* Editor al estilo de Soho: izquierda «Elementos disponibles», derecha «Editor de relojes» (horizontal) */
+  .rj-soho { display: grid; grid-template-columns: minmax(300px, 4fr) minmax(360px, 6fr); gap: var(--s3); margin-top: var(--s3); }
+  @media (max-width: 1050px) { .rj-soho { grid-template-columns: 1fr; } }
+  .rj-col { background: var(--choc-0); border: 1px solid var(--choc-4); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+  .rj-col h4, .rj-ajustes h4 { margin: 0 0 8px; font-size: .95rem; font-weight: 500; color: var(--text-hi); }
+  .rj-ed-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .rj-ed-cab h4 { margin: 0; }
+  .rj-paleta { display: flex; gap: 4px; }
+  .rj-pal { flex: 1; min-width: 0; background: var(--choc-2); border: 1px solid var(--choc-5); border-radius: 4px; color: var(--text-hi);
+    padding: 6px 2px 4px; cursor: pointer; font-size: 1.15rem; line-height: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .rj-pal span { font-size: .56rem; color: var(--text-mid); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
   .rj-pal:hover { border-color: var(--gold-0); }
-  .rj-pal.on { border-color: var(--gold-0); background: var(--choc-4); box-shadow: inset 0 -3px 0 var(--gold-0); }
-  .rj-cons h4 { margin: 12px 0 6px; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-1); font-weight: 500; }
-  .rj-cons-tabs { display: flex; gap: 2px; margin: 12px 0 8px; }
-  .rj-cons-tabs button { flex: 1; background: var(--choc-2); border: 1px solid var(--choc-5); color: var(--text-mid); padding: 7px 10px;
-    cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600; }
+  .rj-pal.on { border-color: var(--gold-0); background: var(--choc-4); box-shadow: inset 0 -2px 0 var(--gold-0); }
+  .rj-cons-tabs { display: flex; gap: 2px; margin: 8px 0; }
+  .rj-cons-tabs button { flex: 1; background: var(--choc-2); border: 1px solid var(--choc-5); color: var(--text-mid); padding: 5px 8px;
+    cursor: pointer; font: inherit; font-size: .76rem; font-weight: 600; }
   .rj-cons-tabs button.on { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
-  .rj-cons-filtros .ox-input[type=number] { width: 100%; }
-  .rj-cons-filtros { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
-  .rj-cons-filtros .ox-select { width: 100%; max-width: none; }
-  .rj-contador { margin-top: 10px; padding: 10px 12px; background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 6px;
-    display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: baseline; min-height: 78px; }
-  .rj-contador .num { font-size: 2.1rem; font-weight: 300; font-family: var(--font-data); color: var(--text-hi); line-height: 1.1; }
+  .rj-cons-filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .rj-cons-filtros .ox-select, .rj-cons-filtros .ox-input { width: 100%; max-width: none; font-size: .74rem; padding: 4px 6px; }
+  .rj-contador { margin-top: 8px; padding: 8px 12px; background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 5px;
+    display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; }
+  .rj-contador .num { font-size: 1.8rem; font-weight: 300; font-family: var(--font-data); color: var(--text-hi); line-height: 1.15; }
   .rj-contador .num.cero { color: var(--red-live); }
-  .rj-contador .dur { font-size: 1.15rem; font-family: var(--font-data); color: var(--gold-1); font-weight: 400; }
-  .rj-contador span { font-size: .78rem; color: var(--text-mid); }
-  .rj-contador em { grid-column: 1 / -1; font-style: normal; font-size: .74rem; color: var(--red-live); }
-  .rj-cons-botones { display: flex; flex-direction: column; gap: 6px; }
-  .rj-b { border: 1px solid rgba(0, 0, 0, .5); border-radius: 4px; color: #fff; cursor: pointer; padding: 10px 6px 7px; font-size: 1.5rem; line-height: 1;
-    display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 66px; font-family: inherit; }
-  .rj-b span { font-size: .72rem; font-weight: 500; }
-  .rj-b--verde { background: linear-gradient(#2fbf34, #1d8f22); }
-  .rj-b--rojo { background: linear-gradient(#d4202a, #9c141c); }
-  .rj-b:hover:not(:disabled) { filter: brightness(1.18); }
+  .rj-contador .dur { font-size: 1rem; font-family: var(--font-data); color: var(--gold-1); font-weight: 400; }
+  .rj-contador span { font-size: .74rem; color: var(--text-mid); }
+  .rj-contador em { grid-column: 1 / -1; font-style: normal; font-size: .7rem; color: var(--red-live); }
+  /* Botones de acción: compactos, en columna junto a la lista, como Soho */
+  .rj-ed { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; align-items: start; }
+  .rj-cons-botones { display: flex; flex-direction: column; gap: 4px; }
+  .rj-b { border: 1px solid rgba(0, 0, 0, .55); border-radius: 3px; color: #e8f3e8; cursor: pointer; padding: 5px 6px 4px; font-size: 1.05rem;
+    line-height: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; height: 44px; width: 100%; font-family: inherit; }
+  .rj-b span { font-size: .62rem; font-weight: 500; letter-spacing: .02em; }
+  .rj-b--verde { background: linear-gradient(#25892b, #1a661f); }
+  .rj-b--rojo { background: linear-gradient(#a8222a, #7a161c); }
+  .rj-b:hover:not(:disabled) { filter: brightness(1.2); }
   .rj-b:disabled { opacity: .4; cursor: not-allowed; }
-  .rj-sel-txt { font-size: .72rem; color: var(--text-lo); margin: 2px 0 0; line-height: 1.35; }
-  .rj-reloj-caja { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .rj-colorear { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--text-mid); align-self: flex-end; }
-  .rj-colorear select { background: var(--choc-1); border: 1px solid var(--choc-5); color: var(--text-hi); border-radius: 4px; padding: 3px 6px; font: inherit; font-size: .75rem; }
-  #rjReloj { width: 100%; max-width: 300px; height: auto; }
+  .rj-sel-txt { font-size: .7rem; color: var(--text-lo); margin: 6px 0 0; min-height: 1em; }
+  .rj-filas-caja { max-height: 360px; overflow-y: auto; border: 1px solid var(--choc-4); border-radius: 4px; background: var(--choc-1); }
+  table.rj-filas { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .rj-filas th { position: sticky; top: 0; background: var(--choc-2); color: var(--text-lo); font-weight: 400; font-size: .64rem;
+    letter-spacing: .06em; text-transform: uppercase; text-align: left; padding: 4px 6px; }
+  .rj-filas td { padding: 3px 6px; border-top: 1px solid var(--choc-3); vertical-align: middle; }
+  .rj-filas tr { cursor: pointer; }
+  .rj-filas tr:hover td { background: var(--choc-2); }
+  .rj-filas tr.elegida td { background: var(--choc-4); box-shadow: inset 0 1px 0 var(--gold-0), inset 0 -1px 0 var(--gold-0); }
+  .rj-filas td.ico { width: 22px; text-align: center; }
+  .rj-filas td.que { max-width: 0; width: 100%; }
+  .rj-filas .chips { display: flex; gap: 3px; flex-wrap: wrap; }
+  .rj-filas .chip { background: var(--choc-3); border-radius: 3px; padding: 0 6px; font-size: .7rem; white-space: nowrap; }
+  .rj-filas .todo { color: var(--text-lo); }
+  .rj-filas .mover { white-space: nowrap; }
+  .rj-filas .mover button { background: transparent; border: 0; color: var(--text-lo); cursor: pointer; padding: 0 3px; font-size: .7rem; }
+  .rj-filas .mover button:hover:not(:disabled) { color: var(--gold-1); }
+  .rj-filas .mover button:disabled { opacity: .25; cursor: default; }
+  .rj-colorear { display: flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--text-mid); }
+  .rj-colorear select { background: var(--choc-1); border: 1px solid var(--choc-5); color: var(--text-hi); border-radius: 4px; padding: 3px 6px; font: inherit; font-size: .72rem; }
+  .rj-hora-caja { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: var(--s4); align-items: center; margin-top: var(--s3);
+    padding: 10px 12px; background: var(--choc-0); border: 1px solid var(--choc-4); border-radius: 6px; }
+  @media (max-width: 800px) { .rj-hora-caja { grid-template-columns: 1fr; } }
+  .rj-reloj-caja { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #rjReloj { width: 100%; max-width: 230px; height: auto; }
   #rjReloj .seg { cursor: pointer; stroke: var(--choc-0); stroke-width: 1; }
   #rjReloj .seg:hover { filter: brightness(1.25); }
   #rjReloj .seg.sel { stroke: #fff; stroke-width: 2.5; }
   #rjReloj text { fill: var(--text-lo); font-family: var(--font-data); font-size: 7px; text-anchor: middle; }
   #rjReloj .centro { fill: var(--text-hi); font-size: 11px; }
   #rjReloj .centro2 { fill: var(--text-mid); font-size: 7.5px; }
-  .rj-leyenda { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; font-size: .68rem; color: var(--text-mid); }
+  .rj-leyenda { display: flex; flex-wrap: wrap; gap: 3px 10px; justify-content: center; font-size: .66rem; color: var(--text-mid); }
   .rj-leyenda i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
-  .rj-verifica { margin-top: var(--s3); border: 1px solid var(--choc-4); border-left: 4px solid var(--mint); border-radius: 6px; background: var(--choc-1);
-    padding: 8px 12px; font-size: .82rem; }
+  .rj-verifica { margin-top: 6px; border: 1px solid var(--choc-4); border-left: 4px solid var(--mint); border-radius: 4px; background: var(--choc-1);
+    padding: 5px 10px; font-size: .78rem; max-height: 140px; overflow-y: auto; }
   .rj-verifica.error { border-left-color: var(--red-live); }
   .rj-verifica.aviso { border-left-color: var(--gold-0); }
-  .rj-verifica ul { margin: 4px 0 0; padding-left: 18px; }
+  .rj-verifica ul { margin: 3px 0 0; padding-left: 16px; }
   .rj-verifica li.e { color: var(--red-live); }
   .rj-verifica li.a { color: var(--gold-1); }
   .rj-verifica .ok { color: #52d273; }
-  .rj-filas tr { cursor: pointer; }
-  .rj-filas tr.elegida td { background: var(--choc-3); box-shadow: inset 0 1px 0 var(--gold-0), inset 0 -1px 0 var(--gold-0); }
+  .rj-ajustes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); margin-top: var(--s3); }
+  @media (max-width: 900px) { .rj-ajustes { grid-template-columns: 1fr; } }
   .rj-modal { position: fixed; inset: 0; z-index: 10030; background: rgba(0, 0, 0, .75); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .rj-modal[hidden] { display: none; }
   .rj-modal-caja { width: min(640px, 100%); max-height: 92vh; overflow-y: auto; background: var(--choc-1); border: 1px solid var(--choc-5); border-radius: 10px; padding: 18px 20px; }
@@ -163,16 +186,18 @@
     <section class="ox-card" id="rjEditor">
       <h3 id="rjTituloEditor">Nuevo reloj</h3>
       <div class="ox-row">
-        <div class="ox-field" style="flex:2 1 200px"><label for="rjNombre">Nombre</label>
+        <div class="ox-field" style="flex:2 1 200px"><label for="rjNombre">Nombre del reloj</label>
           <input class="ox-input" id="rjNombre" maxlength="80" placeholder="Ej.: Mañana · Éxitos"></div>
         <div class="ox-field" style="flex:0 0 70px"><label for="rjColor">Color</label>
           <input type="color" class="ox-input" id="rjColor" value="#0a9396" style="padding:2px;height:31px"></div>
-        <div class="ox-field" style="flex:3 1 240px"><label for="rjComentario">Comentario</label>
+        <div class="ox-field" style="flex:3 1 240px"><label for="rjComentario">Comentarios</label>
           <input class="ox-input" id="rjComentario" maxlength="500"></div>
       </div>
 
-      <div class="rj-cons" id="rjConsRoot">
-        <div>
+      <div class="rj-soho">
+        <!-- Izquierda: Elementos disponibles -->
+        <div class="rj-col rj-col--elem">
+          <h4>Elementos disponibles</h4>
           <div class="rj-paleta" id="rjPaleta"></div>
           <div class="rj-cons-tabs" id="rjConsTabs">
             <button type="button" data-modo="filtros" class="on">Filtros</button>
@@ -181,56 +206,66 @@
           <div class="rj-cons-filtros" id="rjConsFiltros"></div>
           <div id="rjConsFijo" hidden>
             <input class="ox-input" id="rjConsBuscar" placeholder="Busca por título o artista…" autocomplete="off" style="width:100%">
-            <p class="ox-hint" style="margin:6px 0 0">Esa fila tocará siempre este audio (por ejemplo un ID o una canción concreta).</p>
+            <p class="ox-hint" style="margin:6px 0 0">Esa fila tocará siempre este audio (un ID, una canción concreta).</p>
           </div>
           <div class="rj-contador" id="rjContador"></div>
         </div>
-        <div class="rj-cons-botones">
-          <button type="button" class="rj-b rj-b--verde" id="rjBAgregar" title="Poner al final del reloj">＋<span>Agregar</span></button>
-          <button type="button" class="rj-b rj-b--verde" id="rjBInsertar" title="Poner antes de la fila elegida">⤵<span>Insertar</span></button>
-          <button type="button" class="rj-b rj-b--verde" id="rjBCambiar" title="Reemplazar la fila elegida por esto">↷<span>Cambiar</span></button>
-          <button type="button" class="rj-b rj-b--rojo" id="rjBEliminar" title="Quitar la fila elegida">🗑<span>Eliminar</span></button>
+
+        <!-- Derecha: Editor de relojes -->
+        <div class="rj-col rj-col--ed">
+          <div class="rj-ed-cab"><h4>Editor de relojes</h4>
+            <label class="rj-colorear">Colorear por
+              <select id="rjColorear"><option value="tipo">Tipo</option><option value="cat1">Género</option>
+                <option value="cat2">Rotación</option><option value="cat3">Subgénero</option></select></label></div>
+          <div class="rj-ed">
+            <div class="rj-cons-botones">
+              <button type="button" class="rj-b rj-b--verde" id="rjBAgregar" title="Poner al final del reloj">＋<span>Agregar</span></button>
+              <button type="button" class="rj-b rj-b--verde" id="rjBInsertar" title="Poner antes de la fila elegida">⤵<span>Insertar</span></button>
+              <button type="button" class="rj-b rj-b--verde" id="rjBCambiar" title="Reemplazar la fila elegida por lo que está a la izquierda">↷<span>Cambiar</span></button>
+              <button type="button" class="rj-b rj-b--rojo" id="rjBEliminar" title="Quitar la fila elegida">🗑<span>Eliminar</span></button>
+            </div>
+            <div class="rj-filas-caja">
+              <table class="rj-filas">
+                <thead><tr><th>#</th><th>Arranca</th><th></th><th>Qué suena</th><th>Disponibles</th><th></th></tr></thead>
+                <tbody id="rjFilas"></tbody>
+              </table>
+            </div>
+          </div>
           <p class="rj-sel-txt" id="rjSelTxt"></p>
+          <div class="rj-verifica" id="rjVerifica"></div>
         </div>
+      </div>
+
+      <!-- La hora: reloj circular y cifras -->
+      <div class="rj-hora-caja">
         <div class="rj-reloj-caja">
-          <label class="rj-colorear">Colorear por
-            <select id="rjColorear"><option value="tipo">Tipo</option><option value="cat1">Género</option>
-              <option value="cat2">Rotación</option><option value="cat3">Subgénero</option></select></label>
           <svg id="rjReloj" viewBox="-112 -112 224 224" role="img" aria-label="Reloj de la hora"></svg>
           <div class="rj-leyenda" id="rjLeyenda"></div>
         </div>
-      </div>
-      <div class="rj-verifica" id="rjVerifica"></div>
-
-      <div class="ox-table-wrap" style="margin-top:var(--s3)">
-        <table class="ox-table rj-filas">
-          <thead><tr><th>#</th><th>Arranca</th><th>Tipo</th><th>Qué elegir (filtros o audio fijo)</th><th>Disponibles</th><th></th></tr></thead>
-          <tbody id="rjFilas"></tbody>
-        </table>
-      </div>
-      <div class="ox-row" style="margin-top:var(--s2)">
-        <button class="ox-btn" id="rjAddFila">+ Agregar fila</button>
+        <div class="rj-hora-info">
+          <div class="rj-resumen-hora" id="rjResumenHora"></div>
+          <div class="rj-hora" id="rjHora"></div>
+          <div class="rj-eje"><span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:60</span></div>
+          <p class="ox-hint" id="rjHoraTxt">Las filas se repiten en orden hasta llenar la hora («Completar dando vuelta al reloj» de Jazler).
+            Se actualiza al cambiar cualquier fila, sin guardar.</p>
+        </div>
       </div>
 
-      <h3 style="margin-top:var(--s4)">La hora, en barra</h3>
-      <div class="rj-resumen-hora" id="rjResumenHora"></div>
-      <div class="rj-hora" id="rjHora"></div>
-      <div class="rj-eje"><span>:00</span><span>:15</span><span>:30</span><span>:45</span><span>:60</span></div>
-      <p class="ox-hint" id="rjHoraTxt">Las filas se repiten en orden hasta llenar la hora (como «Completar dando vuelta al reloj» de Jazler).
-        Se actualiza al cambiar cualquier fila, sin guardar.</p>
+      <div class="rj-ajustes">
+        <div>
+          <h4>Compensación</h4>
+          <p class="ox-hint">Si una canción haría llegar tarde la tanda, se busca otra que encaje en el tiempo que queda (vacío = cualquier música).</p>
+          <div class="rj-filtros" id="rjComp"></div>
+        </div>
+        <div>
+          <h4>Categoría de respaldo</h4>
+          <p class="ox-hint">Si una fila de música no consigue canción, suena una de esta categoría en vez de saltarse (vacío = se salta).</p>
+          <div class="rj-filtros" id="rjResp"></div>
+          <p class="ox-hint" id="rjRespTxt" style="margin-top:4px"></p>
+        </div>
+      </div>
 
-      <h3 style="margin-top:var(--s4)">Compensación</h3>
-      <p class="ox-hint">Si una canción haría llegar tarde la tanda, el sistema busca otra que encaje en el tiempo
-        que queda. Elige de qué categoría (vacío = cualquier música).</p>
-      <div class="rj-filtros" id="rjComp"></div>
-
-      <h3 style="margin-top:var(--s4)">Respaldo</h3>
-      <p class="ox-hint">Si una fila de música no consigue canción (filtro vacío o todas bloqueadas por las reglas),
-        suena una de esta categoría en vez de saltarse la fila. Vacío = se salta, como antes.</p>
-      <div class="rj-filtros" id="rjResp"></div>
-      <p class="ox-hint" id="rjRespTxt" style="margin-top:4px"></p>
-
-      <div class="ox-row" style="margin-top:var(--s4)">
+      <div class="ox-row" style="margin-top:var(--s3)">
         <button class="ox-btn ox-btn--primary" id="rjGuardar">Guardar reloj</button>
         <button class="ox-btn" id="rjDuplicar">Duplicar</button>
         <button class="ox-btn ox-btn--danger" id="rjBorrar">Borrar</button>
@@ -425,45 +460,36 @@
       fl.prioridad ? `<span class="chip">Prioridad ${PRIORIDADES[fl.prioridad] || esc(fl.prioridad)}</span>` : ""].join("");
   }
 
-  function pintarFilas(vista) {
+  function pintarFilas() {
     const tb = $("rjFilas");
     if (sel >= filas.length) sel = filas.length - 1;
     if (!filas.length) {
-      tb.innerHTML = `<tr><td colspan="6" class="ox-empty">Sin filas: agrega la primera</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--text-lo);cursor:default">
+        Sin filas: elige lo que quieres a la izquierda y pulsa Agregar</td></tr>`;
       return;
     }
+    // La tabla solo muestra el reloj (como la lista de Soho): se elige una fila con un clic y se cambia con el constructor
     tb.innerHTML = filas.map((f, i) => {
-      const v = vista?.filas?.[i];
-      const fijo = f.fijo;
-      const audio = fijo ? audioCache.get(f.audio_id) : null;
-      const resumen = chipsDe(f);
+      const icono = (TIPOS[f.tipo_audio] || "").split(" ")[0];
+      let que;
+      if (f.fijo) {
+        const a = audioCache.get(f.audio_id);
+        que = `<span class="chip" title="Audio fijo">📌 ${a ? esc(audioLabel(a)) : "sin elegir"}</span>`;
+      } else {
+        que = chipsDe(f) || `<span class="todo">${f.tipo_audio === "Musica" ? "Canción aleatoria (sin filtro)" : "Cualquier audio de este tipo"}</span>`;
+      }
       return `<tr data-i="${i}" class="${i === sel ? "elegida" : ""}">
         <td class="ox-mono">${i + 1}</td>
         <td class="rj-ini" data-ini></td>
-        <td><select class="ox-select" data-campo="tipo_audio">
-          ${Object.entries(TIPOS).map(([k, t]) => `<option value="${k}" ${k === f.tipo_audio ? "selected" : ""}>${t}</option>`).join("")}
-        </select>
-        <label style="display:block;font-size:.65rem;margin-top:3px"><input type="checkbox" data-campo="fijo" ${fijo ? "checked" : ""}> audio fijo</label></td>
-        <td>${fijo
-          ? `<input class="ox-input" data-campo="audio" style="width:100%" placeholder="Buscar audio…"
-               value="${audio ? esc(audioLabel(audio)) : ""}" data-audio-id="${f.audio_id ?? ""}">`
-          : `<button type="button" class="rj-resumen" data-acc="filtros">${resumen || '<span class="todo">Cualquier ' + (f.tipo_audio === "Musica" ? "canción" : "audio de este tipo") + '</span>'}</button>
-             <div class="rj-pop" hidden><div class="rj-filtros">${filtrosDe(f.tipo_audio).map(([k]) => selectValores(k, f.filtros[k], "", f.tipo_audio)).join("")}
-               ${esIdent(f.tipo_audio) ? "" : filtrosMusica(f.filtros)}</div></div>`}
-        </td>
+        <td class="ico" title="${esc(TIPOS[f.tipo_audio] || "")}">${icono}</td>
+        <td class="que"><div class="chips">${que}</div></td>
         <td data-cand></td>
-        <td style="white-space:nowrap">
-          <button class="ox-btn ox-btn--sm" data-acc="arriba" ${i === 0 ? "disabled" : ""}>▲</button>
-          <button class="ox-btn ox-btn--sm" data-acc="abajo" ${i === filas.length - 1 ? "disabled" : ""}>▼</button>
-          <button class="ox-btn ox-btn--sm ox-btn--danger" data-acc="quitar">✕</button>
+        <td class="mover">
+          <button data-acc="arriba" title="Subir" ${i === 0 ? "disabled" : ""}>▲</button><button data-acc="abajo" title="Bajar" ${i === filas.length - 1 ? "disabled" : ""}>▼</button>
         </td></tr>`;
     }).join("");
-    // Autocompletar contra el servidor, solo de audios del tipo de esa fila
-    tb.querySelectorAll('input[data-campo="audio"]').forEach(inp => {
-      const tr = inp.closest("tr");
-      OnixBuscador.attach(inp, { tipos: () => tr.querySelector('[data-campo="tipo_audio"]').value });
-    });
   }
+
 
   // ── Constructor: paleta, filtros y contador en vivo ─────────────────────
   function pintarPaleta() {
@@ -574,7 +600,7 @@
   $("rjBEliminar").addEventListener("click", () => aplicar("eliminar"));
   $("rjFilas").addEventListener("click", e => {          // elegir una fila haciendo clic en ella
     const tr = e.target.closest("tr[data-i]");
-    if (tr && !e.target.closest("select, input, button, label, .rj-pop")) seleccionar(+tr.dataset.i);
+    if (tr && !e.target.closest("button")) seleccionar(+tr.dataset.i);
   });
 
   // ── Reloj circular ──────────────────────────────────────────────────────
@@ -680,9 +706,10 @@
       tr.querySelector("[data-ini]").textContent = f.candidatos ? fmt(f.inicio) : "—";
       // Solo cuenta la música APROBADA: la que espera en la Bandeja de entrada no la elige el automático
       const espera = f.pendientes ? ` · ${f.pendientes} sin aprobar en la Bandeja de entrada` : "";
-      tr.querySelector("[data-cand]").innerHTML = `<span class="rj-cand ${f.candidatos > 2 ? "" : "cero"}">${f.candidatos
-        ? `${f.candidatos} audio(s)${f.duracion_media ? ` · ${fmt(f.duracion_media)}` : ""}${f.candidatos <= 2 ? " · ⚠ se repetirá mucho" : ""}${espera}`
-        : `0 audios: se salta${espera}`}</span>`;
+      const fijoFila = filas[+tr.dataset.i]?.fijo;
+      tr.querySelector("[data-cand]").innerHTML = `<span class="rj-cand ${f.candidatos > 2 || fijoFila && f.candidatos ? "" : "cero"}" title="${esc(espera.replace(" · ", ""))}">${f.candidatos
+        ? `${f.candidatos}${f.duracion_media ? ` · ${fmt(f.duracion_media)}` : ""}${f.candidatos <= 2 && !fijoFila ? " ⚠" : ""}${f.pendientes ? " ·" + f.pendientes + "⏳" : ""}`
+        : `0 · se salta${f.pendientes ? " ·" + f.pendientes + "⏳" : ""}`}</span>`;
     });
     const ultima = v.ultima_fila != null ? v.ultima_fila + 1 : "—";
     $("rjRespTxt").innerHTML = v.respaldo_candidatos == null ? "Sin respaldo."
@@ -740,70 +767,16 @@
     pintarFilas(); previa();
   }
 
-  // Lee del DOM lo que el usuario cambió en cada fila
-  function leerFilas() {
-    document.querySelectorAll("#rjFilas tr[data-i]").forEach(tr => {
-      const f = filas[+tr.dataset.i];
-      f.tipo_audio = tr.querySelector('[data-campo="tipo_audio"]').value;
-      const inp = tr.querySelector('[data-campo="audio"]');
-      if (inp) {
-        const id = parseInt(inp.dataset.audioId);
-        f.audio_id = Number.isFinite(id) ? id : null;
-        f.fijo = true;
-        f.filtros = {};
-      } else {
-        f.filtros = {};
-        tr.querySelectorAll("[data-filtro]").forEach(el => { if (el.value !== "") f.filtros[el.dataset.filtro] = el.value; });
-      }
-    });
-  }
+  // Las filas se editan solo desde el constructor: el estado vive en `filas` (se deja la función por las llamadas existentes)
+  function leerFilas() { /* nada que leer del DOM */ }
 
-  $("rjFilas").addEventListener("change", e => {
-    const tr = e.target.closest("tr[data-i]");
-    if (!tr) return;
-    if (e.target.dataset.filtro) {          // actualizar el resumen de la fila sin cerrar los filtros
-      leerFilas();
-      const f = filas[+tr.dataset.i];
-      const chips = chipsDe(f);
-      tr.querySelector(".rj-resumen").innerHTML = chips || '<span class="todo">Cualquier canción</span>';
-    }
-    previa();
-    if (e.target.dataset.campo === "tipo_audio") {
-      // Otro tipo = otros filtros (los de música no valen para un jingle, y al revés)
-      const f = filas[+tr.dataset.i], antes = f.tipo_audio;
-      leerFilas();                                   // no perder lo que se editó en otras filas
-      if (esIdent(antes) !== esIdent(f.tipo_audio)) f.filtros = {};
-      pintarFilas();
-      return;
-    }
-    if (e.target.dataset.campo === "fijo") {
-      leerFilas();
-      const f = filas[+tr.dataset.i];
-      f.fijo = e.target.checked;
-      if (f.fijo) f.filtros = {}; else f.audio_id = null;
-      pintarFilas();
-    }
-  });
   $("rjFilas").addEventListener("click", e => {
     const b = e.target.closest("button[data-acc]");
     if (!b) return;
-    if (b.dataset.acc === "filtros") {
-      const pop = b.nextElementSibling;
-      document.querySelectorAll("#rjFilas .rj-pop").forEach(p => { if (p !== pop) p.hidden = true; });
-      pop.hidden = !pop.hidden;
-      return;
-    }
-    leerFilas();
+    e.stopPropagation();
     const i = +b.closest("tr").dataset.i;
-    if (b.dataset.acc === "quitar") filas.splice(i, 1);
-    if (b.dataset.acc === "arriba") [filas[i - 1], filas[i]] = [filas[i], filas[i - 1]];
-    if (b.dataset.acc === "abajo") [filas[i + 1], filas[i]] = [filas[i], filas[i + 1]];
-    pintarFilas(); previa();
-  });
-  $("rjAddFila").addEventListener("click", () => {
-    leerFilas();
-    filas.push({ tipo_audio: "Musica", filtros: {}, audio_id: null, fijo: false });
-    sel = filas.length - 1;
+    if (b.dataset.acc === "arriba" && i > 0) { [filas[i - 1], filas[i]] = [filas[i], filas[i - 1]]; sel = i - 1; }
+    if (b.dataset.acc === "abajo" && i < filas.length - 1) { [filas[i + 1], filas[i]] = [filas[i], filas[i + 1]]; sel = i + 1; }
     pintarFilas(); previa();
   });
   $("rjNuevo").addEventListener("click", nuevo);
