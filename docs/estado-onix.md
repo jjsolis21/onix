@@ -55,7 +55,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 - Tandas por día y hora (pestaña «Breaks por hora»): config `tandas_grilla` JSON {"dia-hora": {minutos, inmediatas,
   cierre} | {off: true}}, dia 0=Dom como la matriz. Sin entrada = valores generales. Motor: `tandas_de_hora`,
   `_tandas_de_ahora`; planner `_proxima_tanda` calcula cada hora. API GET/PUT `/api/v1/comerciales/tandas-grilla`.
-  PENDIENTE (Opus, toca `planificar_tandas`): rubros con conflictos entre sí.
+- «📋 Tandas del día» (solo lectura): GET `/api/v1/comerciales/tandas-dia?fecha=`; muestra por hora y bloque las cuñas en el
+  orden en que saldrán (`Planner.lista_tanda`, misma cuenta que el motor). PENDIENTE (Opus): arrastrar/reordenar/mover
+  cuñas entre bloques (el motor aún no sabe de «fija en el bloque X, puesto N») y rubros con conflictos.
 
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.

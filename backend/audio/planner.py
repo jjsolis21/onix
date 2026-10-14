@@ -551,7 +551,12 @@ class Planner:
         que el motor: comerciales repartidas entre las tandas de la hora; ID y
         cortinas en cada tanda (las opcionales solo si hay comerciales).
         """
-        from backend.audio.audio_engine import planificar_tandas, version_rotada
+        lista = self.lista_tanda(conn, base, minuto, minutos)
+        return len(lista), float(sum(p["dur"] for p in lista))
+
+    def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]) -> list[dict]:
+        """Las cuñas de la tanda, en el orden en que saldrán (misma cuenta que el motor)."""
+        from backend.audio.audio_engine import ordenar_tanda, planificar_tandas, version_rotada
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
         secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
@@ -574,7 +579,7 @@ class Planner:
         for r in conn.execute(
             """
             SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion,
-                   p.menciones_diarias FROM pautas p
+                   p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
               AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
@@ -594,12 +599,13 @@ class Planner:
                     ids = [v[0] for v in versiones[r["id"]]]
                     toca = version_rotada(ids, salidas.get(r["id"], 0))
                     dur = dict(versiones[r["id"]]).get(toca, dur)
-                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": dur,
-                     "opcional": opcional}
+                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": dur, "opcional": opcional,
+                     "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
+                     "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial}
                 (pautas if comercial else fijas).append(p)
         lista = planificar_tandas(pautas, sorted(minutos)).get(minuto, []) if pautas else []
         lista += [f for f in fijas if lista or not f["opcional"]]
-        return len(lista), float(sum(p["dur"] for p in lista))
+        return sorted(lista, key=lambda p: p["seccion"] or 0)
 
     # ── Selección ───────────────────────────────────────────────────────────
 

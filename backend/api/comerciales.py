@@ -12,7 +12,7 @@ Apoyo de la sección Comerciales (como «Config. de comerciales» y «Chequeo de
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -210,5 +210,44 @@ def chequeo():
         errores = sum(1 for x in problemas if x["nivel"] == "error")
         return {"revisados": len(filas), "errores": errores, "avisos": len(problemas) - errores,
                 "problemas": sorted(problemas, key=lambda x: (x["nivel"] != "error", x["cliente"], x["spot"]))}
+    finally:
+        c.close()
+
+
+# ── Tandas del día (vista de solo lectura de lo que el motor va a sacar) ────
+
+@router.get("/api/v1/comerciales/tandas-dia", summary="Qué sale en cada tanda de un día, bloque por bloque")
+def tandas_dia(fecha: Optional[str] = None):
+    from backend.audio.audio_engine import cargar_grilla, parse_minutos, tandas_de_hora
+    from backend.audio.planner import Planner
+    try:
+        dia = date.fromisoformat(fecha) if fecha else date.today()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Fecha inválida (AAAA-MM-DD)")
+    pl = Planner(DB_PATH)
+    c = _conn()
+    try:
+        cfg = {r["clave"]: r["valor"] for r in c.execute("SELECT clave, valor FROM config")}
+        base = (parse_minutos(cfg.get("tandas_minutos", "15,45")),
+                parse_minutos(cfg["tandas_inmediatas"]) if (cfg.get("tandas_inmediatas") or "").strip() else [],
+                parse_minutos(cfg["tandas_cierre"]) if (cfg.get("tandas_cierre") or "").strip() else [])
+        grilla = cargar_grilla(cfg.get("tandas_grilla", ""))
+        maximo = int(float(cfg.get("tanda_max_seg") or 0))
+        horas = []
+        for h in range(24):
+            ini = datetime(dia.year, dia.month, dia.day, h)
+            minutos, inm, cie = tandas_de_hora(grilla, (dia.weekday() + 1) % 7, h, *base)
+            bloques = []
+            for m in minutos:
+                cunas = pl.lista_tanda(c, ini, m, minutos)
+                dur = round(sum(x["dur"] for x in cunas))
+                bloques.append({
+                    "minuto": m, "inmediata": m in inm, "cierre": m in cie, "duracion": dur,
+                    "excede": bool(maximo and dur > maximo),
+                    "cunas": [{"pauta_id": x["pauta_id"], "cliente": x["cliente"] or "", "spot": x["spot"] or "",
+                               "rubro": x["rubro"] or "", "seccion": x["seccion"], "comercial": x["comercial"],
+                               "duracion": round(x["dur"])} for x in cunas]})
+            horas.append({"hora": h, "bloques": bloques, "sin_tandas": not minutos})
+        return {"fecha": dia.isoformat(), "maximo": maximo, "horas": horas}
     finally:
         c.close()

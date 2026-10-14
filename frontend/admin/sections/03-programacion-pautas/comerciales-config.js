@@ -329,10 +329,53 @@
   }
 
   // ── Botones del panel izquierdo ──────────────────────────────────────────
+  // ══════════ Tandas del día (solo lectura): lo que el motor va a sacar, bloque por bloque ══════════
+  async function abrirTandasDia() {
+    const { cuerpo } = ventana('📋 Tandas del día', 1040);
+    const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    let fecha = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10), hora = new Date().getHours();
+    cuerpo.innerHTML = `<div class="ccf-td-barra"><button class="ccf-btn ccf-btn--mini" data-d="-1">◀</button>
+      <input type="date" id="ccfTdFecha"><button class="ccf-btn ccf-btn--mini" data-d="1">▶</button>
+      <span class="ccf-hint" style="margin:0">Solo lectura: es lo que el motor va a sacar con los spots y los breaks de hoy.
+      Para cambiar algo edita el spot o la pestaña «Breaks por hora».</span></div>
+      <div class="ccf-td"><div class="ccf-td-horas" id="ccfTdHoras"></div><div class="ccf-td-bloques" id="ccfTdBloques"></div></div>`;
+    const horas = cuerpo.querySelector('#ccfTdHoras'), bloques = cuerpo.querySelector('#ccfTdBloques'), inp = cuerpo.querySelector('#ccfTdFecha');
+    let datos = null;
+    const pintar = () => {
+      horas.innerHTML = datos.horas.map(h => {
+        const n = h.bloques.reduce((a, b) => a + b.cunas.length, 0);
+        return `<button class="${h.hora === hora ? 'on' : ''}" data-h="${h.hora}"><b>${String(h.hora).padStart(2, '0')}:00</b>
+          <span>${h.sin_tandas ? 'sin tandas' : `${h.bloques.length} tandas · ${n} cuñas`}</span></button>`;
+      }).join('');
+      const h = datos.horas[hora];
+      if (h.sin_tandas) { bloques.innerHTML = '<p class="ccf-hint">Esta hora no tiene tandas (así lo marca la pestaña «Breaks por hora»).</p>'; return; }
+      bloques.innerHTML = h.bloques.map(b => `<section class="ccf-bloque ${b.excede ? 'excede' : ''}">
+        <header><b>:${String(b.minuto).padStart(2, '0')}</b>
+          ${b.inmediata ? '<span title="Corta la canción">⚡ inmediata</span>' : ''}${b.cierre ? '<span title="Termina en su minuto">⇥ al cierre</span>' : ''}
+          <em>${b.cunas.length} cuñas · ${mmss(b.duracion)}${b.excede ? ` · pasa del máximo (${mmss(datos.maximo)})` : ''}</em></header>
+        ${b.cunas.length ? `<ol>${b.cunas.map(c => `<li class="${c.comercial ? 'com' : 'fija'}"><span class="cli">${esc(c.cliente || c.spot)}</span>
+          <span class="spot">${esc(c.spot)}</span><span class="rub">${esc(c.rubro)}</span><span class="dur">${mmss(c.duracion)}</span></li>`).join('')}</ol>`
+          : '<p class="ccf-hint" style="margin:6px 10px">Sin cuñas en esta tanda.</p>'}</section>`).join('');
+    };
+    const cargar = async () => {
+      inp.value = fecha; bloques.innerHTML = '<p class="ccf-hint">Cargando…</p>';
+      try { datos = await api(`/api/v1/comerciales/tandas-dia?fecha=${fecha}`); pintar(); }
+      catch (e) { bloques.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; }
+    };
+    inp.addEventListener('change', () => { if (inp.value) { fecha = inp.value; cargar(); } });
+    cuerpo.addEventListener('click', e => {
+      const d = e.target.closest('[data-d]'), h = e.target.closest('[data-h]');
+      if (d) { const t = new Date(fecha + 'T12:00:00'); t.setDate(t.getDate() + +d.dataset.d); fecha = t.toISOString().slice(0, 10); cargar(); }
+      else if (h && datos) { hora = +h.dataset.h; pintar(); }
+    });
+    cargar();
+  }
+
   document.addEventListener('click', e => {
     if (e.target.closest('#btnCfgComerciales')) abrirConfig('general');
     else if (e.target.closest('#btnChequeo')) abrirChequeo();
+    else if (e.target.closest('#btnTandasDia')) abrirTandasDia();
   });
   Catalogo.refrescar();
-  global.ComercialesConfig = { abrirConfig, abrirChequeo };
+  global.ComercialesConfig = { abrirConfig, abrirChequeo, abrirTandasDia };
 })(window);

@@ -112,3 +112,22 @@ def test_grilla_de_tandas_api(client):
     assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"7-10": {"minutos": "0"}}}).status_code == 422
     assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"1-10": {"minutos": "70"}}}).status_code == 422
     assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"1-10": {"minutos": ""}}}).status_code == 422
+
+
+def test_tandas_del_dia_muestra_cada_bloque(client):
+    import json
+    c = _db()
+    a = _audio(c, "Cuña día", "library/dia.mp3")
+    _pauta(c, "CLIENTE DIA", a, rubro="Bancos", matriz={"1-10": True})
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '15,45')"
+              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_grilla', ?)"
+              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (json.dumps({"1-11": {"off": True}}),))
+    c.commit(); c.close()
+    r = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "2026-10-12"}).json()   # lunes
+    assert len(r["horas"]) == 24
+    h10 = r["horas"][10]
+    assert [b["minuto"] for b in h10["bloques"]] == [15, 45]
+    assert any(x["cliente"] == "CLIENTE DIA" for b in h10["bloques"] for x in b["cunas"])
+    assert r["horas"][11]["sin_tandas"] is True and r["horas"][11]["bloques"] == []
+    assert client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "mal"}).status_code == 422
