@@ -458,9 +458,10 @@ kbd {
 .intro.outro.voz span, .intro.outro.voz b { color: var(--verde); }
 .marca-outro { background: #ffa94d; }
 /* Biblioteca compacta: título y artista en una línea → más filas a la vista */
-.lib-tabla td:first-child { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.lib-tabla td:first-child .lib-tit { flex: 0 1 auto; white-space: nowrap; }
-.lib-tabla td:first-child .lib-art { flex: 1 1 0; white-space: nowrap; }
+/* (la celda sigue siendo de tabla: el flex va en un div interior, o la línea de la fila se corta) */
+.lib-celda { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; }
+.lib-celda .lib-tit { flex: 0 1 auto; white-space: nowrap; }
+.lib-celda .lib-art { flex: 1 1 0; white-space: nowrap; }
 .lib-acc button { padding-top: 2px !important; padding-bottom: 2px !important; }
 /* Memos de playlist para el locutor */
 .pl-memo { margin-top: 6px; display: inline-block; max-width: 100%; background: #f5c400; color: #111; font-weight: 700;

@@ -710,7 +710,7 @@ const Biblioteca = (() => {
     if (!items.length) return `<tr class="pl-det"><td colspan="6" class="vacio">La lista está vacía</td></tr>`;
     return items.map((i, n) => `
       <tr class="pl-det" data-id="${i.audio_id}" draggable="true">
-        <td><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(i.titulo)}</div><div class="lib-art">${esc(i.artista)}${i.nota ? ` · <em class="pl-nota">📝 ${esc(i.nota)}</em>` : ""}</div></td>
+        <td><div class="lib-celda"><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(i.titulo)}</div><div class="lib-art">${esc(i.artista)}${i.nota ? ` · <em class="pl-nota">📝 ${esc(i.nota)}</em>` : ""}</div></div></td>
         <td>${esc(i.rotacion ?? "")}</td><td></td>
         <td class="num">${i.cue_intro ? Math.round(i.cue_intro) + "s" : ""}</td>
         <td class="num">${fmt(i.duracion)}</td>
@@ -731,7 +731,7 @@ const Biblioteca = (() => {
     const lista = playlists.filter(p => !q || norm(`${p.nombre} ${p.reloj ?? ""}`).includes(q));
     $("libFilas").innerHTML = lista.length ? lista.map(p => `
       <tr data-pl="${p.id}" class="pl-cab ${plAbiertas.has(p.id) ? "abierta" : ""}" title="Clic para ver los archivos de la lista">
-        <td><div class="lib-tit"><span class="pl-flecha">${plAbiertas.has(p.id) ? "▾" : "▸"}</span>${esc(p.nombre)}</div><div class="lib-art">${esc(p.reloj ? `Reloj ${p.reloj}` : "")} · ${esc((p.created_at || "").slice(0, 10))}</div></td>
+        <td><div class="lib-celda"><div class="lib-tit"><span class="pl-flecha">${plAbiertas.has(p.id) ? "▾" : "▸"}</span>${esc(p.nombre)}</div><div class="lib-art">${esc(p.reloj ? `Reloj ${p.reloj}` : "")} · ${esc((p.created_at || "").slice(0, 10))}</div></div></td>
         <td>${p.horas ? `${p.horas} h` : ""}</td>
         <td>${p.audios} audios</td>
         <td class="num"></td>
@@ -845,7 +845,7 @@ const Biblioteca = (() => {
   function htmlFila(a) {
     return `
       <tr draggable="true" data-id="${a.id}" class="${a.id === alAire ? "al-aire" : ""} ${a.id === P.id ? "elegida" : ""}">
-        <td><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${tab === "Imagen" ? `<em class="lib-tipo">${NOMBRE_TIPO[a.tipo_audio] ?? ""}</em> ` : ""}${esc(a.artista)}</div></td>
+        <td><div class="lib-celda"><div class="lib-tit">${esc(a.titulo)}</div><div class="lib-art">${tab === "Imagen" ? `<em class="lib-tipo">${NOMBRE_TIPO[a.tipo_audio] ?? ""}</em> ` : ""}${esc(a.artista)}</div></div></td>
         <td>${esc((tab === "Imagen" ? a.categoria_ident : a.cat2) ?? "")}</td>
         <td>${esc(a.voz ?? "")}</td>
         <td class="num">${a.cue_intro ? Math.round(a.cue_intro) + "s" : ""}</td>
