@@ -173,3 +173,41 @@ def test_la_musica_nueva_se_aprueba_sola_solo_si_ya_trae_genero_y_rotacion(clien
     assert _aprobada(subir("Solo Rotacion", cat2=valores["cat2"])) == 0
     # lo que no es música no pasa por la Bandeja
     assert _aprobada(subir("Un Efecto", tipo_audio="Efecto")) == 1
+
+
+def test_anios_que_faltan_buscar_y_aplicar_sin_pisar(client, monkeypatch):
+    import sqlite3
+    from backend.audio import metadatos
+    from backend.locutor import datos
+    from backend.paths import DB_PATH
+    c = sqlite3.connect(DB_PATH)
+    ids = {}
+    for titulo, artista, fecha in (("Me Rehúso", "Danny Ocean", None), ("Tema Raro", "Grupo Raro", ""),
+                                   ("Con Año", "Alguien", "2001"), ("Solo Itunes", "Otro Artista", None)):
+        ids[titulo] = c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio, fecha_lanzamiento)"
+                                " VALUES (?, ?, 200, ?, 'Musica', ?)", (titulo, artista, f"library/{titulo}.mp3", fecha)).lastrowid
+    c.commit(); c.close()
+    pend = {x["titulo"] for x in client.get("/api/v1/biblioteca/anios/pendientes").json()}
+    assert {"Me Rehúso", "Tema Raro", "Solo Itunes"} <= pend and "Con Año" not in pend
+
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    monkeypatch.setattr(datos, "buscar_anio", lambda a, t, get=None: 2017 if t == "Me Rehúso" else None)
+    monkeypatch.setattr(metadatos, "buscar_itunes",
+                        lambda a, t, http=None: {"anio": "2012"} if t == "Solo Itunes" else None)
+    r = client.post("/api/v1/biblioteca/anios/buscar", json={"ids": list(ids.values())}).json()["resultados"]
+    por = {x["titulo"]: x for x in r}
+    assert (por["Me Rehúso"]["anio"], por["Me Rehúso"]["confianza"]) == (2017, "alta")
+    assert (por["Solo Itunes"]["anio"], por["Solo Itunes"]["confianza"]) == (2012, "probable")
+    assert por["Tema Raro"]["anio"] is None
+    # buscar no guarda
+    assert "Me Rehúso" in {x["titulo"] for x in client.get("/api/v1/biblioteca/anios/pendientes").json()}
+    # aplicar: guarda los marcados y no pisa un año existente
+    a = client.post("/api/v1/biblioteca/anios/aplicar", json={"items": [
+        {"id": ids["Me Rehúso"], "anio": 2017}, {"id": ids["Con Año"], "anio": 1999}]}).json()
+    assert a == {"guardados": 1, "omitidos": 1}
+    c = sqlite3.connect(DB_PATH)
+    assert c.execute("SELECT fecha_lanzamiento FROM audios WHERE id = ?", (ids["Con Año"],)).fetchone()[0] == "2001"
+    assert c.execute("SELECT fecha_lanzamiento FROM audios WHERE id = ?", (ids["Me Rehúso"],)).fetchone()[0] == "2017"
+    c.execute("DELETE FROM audios WHERE artista IN ('Danny Ocean', 'Grupo Raro', 'Alguien', 'Otro Artista')")
+    c.commit(); c.close()
+    assert client.post("/api/v1/biblioteca/anios/aplicar", json={"items": [{"id": 1, "anio": 1800}]}).status_code == 422

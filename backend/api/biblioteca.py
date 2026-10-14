@@ -549,6 +549,82 @@ def _http_externo():
     return metadatos.http_json
 
 
+# ── Años que faltan: buscar y aplicar solo lo que la persona acepte ──────────────────────────────
+
+class AniosBuscarIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=10)     # pocos por llamada: MusicBrainz admite 1 consulta/s
+
+
+class AnioItem(BaseModel):
+    id: int
+    anio: int = Field(..., ge=1900, le=2100)
+
+
+class AniosAplicarIn(BaseModel):
+    items: list[AnioItem] = Field(..., min_length=1, max_length=500)
+
+
+@router.get("/api/v1/biblioteca/anios/pendientes", summary="Canciones activas sin año de lanzamiento")
+def anios_pendientes():
+    c = _conn()
+    try:
+        return [dict(r) for r in c.execute(
+            "SELECT id, titulo, artista FROM audios WHERE activo = 1 AND tipo_audio = 'Musica'"
+            " AND COALESCE(TRIM(fecha_lanzamiento), '') = '' ORDER BY artista, titulo")]
+    finally:
+        c.close()
+
+
+@router.post("/api/v1/biblioteca/anios/buscar", summary="Buscar el año de varias canciones (no guarda)")
+def anios_buscar(body: AniosBuscarIn):
+    """
+    Por canción: el primer lanzamiento del MISMO artista en MusicBrainz (confianza «alta»); si no hay, iTunes
+    (confianza «probable»: puede ser el año de una reedición). Sin coincidencia clara devuelve anio = null.
+    """
+    import time
+    from backend.audio import metadatos
+    from backend.locutor import datos
+    c = _conn()
+    try:
+        filas = [dict(r) for r in c.execute(
+            f"SELECT id, titulo, artista FROM audios WHERE id IN ({','.join('?' * len(body.ids))}) AND activo = 1",
+            body.ids)]
+    finally:
+        c.close()
+    out = []
+    for n, f in enumerate(filas):
+        if n:
+            time.sleep(1.05)                                   # cortesía con MusicBrainz
+        item = {**f, "anio": None, "fuente": None, "confianza": None, "error": None}
+        try:
+            anio = datos.buscar_anio(f["artista"], f["titulo"])
+            if anio:
+                item.update(anio=anio, fuente="MusicBrainz", confianza="alta")
+            else:
+                r = metadatos.buscar_itunes(datos.artista_principal(f["artista"]), f["titulo"], metadatos.http_json)
+                if r and re.match(r"(19|20)\d{2}$", str(r.get("anio") or "")):
+                    item.update(anio=int(r["anio"]), fuente="iTunes", confianza="probable")
+        except Exception as e:                                 # sin red o servicio caído: se informa y se sigue
+            item["error"] = str(e)[:120]
+        out.append(item)
+    return {"resultados": out}
+
+
+@router.post("/api/v1/biblioteca/anios/aplicar", summary="Guardar los años aceptados (no pisa un año que ya exista)")
+def anios_aplicar(body: AniosAplicarIn):
+    c = _conn()
+    try:
+        n = 0
+        for it in body.items:
+            n += c.execute(
+                "UPDATE audios SET fecha_lanzamiento = ?, updated_at = datetime('now') WHERE id = ? AND activo = 1"
+                " AND COALESCE(TRIM(fecha_lanzamiento), '') = ''", (str(it.anio), it.id)).rowcount
+        c.commit()
+        return {"guardados": n, "omitidos": len(body.items) - n}
+    finally:
+        c.close()
+
+
 @router.post("/api/v1/biblioteca/{audio_id}/analizar", summary="Sugerir título, artista, álbum, año, ritmo, energía y marcas (no guarda)")
 def analizar(audio_id: int, en_linea: bool = True):
     """

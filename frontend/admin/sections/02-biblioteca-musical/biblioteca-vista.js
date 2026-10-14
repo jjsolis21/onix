@@ -369,6 +369,91 @@
     if (typeof showToast === 'function') showToast(msg, tipo); else console.info(msg);
   }
 
+  // ── Años que faltan: se busca, se muestra y solo se guarda lo que la persona marque ──
+  async function buscarAnios() {
+    const api = async (url, opt) => {
+      const r = await fetch(url, opt);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `Error ${r.status}`);
+      return d;
+    };
+    let pendientes;
+    try { pendientes = await api('/api/v1/biblioteca/anios/pendientes'); }
+    catch (e) { aviso(`No se pudo leer la biblioteca: ${e.message}`, 'error'); return; }
+    if (!pendientes.length) { aviso('Todas las canciones ya tienen año.', 'success'); return; }
+    const fondo = document.createElement('div');
+    fondo.style.cssText = 'position:fixed;inset:0;z-index:10040;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:12px';
+    fondo.innerHTML = `
+      <div style="width:min(860px,100%);max-height:92vh;display:flex;flex-direction:column;background:var(--choc-1,#2a1d17);border:1px solid var(--choc-5,#555);border-radius:10px;padding:16px 18px;color:var(--text-hi,#eee)">
+        <h3 style="margin:0 0 4px">Años que faltan <small id="anSub" style="font-weight:400;color:var(--text-lo,#999)"></small></h3>
+        <p style="margin:0 0 10px;font-size:.8rem;color:var(--text-mid,#bbb)">Se busca en MusicBrainz (año del primer lanzamiento del mismo artista) y, si no aparece, en iTunes
+          (puede ser el año de una reedición: «probable»). No se guarda nada que no marques.</p>
+        <div id="anProg" style="height:6px;background:var(--choc-3,#443);border-radius:3px;margin-bottom:8px"><i style="display:block;height:100%;width:0;background:var(--gold-0,#d9a400);border-radius:3px"></i></div>
+        <div id="anLista" style="overflow-y:auto;flex:1;min-height:120px;border:1px solid var(--choc-4,#444);border-radius:6px;font-size:.82rem"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <button class="bv-btn bv-btn--pri" id="anGuardar" disabled>Guardar los marcados</button>
+          <button class="bv-btn" id="anAltas">Marcar solo las seguras</button>
+          <span id="anMsg" style="font-size:.8rem;color:var(--text-mid,#bbb)"></span>
+          <button class="bv-btn" id="anCerrar" style="margin-left:auto">Cerrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(fondo);
+    const q = id => fondo.querySelector('#' + id);
+    const esc2 = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    q('anSub').textContent = `· ${pendientes.length} canciones sin año`;
+    let cancelado = false;
+    const hallados = new Map();              // id → {anio, fuente, confianza}
+    q('anCerrar').addEventListener('click', () => { cancelado = true; fondo.remove(); });
+    const fila = (p, r) => {
+      const ok = r && r.anio;
+      return `<label style="display:grid;grid-template-columns:24px 1fr 70px 110px;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--choc-3,#443)">
+        <input type="checkbox" data-id="${p.id}" ${ok && r.confianza === 'alta' ? 'checked' : ''} ${ok ? '' : 'disabled'}>
+        <span><b>${esc2(p.titulo)}</b> <small style="color:var(--text-lo,#999)">${esc2(p.artista)}</small></span>
+        <span style="font-family:monospace">${ok ? r.anio : (r ? '—' : '…')}</span>
+        <span style="color:${ok ? (r.confianza === 'alta' ? '#52d273' : 'var(--gold-1,#e6b800)') : 'var(--text-lo,#999)'}">${ok ? `${r.fuente} · ${r.confianza}` : (r ? (r.error ? 'sin conexión' : 'no encontrado') : 'buscando')}</span></label>`;
+    };
+    const pintar = () => {
+      q('anLista').innerHTML = pendientes.map(p => fila(p, hallados.get(p.id))).join('');
+      const marcados = q('anLista').querySelectorAll('input:checked').length;
+      q('anGuardar').disabled = !marcados;
+      q('anGuardar').textContent = marcados ? `Guardar ${marcados} marcado(s)` : 'Guardar los marcados';
+    };
+    q('anLista').addEventListener('change', () => {
+      const m = q('anLista').querySelectorAll('input:checked').length;
+      q('anGuardar').disabled = !m; q('anGuardar').textContent = m ? `Guardar ${m} marcado(s)` : 'Guardar los marcados';
+    });
+    q('anAltas').addEventListener('click', () => {
+      q('anLista').querySelectorAll('input[data-id]').forEach(i => { i.checked = !i.disabled && hallados.get(+i.dataset.id)?.confianza === 'alta'; });
+      q('anLista').dispatchEvent(new Event('change'));
+    });
+    q('anGuardar').addEventListener('click', async () => {
+      const items = [...q('anLista').querySelectorAll('input:checked')].map(i => ({ id: +i.dataset.id, anio: hallados.get(+i.dataset.id).anio }));
+      q('anGuardar').disabled = true;
+      try {
+        const d = await api('/api/v1/biblioteca/anios/aplicar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+        q('anMsg').textContent = `✓ ${d.guardados} año(s) guardados${d.omitidos ? ` · ${d.omitidos} ya tenían año` : ''}`;
+        aviso(`${d.guardados} año(s) guardados`, 'success');
+        await cargar();
+      } catch (e) { q('anMsg').textContent = e.message; q('anGuardar').disabled = false; }
+    });
+    pintar();
+    const lote = 5;
+    for (let i = 0; i < pendientes.length && !cancelado; i += lote) {
+      const ids = pendientes.slice(i, i + lote).map(p => p.id);
+      try {
+        const d = await api('/api/v1/biblioteca/anios/buscar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+        d.resultados.forEach(r => hallados.set(r.id, r));
+      } catch (e) { ids.forEach(id => hallados.set(id, { anio: null, error: e.message })); }
+      if (cancelado) break;
+      const marcados = new Set([...q('anLista').querySelectorAll('input:checked')].map(x => +x.dataset.id));
+      q('anProg').firstElementChild.style.width = `${Math.min(100, (i + lote) / pendientes.length * 100)}%`;
+      pintar();
+      marcados.forEach(id => { const c = q('anLista').querySelector(`input[data-id="${id}"]`); if (c) c.checked = true; });
+      q('anGuardar').textContent = q('anGuardar').textContent;
+    }
+    if (!cancelado) q('anMsg').textContent = `Listo: ${[...hallados.values()].filter(r => r.anio).length} de ${pendientes.length} encontrados.`;
+  }
+
   // ── Escuchar ─────────────────────────────────────────────
   // Reproductor de preescucha: onda (WaveSurfer sobre el mismo <audio>),
   // tiempos, marcas de intro/mezcla, volumen y saltos de 5 s.
@@ -829,6 +914,7 @@
       if (b.dataset.f === 'eliminar') { S.sel = new Set([id]); eliminarSeleccion(); }
       if (b.dataset.f === 'restr') editorRestricciones([id]);
     });
+    $('bvAnios').addEventListener('click', buscarAnios);
     $('bvColumnas').addEventListener('click', e => {
       const m = $('bvMenuCols');
       if (!m.hidden) { m.hidden = true; return; }
