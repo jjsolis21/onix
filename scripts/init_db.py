@@ -734,7 +734,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS paletas (
             clave      TEXT    PRIMARY KEY,
             nombre     TEXT    NOT NULL,
-            slots      INTEGER NOT NULL DEFAULT 15,
+            slots      INTEGER NOT NULL DEFAULT 9,
             orden      INTEGER NOT NULL DEFAULT 0,
             created_at TEXT    NOT NULL DEFAULT (datetime('now'))
         )
