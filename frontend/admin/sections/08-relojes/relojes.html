@@ -10,7 +10,7 @@
      ============================================================ -->
 <link rel="stylesheet" href="css/secciones-operacion.css">
 <style>
-  .rj-layout { display: grid; grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: var(--s4); align-items: start; }
+  .rj-layout { display: grid; grid-template-columns: minmax(340px, min(36%, 480px)) minmax(0, 1fr); gap: var(--s4); align-items: start; }
   @media (max-width: 900px) { .rj-layout { grid-template-columns: 1fr; } }
   .rj-lista { display: flex; flex-direction: column; gap: 4px; }
   .rj-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 4px;
@@ -89,10 +89,8 @@
   .rj-cons-tabs button { flex: 1; background: var(--choc-2); border: 1px solid var(--choc-5); color: var(--text-mid); padding: 5px 8px;
     cursor: pointer; font: inherit; font-size: .76rem; font-weight: 600; }
   .rj-cons-tabs button.on { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
-  .rj-cons-filtros { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .rj-cons-filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
   .rj-elem-lateral { margin-top: var(--s3); padding: 10px; }
-  .rj-elem-lateral .rj-pal span { display: none; }
-  .rj-elem-lateral .rj-pal { padding: 7px 2px; }
   .rj-cons-filtros .ox-select, .rj-cons-filtros .ox-input { width: 100%; max-width: none; font-size: .74rem; padding: 4px 6px; }
   .rj-contador { margin-top: 8px; padding: 8px 12px; background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 5px;
     display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; }
