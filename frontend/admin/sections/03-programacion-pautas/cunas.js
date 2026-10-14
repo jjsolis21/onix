@@ -211,33 +211,85 @@
     setTimeout(() => { if (caja) caja.innerHTML = `<div class="cunas-resumen">✓ ${ok} de ${files.length} cuña(s) cargadas</div>`; }, 1500);
   }
 
-  // ── Selector para el editor de pautas ───────────────────
+  // ── Selector para el editor de pautas: panel de filtros a la izquierda, lista a la derecha ──
   function elegir(cliente) {
     return new Promise(async resolve => {
       await cargar();
       const fondo = document.createElement('div');
       fondo.className = 'cunas-selector-fondo';
+      const anunciantes = [...new Set(cunas.map(c => c.artista).filter(Boolean))].sort();
       fondo.innerHTML = `
-        <div class="cunas-selector" role="dialog" aria-label="Elegir cuña">
-          <div class="cunas-selector__cab"><h3>Elegir cuña de la biblioteca</h3>
+        <div class="cunas-selector cs-soho" role="dialog" aria-label="Elegir cuña">
+          <div class="cunas-selector__cab"><h3>Biblioteca de comerciales</h3>
             <button type="button" class="modal-close" data-cerrar aria-label="Cerrar">✕</button></div>
-          <input type="search" placeholder="Buscar cuña o anunciante…" value="${esc(cliente || '')}">
-          <div class="cunas-selector__lista"></div>
-          <p class="cunas-selector__pie">¿No está? Ciérrala y usa <b>Subir archivo</b>, o cárgala en la pestaña <b>Biblioteca de cuñas</b>.</p>
+          <div class="cs-cuerpo">
+            <aside class="cs-panel">
+              <h5>Buscar</h5>
+              <input type="search" id="csBuscar" placeholder="Cuña o anunciante…" autocomplete="off">
+              <h5>Anunciante</h5>
+              <select id="csAnunciante"><option value="">Todos</option>
+                ${anunciantes.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select>
+              <h5>Mostrar</h5>
+              <select id="csUso"><option value="">Todas</option><option value="libre">Sin pauta</option>
+                <option value="uso">Con pauta vigente</option></select>
+              <button type="button" class="cs-btn" id="csReiniciar">Reiniciar</button>
+              <h5>Cargar nueva</h5>
+              <button type="button" class="cs-btn cs-btn--pri" id="csSubir">⬆ Subir archivo…</button>
+              <input type="file" id="csArchivo" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" hidden>
+              <p class="cs-ayuda">Se carga a la Biblioteca y queda elegida. Anunciante: <b id="csAnunciaNuevo"></b></p>
+              <p class="cs-cuenta" id="csCuenta"></p>
+            </aside>
+            <div class="cs-lista-wrap">
+              <div class="cs-zona" id="csZona">Arrastra aquí un archivo para subirlo y usarlo</div>
+              <div class="cunas-selector__lista" id="csLista"></div>
+              <div class="cs-estado" id="csEstado"></div>
+            </div>
+          </div>
         </div>`;
       document.body.appendChild(fondo);
-      const input = fondo.querySelector('input'), lista = fondo.querySelector('.cunas-selector__lista');
+      const $$ = id => fondo.querySelector('#' + id);
       const cerrar = r => { parar(); fondo.remove(); resolve(r); };
+      const filtros = { q: (cliente || '').trim(), an: '', uso: '' };
+      $$('csBuscar').value = filtros.q;
+      $$('csAnunciaNuevo').textContent = (cliente || '').trim().toUpperCase() || 'SIN ANUNCIANTE';
       const pintarLista = () => {
-        const q = input.value.trim().toUpperCase();
-        const l = cunas.filter(c => !q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q));
-        lista.innerHTML = l.length ? l.map(c => `
+        const q = filtros.q.toUpperCase();
+        const l = cunas.filter(c => (!q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q))
+          && (!filtros.an || c.artista === filtros.an)
+          && (!filtros.uso || (filtros.uso === 'libre' ? !(usos[c.id]?.total) : (usos[c.id]?.vigentes || 0) > 0)));
+        $$('csCuenta').textContent = `${l.length} de ${cunas.length} cuñas`;
+        $$('csLista').innerHTML = l.length ? l.map(c => `
           <div class="cunas-op" data-id="${c.id}">
             <button class="cunas-play" data-play="${c.id}" title="Escuchar">${ICO('play2')}</button>
-            <div><b>${esc(c.titulo)}</b><small>${esc(c.artista)} · ${fmt(c.duracion)}</small></div>
-          </div>`).join('') : '<p class="cunas-vacio">Ninguna cuña coincide.</p>';
+            <div><b>${esc(c.titulo)}</b><small>${esc(c.artista)} · ${fmt(c.duracion)}${usos[c.id]?.vigentes ? ` · ${usos[c.id].vigentes} pauta(s) vigente(s)` : ''}</small></div>
+          </div>`).join('') : '<p class="cunas-vacio">Ninguna cuña coincide. Cambia los filtros o sube el archivo.</p>';
       };
-      input.addEventListener('input', pintarLista);
+      $$('csBuscar').addEventListener('input', e => { filtros.q = e.target.value; pintarLista(); });
+      $$('csAnunciante').addEventListener('change', e => { filtros.an = e.target.value; pintarLista(); });
+      $$('csUso').addEventListener('change', e => { filtros.uso = e.target.value; pintarLista(); });
+      $$('csReiniciar').addEventListener('click', () => {
+        Object.assign(filtros, { q: '', an: '', uso: '' });
+        $$('csBuscar').value = ''; $$('csAnunciante').value = ''; $$('csUso').value = ''; pintarLista();
+      });
+      // Subir desde aquí: se carga a la biblioteca y queda elegida
+      const subirAqui = async f => {
+        if (!f) return;
+        const est = $$('csEstado');
+        est.innerHTML = `<div class="cunas-subida"><span>${esc(f.name)}</span><i><b></b></i><em>subiendo…</em></div>`;
+        try {
+          const creada = await subir(f, (cliente || '').trim(), pct => { est.querySelector('b').style.width = `${pct}%`; });
+          cerrar(creada);
+        } catch (err) { est.innerHTML = `<div class="cunas-subida error"><span>${esc(f.name)}</span><em>✗ ${esc(err.message)}</em></div>`; }
+      };
+      $$('csSubir').addEventListener('click', () => $$('csArchivo').click());
+      $$('csArchivo').addEventListener('change', e => subirAqui(e.target.files[0]));
+      const zona = $$('csZona');
+      zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('encima'); });
+      zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
+      zona.addEventListener('drop', e => {
+        e.preventDefault(); zona.classList.remove('encima');
+        subirAqui([...e.dataTransfer.files].find(f => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(f.name)));
+      });
       fondo.addEventListener('click', e => {
         if (e.target === fondo || e.target.closest('[data-cerrar]')) return cerrar(null);
         const p = e.target.closest('[data-play]');
@@ -248,8 +300,8 @@
       fondo.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(null); });
       pintarLista();
       // Si el filtro por cliente no encuentra nada, mostrar todas
-      if (cliente && !lista.querySelector('.cunas-op')) { input.value = ''; pintarLista(); }
-      input.focus();
+      if (filtros.q && !$$('csLista').querySelector('.cunas-op')) { filtros.q = ''; $$('csBuscar').value = ''; pintarLista(); }
+      $$('csBuscar').focus();
     });
   }
 

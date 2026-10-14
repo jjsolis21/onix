@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=9">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=5">
 
@@ -120,21 +120,27 @@
     </aside>
 
     <div class="cm-centro">
+      <div class="cm-barra-tabla">
+        <button class="bv-btn" id="btnColumnas" type="button" title="Elegir qué columnas se muestran">☰ Columnas</button>
+      </div>
+      <div class="cm-menu-cols" id="cmMenuCols" hidden></div>
       <div class="table-wrap">
         <table class="pautas-table cm-tabla" id="pautasTable">
           <thead>
             <tr>
               <th class="cm-exp"></th>
-              <th class="cm-pin" title="Posición fija en la tanda">📌</th>
-              <th>Spot</th>
-              <th>Cliente</th>
-              <th>Agencia</th>
-              <th>Rubro</th>
-              <th>Inicia</th>
-              <th>Hasta</th>
-              <th title="Menciones por día">Mencs./día</th>
-              <th>Prioridad</th>
-              <th>Estado</th>
+              <th class="cm-pin" data-col="pin" title="Posición fija en la tanda">📌</th>
+              <th data-col="spot">Spot</th>
+              <th data-col="cliente">Cliente</th>
+              <th data-col="agencia">Agencia</th>
+              <th data-col="rubro">Rubro</th>
+              <th data-col="contrato">Contrato</th>
+              <th data-col="versiones">Versiones</th>
+              <th data-col="inicia">Inicia</th>
+              <th data-col="hasta">Hasta</th>
+              <th data-col="menc" title="Menciones por día">Mencs./día</th>
+              <th data-col="prior">Prioridad</th>
+              <th data-col="estado">Estado</th>
               <th></th>
             </tr>
           </thead>
@@ -353,44 +359,46 @@
            ╚══════════════════════════════════════╝ -->
       <div class="modal-col-a pm-pane" data-pane="audio" role="tabpanel">
 
-        <!-- Picker de audio: siempre visible en el tope de la col -->
-        <div class="audio-picker-row">
-          <div class="audio-selector">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" class="audio-picker-icon" aria-hidden="true">
-              <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
-              <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
-            </svg>
-            <input type="text" id="fAudio" placeholder="Clic para elegir la cuña de la biblioteca…" readonly>
-            <button class="btn-icon" id="btnSelectAudio" type="button" title="Subir nuevo archivo desde tu PC">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.8"/>
-              </svg>
-              Subir archivo
-            </button>
-          </div>
-          <!-- Input file oculto, disparado por el botón -->
-          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
-          <span class="field-hint" id="audioHint">Clic en el campo para elegir una cuña ya cargada, o «Subir archivo» para cargar una nueva</span>
+        <!-- Audio del spot: panel de acciones a la izquierda (como la columna «Tareas» de Soho) y, a la derecha,
+             el audio actual con zona para soltar archivos y las versiones que rotan. -->
+        <div class="au-layout">
+          <aside class="au-panel">
+            <h5>Audio del spot</h5>
+            <button class="au-btn au-btn--pri" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">
+              <span>📚</span> Elegir de la biblioteca</button>
+            <button class="au-btn" id="btnSelectAudio" type="button" title="Subir un archivo desde tu PC">
+              <span>⬆</span> Subir archivo…</button>
+            <button class="au-btn" id="btnAddVersion" type="button" title="Otra versión del mismo spot: salen en rotación (A, B, C…)">
+              <span>＋</span> Agregar versión</button>
+            <p class="au-ayuda">MP3, WAV, OGG, FLAC, AAC o M4A. También puedes <b>arrastrar el archivo</b> a la zona de la derecha.</p>
+          </aside>
 
-          <!-- Versiones que rotan (spot con varios audios) -->
-          <div class="cm-versiones">
-            <div class="cm-versiones-cab">
-              <span>Versiones que rotan</span>
-              <button type="button" class="cm-ver-add" id="btnAddVersion">＋ Agregar versión</button>
+          <section class="au-main">
+            <div class="au-drop" id="auDrop">
+              <div class="audio-selector au-actual">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" class="audio-picker-icon" aria-hidden="true">
+                  <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
+                  <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+                <input type="text" id="fAudio" placeholder="Aún no hay audio: elígelo de la biblioteca o suelta un archivo aquí" readonly>
+              </div>
+              <span class="field-hint" id="audioHint">Elige una cuña de la biblioteca o suelta aquí un archivo de audio</span>
+              <div class="upload-progress hidden" id="uploadProgress">
+                <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
+                <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
+              </div>
             </div>
-            <ol class="cm-ver-lista" id="cmVersiones"></ol>
-            <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
-          </div>
+            <!-- Input file oculto, disparado por el botón -->
+            <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
 
-          <!-- Barra de progreso de subida -->
-          <div class="upload-progress hidden" id="uploadProgress">
-            <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
-            <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
-          </div>
+            <div class="cm-versiones">
+              <div class="cm-versiones-cab"><span>Versiones que rotan</span></div>
+              <ol class="cm-ver-lista" id="cmVersiones"></ol>
+              <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
+            </div>
+          </section>
         </div>
-
-
 
         <!-- Onda y marcas: la MISMA ventana que se usa al cargar una canción (editor-cancion.js), ajustada a la pauta.
              Lo monta pauta-onda.js. -->

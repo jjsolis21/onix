@@ -559,5 +559,46 @@
     else if (e.target.closest('#btnBloques')) abrirBloques();
   });
   Catalogo.refrescar();
+
+  // ── Columnas a elección de la lista de spots (como «☰ Columnas» de la Biblioteca Musical) ──
+  (function columnas() {
+    const COLS = [
+      { k: 'pin', t: '📌 Posición fija' }, { k: 'cliente', t: 'Cliente' }, { k: 'agencia', t: 'Agencia' }, { k: 'rubro', t: 'Rubro' },
+      { k: 'contrato', t: 'Contrato', oculta: true }, { k: 'versiones', t: 'Versiones', oculta: true },
+      { k: 'inicia', t: 'Inicia' }, { k: 'hasta', t: 'Hasta' }, { k: 'menc', t: 'Menciones por día' },
+      { k: 'prior', t: 'Prioridad' }, { k: 'estado', t: 'Estado' },
+    ];
+    const CLAVE = 'cm_cols';
+    let visibles;
+    try { visibles = new Set(JSON.parse(localStorage.getItem(CLAVE)) || COLS.filter(c => !c.oculta).map(c => c.k)); }
+    catch (_) { visibles = new Set(COLS.filter(c => !c.oculta).map(c => c.k)); }
+    const estilo = document.createElement('style');
+    estilo.id = 'cmColsEstilo';
+    document.head.appendChild(estilo);
+    const aplicar = () => {
+      estilo.textContent = COLS.filter(c => !visibles.has(c.k)).map(c => `#pautasTable [data-col="${c.k}"] { display: none; }`).join('\n');
+      try { localStorage.setItem(CLAVE, JSON.stringify([...visibles])); } catch (_) { }
+    };
+    aplicar();
+    document.addEventListener('click', e => {
+      const menu = document.getElementById('cmMenuCols');
+      if (!menu) return;
+      if (e.target.closest('#btnColumnas')) {
+        if (!menu.hidden) { menu.hidden = true; return; }
+        menu.innerHTML = '<b>Columnas visibles</b>' + COLS.map(c =>
+          `<label><input type="checkbox" value="${c.k}" ${visibles.has(c.k) ? 'checked' : ''}> ${c.t}</label>`).join('')
+          + '<button type="button" class="cm-reiniciar" data-cols-reset="1">Restablecer</button>';
+        menu.hidden = false;
+      } else if (e.target.closest('[data-cols-reset]')) {
+        visibles = new Set(COLS.filter(c => !c.oculta).map(c => c.k)); aplicar(); menu.hidden = true;
+      } else if (!e.target.closest('#cmMenuCols')) menu.hidden = true;
+    });
+    document.addEventListener('change', e => {
+      if (!e.target.closest('#cmMenuCols')) return;
+      e.target.checked ? visibles.add(e.target.value) : visibles.delete(e.target.value);
+      aplicar();
+    });
+  })();
+
   global.ComercialesConfig = { abrirConfig, abrirChequeo, abrirTandasDia, abrirBloques };
 })(window);

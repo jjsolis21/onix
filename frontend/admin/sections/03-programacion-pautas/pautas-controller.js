@@ -494,18 +494,20 @@
 
       tr.innerHTML = `
         <td class="cm-exp"><button type="button" data-action="expandir" data-id="${_esc(String(p.id))}" title="Ver detalle">›</button></td>
-        <td class="cm-pin" title="${p.posicion ? 'Siempre ' + POSICION[p.posicion].toLowerCase() + ' en la tanda' : ''}">${p.posicion ? '📌<small>' + (p.posicion === 1 ? '1º' : 'ÚLT') + '</small>' : ''}</td>
-        <td><span class="cm-spot" title="${_esc(p.audio_nombre)}">${_esc(_truncate(p.audio_nombre, 34))}</span>
+        <td class="cm-pin" data-col="pin" title="${p.posicion ? 'Siempre ' + POSICION[p.posicion].toLowerCase() + ' en la tanda' : ''}">${p.posicion ? '📌<small>' + (p.posicion === 1 ? '1º' : 'ÚLT') + '</small>' : ''}</td>
+        <td data-col="spot"><span class="cm-spot" title="${_esc(p.audio_nombre)}">${_esc(_truncate(p.audio_nombre, 34))}</span>
           ${(p.versiones || []).length > 1 ? `<small class="cm-sub cm-sub--ver">🔁 ${p.versiones.length} versiones</small>` : ''}
           ${contrato ? `<small class="cm-sub">${_esc(contrato)}</small>` : ''}</td>
-        <td><strong>${_esc(p.cliente)}</strong></td>
-        <td>${_esc(p.agencia || '—')}</td>
-        <td>${_esc(_truncate(rubro, 22))}</td>
-        <td class="cm-fecha">${_fechaCorta(p.fecha_inicio)}</td>
-        <td class="cm-fecha">${p.fecha_fin ? _fechaCorta(p.fecha_fin) : 'Nunca'}</td>
-        <td class="cm-num">${menciones}</td>
-        <td class="cm-pri cm-pri--${p.prioridad > 0 ? 'alta' : p.prioridad < 0 ? 'baja' : 'normal'}">${PRIORIDAD[String(p.prioridad)] || PRIORIDAD['0']}</td>
-        <td>${estado}${aviso}</td>
+        <td data-col="cliente"><strong>${_esc(p.cliente)}</strong></td>
+        <td data-col="agencia">${_esc(p.agencia || '—')}</td>
+        <td data-col="rubro">${_esc(_truncate(rubro, 22))}</td>
+        <td data-col="contrato">${_esc(contrato || '—')}</td>
+        <td data-col="versiones" class="cm-num">${(p.versiones || []).length || 1}</td>
+        <td class="cm-fecha" data-col="inicia">${_fechaCorta(p.fecha_inicio)}</td>
+        <td class="cm-fecha" data-col="hasta">${p.fecha_fin ? _fechaCorta(p.fecha_fin) : 'Nunca'}</td>
+        <td class="cm-num" data-col="menc">${menciones}</td>
+        <td data-col="prior" class="cm-pri cm-pri--${p.prioridad > 0 ? 'alta' : p.prioridad < 0 ? 'baja' : 'normal'}">${PRIORIDAD[String(p.prioridad)] || PRIORIDAD['0']}</td>
+        <td data-col="estado">${estado}${aviso}</td>
         <td>
           <div class="row-actions">
             <button class="btn-row"
@@ -1597,6 +1599,18 @@
 
     // ── Selector de audio ──
     $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
+    $('btnElegirBib')?.addEventListener('click', _elegirCuna);
+    // Soltar un archivo de audio sobre la zona del audio = subirlo
+    const _drop = $('auDrop');
+    if (_drop) {
+      _drop.addEventListener('dragover', ev => { ev.preventDefault(); _drop.classList.add('encima'); });
+      _drop.addEventListener('dragleave', () => _drop.classList.remove('encima'));
+      _drop.addEventListener('drop', ev => {
+        ev.preventDefault(); _drop.classList.remove('encima');
+        const f = [...ev.dataTransfer.files].find(x => x.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(x.name));
+        if (f) _onAudioFileSelected({ target: { files: [f], value: '' } });
+      });
+    }
     $('fAudio')?.addEventListener('click', _elegirCuna);
     $('audioFileInput')?.addEventListener('change', _onAudioFileSelected);
 
