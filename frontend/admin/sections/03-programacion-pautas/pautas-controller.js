@@ -624,6 +624,19 @@
     _pintarCaratula();
   }
 
+  /** «Voz de la cuña»: lista de la biblioteca y valor del audio elegido. `original` = lo que ya tenía (para guardar solo si cambió). */
+  async function _pintarVozSpot(valor) {
+    const sel = $('fVozSpot');
+    if (!sel) return;
+    let lista = [];
+    try { lista = global.CunasBiblioteca?.voces ? await global.CunasBiblioteca.voces() : []; } catch (_) { }
+    if (!lista.length) lista = ['Hombre', 'Mujer', 'Dúo', 'Grupo', 'Instrumental'];
+    if (valor && !lista.includes(valor)) lista = [...lista, valor];
+    sel.innerHTML = '<option value="">— sin marcar —</option>' + lista.map(v => `<option value="${_esc(v)}">${_esc(v)}</option>`).join('');
+    sel.value = valor || '';
+    sel.dataset.original = valor || '';
+  }
+
   /** «Nombre del spot»: se propone el del archivo, salvo que el operador ya haya escrito el suyo. */
   function _proponerNombreSpot(titulo) {
     const el = $('fNombreSpot');
@@ -1136,6 +1149,8 @@
       $('fCliente').value   = p.cliente;
       $('fAudio').value     = p.audio_nombre;
       if ($('fNombreSpot')) { $('fNombreSpot').value = p.audio_nombre || ''; $('fNombreSpot').dataset.auto = '0'; }
+      _pintarVozSpot('');
+      if (p.audio_id) fetch(`/api/v1/biblioteca/${p.audio_id}/ficha`).then(r => r.ok ? r.json() : null).then(f => { if (f) _pintarVozSpot(f.voz || ''); }).catch(() => { });
       $('fAudio')._selectedId     = p.audio_id;
       $('fAudio')._selectedNombre = p.audio_nombre;
       $('fAudio')._selectedPath   = '';
@@ -1190,6 +1205,7 @@
       $('fCliente').value          = '';
       $('fAudio').value            = '';
       if ($('fNombreSpot')) { $('fNombreSpot').value = ''; $('fNombreSpot').dataset.auto = '1'; }
+      _pintarVozSpot('');
       $('fAudio')._selectedId      = null;
       $('fAudio')._selectedNombre  = '';
       $('fAudio')._selectedPath    = '';
@@ -1376,6 +1392,14 @@
     _setSaving(true);
 
     try {
+      // La voz es del audio: si la cambiaron aquí, se guarda en la cuña (Biblioteca de cuñas) antes de guardar el spot
+      const _vozSel = $('fVozSpot'), _audioId = $('fAudio')?._selectedId;
+      if (_vozSel && _audioId && _vozSel.value && _vozSel.value !== (_vozSel.dataset.original || '')) {
+        const rv = await fetch(`/api/v1/audios/${_audioId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voz: _vozSel.value }) });
+        if (!rv.ok) throw new Error('No se pudo guardar la voz de la cuña');
+        _vozSel.dataset.original = _vozSel.value;
+      }
       if (_editingId) {
         const updated = await _apiUpdatePauta(_editingId, payload);
         const idx = _pautas.findIndex(p => String(p.id) === String(_editingId));
@@ -1431,6 +1455,7 @@
     f._selectedNombre = c.titulo;
     f._selectedPath = c.archivo_path || '';
     _proponerNombreSpot(c.titulo);
+    _pintarVozSpot(c.voz || '');
     const hint = $('audioHint');
     if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
     if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;

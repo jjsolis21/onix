@@ -24,6 +24,23 @@
   const TIPO = 'Cuña';
 
   let cunas = [], usos = {}, audio = null, sonando = null, listo = false;
+  let vocesCache = null;
+
+  /** Voces disponibles (las mismas de la biblioteca musical: Hombre, Mujer, Dúo…), sin repetidas por mayúsculas. */
+  async function voces() {
+    if (vocesCache) return vocesCache;
+    let lista = [];
+    try {
+      const s = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json());
+      const c = (s.categorias || []).find(x => x.nombre_interno === 'voz');
+      lista = (c?.valores || []).map(v => String(v.valor));
+    } catch (_) { }
+    if (!lista.length) lista = ['Hombre', 'Mujer', 'Dúo', 'Grupo', 'Instrumental'];
+    const vistos = new Set();
+    vocesCache = lista.filter(v => { const k = v.trim().toUpperCase(); if (vistos.has(k)) return false; vistos.add(k); return true; });
+    return vocesCache;
+  }
+  const esMujer = v => /^(MUJER|FEMEN|FEMALE|WOMAN)/.test(String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase());
 
   // ── Datos ────────────────────────────────────────────────
   async function cargar() {
@@ -84,7 +101,7 @@
           listo = true;
           try {
             const f = await fetch(`/api/v1/biblioteca/${id}/ficha`).then(r => r.json());
-            resolve({ id, titulo: f.titulo, artista: f.artista, archivo_path: f.archivo_path || '', duracion: f.duracion });
+            resolve({ id, titulo: f.titulo, artista: f.artista, archivo_path: f.archivo_path || '', duracion: f.duracion, voz: f.voz || '' });
           } catch (_) { resolve({ id, titulo: '', artista: '', archivo_path: '' }); }
         },
         // Al guardar, el editor se cierra ANTES de avisar «guardada»: se espera un tick para no tomarlo por cancelado
@@ -130,6 +147,9 @@
     panel.innerHTML = `
       <div class="cunas-barra">
         <input type="search" id="cunasBuscar" placeholder="Buscar cuña o anunciante…" autocomplete="off">
+        <select id="cunasVoz" title="Filtrar por la voz de la cuña">
+          <option value="">Todas las voces</option><option value="__mujer">Mujer</option><option value="__hombre">Hombre</option>
+          <option value="__otra">Otras (dúo, grupo…)</option><option value="__sin">Sin voz marcada</option></select>
         <input id="cunasAnunciante" list="cunasAnunciantes" placeholder="Anunciante de las que vas a subir" autocomplete="off">
         <datalist id="cunasAnunciantes"></datalist>
         <button type="button" class="btn-primary" id="cunasNueva" title="Con la ventana de edición: onda, marcas, fundidos y datos">✎ Cargar cuña…</button>
@@ -140,7 +160,7 @@
       <div class="cunas-subidas" id="cunasSubidas"></div>
       <div class="table-wrap">
         <table class="pautas-table cunas-tabla">
-          <thead><tr><th></th><th>Cuña</th><th>Anunciante</th><th>Duración</th><th>Pautas</th><th>Cargada</th><th>Acciones</th></tr></thead>
+          <thead><tr><th></th><th>Cuña</th><th>Anunciante</th><th>Voz</th><th>Duración</th><th>Pautas</th><th>Cargada</th><th>Acciones</th></tr></thead>
           <tbody id="cunasFilas"></tbody>
         </table>
       </div>`;
@@ -157,6 +177,19 @@
       if (enCunas) refrescar(); else parar();
     });
     $('cunasBuscar').addEventListener('input', pintar);
+    $('cunasVoz').addEventListener('change', pintar);
+    $('cunasFilas').addEventListener('change', async e => {
+      const sel = e.target.closest('select[data-voz]');
+      if (!sel) return;
+      const c = cunas.find(x => x.id === +sel.dataset.voz);
+      if (!c) return;
+      try {
+        const r = await fetch(`/api/v1/audios/${c.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voz: sel.value }) });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(typeof j.detail === 'string' ? j.detail : `Error ${r.status}`); }
+        c.voz = sel.value;
+        sel.classList.toggle('cunas-voz--mujer', esMujer(sel.value));
+      } catch (err) { alert(err.message); sel.value = c.voz || ''; }
+    });
     $('cunasSubir').addEventListener('click', () => $('cunasArchivos').click());
     $('cunasNueva').addEventListener('click', async () => {
       try { const c = await cargarConEditor({ anunciante: $('cunasAnunciante').value }); if (c) refrescar(); }
@@ -193,7 +226,7 @@
   }
 
   async function refrescar() {
-    await cargar();
+    await Promise.all([cargar(), voces()]);
     pintar();
     try {
       const an = await fetch(`/api/v1/artistas?tipo=${encodeURIComponent(TIPO)}`).then(r => r.ok ? r.json() : []);
@@ -203,12 +236,21 @@
 
   function pintar() {
     const q = ($('cunasBuscar')?.value || '').trim().toUpperCase();
-    const lista = cunas.filter(c => !q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q));
+    const fv = $('cunasVoz')?.value || '';
+    const lista = cunas.filter(c => (!q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q))
+      && (!fv || (fv === '__sin' ? !c.voz : fv === '__mujer' ? esMujer(c.voz)
+        : fv === '__hombre' ? /^(HOMBRE|MALE|MASCUL)/.test(String(c.voz || '').toUpperCase())
+        : (c.voz && !esMujer(c.voz) && !/^(HOMBRE|MALE|MASCUL)/.test(String(c.voz).toUpperCase())))));
+    const vocesLista = vocesCache || [];
     $('cunasFilas').innerHTML = lista.length ? lista.map(c => {
       const u = usos[c.id] || { total: 0, vigentes: 0 };
       return `<tr>
         <td><button class="cunas-play" data-acc="play" data-id="${c.id}" title="Escuchar">${ICO(sonando === c.id ? 'stop2' : 'play2')}</button></td>
         <td><b>${esc(c.titulo)}</b></td><td>${esc(c.artista)}</td>
+        <td><select class="cunas-voz ${esMujer(c.voz) ? 'cunas-voz--mujer' : ''}" data-voz="${c.id}" title="Voz de la cuña (regla: voces de mujer no seguidas)">
+          <option value="">— sin marcar —</option>
+          ${[...new Set([...vocesLista, ...(c.voz && !vocesLista.includes(c.voz) ? [c.voz] : [])])]
+            .map(v => `<option value="${esc(v)}" ${v === c.voz ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></td>
         <td class="mono">${fmt(c.duracion)}</td>
         <td>${u.vigentes ? `<span class="cunas-uso">${u.vigentes} vigente${u.vigentes !== 1 ? 's' : ''}</span>` : (u.total ? `${u.total} vencida${u.total !== 1 ? 's' : ''}` : '<span class="cunas-libre">sin pauta</span>')}</td>
         <td class="mono">${esc((c.created_at || '').slice(0, 10))}</td>
@@ -216,7 +258,7 @@
           <button data-acc="pauta" data-id="${c.id}" title="Crear una pauta con esta cuña">＋ Pauta</button>
           <button data-acc="borrar" data-id="${c.id}" class="peligro" title="Eliminar">✕</button>
         </td></tr>`;
-    }).join('') : `<tr><td colspan="7" class="cunas-vacio">${cunas.length ? 'Ninguna coincide con la búsqueda' : 'Aún no hay cuñas. Súbelas con el botón o arrastrándolas aquí arriba.'}</td></tr>`;
+    }).join('') : `<tr><td colspan="8" class="cunas-vacio">${cunas.length ? 'Ninguna coincide con la búsqueda' : 'Aún no hay cuñas. Súbelas con el botón o arrastrándolas aquí arriba.'}</td></tr>`;
   }
 
   async function subirVarias(files) {
@@ -290,7 +332,7 @@
         $$('csLista').innerHTML = l.length ? l.map(c => `
           <div class="cunas-op" data-id="${c.id}">
             <button class="cunas-play" data-play="${c.id}" title="Escuchar">${ICO('play2')}</button>
-            <div><b>${esc(c.titulo)}</b><small>${esc(c.artista)} · ${fmt(c.duracion)}${usos[c.id]?.vigentes ? ` · ${usos[c.id].vigentes} pauta(s) vigente(s)` : ''}</small></div>
+            <div><b>${esc(c.titulo)}</b><small>${esc(c.artista)} · ${fmt(c.duracion)}${c.voz ? ' · ' + (esMujer(c.voz) ? '♀ ' : '') + esc(c.voz) : ' · sin voz'}${usos[c.id]?.vigentes ? ` · ${usos[c.id].vigentes} pauta(s) vigente(s)` : ''}</small></div>
           </div>`).join('') : '<p class="cunas-vacio">Ninguna cuña coincide. Cambia los filtros o sube el archivo.</p>';
       };
       $$('csBuscar').addEventListener('input', e => { filtros.q = e.target.value; pintarLista(); });
@@ -330,5 +372,5 @@
     });
   }
 
-  global.CunasBiblioteca = { montar, refrescar, elegir, subir, cargarConEditor };
+  global.CunasBiblioteca = { montar, refrescar, elegir, subir, cargarConEditor, voces };
 })(window);

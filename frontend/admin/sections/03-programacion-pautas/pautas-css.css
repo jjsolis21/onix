@@ -1503,3 +1503,10 @@
   padding: 0 12px; height: 44px; font: inherit; font-size: 15px; font-weight: 400; width: 100%; box-sizing: border-box; color-scheme: dark; }
 .au-layout .au-nombre input:focus { outline: none; border-color: var(--p-accent, #ee9b00); }
 .au-layout .au-nombre small { font-weight: 400; font-size: 12px; color: var(--p-text-lo, #999); line-height: 1.4; }
+
+.au-layout .au-nombre select { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 8px;
+  padding: 0 12px; height: 44px; font: inherit; font-size: 15px; font-weight: 400; width: 100%; box-sizing: border-box; color-scheme: dark; }
+.cunas-voz { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 6px; padding: 5px 6px;
+  font: inherit; font-size: 12px; color-scheme: dark; max-width: 130px; }
+.cunas-voz--mujer { border-color: #ff8fc4; color: #ff8fc4; }
+.cunas-barra select { background: var(--p-bg, #111); color: inherit; border: 1px solid var(--p-border, #333); border-radius: 6px; padding: 8px 9px; font: inherit; color-scheme: dark; }

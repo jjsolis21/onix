@@ -250,3 +250,14 @@ def test_rubros_incompatibles_api_y_tandas_del_dia(client):
     assert len(orden) == 3 and orden[1] == "RB BANCA"                 # Restaurante y Cafetería no quedan juntas
     assert client.delete("/api/v1/comerciales/rubros/conflictos", params={"a": "RESTAURANTE", "b": "CAFETERIA"}).status_code == 200
     assert client.delete("/api/v1/comerciales/rubros/conflictos", params={"a": "x", "b": "y"}).status_code == 404
+
+
+def test_asignar_la_voz_a_una_cuna_y_verla_en_la_biblioteca_de_cunas(client):
+    c = _db()
+    aid = _audio(c, "Cuña para voz", "library/para_voz.mp3", dur=15)
+    c.commit(); c.close()
+    assert client.put(f"/api/v1/audios/{aid}", json={"voz": "mujer"}).status_code == 200
+    lista = client.get("/api/v1/audios", params={"tipo": "Cuña", "limit": 50000}).json()["data"]
+    fila = next(x for x in lista if x["id"] == aid)
+    assert fila["voz"] == "Mujer"                       # la escritura ya registrada de la categoría, no «mujer»
+    assert client.get(f"/api/v1/biblioteca/{aid}/ficha").json()["voz"] == "Mujer"
