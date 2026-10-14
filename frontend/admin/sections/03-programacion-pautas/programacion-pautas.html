@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=10">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=11">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=5">
 
@@ -359,45 +359,54 @@
            ╚══════════════════════════════════════╝ -->
       <div class="modal-col-a pm-pane" data-pane="audio" role="tabpanel">
 
-        <!-- Audio del spot: panel de acciones a la izquierda (como la columna «Tareas» de Soho) y, a la derecha,
-             el audio actual con zona para soltar archivos y las versiones que rotan. -->
+        <!-- Columna izquierda del paso 2 (la onda va a la derecha): audio actual, acciones, carátula y versiones -->
         <div class="au-layout">
-          <aside class="au-panel">
-            <h5>Audio del spot</h5>
+          <h5 class="au-tit">Audio del spot</h5>
+
+          <div class="au-drop" id="auDrop">
+            <div class="au-tapa" id="auTapa" title="Carátula">
+              <img id="auTapaImg" alt="" hidden>
+              <span id="auTapaVacio">♪</span>
+            </div>
+            <div class="au-info">
+              <textarea id="fAudio" rows="2" readonly placeholder="Aún no hay audio"></textarea>
+              <span class="field-hint" id="audioHint">Elige una cuña de la biblioteca o suelta aquí un archivo</span>
+            </div>
+            <div class="upload-progress hidden" id="uploadProgress">
+              <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
+              <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
+            </div>
+          </div>
+
+          <div class="au-acciones">
             <button class="au-btn au-btn--pri" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">
-              <span>📚</span> Elegir de la biblioteca</button>
-            <button class="au-btn" id="btnSelectAudio" type="button" title="Subir un archivo desde tu PC">
-              <span>⬆</span> Subir archivo…</button>
+              <i>📚</i><span>Elegir de la biblioteca</span></button>
+            <button class="au-btn" id="btnSelectAudio" type="button" title="Abre la ventana de edición (onda, marcas, fundidos y datos) para cargar un archivo">
+              <i>⬆</i><span>Subir archivo…</span></button>
             <button class="au-btn" id="btnAddVersion" type="button" title="Otra versión del mismo spot: salen en rotación (A, B, C…)">
-              <span>＋</span> Agregar versión</button>
-            <p class="au-ayuda">MP3, WAV, OGG, FLAC, AAC o M4A. También puedes <b>arrastrar el archivo</b> a la zona de la derecha.</p>
-          </aside>
+              <i>＋</i><span>Agregar versión</span></button>
+          </div>
+          <p class="au-ayuda">MP3, WAV, OGG, FLAC, AAC o M4A. También puedes arrastrar el archivo a la tarjeta de arriba.</p>
 
-          <section class="au-main">
-            <div class="au-drop" id="auDrop">
-              <div class="audio-selector au-actual">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" class="audio-picker-icon" aria-hidden="true">
-                  <path d="M9 18V5l12-2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                  <circle cx="6" cy="18" r="3" stroke="currentColor" stroke-width="1.8"/>
-                  <circle cx="18" cy="16" r="3" stroke="currentColor" stroke-width="1.8"/>
-                </svg>
-                <input type="text" id="fAudio" placeholder="Aún no hay audio: elígelo de la biblioteca o suelta un archivo aquí" readonly>
-              </div>
-              <span class="field-hint" id="audioHint">Elige una cuña de la biblioteca o suelta aquí un archivo de audio</span>
-              <div class="upload-progress hidden" id="uploadProgress">
-                <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
-                <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
-              </div>
+          <div class="au-caratula">
+            <h6>Carátula</h6>
+            <div class="au-caratula-btns">
+              <label class="au-mini" id="auCaratArchivoLbl">🖼 Importar imagen
+                <input type="file" id="auCaratArchivo" accept="image/png,image/jpeg" hidden></label>
+              <button type="button" class="au-mini" id="auCaratEtiqueta" title="Leerla de la etiqueta del archivo">🏷 De la etiqueta</button>
+              <button type="button" class="au-mini" id="auCaratQuitar">✕ Quitar</button>
             </div>
-            <!-- Input file oculto, disparado por el botón -->
-            <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
+            <span class="au-ayuda" id="auCaratMsg">Se guarda con el audio y se usa en la metadata.</span>
+          </div>
 
-            <div class="cm-versiones">
-              <div class="cm-versiones-cab"><span>Versiones que rotan</span></div>
-              <ol class="cm-ver-lista" id="cmVersiones"></ol>
-              <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
-            </div>
-          </section>
+          <!-- Input file oculto, disparado por el botón -->
+          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
+
+          <div class="cm-versiones">
+            <div class="cm-versiones-cab"><span>Versiones que rotan</span></div>
+            <ol class="cm-ver-lista" id="cmVersiones"></ol>
+            <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
+          </div>
         </div>
 
         <!-- Onda y marcas: la MISMA ventana que se usa al cargar una canción (editor-cancion.js), ajustada a la pauta.

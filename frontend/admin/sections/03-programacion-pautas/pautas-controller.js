@@ -591,7 +591,41 @@
 
   let _versiones = [];   // versiones extra (sin la principal): [{id, titulo, emitidas}]
 
+  /** Carátula del audio elegido (la misma de la Biblioteca musical: archivo, etiqueta o quitar). */
+  function _pintarCaratula() {
+    const id = $('fAudio')?._selectedId;
+    const img = $('auTapaImg'), vacio = $('auTapaVacio');
+    if (!img) return;
+    if (id) {
+      img.onload = () => { img.hidden = false; if (vacio) vacio.hidden = true; };
+      img.onerror = () => { img.hidden = true; if (vacio) vacio.hidden = false; };
+      img.src = `/api/v1/audios/${id}/caratula?t=${Date.now()}`;
+    } else { img.hidden = true; img.removeAttribute('src'); if (vacio) vacio.hidden = false; }
+    ['auCaratEtiqueta', 'auCaratQuitar'].forEach(b => { const el = $(b); if (el) el.disabled = !id; });
+    const lbl = $('auCaratArchivoLbl'); if (lbl) lbl.classList.toggle('au-off', !id);
+    const inp = $('auCaratArchivo'); if (inp) inp.disabled = !id;
+  }
+
+  async function _caratulaAccion(modo, archivo) {
+    const id = $('fAudio')?._selectedId, msg = $('auCaratMsg');
+    if (!id) return;
+    try {
+      let r;
+      if (modo === 'quitar') r = await fetch(`/api/v1/audios/${id}/caratula`, { method: 'DELETE' });
+      else {
+        const fd = new FormData(); if (archivo) fd.append('file', archivo);
+        r = await fetch(`/api/v1/audios/${id}/caratula`, { method: 'POST', body: archivo ? fd : undefined });
+      }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail
+        : (modo === 'etiqueta' ? 'El archivo no trae carátula en su etiqueta' : `Error ${r.status}`));
+      if (msg) msg.textContent = modo === 'quitar' ? 'Carátula quitada' : '✓ Carátula guardada';
+    } catch (err) { if (msg) msg.textContent = `⚠ ${err.message}`; }
+    _pintarCaratula();
+  }
+
   function _pintarVersiones() {
+    _pintarCaratula();
     const ol = $('cmVersiones');
     if (!ol) return;
     const f = $('fAudio');
@@ -1612,6 +1646,9 @@
     // ── Selector de audio ──
     $('btnSelectAudio')?.addEventListener('click', () => _cargarConEditor(null));
     $('btnElegirBib')?.addEventListener('click', _elegirCuna);
+    $('auCaratArchivo')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) _caratulaAccion('archivo', f); });
+    $('auCaratEtiqueta')?.addEventListener('click', () => _caratulaAccion('etiqueta'));
+    $('auCaratQuitar')?.addEventListener('click', () => _caratulaAccion('quitar'));
     // Soltar un archivo de audio sobre la zona del audio = subirlo
     const _drop = $('auDrop');
     if (_drop) {
