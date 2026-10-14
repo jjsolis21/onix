@@ -56,7 +56,7 @@ class PautaIn(BaseModel):
     # Varias versiones del spot que rotan en cada salida (incluye la principal).
     # None = no tocar las que ya tiene; [] = una sola versión (audio_id)
     versiones:    Optional[list[int]] = Field(None, max_length=20)
-    seccion:      int            = Field(3, ge=1, le=99,
+    seccion:      int            = Field(3, ge=0, le=99,
                                          description="Sección de la tanda (1 ID, 2 cortina de entrada, 3 comerciales…)")
 
     # ── Normalización de texto ────────────────────────────────────

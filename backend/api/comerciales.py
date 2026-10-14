@@ -194,7 +194,7 @@ def chequeo():
                     poner(p, "error", "archivo_perdido", "No se encuentra el archivo de audio en el disco.")
                 if not (p["duracion"] or 0):
                     poner(p, "aviso", "sin_duracion", "El audio no tiene duración registrada: las tandas no pueden medirlo.")
-                if not (p["voz"] or "").strip():
+                if not (p["voz"] or "").strip() and not str(p["contrato_id"] or "").startswith("SEP-"):
                     poner(p, "aviso", "sin_voz", "No tiene la voz marcada (Hombre / Mujer): la regla de mujeres seguidas no puede aplicarla.")
                 if p["tipo_audio"] and p["tipo_audio"] != "Cuña":
                     poner(p, "aviso", "tipo", f"El audio está marcado como «{p['tipo_audio']}», no como Cuña.")
@@ -205,7 +205,7 @@ def chequeo():
                 poner(p, "error", "fechas", f"La fecha de fin ({fin}) es anterior a la de inicio ({ini}).")
             elif fin and fin < hoy:
                 poner(p, "aviso", "vencido", f"Venció el {fin} y sigue activo: ya no sale, pero ocupa un lugar.")
-            if not (p["rubro"] or "").strip():
+            if not (p["rubro"] or "").strip() and not str(p["contrato_id"] or "").startswith("SEP-"):
                 poner(p, "aviso", "sin_rubro", "Sin rubro: no se puede separar de otros anunciantes del mismo rubro.")
             if hay_versiones:
                 for v in c.execute(
@@ -566,3 +566,103 @@ def quitar_conflicto(a: str, b: str):
         c.close()
     _avisar_motor()
     return {"ok": True}
+
+
+# ── Separadores de tanda con rotación (Separador de entrada, cortinas…): varios audios que rotan ─────────
+# Se guardan como UNA pauta administrada por sección (contrato_id «SEP-<número>») con varias versiones: el motor ya
+# rota las versiones (A, B, C, A…) en cada salida, así que el separador cambia de una tanda a la siguiente.
+
+TIPOS_SEPARADOR = ("Efecto", "Sweeper", "Tips", "Cuña")
+
+
+class SeparadorIn(BaseModel):
+    audios: list[int] = Field(default_factory=list, max_length=30)
+    siempre: bool = False       # pone la sección como «Siempre»: sale en cada tanda
+
+
+def _pauta_separador(c, numero: int):
+    return c.execute("SELECT id, activo, audio_id FROM pautas WHERE contrato_id = ?", (f"SEP-{numero}",)).fetchone()
+
+
+def _audios_de(c, pauta_id: int, audio_id) -> list[int]:
+    ids = [r[0] for r in c.execute("SELECT audio_id FROM pauta_audios WHERE pauta_id = ? ORDER BY orden", (pauta_id,))]
+    return ids or ([audio_id] if audio_id else [])
+
+
+@router.get("/api/v1/comerciales/separadores", summary="Secciones no comerciales de la tanda con sus audios que rotan")
+def separadores():
+    c = _conn()
+    try:
+        secciones = []
+        for r in c.execute("SELECT numero, nombre, opcional, comercial FROM tanda_secciones WHERE comercial = 0 ORDER BY numero"):
+            pa = _pauta_separador(c, r["numero"])
+            ids = _audios_de(c, pa["id"], pa["audio_id"]) if pa and pa["activo"] else []
+            info = {x["id"]: x for x in c.execute(
+                f"SELECT id, titulo, tipo_audio, duracion FROM audios WHERE id IN ({','.join('?' * len(ids))})", ids)} if ids else {}
+            otras = c.execute(
+                "SELECT COUNT(*) FROM pautas WHERE activo = 1 AND seccion = ? AND COALESCE(contrato_id, '') != ?",
+                (r["numero"], f"SEP-{r['numero']}")).fetchone()[0]
+            secciones.append({
+                "numero": r["numero"], "nombre": r["nombre"], "opcional": bool(r["opcional"]),
+                "comercial_mal": False, "otras_pautas": otras,
+                "audios": [{"id": i, "titulo": info[i]["titulo"], "tipo": info[i]["tipo_audio"],
+                            "duracion": round(float(info[i]["duracion"] or 0))} for i in ids if i in info]})
+        # una sección comercial no sirve de separador (se reparte entre tandas en vez de salir en cada una)
+        comerciales_con_separador = [
+            {"numero": r["numero"], "nombre": r["nombre"]} for r in c.execute(
+                "SELECT t.numero, t.nombre FROM tanda_secciones t WHERE t.comercial = 1 AND EXISTS"
+                " (SELECT 1 FROM pautas p WHERE p.contrato_id = 'SEP-' || t.numero)")]
+        disponibles = [{"id": r["id"], "titulo": r["titulo"], "tipo": r["tipo_audio"], "duracion": round(float(r["duracion"] or 0))}
+                       for r in c.execute(
+                           f"SELECT id, titulo, tipo_audio, duracion FROM audios WHERE activo = 1 AND tipo_audio IN"
+                           f" ({','.join('?' * len(TIPOS_SEPARADOR))}) ORDER BY tipo_audio, titulo COLLATE NOCASE", TIPOS_SEPARADOR)]
+        return {"secciones": secciones, "disponibles": disponibles, "advertencias": comerciales_con_separador}
+    finally:
+        c.close()
+
+
+@router.put("/api/v1/comerciales/separadores/{numero}", summary="Elegir los audios que rotan en una sección")
+def guardar_separador(numero: int, b: SeparadorIn):
+    c = _conn()
+    try:
+        sec = c.execute("SELECT numero, nombre, comercial FROM tanda_secciones WHERE numero = ?", (numero,)).fetchone()
+        if not sec:
+            raise HTTPException(status_code=404, detail="No existe esa sección")
+        if sec["comercial"]:
+            raise HTTPException(status_code=422, detail="Esa sección es de comerciales: no lleva separador")
+        ids = list(dict.fromkeys(b.audios))
+        if ids:
+            ok = {r["id"]: r for r in c.execute(
+                f"SELECT id, titulo FROM audios WHERE activo = 1 AND id IN ({','.join('?' * len(ids))})", ids)}
+            faltan = [i for i in ids if i not in ok]
+            if faltan:
+                raise HTTPException(status_code=422, detail=f"Estos audios no existen o están en la Papelera: {faltan}")
+        pa = _pauta_separador(c, numero)
+        if b.siempre:
+            c.execute("UPDATE tanda_secciones SET opcional = 0 WHERE numero = ?", (numero,))
+        if not ids:
+            if pa:
+                c.execute("UPDATE pautas SET activo = 0, updated_at = datetime('now') WHERE id = ?", (pa["id"],))
+            c.commit()
+        else:
+            matriz = json.dumps({f"{d}-{h}": True for d in range(7) for h in range(24)})
+            nombre = f"SEPARADOR · {sec['nombre']}".upper()
+            if pa:
+                pid = pa["id"]
+                c.execute("UPDATE pautas SET audio_id = ?, audio_nombre = ?, cliente = ?, activo = 1, seccion = ?,"
+                          " updated_at = datetime('now') WHERE id = ?", (ids[0], ok[ids[0]]["titulo"], nombre, numero, pid))
+            else:
+                pid = c.execute(
+                    "INSERT INTO pautas (cliente, audio_id, audio_nombre, matriz, activo, contrato_id, seccion, notas)"
+                    " VALUES (?, ?, ?, ?, 1, ?, ?, 'Administrado desde Config. de comerciales › Separadores')",
+                    (nombre, ids[0], ok[ids[0]]["titulo"], matriz, f"SEP-{numero}", numero)).lastrowid
+            c.execute("DELETE FROM pauta_audios WHERE pauta_id = ?", (pid,))
+            if len(ids) > 1:
+                c.executemany("INSERT INTO pauta_audios (pauta_id, audio_id, orden) VALUES (?, ?, ?)",
+                              [(pid, a, i) for i, a in enumerate(ids)])
+            c.commit()
+    finally:
+        c.close()
+    _replanificar()
+    _avisar_motor()
+    return {"ok": True, "audios": len(ids)}

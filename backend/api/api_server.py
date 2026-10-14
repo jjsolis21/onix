@@ -2617,7 +2617,7 @@ def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
 # ===========================================================================
 
 class SeccionIn(BaseModel):
-    numero:    int  = Field(..., ge=1, le=99)
+    numero:    int  = Field(..., ge=0, le=99)
     nombre:    str  = Field(..., min_length=1, max_length=60)
     opcional:  bool = False
     comercial: bool = False

@@ -61,13 +61,13 @@
     const { cuerpo } = ventana('⚙ Config. de comerciales', 940);
     cuerpo.innerHTML = `
       <nav class="ccf-tabs">
-        <button data-t="general">General</button><button data-t="breaks">Breaks por hora</button><button data-t="prioridades">Prioridades</button><button data-t="rubros">Rubros</button>
+        <button data-t="general">General</button><button data-t="breaks">Breaks por hora</button><button data-t="prioridades">Prioridades</button><button data-t="separadores">Separadores</button><button data-t="rubros">Rubros</button>
         <button data-t="clientes">Clientes</button><button data-t="agencias">Agencias</button>
       </nav><div class="ccf-pagina"></div>`;
     const pag = cuerpo.querySelector('.ccf-pagina');
     const ir = t => {
       cuerpo.querySelectorAll('.ccf-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-      ({ general, breaks, prioridades, rubros, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
+      ({ general, breaks, prioridades, separadores, rubros, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
     };
     cuerpo.querySelector('.ccf-tabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) ir(b.dataset.t); });
 
@@ -192,6 +192,65 @@
       });
     }
 
+    // ── Separadores: varios audios que rotan en las secciones que salen en cada tanda ──
+    async function separadores() {
+      pag.innerHTML = '<p class="ccf-hint">Cargando…</p>';
+      let d;
+      try { d = await api('/api/v1/comerciales/separadores'); } catch (e) { pag.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; return; }
+      const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      const tipoTxt = { Efecto: 'Jingle / ID', Sweeper: 'Sweeper', Tips: 'Tip', 'Cuña': 'Cuña' };
+      const sec = d.secciones;
+      const pintar = () => {
+        pag.innerHTML = `
+          <p class="ccf-hint">Cada sección que <b>sale en cada tanda</b> puede llevar <b>varios audios que rotan</b>: en la primera tanda suena el A, en la
+            siguiente el B, luego el C… y vuelve a empezar. Úsalo para el <b>separador de entrada</b> (jingle, sweeper o identificador que anuncia que empieza
+            la tanda). El orden de la tanda es: <b>Promociones → Identificación → Separador → Comerciales → Cortina de salida</b>.</p>
+          ${d.advertencias.length ? `<div class="ccf-aviso">⚠ ${d.advertencias.map(a => `La sección <b>${esc(a.nombre)}</b> está como «Comercial»: se reparte entre las tandas en vez de salir en cada una.`).join(' ')}
+            Cámbiala a «Siempre» en la pestaña <b>Prioridades</b>.</div>` : ''}
+          ${sec.map((s, i) => `<section class="ccf-sep" data-i="${i}">
+            <header><b>${esc(s.numero)} · ${esc(s.nombre)}</b>
+              <span class="ccf-sep-tipo ${s.opcional ? 'opc' : 'sie'}">${s.opcional ? 'Opcional · solo si la tanda lleva comerciales' : 'Siempre · en cada tanda'}</span></header>
+            ${s.numero === 0 ? `<p class="ccf-hint" style="margin:6px 0">Las promociones son <b>spots</b> de esta sección: <b>Nuevo spot › 1 · Datos › Sección: ${esc(s.nombre)}</b>.
+                Suenan siempre primero; entre ellas manda la <b>prioridad</b> del spot. Ahora hay <b>${s.otras_pautas}</b>.</p>` : `
+              <ol class="ccf-sep-lista">${s.audios.length ? s.audios.map((a, j) => `<li><span class="n">${String.fromCharCode(65 + j)}</span>
+                <span class="t"><b>${esc(a.titulo)}</b> <small>${esc(tipoTxt[a.tipo] || a.tipo)} · ${mmss(a.duracion)}</small></span>
+                <button class="ccf-btn ccf-btn--mini" data-up="${i}:${j}" ${j ? '' : 'disabled'}>▲</button>
+                <button class="ccf-btn ccf-btn--mini" data-down="${i}:${j}" ${j < s.audios.length - 1 ? '' : 'disabled'}>▼</button>
+                <button class="ccf-btn ccf-btn--mini" data-del="${i}:${j}">✕</button></li>`).join('')
+                : '<li class="vacio">Sin audios: esta sección no pone separador</li>'}</ol>
+              <div class="ccf-sep-add"><select data-add="${i}"><option value="">＋ Agregar audio de la biblioteca…</option>
+                ${['Efecto', 'Sweeper', 'Tips', 'Cuña'].map(t => {
+                  const l = d.disponibles.filter(a => a.tipo === t && !s.audios.some(x => x.id === a.id));
+                  return l.length ? `<optgroup label="${esc(tipoTxt[t])}">${l.map(a => `<option value="${a.id}">${esc(a.titulo)} · ${mmss(a.duracion)}</option>`).join('')}</optgroup>` : '';
+                }).join('')}</select>
+                <button class="ccf-btn ccf-btn--pri" data-guardar="${i}">Guardar</button>
+                <span class="ccf-msg" id="ccfSepMsg${i}"></span></div>`}
+          </section>`).join('')}`;
+      };
+      pintar();
+      pag.onclick = async e => {
+        const q = a => e.target.closest(`[data-${a}]`);
+        const par = v => v.split(':').map(Number);
+        let h;
+        if ((h = q('up'))) { const [i, j] = par(h.dataset.up); [sec[i].audios[j - 1], sec[i].audios[j]] = [sec[i].audios[j], sec[i].audios[j - 1]]; pintar(); }
+        else if ((h = q('down'))) { const [i, j] = par(h.dataset.down); [sec[i].audios[j + 1], sec[i].audios[j]] = [sec[i].audios[j], sec[i].audios[j + 1]]; pintar(); }
+        else if ((h = q('del'))) { const [i, j] = par(h.dataset.del); sec[i].audios.splice(j, 1); pintar(); }
+        else if ((h = q('guardar'))) {
+          const i = +h.dataset.guardar, m = pag.querySelector(`#ccfSepMsg${i}`);
+          try {
+            await api(`/api/v1/comerciales/separadores/${sec[i].numero}`, json('PUT', { audios: sec[i].audios.map(a => a.id) }));
+            msgEn(m, sec[i].audios.length ? `✓ Guardado: rotan ${sec[i].audios.length} audio(s)` : '✓ Sin separador');
+          } catch (err) { msgEn(m, err.message, false); }
+        }
+      };
+      pag.onchange = e => {
+        const sel = e.target.closest('select[data-add]');
+        if (!sel || !sel.value) return;
+        const i = +sel.dataset.add, a = d.disponibles.find(x => x.id === +sel.value);
+        if (a) { sec[i].audios.push(a); pintar(); }
+      };
+    }
+
     // ── Rubros: pares que pueden compartir tanda pero no sonar seguidos ──
     async function rubros() {
       let d;
@@ -243,7 +302,7 @@
       try { sec = await api('/api/v1/tandas/secciones'); } catch (e) { pag.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; return; }
       const leer = () => pag.querySelectorAll('tr[data-i]').forEach(tr => {
         const s = sec[+tr.dataset.i];
-        s.numero = parseInt(tr.querySelector('[data-k="numero"]').value) || 1;
+        { const n = parseInt(tr.querySelector('[data-k="numero"]').value); s.numero = Number.isFinite(n) ? n : 1; }
         s.nombre = tr.querySelector('[data-k="nombre"]').value.trim();
         const tipo = tr.querySelector('[data-k="tipo"]').value;
         s.comercial = tipo === 'comercial'; s.opcional = tipo === 'opcional';
@@ -254,7 +313,7 @@
             <b>Siempre</b>: ID y cortinas, salen en cada tanda. <b>Opcional</b>: solo sale si la tanda lleva al menos una cuña comercial.</p>
           <table class="ccf-tabla"><thead><tr><th style="width:80px">Orden</th><th>Sección</th><th style="width:170px">Tipo</th><th style="width:70px">Spots</th><th style="width:40px"></th></tr></thead>
           <tbody>${sec.map((s, i) => `<tr data-i="${i}" class="t-${s.comercial ? 'comercial' : s.opcional ? 'opcional' : 'siempre'}">
-            <td><input type="number" data-k="numero" min="1" max="99" value="${s.numero}"></td>
+            <td><input type="number" data-k="numero" min="0" max="99" value="${s.numero}"></td>
             <td><input data-k="nombre" maxlength="60" value="${esc(s.nombre)}"></td>
             <td><select data-k="tipo"><option value="siempre" ${!s.comercial && !s.opcional ? 'selected' : ''}>Siempre</option>
               <option value="comercial" ${s.comercial ? 'selected' : ''}>Comercial</option>

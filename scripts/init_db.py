@@ -857,6 +857,18 @@ def run_migrations(conn: sqlite3.Connection) -> None:
             cursor.execute(f"ALTER TABLE audios ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
     logger.info("  → audios.meta_*: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 40 — Promociones y Separador de entrada
+    #   · sección 0 «Promociones»: lo primero que suena en la tanda (antes que la identificación y la publicidad)
+    #   · la «Cortina de entrada» (2) pasa a llamarse «Separador de entrada»: el jingle/sweeper que anuncia la tanda
+    #   Solo una vez: si el operador borra o renombra estas secciones, no se vuelven a tocar.
+    # ------------------------------------------------------------------
+    if not cursor.execute("SELECT 1 FROM config WHERE clave = 'migracion_promos_separador'").fetchone():
+        cursor.execute("INSERT OR IGNORE INTO tanda_secciones (numero, nombre, opcional, comercial) VALUES (0, 'Promociones', 0, 0)")
+        cursor.execute("UPDATE tanda_secciones SET nombre = 'Separador de entrada' WHERE numero = 2 AND nombre = 'Cortina de entrada'")
+        cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_promos_separador', '1')")
+    logger.info("  → secciones Promociones y Separador de entrada: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

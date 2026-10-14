@@ -1301,3 +1301,15 @@ def test_rubros_incompatibles_no_suenan_seguidos():
         assert len(ordenar_tanda([r("R", "Restaurante"), r("C", "Cafeteria")])) == 2
     finally:
         fijar_conflictos_rubros([])
+
+
+def test_orden_de_la_tanda_promociones_id_separador_y_comerciales(engine, media):
+    """Promociones (0) lo primero, luego Identificación (1), Separador de entrada (2) y por último la publicidad (3)."""
+    add_pauta(engine, media, "CLIENTE", seccion=3)
+    add_pauta(engine, media, "SEPARADOR", seccion=2)
+    add_pauta(engine, media, "ID ESTACION", seccion=1)
+    add_pauta(engine, media, "PROMO", seccion=0)
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert en_cola(engine) == ["PROMO", "ID ESTACION", "SEPARADOR", "CLIENTE"]

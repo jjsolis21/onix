@@ -261,3 +261,29 @@ def test_asignar_la_voz_a_una_cuna_y_verla_en_la_biblioteca_de_cunas(client):
     fila = next(x for x in lista if x["id"] == aid)
     assert fila["voz"] == "Mujer"                       # la escritura ya registrada de la categoría, no «mujer»
     assert client.get(f"/api/v1/biblioteca/{aid}/ficha").json()["voz"] == "Mujer"
+
+
+def test_separador_de_entrada_con_rotacion_entre_varios(client):
+    c = _db()
+    ids = [_audio(c, f"Separador {x}", f"library/sep_{x}.mp3", dur=4, tipo="Efecto") for x in "ABC"]
+    c.commit(); c.close()
+    r = client.get("/api/v1/comerciales/separadores").json()
+    nombres = {s["numero"]: s["nombre"] for s in r["secciones"]}
+    assert nombres[0] == "Promociones" and nombres[2] == "Separador de entrada"
+    assert {a["id"] for a in r["disponibles"]} >= set(ids)
+    assert client.put("/api/v1/comerciales/separadores/3", json={"audios": ids}).status_code == 422       # 3 = Comerciales
+    assert client.put("/api/v1/comerciales/separadores/2", json={"audios": [ids[1], ids[0], 999999]}).status_code == 422
+    assert client.put("/api/v1/comerciales/separadores/2", json={"audios": [ids[1], ids[0], ids[2]], "siempre": True}).status_code == 200
+    sec = next(s for s in client.get("/api/v1/comerciales/separadores").json()["secciones"] if s["numero"] == 2)
+    assert [a["id"] for a in sec["audios"]] == [ids[1], ids[0], ids[2]] and sec["opcional"] is False
+    # es UNA pauta con 3 versiones que rotan (el motor las rota en cada salida)
+    c = _db()
+    pa = c.execute("SELECT id, audio_id, seccion, activo FROM pautas WHERE contrato_id = 'SEP-2'").fetchone()
+    assert (pa["audio_id"], pa["seccion"], pa["activo"]) == (ids[1], 2, 1)
+    assert [r[0] for r in c.execute("SELECT audio_id FROM pauta_audios WHERE pauta_id = ? ORDER BY orden", (pa["id"],))] == [ids[1], ids[0], ids[2]]
+    c.close()
+    # quitar todos: el separador se apaga, sin borrar nada
+    assert client.put("/api/v1/comerciales/separadores/2", json={"audios": []}).status_code == 200
+    c = _db()
+    assert c.execute("SELECT activo FROM pautas WHERE contrato_id = 'SEP-2'").fetchone()[0] == 0
+    c.close()

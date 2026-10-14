@@ -130,7 +130,8 @@ def test_config_normalizacion(client):
 
 def test_secciones_de_tanda(client, tmp_path):
     secs = client.get("/api/v1/tandas/secciones").json()
-    assert [s["nombre"] for s in secs][:3] == ["Identificación", "Cortina de entrada", "Comerciales"]
+    assert [s["nombre"] for s in secs][:5] == ["Promociones", "Identificación", "Separador de entrada", "Comerciales", "Cortina de salida"]
+    por_defecto = [{"numero": x["numero"], "nombre": x["nombre"], "opcional": x["opcional"], "comercial": x["comercial"]} for x in secs]
     nuevas = [{"numero": 1, "nombre": "ID", "opcional": False, "comercial": False},
               {"numero": 3, "nombre": "Comerciales", "opcional": False, "comercial": True},
               {"numero": 9, "nombre": "Cierre", "opcional": True, "comercial": False}]
@@ -145,6 +146,10 @@ def test_secciones_de_tanda(client, tmp_path):
     r = client.post("/api/v1/pautas", json={"cliente": "emisora", "audio_id": aid, "seccion": 1,
                                              "matriz": {"1-10": True}})
     assert r.status_code == 201 and r.json()["seccion"] == 1
+    # Una sección 0 (Promociones) es válida
+    r0 = client.post("/api/v1/pautas", json={"cliente": "emisora", "audio_id": aid, "seccion": 0, "matriz": {"1-10": True}})
+    assert r0.status_code == 201 and r0.json()["seccion"] == 0
+    client.put("/api/v1/tandas/secciones", json=por_defecto)          # deja las secciones como estaban para las demás pruebas
 
 
 def test_config_tandas_inmediatas(client):

@@ -1301,7 +1301,8 @@
     const agencia  = ($('fAgencia')?.value   ?? '').trim().toUpperCase();
     const urgente  = prioridad > 0;
     const menciones= parseInt($('fMenciones')?.value ?? '4', 10);
-    const seccion  = parseInt($('fSeccion')?.value ?? '3', 10) || 3;
+    const _sec = parseInt($('fSeccion')?.value ?? '3', 10);
+    const seccion  = Number.isFinite(_sec) ? _sec : 3;       // 0 = Promociones es válido
 
     // Validaciones
     if (!cliente)  { _showModalError('El cliente es obligatorio.'); return; }
