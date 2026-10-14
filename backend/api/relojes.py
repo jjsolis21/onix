@@ -225,17 +225,28 @@ def _tanda_media_seg(conn) -> float:
     return round((row[0] or 0) / row[1]) if row and row[1] else 0.0
 
 
-def _contar(conn, f: dict) -> tuple[int, int]:
-    """Audios que cumplen una fila (o un audio fijo) y su duración media."""
+def _contar(conn, f: dict, pendientes: bool = False) -> tuple[int, int]:
+    """
+    Audios que el automático PUEDE elegir para una fila (o un audio fijo) y su duración media.
+    La música sin aprobar (Bandeja de entrada) no cuenta: el planificador no la toca. Con pendientes=True se
+    cuentan justo esas, para avisar de que la fila está vacía por falta de aprobación y no por falta de canciones.
+    """
     from backend.audio.planner import Planner
     if f.get("audio_id"):
+        if pendientes:
+            return 0, 0
         row = conn.execute("SELECT COUNT(*), AVG(duracion) FROM audios WHERE id = ? AND activo = 1",
                            (f["audio_id"],)).fetchone()
     else:
+        tipo = f.get("tipo_audio", "Musica")
+        if pendientes and tipo != "Musica":
+            return 0, 0
         clauses, params = Planner(DB_PATH)._where_filtros(_limpiar_filtros(f.get("filtros") or {}))
-        where = " AND ".join(["a.activo = 1", "a.tipo_audio = ?"] + clauses)
-        row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}",
-                           [f.get("tipo_audio", "Musica")] + params).fetchone()
+        base = ["a.activo = 1", "a.tipo_audio = ?"]
+        if tipo == "Musica":
+            base.append("COALESCE(a.aprobada, 1) = " + ("0" if pendientes else "1"))
+        where = " AND ".join(base + clauses)
+        row = conn.execute(f"SELECT COUNT(*), AVG(a.duracion) FROM audios a WHERE {where}", [tipo] + params).fetchone()
     return row[0], round(row[1] or 0)
 
 
@@ -254,7 +265,8 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
     for f in filas:
         n, media = _contar(conn, f)
         efectiva = max(1.0, media - crossfade) if media else 0
-        out.append({**f, "candidatos": n, "duracion_media": media, "inicio": round(t)})
+        out.append({**f, "candidatos": n, "duracion_media": media, "inicio": round(t),
+                    "pendientes": _contar(conn, f, pendientes=True)[0]})   # esperan en la Bandeja de entrada
         t += efectiva
     ciclo = round(t)
     tandas = _tanda_media_seg(conn)

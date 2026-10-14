@@ -235,3 +235,24 @@ def test_config_musica_bajo_la_voz(client):
     assert client.put("/api/v1/config/motor", json={"voz_fondo_pct": 30}).json()["voz_fondo_pct"] == 30
     assert client.put("/api/v1/config/motor", json={"voz_fondo_pct": 150}).status_code == 422
     client.put("/api/v1/config/motor", json={"voz_fondo_pct": 20})
+
+
+def test_la_vista_del_reloj_solo_cuenta_musica_aprobada(client):
+    """La música sin aprobar (Bandeja de entrada) no la elige el automático: la vista no debe contarla como disponible."""
+    import sqlite3
+    from backend.paths import DB_PATH
+    c = sqlite3.connect(DB_PATH)
+    for titulo, aprobada in (("Z1", 1), ("Z2", 0), ("Z3", 0)):
+        c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio, subgenero, aprobada)"
+                  " VALUES (?, 'ZETA', 200, ?, 'Musica', 'GENEROZETA', ?)", (titulo, f"library/{titulo}.mp3", aprobada))
+    c.commit(); c.close()
+    v = client.post("/api/v1/relojes/vista-previa",
+                    json={"nombre": "x", "filas": [{"tipo_audio": "Musica", "filtros": {"cat1": "GENEROZETA"}}]}).json()
+    assert v["filas"][0]["candidatos"] == 1 and v["filas"][0]["pendientes"] == 2
+    c = sqlite3.connect(DB_PATH)
+    c.execute("UPDATE audios SET aprobada = 0 WHERE artista = 'ZETA'"); c.commit(); c.close()
+    v = client.post("/api/v1/relojes/vista-previa",
+                    json={"nombre": "x", "filas": [{"tipo_audio": "Musica", "filtros": {"cat1": "GENEROZETA"}}]}).json()
+    assert v["filas"][0]["candidatos"] == 0 and v["filas"][0]["pendientes"] == 3 and v["saltadas"] == [0]
+    c = sqlite3.connect(DB_PATH)
+    c.execute("DELETE FROM audios WHERE artista = 'ZETA'"); c.commit(); c.close()

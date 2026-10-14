@@ -381,8 +381,11 @@
       if (!f) return;
       tr.classList.toggle("saltada", !f.candidatos);
       tr.querySelector("[data-ini]").textContent = f.candidatos ? fmt(f.inicio) : "—";
-      tr.querySelector("[data-cand]").innerHTML = `<span class="rj-cand ${f.candidatos ? "" : "cero"}">${f.candidatos
-        ? `${f.candidatos} audio(s)${f.duracion_media ? ` · ${fmt(f.duracion_media)}` : ""}` : "0 audios: se salta"}</span>`;
+      // Solo cuenta la música APROBADA: la que espera en la Bandeja de entrada no la elige el automático
+      const espera = f.pendientes ? ` · ${f.pendientes} sin aprobar en la Bandeja de entrada` : "";
+      tr.querySelector("[data-cand]").innerHTML = `<span class="rj-cand ${f.candidatos > 2 ? "" : "cero"}">${f.candidatos
+        ? `${f.candidatos} audio(s)${f.duracion_media ? ` · ${fmt(f.duracion_media)}` : ""}${f.candidatos <= 2 ? " · ⚠ se repetirá mucho" : ""}${espera}`
+        : `0 audios: se salta${espera}`}</span>`;
     });
     const ultima = v.ultima_fila != null ? v.ultima_fila + 1 : "—";
     $("rjRespTxt").innerHTML = v.respaldo_candidatos == null ? "Sin respaldo."
@@ -396,7 +399,9 @@
       <span>La hora termina en la fila <b>${ultima}</b></span>
       ${v.saltadas.length ? (v.respaldo_candidatos
         ? `<span>Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: <b>usan el respaldo</b></span>`
-        : `<span class="mal">⚠ Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: se saltan</span>`) : ""}`
+        : `<span class="mal">⚠ Fila(s) ${v.saltadas.map(x => x + 1).join(", ")} sin audios: se saltan</span>`) : ""}
+      ${v.filas.some(f => f.pendientes) ? `<span class="mal">⚠ Hay canciones de estas categorías sin aprobar: apruébalas en Biblioteca › Bandeja de entrada para que el reloj las use</span>` : ""}
+      ${v.filas.some(f => f.candidatos && f.candidatos <= 2) ? `<span class="mal">⚠ Fila(s) ${v.filas.map((f, i) => f.candidatos && f.candidatos <= 2 ? i + 1 : 0).filter(Boolean).join(", ")} con 1 o 2 canciones: sonarán siempre las mismas</span>` : ""}`
       : `<span class="mal">Ninguna fila tiene audios: esta hora sonará solo con música al azar.</span>`;
     const total = 3600;
     cont.innerHTML = v.linea.map(it => {
