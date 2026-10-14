@@ -1284,3 +1284,20 @@ def test_la_voz_pesa_mas_que_el_rubro():
     from backend.audio.audio_engine import ordenar_tanda
     o = ordenar_tanda([_p("F1", "Mujer", "BANCA"), _p("F2", "Mujer", "BANCA"), _p("M", "Hombre", "BANCA")])
     assert [p["cliente"] for p in o] == ["F1", "M", "F2"]       # mismo rubro, pero separa a las mujeres
+
+
+# ── Rubros incompatibles: misma tanda sí, seguidos no ──
+
+def test_rubros_incompatibles_no_suenan_seguidos():
+    from backend.audio.audio_engine import fijar_conflictos_rubros, ordenar_tanda, rubros_chocan
+    fijar_conflictos_rubros([("Restaurante", "Cafetería")])
+    try:
+        assert rubros_chocan("RESTAURANTE", "CAFETERIA") and rubros_chocan("CAFETERIA", "RESTAURANTE")
+        assert rubros_chocan("BANCA", "BANCA") and not rubros_chocan("BANCA", "CAFETERIA") and not rubros_chocan("", "BANCA")
+        r = lambda c, rub: {"pauta_id": c, "cliente": c, "rubro": rub, "voz": "", "posicion": 0, "orden": None}
+        o = ordenar_tanda([r("R", "Restaurante"), r("C", "cafeteria "), r("B", "Banca")])
+        assert [p["cliente"] for p in o] == ["R", "B", "C"]                 # la de otro rubro las separa
+        # solo hay esas dos: se permiten (ninguna se queda sin salir)
+        assert len(ordenar_tanda([r("R", "Restaurante"), r("C", "Cafeteria")])) == 2
+    finally:
+        fijar_conflictos_rubros([])

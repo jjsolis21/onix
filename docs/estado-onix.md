@@ -66,8 +66,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   canción aún audible y esa cola se va bajo el empalme de la cuña (sin «vacío» antes de entrar). Si no había nada que poner, la canción recupera su volumen. Medido con BASS real.
 - Voz de la cuña y regla «mujeres no se pegan»: `audios.genero_vocal` (ventana de edición, tipo Cuña muestra «Voz»); `es_voz_mujer`,
   `ordenar_tanda` (voz pesa más que rubro; cede si no hay cómo; interruptor `regla_voces_mujer` en Config. de comerciales › General);
-  chequeo avisa «sin_voz»; Tandas del día marca ♀. PENDIENTE (Opus): rubros incompatibles NO seguidos (tabla de pares) y secciones
-  Promociones + separador de entrada.
+  chequeo avisa «sin_voz»; Tandas del día marca ♀. Rubros incompatibles (misma tanda sí, seguidos no): tabla `comerciales_conflictos_rubros`,
+  `rubros_chocan`/`norm_rubro` en `ordenar_tanda` (sin tildes ni mayúsculas), pestaña «Rubros» en Config. de comerciales,
+  GET `/api/v1/comerciales/rubros`, POST/DELETE `.../rubros/conflictos`. PENDIENTE (Opus): secciones Promociones + separador de entrada.
 - Lista de spots: «☰ Columnas» (como la Biblioteca Musical): `data-col` en cada celda, estilo generado, preferencia en localStorage `cm_cols`.
   Paso «Audio y versiones» del spot: panel lateral (Elegir de la biblioteca / Subir archivo / Agregar versión), zona para soltar archivo,
   y el selector de cuñas con panel de filtros (anunciante, con/sin pauta) y subida directa. UI sin verificar a ojo (panel rechazó la página de prueba).

@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS comerciales_clientes (
     id INTEGER PRIMARY KEY, nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
     contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
     notas TEXT NOT NULL DEFAULT '', creado_en TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS comerciales_conflictos_rubros (
+    a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (a, b));
 CREATE TABLE IF NOT EXISTS comerciales_agencias (
     id INTEGER PRIMARY KEY, nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
     contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
@@ -507,4 +509,60 @@ def quitar_bloque(evento_id: int):
     finally:
         c.close()
     _replanificar()
+    return {"ok": True}
+
+
+# ── Rubros incompatibles: pueden ir en la misma tanda, pero no una cuña tras otra ─────────────────────
+
+class ConflictoIn(BaseModel):
+    a: str = Field(..., min_length=1, max_length=60)
+    b: str = Field(..., min_length=1, max_length=60)
+
+
+@router.get("/api/v1/comerciales/rubros", summary="Rubros en uso y los pares que no deben sonar seguidos")
+def rubros():
+    c = _conn()
+    try:
+        usados = [{"nombre": r[0], "spots": r[1]} for r in c.execute(
+            "SELECT TRIM(rubro), COUNT(*) FROM pautas WHERE activo = 1 AND TRIM(COALESCE(rubro, '')) != ''"
+            " GROUP BY UPPER(TRIM(rubro)) ORDER BY UPPER(TRIM(rubro))")]
+        pares = [{"a": r[0], "b": r[1]} for r in c.execute("SELECT a, b FROM comerciales_conflictos_rubros ORDER BY a, b")]
+        return {"rubros": usados, "conflictos": pares}
+    finally:
+        c.close()
+
+
+@router.post("/api/v1/comerciales/rubros/conflictos", status_code=201, summary="Marcar dos rubros como incompatibles")
+def agregar_conflicto(b: ConflictoIn):
+    from backend.audio.audio_engine import norm_rubro
+    x, y = sorted((norm_rubro(b.a), norm_rubro(b.b)))
+    if not x or not y:
+        raise HTTPException(status_code=422, detail="Escribe los dos rubros")
+    if x == y:
+        raise HTTPException(status_code=422, detail="Son el mismo rubro: ya se separan solos")
+    c = _conn()
+    try:
+        try:
+            c.execute("INSERT INTO comerciales_conflictos_rubros (a, b) VALUES (?, ?)", (x, y))
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=409, detail=f"{x} y {y} ya están marcados")
+        c.commit()
+    finally:
+        c.close()
+    _avisar_motor()
+    return {"a": x, "b": y}
+
+
+@router.delete("/api/v1/comerciales/rubros/conflictos", summary="Quitar un par de rubros incompatibles")
+def quitar_conflicto(a: str, b: str):
+    from backend.audio.audio_engine import norm_rubro
+    x, y = sorted((norm_rubro(a), norm_rubro(b)))
+    c = _conn()
+    try:
+        if not c.execute("DELETE FROM comerciales_conflictos_rubros WHERE a = ? AND b = ?", (x, y)).rowcount:
+            raise HTTPException(status_code=404, detail="Ese par no está marcado")
+        c.commit()
+    finally:
+        c.close()
+    _avisar_motor()
     return {"ok": True}

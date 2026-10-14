@@ -216,8 +216,36 @@ def version_rotada(versiones: list[int], emitidas: int) -> Optional[int]:
     return versiones[emitidas % len(versiones)] if versiones else None
 
 
+def norm_rubro(texto) -> str:
+    """Rubro en forma comparable: sin espacios de más, sin tildes y en mayúsculas ('Cafetería ' == 'CAFETERIA')."""
+    t = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+    return " ".join(t.split()).upper()
+
+
 def _rubro(pauta: dict) -> str:
-    return (pauta.get("rubro") or "").strip().upper()
+    return norm_rubro(pauta.get("rubro"))
+
+
+# Pares de rubros que pueden ir en la misma tanda pero NO una cuña tras otra (Restaurante y Cafetería).
+CONFLICTOS_RUBROS: set = set()
+
+
+def fijar_conflictos_rubros(pares) -> None:
+    global CONFLICTOS_RUBROS
+    CONFLICTOS_RUBROS = {frozenset((norm_rubro(a), norm_rubro(b))) for a, b in pares
+                         if norm_rubro(a) and norm_rubro(b) and norm_rubro(a) != norm_rubro(b)}
+
+
+def rubros_chocan(a: str, b: str) -> bool:
+    """Mismo rubro o rubros marcados como incompatibles: no deben sonar seguidos."""
+    return bool(a) and bool(b) and (a == b or frozenset((a, b)) in CONFLICTOS_RUBROS)
+
+
+def leer_conflictos_rubros(conn) -> list[tuple[str, str]]:
+    try:
+        return [(r[0], r[1]) for r in conn.execute("SELECT a, b FROM comerciales_conflictos_rubros")]
+    except sqlite3.OperationalError:
+        return []
 
 
 SEPARAR_VOCES = True      # regla «voces de mujer no se pegan» (config regla_voces_mujer)
@@ -256,7 +284,7 @@ def ordenar_tanda(pautas: list[dict]) -> list[dict]:
         prev_mujer = bool(previo_p) and mujer(previo_p)
 
         def rubro_ok(p):
-            return not prev_rubro or _rubro(p) != prev_rubro
+            return not rubros_chocan(prev_rubro, _rubro(p))
 
         def voz_ok(p):
             return not (prev_mujer and mujer(p))
@@ -1189,6 +1217,14 @@ class AudioEngine:
             self._fade_corte = max(0.2, min(float(self._cfg("fade_corte_seg", str(self.FADE_CORTE)) or self.FADE_CORTE), 15.0))
             self._fade_curva = parse_curva_fade(self._cfg("fade_corte_curva", ""))
             fijar_regla_voces(self._cfg("regla_voces_mujer", "1") not in ("0", "false", ""))
+            try:
+                _c = _db_conn(self._db)
+                try:
+                    fijar_conflictos_rubros(leer_conflictos_rubros(_c))
+                finally:
+                    _c.close()
+            except Exception:
+                pass
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:

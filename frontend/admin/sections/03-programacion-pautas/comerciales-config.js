@@ -61,13 +61,13 @@
     const { cuerpo } = ventana('⚙ Config. de comerciales', 940);
     cuerpo.innerHTML = `
       <nav class="ccf-tabs">
-        <button data-t="general">General</button><button data-t="breaks">Breaks por hora</button><button data-t="prioridades">Prioridades</button>
+        <button data-t="general">General</button><button data-t="breaks">Breaks por hora</button><button data-t="prioridades">Prioridades</button><button data-t="rubros">Rubros</button>
         <button data-t="clientes">Clientes</button><button data-t="agencias">Agencias</button>
       </nav><div class="ccf-pagina"></div>`;
     const pag = cuerpo.querySelector('.ccf-pagina');
     const ir = t => {
       cuerpo.querySelectorAll('.ccf-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-      ({ general, breaks, prioridades, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
+      ({ general, breaks, prioridades, rubros, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
     };
     cuerpo.querySelector('.ccf-tabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) ir(b.dataset.t); });
 
@@ -190,6 +190,51 @@
           } catch (err) { msgEn(msg, err.message, false); }
         }
       });
+    }
+
+    // ── Rubros: pares que pueden compartir tanda pero no sonar seguidos ──
+    async function rubros() {
+      let d;
+      try { d = await api('/api/v1/comerciales/rubros'); } catch (e) { pag.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; return; }
+      pag.innerHTML = `
+        <p class="ccf-hint">Dos cuñas de un <b>mismo rubro</b> ya no suenan seguidas. Aquí marcas rubros <b>distintos</b> que tampoco deben sonar
+          uno tras otro (por ejemplo Restaurante y Cafetería): pueden ir en la misma tanda, pero separados por otra cuña.
+          Si no hay forma de separarlos, se permiten: ninguna cuña se queda sin salir.</p>
+        <div class="ccf-dos">
+          <div><div class="ccf-lista-cab"><b>Rubros en uso</b></div>
+            <div class="ccf-tabla-wrap"><table class="ccf-tabla"><tbody>${d.rubros.length ? d.rubros.map(r =>
+              `<tr data-rubro="${esc(r.nombre)}" title="Clic para usarlo en el par"><td><b>${esc(r.nombre)}</b></td><td class="num">${r.spots} spot${r.spots !== 1 ? 's' : ''}</td></tr>`).join('')
+              : '<tr><td class="ccf-vacio">Los spots aún no tienen rubro</td></tr>'}</tbody></table></div></div>
+          <div><div class="ccf-lista-cab"><b>No deben sonar seguidos</b></div>
+            <div class="ccf-form">
+              <label>Rubro A<input id="ccfRbA" list="ccfRbLista" autocomplete="off"></label>
+              <label>Rubro B<input id="ccfRbB" list="ccfRbLista" autocomplete="off"></label>
+              <datalist id="ccfRbLista">${d.rubros.map(r => `<option value="${esc(r.nombre)}">`).join('')}</datalist>
+              <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfRbAdd">＋ Agregar par</button><span class="ccf-msg" id="ccfRbMsg"></span></div>
+            </div>
+            <div class="ccf-tabla-wrap" style="margin-top:10px"><table class="ccf-tabla"><tbody>${d.conflictos.length ? d.conflictos.map(c =>
+              `<tr><td><b>${esc(c.a)}</b> ↔ <b>${esc(c.b)}</b></td><td style="text-align:right"><button class="ccf-btn ccf-btn--mini ccf-btn--peligro" data-quitar-par="${esc(c.a)}|${esc(c.b)}">Quitar</button></td></tr>`).join('')
+              : '<tr><td class="ccf-vacio">Aún no hay pares</td></tr>'}</tbody></table></div>
+          </div>
+        </div>`;
+      const msg = pag.querySelector('#ccfRbMsg');
+      pag.onclick = async e => {
+        const fila = e.target.closest('tr[data-rubro]');
+        if (fila) { const A = pag.querySelector('#ccfRbA'), B = pag.querySelector('#ccfRbB'); (A.value ? B : A).value = fila.dataset.rubro; return; }
+        const q = e.target.closest('[data-quitar-par]');
+        if (q) {
+          const [a, b] = q.dataset.quitarPar.split('|');
+          try { await api(`/api/v1/comerciales/rubros/conflictos?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`, { method: 'DELETE' }); rubros(); }
+          catch (err) { msgEn(msg, err.message, false); }
+          return;
+        }
+        if (e.target.id === 'ccfRbAdd') {
+          try {
+            await api('/api/v1/comerciales/rubros/conflictos', json('POST', { a: pag.querySelector('#ccfRbA').value, b: pag.querySelector('#ccfRbB').value }));
+            rubros();
+          } catch (err) { msgEn(msg, err.message, false); }
+        }
+      };
     }
 
     // ── Prioridades: secciones de la tanda ──

@@ -229,3 +229,24 @@ def test_voz_de_la_cuna_chequeo_y_tandas_del_dia(client):
     assert all("mujer" in x for x in cunas)
     ch = client.get("/api/v1/comerciales/chequeo").json()["problemas"]
     assert any(x["codigo"] == "sin_voz" and x["cliente"] == "VOZ SIN" for x in ch)
+
+
+def test_rubros_incompatibles_api_y_tandas_del_dia(client):
+    c = _db()
+    ids = [(_audio(c, f"Rb cuña {i}", f"library/rb_{i}.mp3", dur=20), r) for i, r in enumerate(("Restaurante", "Cafetería", "Banca"))]
+    for (aid, rub), nom in zip(ids, ("RB REST", "RB CAFE", "RB BANCA")):
+        c.execute("UPDATE audios SET genero_vocal = 'Hombre' WHERE id = ?", (aid,))
+        _pauta(c, nom, aid, rubro=rub, matriz={"5-9": True})
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.execute("DELETE FROM config WHERE clave = 'tandas_grilla'")
+    c.commit(); c.close()
+    lista = client.get("/api/v1/comerciales/rubros").json()
+    assert {"RESTAURANTE", "CAFETERÍA", "BANCA"} <= {x["nombre"].upper() for x in lista["rubros"]}
+    assert client.post("/api/v1/comerciales/rubros/conflictos", json={"a": "Restaurante", "b": "Cafetería"}).status_code == 201
+    assert client.post("/api/v1/comerciales/rubros/conflictos", json={"a": "cafeteria", "b": "RESTAURANTE"}).status_code == 409
+    assert client.post("/api/v1/comerciales/rubros/conflictos", json={"a": "Banca", "b": "banca "}).status_code == 422
+    r = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "2026-10-16"}).json()      # viernes = día 5
+    orden = [x["cliente"] for b in r["horas"][9]["bloques"] for x in b["cunas"] if x["cliente"].startswith("RB ")]
+    assert len(orden) == 3 and orden[1] == "RB BANCA"                 # Restaurante y Cafetería no quedan juntas
+    assert client.delete("/api/v1/comerciales/rubros/conflictos", params={"a": "RESTAURANTE", "b": "CAFETERIA"}).status_code == 200
+    assert client.delete("/api/v1/comerciales/rubros/conflictos", params={"a": "x", "b": "y"}).status_code == 404

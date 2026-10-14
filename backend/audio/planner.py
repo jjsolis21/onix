@@ -556,8 +556,9 @@ class Planner:
 
     def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]) -> list[dict]:
         """Las cuñas de la tanda, en el orden en que saldrán (misma cuenta que el motor)."""
-        from backend.audio.audio_engine import (aplicar_ajustes, fijar_regla_voces, leer_ajustes, planificar_tandas,
-                                                version_rotada)
+        from backend.audio.audio_engine import (aplicar_ajustes, fijar_conflictos_rubros, fijar_regla_voces,
+                                                leer_ajustes, leer_conflictos_rubros, planificar_tandas, version_rotada)
+        fijar_conflictos_rubros(leer_conflictos_rubros(conn))
         fila_voz = conn.execute("SELECT valor FROM config WHERE clave = 'regla_voces_mujer'").fetchone()
         fijar_regla_voces((fila_voz[0] if fila_voz else "1") not in ("0", "false", ""))
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
