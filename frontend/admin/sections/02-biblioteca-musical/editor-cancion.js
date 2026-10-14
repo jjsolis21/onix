@@ -46,7 +46,9 @@
     { k: 'cue_outro',       n: 'Outro',       c: '#ffa94d', antes: 0 },
     { k: 'cue_mezcla',      n: 'Mezcla',      c: '#4dabf7', antes: 0 },
   ];
-  const TIPOS = { Musica: 'Música', Efecto: 'Jingle / ID', Sweeper: 'Sweeper', Programa: 'Programa', Tips: 'Tips' };
+  const TIPOS = { Musica: 'Música', Efecto: 'Jingle / ID', Sweeper: 'Sweeper', Programa: 'Programa', Tips: 'Tips', 'Cuña': 'Comercial / Cuña' };
+  // Un comercial muestra solo lo que usa (como el editor de Soho): inicio, intro, outro y mezcla
+  const MARCAS_CUNA = ['cue_inicio', 'cue_intro', 'cue_outro', 'cue_mezcla'];
   const PRIORIDAD = { 1: '▲ Alta', 2: '● Normal', 3: '▼ Baja' };
 
   let E = null;          // estado del editor abierto
@@ -56,7 +58,7 @@
   async function abrir(id = null, opciones = {}) {
     if (E) cerrar(true);
     const schema = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json()).catch(() => ({ categorias: [] }));
-    let f = { titulo: '', artista: '', tipo_audio: opciones.tipo || 'Musica', prioridad: 2, aprobada: 1 };
+    let f = { titulo: '', artista: opciones.artista || '', tipo_audio: opciones.tipo || 'Musica', prioridad: 2, aprobada: 1 };
     // Categorías de jingles, sweepers y tips (Admin › Identificadores)
     const ident = await fetch('/api/v1/ident/categorias').then(r => r.ok ? r.json() : {}).catch(() => ({}));
     if (id) {
@@ -67,8 +69,11 @@
     // Desde la Biblioteca solo música y programas; Identificadores pasa jingles, sweepers y tips
     const tipos = opciones.tipos || ['Musica', 'Programa'];
     E = { id, f, schema, ident, tipos: tipos.includes(f.tipo_audio) ? tipos : [...tipos, f.tipo_audio], valores: Object.fromEntries(MARCAS.map(m => [m.k, +(f[m.k] || 0)])),
-          sel: 'cue_intro', ws: null, rp: null, zonas: [], archivo: null, sucio: false, onGuardar: opciones.onGuardar };
+          sel: 'cue_intro', ws: null, rp: null, zonas: [], archivo: null, sucio: false, onGuardar: opciones.onGuardar,
+          onCerrar: opciones.onCerrar,
+          marcasActivas: f.tipo_audio === 'Cuña' ? MARCAS.filter(m => MARCAS_CUNA.includes(m.k)) : undefined };
     pintar();
+    if (!id && opciones.archivo) elegirArchivo(opciones.archivo);
     if (id) cargarOnda(`/api/v1/audios/${id}/stream`);
     document.addEventListener('keydown', teclado, true);
   }
@@ -134,7 +139,7 @@
         <div class="ec-dos">
           <section class="ec-sec"><h3>Datos</h3>
             <div class="ec-campos">
-              <label class="ec-ancho">Artista <input id="ecArtista" list="ecArtistas" value="${esc(f.artista)}" autocomplete="off"><datalist id="ecArtistas"></datalist></label>
+              <label class="ec-ancho"><span id="ecLblArtista">Artista</span> <input id="ecArtista" list="ecArtistas" value="${esc(f.artista)}" autocomplete="off"><datalist id="ecArtistas"></datalist></label>
               <label class="ec-ancho">Título <input id="ecTitulo" value="${esc(f.titulo)}"></label>
               <label class="ec-ancho" data-musica>Álbum <input id="ecAlbum" value="${esc(f.album || '')}"></label>
               <label data-musica>Año <input id="ecAnio" type="number" min="1900" max="2100" value="${esc(f.anio || '')}"></label>
@@ -185,7 +190,7 @@
     enlazar();
     ajustarTipo();
     fondo.querySelector('#ecTipo').addEventListener('change', ajustarTipo);
-    fetch('/api/v1/artistas?tipo=Musica').then(r => r.ok ? r.json() : []).then(l => {
+    fetch(`/api/v1/artistas?tipo=${encodeURIComponent(f.tipo_audio === 'Cuña' ? 'Cuña' : 'Musica')}`).then(r => r.ok ? r.json() : []).then(l => {
       const dl = fondo.querySelector('#ecArtistas');
       if (dl) dl.innerHTML = l.map(a => `<option value="${esc(a.artista)}">`).join('');
     }).catch(() => { });
@@ -193,8 +198,10 @@
 
   /** Jingles, sweepers y tips no tienen género ni rotación: llevan su propia categoría (Admin › Identificadores) */
   function ajustarTipo() {
-    const tipo = E.raiz.querySelector('#ecTipo').value, esIdent = ['Efecto', 'Sweeper', 'Tips'].includes(tipo);
-    E.raiz.querySelectorAll('[data-musica]').forEach(l => { l.hidden = esIdent; });
+    const tipo = E.raiz.querySelector('#ecTipo').value, esCuna = tipo === 'Cuña';
+    const esIdent = ['Efecto', 'Sweeper', 'Tips'].includes(tipo);
+    E.raiz.querySelectorAll('[data-musica]').forEach(l => { l.hidden = esIdent || esCuna; });
+    const lbl = E.raiz.querySelector('#ecLblArtista'); if (lbl) lbl.textContent = esCuna ? 'Anunciante / cliente' : 'Artista';
     const l = E.raiz.querySelector('[data-ident]'), sel = E.raiz.querySelector('#ecIdent');
     l.hidden = !esIdent;
     const actual = sel.value || E.f.categoria_ident || '';
@@ -597,9 +604,11 @@
   function cerrar() {
     if (!E) return;
     try { E.ws?.destroy(); } catch (_) { }
+    const alCerrar = E.onCerrar;
     if (E.embebido) E.raiz.innerHTML = ''; else E.raiz?.remove();     // embebido: el contenedor es de quien lo montó
     document.removeEventListener('keydown', teclado, true);
     E = null;
+    try { alCerrar?.(); } catch (_) { }
   }
 
   /**

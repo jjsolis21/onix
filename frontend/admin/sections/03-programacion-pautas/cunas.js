@@ -69,6 +69,29 @@
     });
   }
 
+  /**
+   * Carga un comercial como en Soho: con la MISMA ventana que una canción (onda, inicio / intro / outro / mezcla,
+   * fundidos, volumen, AutoCue y datos). Devuelve la cuña guardada {id, titulo, artista, archivo_path} o null si se cancela.
+   */
+  async function cargarConEditor({ archivo = null, anunciante = '' } = {}) {
+    await global.PautaOnda?.listo?.();
+    if (!global.EditorCancion?.abrir) throw new Error('No se pudo cargar la ventana de edición');
+    return new Promise(resolve => {
+      let listo = false;
+      global.EditorCancion.abrir(null, {
+        tipo: TIPO, tipos: [TIPO], archivo, artista: (anunciante || '').trim().toUpperCase(),
+        onGuardar: async id => {
+          listo = true;
+          try {
+            const f = await fetch(`/api/v1/biblioteca/${id}/ficha`).then(r => r.json());
+            resolve({ id, titulo: f.titulo, artista: f.artista, archivo_path: f.archivo_path || '', duracion: f.duracion });
+          } catch (_) { resolve({ id, titulo: '', artista: '', archivo_path: '' }); }
+        },
+        onCerrar: () => { if (!listo) resolve(null); },
+      });
+    });
+  }
+
   // ── Escuchar ─────────────────────────────────────────────
   function escuchar(id, boton) {
     if (!audio) { audio = new Audio(); audio.addEventListener('ended', parar); }
@@ -108,7 +131,8 @@
         <input type="search" id="cunasBuscar" placeholder="Buscar cuña o anunciante…" autocomplete="off">
         <input id="cunasAnunciante" list="cunasAnunciantes" placeholder="Anunciante de las que vas a subir" autocomplete="off">
         <datalist id="cunasAnunciantes"></datalist>
-        <button type="button" class="btn-primary" id="cunasSubir">⬆ Subir cuñas</button>
+        <button type="button" class="btn-primary" id="cunasNueva" title="Con la ventana de edición: onda, marcas, fundidos y datos">✎ Cargar cuña…</button>
+        <button type="button" id="cunasSubir" title="Subir varias de una vez, sin editarlas">⬆ Subir varias</button>
         <input type="file" id="cunasArchivos" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" multiple hidden>
       </div>
       <div class="cunas-zona" id="cunasZona">Arrastra aquí los archivos de las cuñas (puedes soltar varios)</div>
@@ -133,6 +157,10 @@
     });
     $('cunasBuscar').addEventListener('input', pintar);
     $('cunasSubir').addEventListener('click', () => $('cunasArchivos').click());
+    $('cunasNueva').addEventListener('click', async () => {
+      try { const c = await cargarConEditor({ anunciante: $('cunasAnunciante').value }); if (c) refrescar(); }
+      catch (err) { alert(err.message); }
+    });
     $('cunasArchivos').addEventListener('change', e => { subirVarias([...e.target.files]); e.target.value = ''; });
     const zona = $('cunasZona');
     zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('encima'); });
@@ -236,7 +264,7 @@
               <h5>Cargar nueva</h5>
               <button type="button" class="cs-btn cs-btn--pri" id="csSubir">⬆ Subir archivo…</button>
               <input type="file" id="csArchivo" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" hidden>
-              <p class="cs-ayuda">Se carga a la Biblioteca y queda elegida. Anunciante: <b id="csAnunciaNuevo"></b></p>
+              <p class="cs-ayuda">Se abre la ventana de edición (onda, marcas, fundidos) y al guardar queda elegida. Anunciante: <b id="csAnunciaNuevo"></b></p>
               <p class="cs-cuenta" id="csCuenta"></p>
             </aside>
             <div class="cs-lista-wrap">
@@ -273,15 +301,11 @@
       });
       // Subir desde aquí: se carga a la biblioteca y queda elegida
       const subirAqui = async f => {
-        if (!f) return;
-        const est = $$('csEstado');
-        est.innerHTML = `<div class="cunas-subida"><span>${esc(f.name)}</span><i><b></b></i><em>subiendo…</em></div>`;
-        try {
-          const creada = await subir(f, (cliente || '').trim(), pct => { est.querySelector('b').style.width = `${pct}%`; });
-          cerrar(creada);
-        } catch (err) { est.innerHTML = `<div class="cunas-subida error"><span>${esc(f.name)}</span><em>✗ ${esc(err.message)}</em></div>`; }
+        parar(); fondo.remove();
+        try { resolve(await cargarConEditor({ archivo: f || null, anunciante: cliente })); }
+        catch (err) { alert(err.message); resolve(null); }
       };
-      $$('csSubir').addEventListener('click', () => $$('csArchivo').click());
+      $$('csSubir').addEventListener('click', () => subirAqui(null));
       $$('csArchivo').addEventListener('change', e => subirAqui(e.target.files[0]));
       const zona = $$('csZona');
       zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('encima'); });
@@ -305,5 +329,5 @@
     });
   }
 
-  global.CunasBiblioteca = { montar, refrescar, elegir, subir };
+  global.CunasBiblioteca = { montar, refrescar, elegir, subir, cargarConEditor };
 })(window);

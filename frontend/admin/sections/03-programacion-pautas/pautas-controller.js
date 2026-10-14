@@ -1362,6 +1362,18 @@
     $('audioFileInput')?.click();
   }
 
+  /** Subir un comercial = la ventana de canción (onda, marcas, fundidos, datos), como en Soho. */
+  async function _cargarConEditor(file) {
+    if (!global.CunasBiblioteca?.cargarConEditor) { if (file) _onAudioFileSelected({ target: { files: [file], value: '' } }); else _openFilePicker(); return; }
+    try {
+      const c = await global.CunasBiblioteca.cargarConEditor({ archivo: file || null, anunciante: ($('fCliente')?.value || '').trim() });
+      if (c) _asignarCuna(c);
+    } catch (err) {
+      _showModalError(err.message || 'No se pudo abrir la ventana de edición');
+      if (file) _onAudioFileSelected({ target: { files: [file], value: '' } }); else _openFilePicker();
+    }
+  }
+
   /** El campo de audio abre la Biblioteca de cuñas (antes abría el explorador de archivos). */
   async function _elegirCuna() {
     if (!global.CunasBiblioteca) { _openFilePicker(); return; }
@@ -1598,7 +1610,7 @@
     _initMencionesUI();
 
     // ── Selector de audio ──
-    $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
+    $('btnSelectAudio')?.addEventListener('click', () => _cargarConEditor(null));
     $('btnElegirBib')?.addEventListener('click', _elegirCuna);
     // Soltar un archivo de audio sobre la zona del audio = subirlo
     const _drop = $('auDrop');
@@ -1608,7 +1620,7 @@
       _drop.addEventListener('drop', ev => {
         ev.preventDefault(); _drop.classList.remove('encima');
         const f = [...ev.dataTransfer.files].find(x => x.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(x.name));
-        if (f) _onAudioFileSelected({ target: { files: [f], value: '' } });
+        if (f) _cargarConEditor(f);
       });
     }
     $('fAudio')?.addEventListener('click', _elegirCuna);

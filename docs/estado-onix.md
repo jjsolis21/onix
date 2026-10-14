@@ -63,6 +63,10 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 - Lista de spots: «☰ Columnas» (como la Biblioteca Musical): `data-col` en cada celda, estilo generado, preferencia en localStorage `cm_cols`.
   Paso «Audio y versiones» del spot: panel lateral (Elegir de la biblioteca / Subir archivo / Agregar versión), zona para soltar archivo,
   y el selector de cuñas con panel de filtros (anunciante, con/sin pauta) y subida directa. UI sin verificar a ojo (panel rechazó la página de prueba).
+- Cargar un comercial = la MISMA ventana de canción (como Soho): `CunasBiblioteca.cargarConEditor({archivo, anunciante})` abre
+  `EditorCancion.abrir(null, {tipo:'Cuña', tipos:['Cuña'], archivo, artista, onGuardar, onCerrar})` con marcas inicio/intro/outro/mezcla,
+  fundidos, volumen, AutoCue y datos. Se usa en «Subir archivo…» del spot, en el selector de cuñas y en «✎ Cargar cuña…».
+  UI sin verificar a ojo.
 - «🧩 Bloques publicitarios»: elegir spots activos (con duración), orden, y programar «empieza / empieza inmediato / termina a las HH:MM»
   + días. Se guarda como reloj «Bloque: X» (filas con audio fijo) + `reloj_eventos`, así sale en Relojes › Eventos.
   API GET/POST/DELETE `/api/v1/comerciales/bloques`, GET `/cunas-activas`. UI sin verificar a ojo (el panel rechazó abrir la página de prueba).
