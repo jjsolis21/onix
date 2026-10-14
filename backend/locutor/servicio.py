@@ -283,17 +283,30 @@ def locutar(c, iid: int) -> dict:
     return {"id": iid, "estado": "lista", "audio_id": out["audio_id"], "duracion": out["duracion"]}
 
 
+# audio_id → momento (monotonic) en que se pidió insertarlo. El motor aplica `plan_insertar` en su siguiente tick
+# (~50 ms), así que un `programa()` pedido enseguida todavía no la trae: sin esta memoria se insertaba dos veces
+# y la locución se oía repetida.
+_colocadas: dict = {}
+GUARDA_INSERCION_SEG = 30
+
+
 def insertar(c, iid: int, engine) -> bool:
     """Mete la locución en el programa, justo después de la canción que la origina."""
     r = c.execute("SELECT * FROM locutor_intervenciones WHERE id = ?", (iid,)).fetchone()
     if not r or not r["audio_id"]:
         return False
+    ahora = time.monotonic()
+    if ahora - _colocadas.get(r["audio_id"], -1e9) < GUARDA_INSERCION_SEG:
+        return True                                   # recién pedida: el motor la está colocando
     items = engine.programa().get("items", [])
     if any(i.get("audio_id") == r["audio_id"] for i in items):
         return True                                   # ya está
     for pos, it in enumerate(items):
         if it.get("tipo") == "audio" and it.get("audio_id") == r["anterior_id"] and _es_musica(it):
-            return bool(engine.plan_insertar(r["audio_id"], pos + 1))
+            if engine.plan_insertar(r["audio_id"], pos + 1):
+                _colocadas[r["audio_id"]] = ahora
+                return True
+            return False
     return False
 
 

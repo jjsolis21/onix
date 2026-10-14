@@ -343,3 +343,36 @@ def test_si_el_tipo_del_patron_falla_el_hueco_no_se_pierde(db, ia, monkeypatch):
     # el siguiente hueco sigue el patrón (el intento fallido contó): ya no insiste con la misma noticia
     r2 = svc.ciclo(motor, ruta, AHORA, leer_noticias=lambda u: [])
     assert any(h.get("tipo") == "corta" for h in r2["hecho"])
+
+
+class MotorLento(MotorFalso):
+    """Como el motor real: plan_insertar se aplica en el tick siguiente, no al instante."""
+
+    def __init__(self, items):
+        super().__init__(items)
+        self.pendientes = []
+
+    def plan_insertar(self, audio_id, posicion=0):
+        self.insertados.append((audio_id, posicion))
+        self.pendientes.append((audio_id, posicion))
+        return True
+
+    def tick(self):
+        for audio_id, pos in self.pendientes:
+            self.items.insert(pos, {"tipo": "audio", "audio_id": audio_id, "tipo_audio": "Locucion",
+                                    "hora": "00:00:00", "titulo": "voz", "artista": "x"})
+        self.pendientes = []
+
+
+def test_la_locucion_no_se_inserta_dos_veces_aunque_el_motor_tarde_en_aplicarla(db, ia):
+    ruta, ids = db
+    _config(ruta)
+    svc._colocadas.clear()
+    motor = MotorLento(_programa(ids))
+    svc.ciclo(motor, ruta, AHORA)            # escribe y aprueba
+    svc.ciclo(motor, ruta, AHORA)            # locuta e inserta (y revisa las «listas» en el mismo ciclo)
+    assert len(motor.insertados) == 1
+    motor.tick()
+    svc.ciclo(motor, ruta, AHORA)
+    cuantas = [i for i in motor.items if i.get("tipo_audio") == "Locucion" and i["audio_id"] == motor.insertados[0][0]]
+    assert len(cuantas) == 1
