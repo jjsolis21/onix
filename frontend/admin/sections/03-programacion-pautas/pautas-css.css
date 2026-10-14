@@ -1433,25 +1433,6 @@
 .cm-menu-cols label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .cm-centro { position: relative; }
 
-/* ═══ Paso «Audio y versiones»: panel lateral + audio actual ═══ */
-.au-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; padding: 16px 20px; align-items: start; }
-@media (max-width: 760px) { .au-layout { grid-template-columns: 1fr; } }
-.au-panel { display: flex; flex-direction: column; gap: 8px; }
-.au-panel h5 { margin: 0 0 4px; font-size: 20px; font-weight: 300; color: var(--p-text-lo, #999); }
-.au-btn { display: flex; align-items: center; gap: 10px; text-align: left; background: var(--p-bg-card, #1d1814); color: var(--p-text, #eee);
-  border: 1px solid var(--p-border, #444); border-radius: 6px; padding: 11px 12px; font: inherit; font-size: 14px; cursor: pointer; }
-.au-btn span { width: 22px; text-align: center; color: var(--p-accent, #ee9b00); }
-.au-btn:hover { border-color: var(--p-accent, #ee9b00); }
-.au-btn--pri { background: var(--p-accent, #ee9b00); color: #000; border-color: var(--p-accent, #ee9b00); font-weight: 600; }
-.au-btn--pri span { color: #000; }
-.au-ayuda { margin: 4px 0 0; font-size: 12px; color: var(--p-text-lo, #999); line-height: 1.45; }
-.au-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.au-drop { border: 2px dashed var(--p-border, #444); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 10px; transition: border-color .15s, background .15s; }
-.au-drop.encima { border-color: var(--p-accent, #ee9b00); background: rgba(238, 155, 0, .08); }
-.au-drop .au-actual { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; padding: 0; height: auto; }
-.au-drop #fAudio { flex: 1 1 auto; border: 0; background: transparent; color: var(--p-text, #eee); font-size: 18px; font-weight: 600; padding: 6px 0; min-width: 0; cursor: default; }
-.au-drop .audio-picker-icon { color: var(--p-accent, #ee9b00); flex: none; }
-
 /* ═══ Selector de cuñas con panel de filtros (Soho) ═══ */
 .cunas-selector.cs-soho { width: min(900px, 96vw); max-height: 86vh; }
 .cs-cuerpo { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; min-height: 0; flex: 1; overflow: hidden; }
@@ -1508,3 +1489,11 @@
 .au-layout .au-mini:disabled, .au-layout .au-mini.au-off { opacity: .45; pointer-events: none; }
 .au-layout .cm-versiones { margin-top: 0; }
 @media (max-width: 900px) { .modal-dashboard.pm-panes .pm-pane[data-pane="audio"].activo { grid-template-columns: 1fr; overflow-y: auto; } }
+
+/* Refuerzo: los botones ocupan todo el ancho y el texto nunca se sale */
+.pm-pane[data-pane="audio"] .au-layout { grid-template-columns: none; }
+.pm-pane[data-pane="audio"] .au-layout > * { max-width: 100%; box-sizing: border-box; }
+.pm-pane[data-pane="audio"] .au-layout .au-acciones { width: 100%; align-self: stretch; }
+.pm-pane[data-pane="audio"] .au-layout .au-btn { width: 100%; max-width: 100%; height: auto; min-height: 48px; padding: 8px 16px; flex: none; white-space: normal; }
+.pm-pane[data-pane="audio"] .au-layout .au-btn > span { width: auto; flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; color: inherit; }
+.pm-pane[data-pane="audio"] .au-layout .au-btn > i { flex: none; }
