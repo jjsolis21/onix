@@ -972,6 +972,7 @@ class AudioEngine:
     FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
+    FADE_CORTE         = 3.0    # fade de la canción cuando una tanda o evento INMEDIATO la corta (config fade_corte_seg)
     VOZ_DUCK           = 0.2    # la música bajo la voz queda al 20 % (≈ -14 dB); se cambia con config voz_fondo_pct
     VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
     VOZ_SALIDA_CAMA    = 1.5    # la música de fondo se va en este tiempo antes de que termine la voz
@@ -1055,6 +1056,8 @@ class AudioEngine:
         self._tandas_grilla: dict = {}
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
         self._dur_cierre: dict[int, float] = {}       # minuto al cierre -> segundos de su bloque (hora en curso)
+        self._fade_corte: float = self.FADE_CORTE     # config fade_corte_seg
+        self._corte_fade: Optional[float] = None      # fade a usar en el próximo arranque (corte inmediato en curso)
         self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
         # Detector de aire muerto (ver _vigilar_silencio)
         self._silencio_seg: float = 10.0
@@ -1127,6 +1130,7 @@ class AudioEngine:
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
             # Música bajo la voz del locutor / voice track, en % (Admin › Motor de audio)
             self._voz_duck = max(0.0, min(float(self._cfg("voz_fondo_pct", str(int(self.VOZ_DUCK * 100)))), 100.0)) / 100
+            self._fade_corte = max(0.2, min(float(self._cfg("fade_corte_seg", str(self.FADE_CORTE)) or self.FADE_CORTE), 15.0))
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:
@@ -1939,6 +1943,8 @@ class AudioEngine:
                                                "titulo": track.get("titulo", "")})
         elif outgoing_active:
             fade_in, fade_out = self._fade_times(self._current_item, item)
+            if self._corte_fade is not None:
+                fade_out = max(fade_out, self._corte_fade)   # corte inmediato: la canción sale con calma
             prev = self._current_track
             self._audio.set_volume(canal, 0.0)
             if not self._audio.play(canal):
@@ -2552,7 +2558,11 @@ class AudioEngine:
         if sonando_musica and any(p.get("tanda") == minuto for p in self._priority_queue):
             log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", minuto)
             self.bus.emit("tanda_inmediata", {"minuto": minuto})
-            self._advance()
+            self._corte_fade = self._fade_corte
+            try:
+                self._advance()
+            finally:
+                self._corte_fade = None
 
     def _check_evento_inmediato(self):
         """
@@ -2581,7 +2591,11 @@ class AudioEngine:
         log.info("[Engine] Evento '%s' a las %s: entra en punto", ev.get("evento"), ev["evento_hora"][11:16])
         self.bus.emit("evento_inmediato", {"evento": ev.get("evento"), "hora": ev["evento_hora"][11:16]})
         self._emit_programa()
-        self._advance()
+        self._corte_fade = self._fade_corte
+        try:
+            self._advance()
+        finally:
+            self._corte_fade = None
 
     def _plan_hour(self, slot: str, minuto_actual: int, pautas: list[dict]):
         """Reparte las pautas de la hora en tandas (una vez por hora)."""

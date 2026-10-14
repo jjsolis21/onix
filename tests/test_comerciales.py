@@ -185,3 +185,21 @@ def test_bloque_publicitario_se_programa_como_evento_de_relojes(client):
     assert client.post("/api/v1/comerciales/bloques", json={"nombre": "X", "audios": [999999], "hora": "09:00"}).status_code == 422
     assert client.delete(f"/api/v1/comerciales/bloques/{d['evento_id']}").status_code == 200
     assert not [b for b in client.get("/api/v1/comerciales/bloques").json() if b["evento_id"] == d["evento_id"]]
+
+
+def test_editar_un_bloque_publicitario(client):
+    c = _db()
+    a1 = _audio(c, "Edit cuña 1", "library/ed1.mp3")
+    a2 = _audio(c, "Edit cuña 2", "library/ed2.mp3")
+    c.execute("UPDATE audios SET duracion = 60 WHERE id IN (?, ?)", (a1, a2))
+    c.commit(); c.close()
+    d = client.post("/api/v1/comerciales/bloques", json={"nombre": "Para editar", "audios": [a1], "modo": "empieza", "hora": "08:00"}).json()
+    r = client.put(f"/api/v1/comerciales/bloques/{d['evento_id']}", json={
+        "nombre": "Editado", "audios": [a2, a1], "modo": "termina", "hora": "09:00", "dias": [5], "cortar": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["duracion"] == 120 and r.json()["empieza"] == "08:58" and r.json()["evento_id"] == d["evento_id"]
+    b = next(x for x in client.get("/api/v1/comerciales/bloques").json() if x["evento_id"] == d["evento_id"])
+    assert (b["nombre"], b["modo"], b["hora_objetivo"], b["cortar"], b["dias"]) == ("Editado", "termina", "09:00", True, [5])
+    assert [x["audio_id"] for x in b["cunas"]] == [a2, a1]
+    assert client.put("/api/v1/comerciales/bloques/999999", json={"nombre": "x", "audios": [a1], "hora": "09:00"}).status_code == 404
+    client.delete(f"/api/v1/comerciales/bloques/{d['evento_id']}")

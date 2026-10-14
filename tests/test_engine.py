@@ -1177,3 +1177,20 @@ def test_bloque_al_cierre_e_inmediato_corta_para_terminar_en_punto(engine, media
     engine._check_tanda_inmediata()
     assert engine._current_item["origen"] == "pauta"          # cortó: 7 min hasta las 11:00
     assert any(e == "tanda_inmediata" and d["minuto"] == 0 for e, d in engine.events)
+
+
+def test_corte_inmediato_usa_el_fade_configurable(engine, media):
+    add_pauta(engine, media, "EN PUNTO")
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="4")
+    engine._mode = "automatico"
+    fades = []
+    original = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda canal, vol, ms: (fades.append((vol, ms)), original(canal, vol, ms))[1]
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "pauta"
+    assert (0.0, 4000) in fades                              # la canción salió en 4 s, no en 1
+    assert engine._corte_fade is None                        # y el siguiente cambio vuelve a lo normal

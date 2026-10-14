@@ -337,13 +337,13 @@
     const hhmm = (h, delta) => { const [a, b] = h.split(':').map(Number); const t = (((a * 60 + b) * 60 + delta) % 86400 + 86400) % 86400;
       return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor(t % 3600 / 60)).padStart(2, '0')}`; };
     const NOMBRES = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
-    let activas = [], elegidas = [], programados = [];
+    let activas = [], elegidas = [], programados = [], editando = null;
     cuerpo.innerHTML = `<p class="ccf-hint">Arma una lista con los spots que quieras, mira cuánto dura y prográmala a una hora.
         Queda como un <b>evento en Relojes</b> y el modo automático la saca sola.</p>
       <div class="ccf-bq">
         <div><h4>1 · Biblioteca de comerciales</h4><input id="ccfBqBus" placeholder="Buscar cuña o cliente…" style="margin-bottom:6px">
           <div class="ccf-tabla-wrap" style="max-height:44vh"><table class="ccf-tabla"><tbody id="ccfBqAct"></tbody></table></div></div>
-        <div><h4>2 · Tu bloque <span id="ccfBqDur" class="ccf-bq-dur"></span></h4>
+        <div><h4>2 · Tu bloque <span id="ccfBqDur" class="ccf-bq-dur"></span> <span id="ccfBqEstado" class="ccf-bq-calc"></span></h4>
           <ol class="ccf-bq-lista" id="ccfBqLista"></ol>
           <div class="ccf-bq-form">
             <label>Nombre<input id="ccfBqNom" maxlength="70" placeholder="Ej: Cierre de las 11"></label>
@@ -356,7 +356,8 @@
               <label class="ccf-radio" id="ccfBqCortarFila" hidden><input type="checkbox" id="ccfBqCortar" checked> Cortar la canción para terminar exacto</label>
             </fieldset>
             <div class="ccf-bq-dias" id="ccfBqDias">${NOMBRES.map(([n, t]) => `<label><input type="checkbox" value="${n}" checked>${t}</label>`).join('')}</div>
-            <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfBqCrear">Programar bloque</button><span class="ccf-msg" id="ccfBqMsg"></span></div>
+            <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfBqCrear">Programar bloque</button>
+              <button class="ccf-btn" id="ccfBqCancelar" hidden>Cancelar edición</button><span class="ccf-msg" id="ccfBqMsg"></span></div>
           </div></div>
       </div>
       <h4 style="margin-top:16px">Bloques programados</h4><div id="ccfBqProg"></div>`;
@@ -394,15 +395,34 @@
           <small>${b.cunas.map(c => esc(c.cliente || c.titulo)).join(' · ')}</small></td><td class="num">${esc(b.hora)}</td>
           <td>${b.dias.length === 7 ? 'Todos' : NOMBRES.filter(([n]) => b.dias.includes(n)).map(x => x[1]).join(' ')}</td>
           <td class="num">${b.cunas.length}</td><td class="num">${mmss(b.duracion)}</td>
-          <td><button class="ccf-btn ccf-btn--mini ccf-btn--peligro" data-quitar="${b.evento_id}">Quitar</button></td></tr>`).join('')}</tbody></table>`
+          <td style="white-space:nowrap"><button class="ccf-btn ccf-btn--mini" data-editar="${b.evento_id}">✎ Editar</button>
+          <button class="ccf-btn ccf-btn--mini ccf-btn--peligro" data-quitar="${b.evento_id}">Quitar</button></td></tr>`).join('')}</tbody></table>`
         : '<p class="ccf-hint">Todavía no hay bloques programados.</p>';
+    };
+    const modoEdicion = () => {
+      $('ccfBqCrear').textContent = editando ? 'Guardar cambios' : 'Programar bloque';
+      $('ccfBqCancelar').hidden = !editando;
+      $('ccfBqEstado').textContent = editando ? '✎ Editando un bloque programado' : '';
     };
     const cargarProg = async () => { try { programados = await api('/api/v1/comerciales/bloques'); } catch (_) { programados = []; } pintarProg(); };
 
     cuerpo.addEventListener('click', async e => {
-      const add = e.target.closest('[data-add]'), up = e.target.closest('[data-up]'), dn = e.target.closest('[data-down]'),
+      const ed = e.target.closest('[data-editar]'), add = e.target.closest('[data-add]'), up = e.target.closest('[data-up]'), dn = e.target.closest('[data-down]'),
         del = e.target.closest('[data-del]'), qt = e.target.closest('[data-quitar]');
-      if (add) { elegidas.push(activas.find(p => p.audio_id === +add.dataset.add)); pintarAct(); pintarLista(); }
+      if (ed) {                                               // cargar el bloque en el formulario
+        const b = programados.find(x => x.evento_id === +ed.dataset.editar);
+        if (!b) return;
+        editando = b.evento_id;
+        elegidas = b.cunas.map(c => activas.find(a => a.audio_id === c.audio_id)
+          || { audio_id: c.audio_id, spot: c.titulo, cliente: c.cliente, duracion: c.duracion });
+        $('ccfBqNom').value = b.nombre; $('ccfBqHora').value = b.hora_objetivo;
+        cuerpo.querySelector(`input[name="ccfBqModo"][value="${b.modo}"]`).checked = true;
+        $('ccfBqCortar').checked = b.cortar;
+        cuerpo.querySelectorAll('#ccfBqDias input').forEach(x => { x.checked = b.dias.includes(+x.value); });
+        pintarAct(); pintarLista(); modoEdicion();
+        cuerpo.scrollTop = 0;
+      }
+      else if (add) { elegidas.push(activas.find(p => p.audio_id === +add.dataset.add)); pintarAct(); pintarLista(); }
       else if (up) { const i = +up.dataset.up; [elegidas[i - 1], elegidas[i]] = [elegidas[i], elegidas[i - 1]]; pintarLista(); }
       else if (dn) { const i = +dn.dataset.down; [elegidas[i + 1], elegidas[i]] = [elegidas[i], elegidas[i + 1]]; pintarLista(); }
       else if (del) { elegidas.splice(+del.dataset.del, 1); pintarAct(); pintarLista(); }
@@ -412,6 +432,9 @@
       }
     });
     cuerpo.addEventListener('input', e => { if (e.target.id === 'ccfBqBus') pintarAct(); else calc(); });
+    $('ccfBqCancelar').addEventListener('click', () => {
+      editando = null; elegidas = []; $('ccfBqNom').value = ''; modoEdicion(); pintarAct(); pintarLista(); msgEn($('ccfBqMsg'), '', true);
+    });
     $('ccfBqCrear').addEventListener('click', async () => {
       const msg = $('ccfBqMsg');
       const dias = [...cuerpo.querySelectorAll('#ccfBqDias input:checked')].map(x => +x.value);
@@ -419,11 +442,11 @@
       if (!$('ccfBqNom').value.trim()) return msgEn(msg, 'Ponle un nombre al bloque', false);
       if (!dias.length) return msgEn(msg, 'Elige al menos un día', false);
       try {
-        const r = await api('/api/v1/comerciales/bloques', json('POST', {
+        const r = await api(editando ? `/api/v1/comerciales/bloques/${editando}` : '/api/v1/comerciales/bloques', json(editando ? 'PUT' : 'POST', {
           nombre: $('ccfBqNom').value.trim(), audios: elegidas.map(p => p.audio_id), modo: modo(), hora: $('ccfBqHora').value, dias,
           cortar: modo() === 'termina' && $('ccfBqCortar').checked }));
-        msgEn(msg, `✓ Programado: ${r.empieza} → ${r.termina} (${mmss(r.duracion)}). Ya está en Relojes › Eventos`);
-        elegidas = []; $('ccfBqNom').value = ''; pintarAct(); pintarLista(); cargarProg();
+        msgEn(msg, `✓ ${editando ? 'Cambios guardados' : 'Programado'}: ${r.empieza} → ${r.termina} (${mmss(r.duracion)}). Ya está en Relojes › Eventos`);
+        editando = null; elegidas = []; $('ccfBqNom').value = ''; modoEdicion(); pintarAct(); pintarLista(); cargarProg();
       } catch (err) { msgEn(msg, err.message, false); }
     });
     try { activas = await api('/api/v1/comerciales/cunas-activas'); } catch (e) {

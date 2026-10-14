@@ -360,6 +360,17 @@ def _hora_menos(hora: str, seg: int) -> str:
     return f"{t // 3600:02d}:{(t % 3600) // 60:02d}"
 
 
+def _ajustes(c, reloj_id: int, hora: str, inmediato: bool) -> dict:
+    """Modo y hora tal como se eligieron (bloques viejos sin ese dato: empieza/inmediato a su hora)."""
+    fila = c.execute("SELECT comentario FROM relojes WHERE id = ?", (reloj_id,)).fetchone()
+    try:
+        a = json.loads(fila[0]) if fila and (fila[0] or "").startswith("{") else {}
+    except ValueError:
+        a = {}
+    return {"modo": a.get("modo") or ("inmediato" if inmediato else "empieza"),
+            "hora_objetivo": a.get("hora") or hora, "cortar": bool(a.get("cortar"))}
+
+
 def _replanificar():
     if replanificar:
         try:
@@ -401,49 +412,82 @@ def listar_bloques():
                               " LEFT JOIN audios a ON a.id = f.audio_id"
                               " WHERE f.reloj_id = ? ORDER BY f.orden", (e["reloj_id"],)).fetchall()
             out.append({"evento_id": e["id"], "reloj_id": e["reloj_id"], "nombre": e["nombre"],
-                        "hora": e["hora"], "dias": [int(d) for d in e["dias"].split(",") if d != ""],
+                        "hora": e["hora"], **_ajustes(c, e["reloj_id"], e["hora"], bool(e["inmediato"])), "dias": [int(d) for d in e["dias"].split(",") if d != ""],
                         "inmediato": bool(e["inmediato"]), "activo": bool(e["activo"]),
                         "fecha_inicio": e["fecha_inicio"], "fecha_fin": e["fecha_fin"],
                         "duracion": round(sum(float(f["duracion"] or 0) for f in filas)),
-                        "cunas": [{"titulo": f["titulo"] or "(sin audio)", "cliente": f["cliente"] or "",
+                        "cunas": [{"audio_id": f["audio_id"], "titulo": f["titulo"] or "(sin audio)", "cliente": f["cliente"] or "",
                                    "duracion": round(float(f["duracion"] or 0))} for f in filas]})
         return out
     finally:
         c.close()
 
 
-@router.post("/api/v1/comerciales/bloques", status_code=201, summary="Crear un bloque publicitario programado")
-def crear_bloque(b: BloqueIn):
+def _guardar_bloque(c, b: BloqueIn, evento_id: Optional[int] = None) -> dict:
+    """Crea (evento_id None) o reemplaza un bloque: su reloj con las cuñas en orden y su evento a hora fija."""
     dias = sorted({int(d) for d in b.dias})
     if not dias or any(d < 0 or d > 6 for d in dias):
         raise HTTPException(status_code=422, detail="Elige al menos un día")
     if b.fecha_inicio and b.fecha_fin and b.fecha_fin < b.fecha_inicio:
         raise HTTPException(status_code=422, detail="La fecha final es anterior a la inicial")
+    filas, dur = _duracion_audios(c, b.audios)
+    nombre = " ".join(b.nombre.split())
+    # «termina a las HH:MM»: arranca antes según lo que dura (como las tandas al cierre)
+    inicio = _hora_menos(b.hora, dur) if b.modo == "termina" else b.hora
+    inmediato = b.modo == "inmediato" or (b.modo == "termina" and b.cortar)
+    # lo que el operador eligió, para poder editarlo después tal cual
+    ajustes = json.dumps({"bloque": True, "modo": b.modo, "hora": b.hora, "cortar": b.cortar})
+    try:
+        if evento_id is None:
+            rid = c.execute("INSERT INTO relojes (nombre, color, comentario) VALUES (?, ?, ?)",
+                            (PREFIJO + nombre, COLOR_BLOQUE, ajustes)).lastrowid
+        else:
+            e = c.execute("SELECT e.reloj_id FROM reloj_eventos e JOIN relojes r ON r.id = e.reloj_id"
+                          " WHERE e.id = ? AND r.nombre LIKE ?", (evento_id, PREFIJO + "%")).fetchone()
+            if not e:
+                raise HTTPException(status_code=404, detail="No existe ese bloque")
+            rid = e["reloj_id"]
+            c.execute("UPDATE relojes SET nombre = ?, comentario = ?, updated_at = datetime('now') WHERE id = ?",
+                      (PREFIJO + nombre, ajustes, rid))
+            c.execute("DELETE FROM reloj_filas WHERE reloj_id = ?", (rid,))
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail=f"Ya existe un bloque llamado «{nombre}»")
+    for i, f in enumerate(filas):
+        c.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
+                  " VALUES (?, ?, 'Cuña', '{}', ?, ?)", (rid, i, f["id"], f["titulo"] or ""))
+    valores = (nombre, inicio, ",".join(map(str, dias)), b.fecha_inicio, b.fecha_fin, int(inmediato))
+    if evento_id is None:
+        evento_id = c.execute(
+            "INSERT INTO reloj_eventos (nombre, hora, dias, fecha_inicio, fecha_fin, inmediato, reloj_id, activo, hasta)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 1, '')", (*valores, rid)).lastrowid
+    else:
+        c.execute("UPDATE reloj_eventos SET nombre = ?, hora = ?, dias = ?, fecha_inicio = ?, fecha_fin = ?,"
+                  " inmediato = ? WHERE id = ?", (*valores, evento_id))
+    c.commit()
+    return {"evento_id": evento_id, "reloj_id": rid, "duracion": dur, "empieza": inicio,
+            "termina": _hora_menos(inicio, -dur), "inmediato": inmediato}
+
+
+@router.post("/api/v1/comerciales/bloques", status_code=201, summary="Crear un bloque publicitario programado")
+def crear_bloque(b: BloqueIn):
     c = _conn()
     try:
-        filas, dur = _duracion_audios(c, b.audios)
-        nombre = " ".join(b.nombre.split())
-        # «termina a las HH:MM»: arranca antes según lo que dura (como las tandas al cierre)
-        inicio = _hora_menos(b.hora, dur) if b.modo == "termina" else b.hora
-        inmediato = b.modo == "inmediato" or (b.modo == "termina" and b.cortar)
-        try:
-            rid = c.execute("INSERT INTO relojes (nombre, color, comentario) VALUES (?, ?, ?)",
-                            (PREFIJO + nombre, COLOR_BLOQUE, "Bloque publicitario (Comerciales)")).lastrowid
-        except sqlite3.IntegrityError:
-            raise HTTPException(status_code=409, detail=f"Ya existe un bloque llamado «{nombre}»")
-        for i, f in enumerate(filas):
-            c.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
-                      " VALUES (?, ?, 'Cuña', '{}', ?, ?)", (rid, i, f["id"], f["titulo"] or ""))
-        eid = c.execute(
-            "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo, hasta)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, 1, '')",
-            (nombre, rid, inicio, ",".join(map(str, dias)), b.fecha_inicio, b.fecha_fin, int(inmediato))).lastrowid
-        c.commit()
+        r = _guardar_bloque(c, b)
     finally:
         c.close()
     _replanificar()
-    return {"evento_id": eid, "reloj_id": rid, "duracion": dur, "empieza": inicio,
-            "termina": _hora_menos(inicio, -dur), "inmediato": inmediato}
+    return r
+
+
+@router.put("/api/v1/comerciales/bloques/{evento_id}", summary="Editar un bloque: cuñas, orden, hora, modo y días")
+def editar_bloque(evento_id: int, b: BloqueIn):
+    c = _conn()
+    try:
+        r = _guardar_bloque(c, b, evento_id)
+    finally:
+        c.close()
+    _replanificar()
+    return r
 
 
 @router.delete("/api/v1/comerciales/bloques/{evento_id}", summary="Quitar un bloque publicitario")

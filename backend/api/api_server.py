@@ -2355,6 +2355,8 @@ class MotorConfig(BaseModel):
     max_mismo_genero:    Optional[int]   = Field(None, ge=1, le=10)
     ducking_db:          Optional[float] = Field(None, ge=-40, le=0)
     voz_fondo_pct:       Optional[int]   = Field(None, ge=0, le=100)   # música bajo la voz del locutor
+    fade_corte_seg:      Optional[float] = Field(None, ge=0.2, le=15,
+                                                 description="Fade de la canción cuando una tanda o evento inmediato la corta")
     normalizacion_activa: Optional[bool] = None
     horas_planificadas:  Optional[float] = Field(None, ge=0.5, le=24)
     aleatoriedad:        Optional[int]   = Field(None, ge=0, le=50)
@@ -2413,6 +2415,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
         "ducking_db":          float(valores.get("ducking_db", -12)),
         "voz_fondo_pct":       int(float(valores.get("voz_fondo_pct", 20))),
+        "fade_corte_seg":      float(valores.get("fade_corte_seg", 3) or 3),
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
         "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
         "tandas_cierre":       valores.get("tandas_cierre", ""),
