@@ -35,6 +35,11 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   Editable en Admin › 12 › «Datos de artistas y canciones». «contenido» nace en aprobación manual.
   Gemini gratis: cuota muy corta de texto y de voz (429) y picos de 503; no aguanta hablar tras cada canción.
 
+- Relojes (Admin › 8) al estilo del editor de Soho: paleta de elementos, filtros con contador en vivo
+  («N canciones disponibles · duración media»), Agregar / Insertar / Cambiar / Eliminar sobre la fila elegida,
+  reloj circular coloreable por tipo, género, rotación o subgénero, y verificador único. La tabla de filas sigue
+  siendo la fuente de datos. Falta (bloque 2): pestaña Canciones, filtros por año, BPM y prioridad (tocan el planificador).
+
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
 - Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
