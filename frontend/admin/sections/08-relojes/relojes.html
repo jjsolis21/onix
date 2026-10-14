@@ -10,7 +10,7 @@
      ============================================================ -->
 <link rel="stylesheet" href="css/secciones-operacion.css">
 <style>
-  .rj-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--s4); }
+  .rj-layout { display: grid; grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: var(--s4); align-items: start; }
   @media (max-width: 900px) { .rj-layout { grid-template-columns: 1fr; } }
   .rj-lista { display: flex; flex-direction: column; gap: 4px; }
   .rj-item { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 4px;
@@ -74,8 +74,7 @@
   .rj-grilla td.semana { opacity: .35; }
   .rj-grilla td.exc { box-shadow: inset 0 -3px 0 var(--gold-2); }
   /* Editor al estilo de Soho: izquierda «Elementos disponibles», derecha «Editor de relojes» (horizontal) */
-  .rj-soho { display: grid; grid-template-columns: minmax(300px, 4fr) minmax(360px, 6fr); gap: var(--s3); margin-top: var(--s3); }
-  @media (max-width: 1050px) { .rj-soho { grid-template-columns: 1fr; } }
+  .rj-soho { margin-top: var(--s3); }
   .rj-col { background: var(--choc-0); border: 1px solid var(--choc-4); border-radius: 6px; padding: 10px 12px; min-width: 0; }
   .rj-col h4, .rj-ajustes h4 { margin: 0 0 8px; font-size: .95rem; font-weight: 500; color: var(--text-hi); }
   .rj-ed-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
@@ -90,7 +89,10 @@
   .rj-cons-tabs button { flex: 1; background: var(--choc-2); border: 1px solid var(--choc-5); color: var(--text-mid); padding: 5px 8px;
     cursor: pointer; font: inherit; font-size: .76rem; font-weight: 600; }
   .rj-cons-tabs button.on { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
-  .rj-cons-filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .rj-cons-filtros { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .rj-elem-lateral { margin-top: var(--s3); padding: 10px; }
+  .rj-elem-lateral .rj-pal span { display: none; }
+  .rj-elem-lateral .rj-pal { padding: 7px 2px; }
   .rj-cons-filtros .ox-select, .rj-cons-filtros .ox-input { width: 100%; max-width: none; font-size: .74rem; padding: 4px 6px; }
   .rj-contador { margin-top: 8px; padding: 8px 12px; background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 5px;
     display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; }
@@ -180,6 +182,21 @@
       <div class="rj-lista" id="rjLista"></div>
       <button class="ox-btn ox-btn--primary" id="rjNuevo" style="margin-top:var(--s3);width:100%">+ Nuevo reloj</button>
       <button class="ox-btn" id="rjReglas" style="margin-top:var(--s2);width:100%">⚙ Reglas de rotación</button>
+
+        <div class="rj-col rj-col--elem rj-elem-lateral">
+          <h4>Elementos disponibles</h4>
+          <div class="rj-paleta" id="rjPaleta"></div>
+          <div class="rj-cons-tabs" id="rjConsTabs">
+            <button type="button" data-modo="filtros" class="on">Filtros</button>
+            <button type="button" data-modo="fijo">Canción fija</button>
+          </div>
+          <div class="rj-cons-filtros" id="rjConsFiltros"></div>
+          <div id="rjConsFijo" hidden>
+            <input class="ox-input" id="rjConsBuscar" placeholder="Busca por título o artista…" autocomplete="off" style="width:100%">
+            <p class="ox-hint" style="margin:6px 0 0">Esa fila tocará siempre este audio (un ID, una canción concreta).</p>
+          </div>
+          <div class="rj-contador" id="rjContador"></div>
+        </div>
     </section>
 
     <!-- ── Editor ── -->
@@ -195,22 +212,6 @@
       </div>
 
       <div class="rj-soho">
-        <!-- Izquierda: Elementos disponibles -->
-        <div class="rj-col rj-col--elem">
-          <h4>Elementos disponibles</h4>
-          <div class="rj-paleta" id="rjPaleta"></div>
-          <div class="rj-cons-tabs" id="rjConsTabs">
-            <button type="button" data-modo="filtros" class="on">Filtros</button>
-            <button type="button" data-modo="fijo">Canción fija</button>
-          </div>
-          <div class="rj-cons-filtros" id="rjConsFiltros"></div>
-          <div id="rjConsFijo" hidden>
-            <input class="ox-input" id="rjConsBuscar" placeholder="Busca por título o artista…" autocomplete="off" style="width:100%">
-            <p class="ox-hint" style="margin:6px 0 0">Esa fila tocará siempre este audio (un ID, una canción concreta).</p>
-          </div>
-          <div class="rj-contador" id="rjContador"></div>
-        </div>
-
         <!-- Derecha: Editor de relojes -->
         <div class="rj-col rj-col--ed">
           <div class="rj-ed-cab"><h4>Editor de relojes</h4>
