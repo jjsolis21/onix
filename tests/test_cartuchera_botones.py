@@ -17,7 +17,7 @@ def client():
 
 @pytest.fixture
 def paleta(client):
-    clave = client.post("/api/v1/paletas", json={"nombre": "Efectos prueba", "slots": 6}).json()["clave"]
+    clave = client.post("/api/v1/paletas", json={"nombre": "Efectos prueba", "slots": 9}).json()["clave"]
     yield clave
     client.delete(f"/api/v1/paletas/{clave}")
 

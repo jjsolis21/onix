@@ -742,7 +742,7 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     if not cursor.execute("SELECT 1 FROM paletas LIMIT 1").fetchone():
         for n, (clave, nombre) in enumerate([("jingles", "Jingles"), ("efectos", "Efectos"), ("voces", "Voces"),
                                               ("publicidad", "Publicidad"), ("especiales", "Especiales")]):
-            cursor.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, 15, ?)", (clave, nombre, n))
+            cursor.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, 9, ?)", (clave, nombre, n))
     logger.info("  → paletas de la cartuchera: OK")
 
     # ------------------------------------------------------------------
@@ -838,6 +838,13 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         if col not in cols:
             cursor.execute(f"ALTER TABLE cartuchera ADD COLUMN {col} {definicion}")
     logger.info("  → cartuchera.color / mark_in / mark_out / volumen: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 38 — Las paletas van de 9 en 9 botones, con tope de 63 (7 páginas)
+    #   Las que tenían otro tamaño se redondean hacia arriba a la página completa; no se pierde ningún botón.
+    # ------------------------------------------------------------------
+    cursor.execute("UPDATE paletas SET slots = MIN(63, ((MAX(slots, 1) + 8) / 9) * 9) WHERE slots % 9 != 0 OR slots > 63 OR slots < 9")
+    logger.info("  → paletas de 9 en 9 (tope 63): OK")
 
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")

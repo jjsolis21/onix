@@ -55,6 +55,14 @@
   .ct-pag button.act { background: var(--gold-0); color: #000; border-color: var(--gold-0); font-weight: 700; }
   .ct-pag button:disabled { opacity: .35; cursor: default; }
   .ct-pag i { color: var(--text-lo); font-style: normal; }
+  .ct-mas { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px 12px; margin-top: 2px;
+    background: color-mix(in srgb, var(--gold-0) 14%, transparent); color: var(--gold-1); border: 2px dashed var(--gold-0);
+    border-radius: 6px; font: inherit; font-size: .9rem; font-weight: 700; cursor: pointer; }
+  .ct-mas b { font-size: 1.35rem; line-height: 1; }
+  .ct-mas:hover { background: var(--gold-0); color: #000; }
+  .ct-tope { text-align: center; font-size: .78rem; color: var(--text-lo); padding: 8px; border: 1px dashed var(--choc-5); border-radius: 6px; }
+  .ct-quitar { background: transparent; border: 0; color: var(--text-lo); font: inherit; font-size: .74rem; cursor: pointer; text-decoration: underline; padding: 2px; }
+  .ct-quitar:hover { color: var(--red-live); }
   .ct-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
   .ct { position: relative; height: 92px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .6); background: var(--choc-3); color: #fff;
     padding: 6px 7px; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; overflow: hidden;
@@ -80,7 +88,6 @@
     <aside class="ct-panel ct-lado">
       <button class="ct-btn ct-btn--pri" id="cartNueva" title="Crea una paleta (p. ej. «SOLIS 1», «Efectos fiesta»)">＋ Nueva paleta</button>
       <button class="ct-btn" id="cartRenombrar" disabled>✎ Renombrar la elegida</button>
-      <button class="ct-btn" id="cartTam" disabled title="Cambiar la cantidad de botones">▦ Cantidad de botones</button>
       <button class="ct-btn ct-btn--peligro" id="cartEliminar" disabled>🗑 Eliminar</button>
       <button class="ct-btn" id="cartReload">↻ Recargar</button>
       <h3>Buscar</h3>
@@ -97,7 +104,8 @@
       </div>
       <button class="ct-btn ct-btn--pri" id="cartGuardar">Asignar</button>
       <p class="ct-msg" id="cartMsg"></p>
-      <p class="ox-hint" style="margin-top:auto">Para cargar un efecto desde un archivo, abre la paleta y pulsa <b>＋</b> o <b>✎</b> en el botón.
+      <p class="ox-hint" style="margin-top:auto">Cada paleta empieza con 9 botones y crece de 9 en 9 con <b>＋ Agregar página</b>,
+        hasta 63 (7 páginas). Para cargar un efecto desde un archivo, pulsa <b>＋</b> o <b>✎</b> en el botón.
         En el Studio se hace igual con clic derecho.</p>
     </aside>
 
@@ -126,6 +134,7 @@
   const fmt = s => s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "—";
   const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const PAG = 9;                                   // 3×3: igual que las teclas 1–9 del Studio
+  const MAX_PAGINAS = 7, MAX_BOTONES = PAG * MAX_PAGINAS;     // 7 páginas = 63 botones: el tope de toda paleta
   const COLOR_DEFECTO = (typeof CartEditor !== "undefined" && CartEditor.COLOR_DEFECTO) || "#4a4a4a";
   const json = (m, b) => ({ method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
 
@@ -168,7 +177,7 @@
 
   function pintarLista() {
     const claves = Object.keys(bancos), vis = visibles();
-    ["cartRenombrar", "cartTam", "cartEliminar"].forEach(id => { $(id).disabled = !sel; });
+    ["cartRenombrar", "cartEliminar"].forEach(id => { $(id).disabled = !sel; });
     $("cartLista").innerHTML = vis.length ? vis.map(b => {
       const cargados = (slots[b] || []).length, total = bancos[b], pc = total ? Math.round(cargados / total * 100) : 0;
       return `<tr data-pal="${esc(b)}" class="${b === sel ? "sel" : ""}">
@@ -206,7 +215,13 @@
         <button data-pag="1" title="Página siguiente" ${pg >= tp - 1 ? "disabled" : ""}>›</button></div>` : ""}
       <div class="ct-grid">${tiles}</div>
       <p class="ox-hint" style="margin:2px 0 0">Botones ${desde + 1}–${hasta} · las teclas 1–9 del Studio los disparan.
-        Clic = escuchar (preescucha) · ✎ editar · 🗑 vaciar.</p>`;
+        Clic = escuchar (preescucha) · ✎ editar · 🗑 vaciar.</p>
+      ${tp < MAX_PAGINAS
+        ? `<button class="ct-mas" data-mas="1" title="Agrega otra página de 9 botones a esta paleta">
+             <b>＋</b> Agregar la página ${tp + 1} <span style="font-weight:400">(botones ${n + 1}–${n + PAG})</span></button>`
+        : `<div class="ct-tope">Esta paleta ya tiene las ${MAX_PAGINAS} páginas: el tope es de ${MAX_BOTONES} botones.
+             Para más efectos, crea otra paleta (por ejemplo «${esc(NOMBRES[sel] || "")} 2»).</div>`}
+      ${tp > 1 && pg === tp - 1 ? `<div style="text-align:center"><button class="ct-quitar" data-menos="1">Quitar esta última página</button></div>` : ""}`;
   }
 
   function pintarSelectBotones() {
@@ -243,6 +258,8 @@
     });
   }
   $("cartDet").addEventListener("click", async e => {
+    if (e.target.closest("[data-mas]")) { await cambiarPaginas(+1); return; }
+    if (e.target.closest("[data-menos]")) { await cambiarPaginas(-1); return; }
     const pg = e.target.closest("[data-pag]"), ir = e.target.closest("[data-ir]");
     if (pg) { paginas[sel] = (paginas[sel] ?? 0) + +pg.dataset.pag; pintarDetalle(); return; }
     if (ir) { paginas[sel] = +ir.dataset.ir; pintarDetalle(); return; }
@@ -284,13 +301,24 @@
     const nombre = prompt("Nombre de la paleta:", NOMBRES[sel] || "");
     if (nombre?.trim()) { await paleta("PUT", sel, { nombre: nombre.trim() }); cargar(); }
   });
-  $("cartTam").addEventListener("click", async () => {
-    const n = parseInt(prompt("¿Cuántos botones? (3 a 60)", bancos[sel]));
-    if (!(n >= 3 && n <= 60)) return;
-    const quedan = (slots[sel] || []).filter(s => s.slot > n).length;
-    if (quedan && !confirm(`Se quitarán ${quedan} botón(es) asignados que quedan fuera.`)) return;
-    await paleta("PUT", sel, { slots: n }); cargar();
-  });
+  /** +1 agrega la página siguiente (9 botones más); -1 quita la última. El tope es de 7 páginas (63 botones). */
+  async function cambiarPaginas(delta) {
+    if (!sel) return;
+    const n = bancos[sel], destino = n + delta * PAG;
+    if (destino < PAG || destino > MAX_BOTONES) return;
+    if (delta < 0) {
+      const perdidos = (slots[sel] || []).filter(s => s.slot > destino).length;
+      const txt = perdidos ? `La página ${destino / PAG + 1} tiene ${perdidos} botón(es) cargado(s): se quitarán.`
+        : `Se quitará la página ${destino / PAG + 1} (está vacía).`;
+      if (!confirm(`${txt} ¿Seguir?`)) return;
+    }
+    try {
+      await api(`/api/v1/paletas/${sel}`, json("PUT", { slots: destino }));
+      paginas[sel] = delta > 0 ? destino / PAG - 1 : Math.min(paginas[sel] ?? 0, destino / PAG - 1);
+      msg(delta > 0 ? `✓ Página ${destino / PAG} agregada (botones ${n + 1}–${destino})` : "✓ Página quitada");
+      await cargar();
+    } catch (err) { msg(err.message, false); }
+  }
   $("cartEliminar").addEventListener("click", async () => {
     if (!sel || !confirm(`¿Eliminar la paleta «${NOMBRES[sel]}» y sus botones?`)) return;
     parar(); await paleta("DELETE", sel); sel = null; cargar();

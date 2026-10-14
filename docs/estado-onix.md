@@ -45,7 +45,8 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   Cada paleta se ve de 9 en 9 (3×3): teclas 1–9 = botones de la página visible, `-` y `+` cambian de página.
   Admin › Cartuchera: 3 columnas como Listas (acciones y filtro · paletas creadas · botones de la paleta elegida, de 9 en 9,
   con el color del efecto dibujado en el botón de play; clic = preescucha, otra vez = detener).
-  Para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
+  Tope fijo: 63 botones por paleta (7 páginas de 9). Una paleta nace con 1 página y crece con «＋ Agregar página» en el
+  Admin (ya no hay «cantidad de botones»). Para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
 
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.

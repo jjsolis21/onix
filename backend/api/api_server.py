@@ -2221,7 +2221,14 @@ class CartucheraSlotIn(BaseModel):
 
 class PaletaIn(BaseModel):
     nombre: Optional[str] = Field(None, min_length=1, max_length=30)
-    slots: Optional[int] = Field(None, ge=3, le=60)
+    slots: Optional[int] = Field(None, ge=9, le=63)       # de 9 en 9: 1 a 7 páginas, tope 63 botones
+
+    @field_validator("slots")
+    @classmethod
+    def _de_nueve_en_nueve(cls, v):
+        if v is not None and v % 9:
+            raise ValueError("Los botones de una paleta van de 9 en 9 (9, 18… hasta 63)")
+        return v
 
 
 def _paletas(conn) -> list[dict]:
@@ -2265,10 +2272,10 @@ async def crear_paleta(body: PaletaIn, conn: sqlite3.Connection = Depends(get_db
     clave = "p" + secrets.token_hex(3)
     orden = conn.execute("SELECT COALESCE(MAX(orden), -1) + 1 FROM paletas").fetchone()[0]
     conn.execute("INSERT INTO paletas (clave, nombre, slots, orden) VALUES (?, ?, ?, ?)",
-                 (clave, nombre, body.slots or 15, orden))
+                 (clave, nombre, body.slots or 9, orden))
     conn.commit()
     await _manager.broadcast(_ws_message("cartuchera_updated", {"banco": clave}))
-    return {"clave": clave, "nombre": nombre, "slots": body.slots or 15}
+    return {"clave": clave, "nombre": nombre, "slots": body.slots or 9}
 
 
 @app.put("/api/v1/paletas/{clave}", tags=["Cartuchera"], summary="Renombrar o cambiar el nº de botones")
