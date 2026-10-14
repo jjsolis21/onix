@@ -446,11 +446,12 @@ def test_id_y_cortinas_salen_en_cada_tanda(engine, media):
 
 def test_cortina_opcional_no_sale_sin_comerciales(engine, media):
     add_pauta(engine, media, "ID ESTACION", seccion=1)
-    add_pauta(engine, media, "APERTURA", seccion=2)
+    add_pauta(engine, media, "CIERRE", seccion=4)             # Cortina de salida: opcional
+    add_pauta(engine, media, "SEPARADOR", seccion=2)          # Separador de entrada: siempre, aunque no haya comerciales
     engine._tandas_minutos = [15]
     engine._now.dt = datetime(2026, 10, 12, 10, 15)
     engine._check_pautas()
-    assert en_cola(engine) == ["ID ESTACION"]
+    assert en_cola(engine) == ["ID ESTACION", "SEPARADOR"]
 
 
 def test_seccion_fija_no_se_repite_en_la_misma_tanda(engine, media):

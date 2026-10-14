@@ -224,7 +224,7 @@ def test_estimacion_de_tanda_incluye_id_y_cortinas(base):
     aid = audio(base, "ID", tipo="Cuña", dur=5)
     ap = audio(base, "APERTURA", tipo="Cuña", dur=7)
     conn = db(base)
-    for a, sec in ((aid, 1), (ap, 2)):
+    for a, sec in ((aid, 1), (ap, 4)):                        # 4 = Cortina de salida (opcional)
         conn.execute("INSERT INTO pautas (cliente, audio_id, matriz, seccion) VALUES ('EST', ?, ?, ?)",
                      (a, json.dumps({"1-10": True}), sec))
     conn.commit()
