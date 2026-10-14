@@ -1,76 +1,121 @@
 <!-- ============================================================
-     ÓNIX FM — Sección 04 — Editor de Cartuchera
-     Asigna audios a los botones de disparo del Studio.
-     API: GET/PUT/DELETE /api/v1/cartuchera, /api/v1/audios, comando cue
+     ÓNIX FM — Sección 04 — Cartuchera (mismo esqueleto que Listas, como Jazler SoHo)
+     · Izquierda: crear, renombrar, tamaño, eliminar, buscar paleta y asignar una canción de la biblioteca.
+     · Centro: las paletas creadas (con filtro; la lista hace scroll por dentro, la página no crece).
+     · Derecha: los botones de la paleta elegida, de 9 en 9. El color del efecto se ve en el propio botón
+       de play: clic = escuchar (otra vez = detener); ✎ = cargar o editar (ventana de Soho); 🗑 = vaciar.
+     API: GET/PUT/DELETE /api/v1/cartuchera, /api/v1/paletas, /api/v1/audios, comandos cue y cue_stop
      ============================================================ -->
 <link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .ct-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 10px; }
+  .ct-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) minmax(380px, 440px); gap: 10px; }
+  @media (max-width: 1200px) { .ct-cuerpo { grid-template-columns: 210px minmax(0, 1fr) 360px; } }
+  .ct-panel { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; padding: 10px; min-height: 0; display: flex; flex-direction: column; gap: 7px; }
+  .ct-panel h3 { margin: 6px 0 0; font-size: 1rem; color: var(--text-hi); }
+  .ct-lado { overflow-y: auto; }
+  .ct-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 9px 10px;
+    font-family: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; text-align: left; }
+  .ct-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .ct-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .ct-btn--pri { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .ct-btn--pri:hover:not(:disabled) { color: #000; filter: brightness(1.1); }
+  .ct-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .ct-btn--mini { padding: 6px 9px; font-size: .78rem; }
+  .ct-in { width: 100%; background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi);
+    padding: 7px 9px; font-family: inherit; font-size: .85rem; color-scheme: dark; }
+  .ct-fila2 { display: flex; gap: 6px; }
+  .ct-fila2 > * { flex: 1; }
+  .ct-sep { border: 0; border-top: 1px solid var(--choc-4); margin: 6px 0 2px; }
+  .ct-msg { font-size: .78rem; min-height: 1.1em; }
+  .ct-msg.ok { color: #52d273; } .ct-msg.err { color: var(--red-live); }
 
-<div class="ox-root" id="cartRoot">
-  <header class="ox-head">
-    <div>
-      <h2>Editor de Cartuchera</h2>
-      <p>Cada paleta tiene nombre y botones propios. «Editar» abre el botón como en Soho: eliges el archivo del efecto, lo escuchas y ajustas color, marcas y volumen. En el Studio se hace igual con clic derecho sobre el botón.</p>
-    </div>
-    <span class="ox-spacer"></span>
-    <button class="ox-btn" id="cartReload">↻ Recargar</button>
-    <button class="ox-btn ox-btn--primary" id="cartNueva" title="Crea una paleta nueva (p. ej. «Tips genérico», «Efectos fiesta»)">＋ Nueva paleta</button>
-  </header>
+  /* Centro: lista de paletas */
+  .ct-tabla-wrap { flex: 1; min-height: 0; overflow: auto; }
+  .ct-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .ct-tabla th { position: sticky; top: 0; background: var(--choc-0); color: var(--text-lo); font-weight: 500; text-align: left; padding: 8px;
+    font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+  .ct-tabla td { padding: 7px 8px; border-bottom: 1px solid var(--choc-3); color: var(--text-mid); white-space: nowrap; }
+  .ct-tabla td b { color: var(--text-hi); }
+  .ct-tabla tr { cursor: pointer; }
+  .ct-tabla tr:hover td { background: var(--choc-3); }
+  .ct-tabla tr.sel td { background: color-mix(in srgb, var(--gold-0) 22%, transparent); }
+  .ct-barra { height: 6px; background: var(--choc-4); border-radius: 3px; min-width: 70px; overflow: hidden; }
+  .ct-barra i { display: block; height: 100%; background: var(--gold-0); }
+  .ct-vacio { color: var(--text-lo); font-size: .85rem; text-align: center; margin: 30px 0; }
 
-  <section class="ox-card">
-    <h3>Asignar un audio de la biblioteca a un botón</h3>
-    <div class="ox-row">
-      <div class="ox-field">
-        <label for="cartBanco">Paleta</label>
-        <select class="ox-select" id="cartBanco"></select>
-      </div>
-      <div class="ox-field">
-        <label for="cartSlot">Botón</label>
-        <select class="ox-select" id="cartSlot"></select>
-      </div>
-      <div class="ox-field" style="flex:3 1 260px">
-        <label for="cartBuscar">Audio (escribe para buscar)</label>
-        <input class="ox-input" id="cartBuscar" placeholder="Título o artista…" autocomplete="off">
-      </div>
-      <div class="ox-field">
-        <label for="cartEtiqueta">Etiqueta del botón</label>
-        <input class="ox-input" id="cartEtiqueta" maxlength="40" placeholder="(opcional)">
-      </div>
-      <button class="ox-btn" id="cartPreescuchar" title="Suena por la salida de preescucha, no al aire">▶ Escuchar</button>
-      <button class="ox-btn" id="cartParar" title="Detener la escucha">■ Detener</button>
-      <button class="ox-btn ox-btn--primary" id="cartGuardar">Asignar</button>
-    </div>
-    <p class="ox-msg" id="cartMsg"></p>
-  </section>
+  /* Derecha: los botones de la paleta elegida */
+  .ct-det-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .ct-det-cab b { color: var(--gold-1); font-size: 1.05rem; }
+  .ct-det-cab small { color: var(--text-lo); font-size: .74rem; }
+  .ct-pag { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+  .ct-pag button { background: var(--choc-3); border: 1px solid var(--choc-5); color: var(--text-hi); border-radius: 4px; min-width: 30px; height: 28px;
+    cursor: pointer; font: inherit; font-size: .8rem; padding: 0 7px; }
+  .ct-pag button:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .ct-pag button.act { background: var(--gold-0); color: #000; border-color: var(--gold-0); font-weight: 700; }
+  .ct-pag button:disabled { opacity: .35; cursor: default; }
+  .ct-pag i { color: var(--text-lo); font-style: normal; }
+  .ct-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .ct { position: relative; height: 92px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .6); background: var(--choc-3); color: #fff;
+    padding: 6px 7px; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; overflow: hidden;
+    background-image: linear-gradient(rgba(255, 255, 255, .06), rgba(0, 0, 0, .2)); }
+  .ct:hover { filter: brightness(1.15); border-color: #fff; }
+  .ct.vacio { background: linear-gradient(#34302d, #211e1c); cursor: pointer; }
+  .ct.on { outline: 3px solid #19f019; outline-offset: -3px; }
+  .ct-num { position: absolute; top: 4px; left: 7px; font-style: normal; font-size: .68rem; color: rgba(255, 255, 255, .6); }
+  .ct-nom { position: absolute; left: 6px; right: 6px; top: 46%; transform: translateY(-62%); text-align: center; font-size: .86rem; line-height: 1.15;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .ct.vacio .ct-nom { color: var(--text-lo); font-size: .76rem; }
+  .ct small { font-size: .72rem; }
+  .ct-play { position: absolute; right: 6px; bottom: 5px; font-size: 1.1rem; line-height: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+  .ct-acc { position: absolute; top: 2px; right: 3px; display: flex; gap: 1px; opacity: 0; transition: opacity .12s; }
+  .ct:hover .ct-acc, .ct:focus-within .ct-acc { opacity: 1; }
+  .ct-acc button { background: rgba(0, 0, 0, .55); border: 0; color: #fff; width: 22px; height: 22px; border-radius: 3px; cursor: pointer; font-size: .72rem; }
+  .ct-acc button:hover { background: rgba(0, 0, 0, .85); }
+</style>
 
-  <!-- Con decenas de paletas: buscador, paginación y tarjetas plegables -->
-  <div class="ox-card cart-barra" id="cartBarra">
-    <input class="ox-input" id="cartFiltro" placeholder="Buscar paleta por nombre…" autocomplete="off" style="flex:1 1 220px;min-width:160px">
-    <button class="ox-btn ox-btn--sm" id="cartExpandir" title="Abrir o cerrar todas las paletas de esta página">▾ Abrir todas</button>
-    <span class="cart-pager">
-      <button class="ox-btn ox-btn--sm" id="cartPagAnt" title="Página anterior">‹</button>
-      <span id="cartPagTxt"></span>
-      <button class="ox-btn ox-btn--sm" id="cartPagSig" title="Página siguiente">›</button>
-    </span>
+<div class="ct-root" id="cartRoot">
+  <div class="ct-cuerpo">
+    <!-- Izquierda: crear, buscar y todo lo relacionado -->
+    <aside class="ct-panel ct-lado">
+      <button class="ct-btn ct-btn--pri" id="cartNueva" title="Crea una paleta (p. ej. «SOLIS 1», «Efectos fiesta»)">＋ Nueva paleta</button>
+      <button class="ct-btn" id="cartRenombrar" disabled>✎ Renombrar la elegida</button>
+      <button class="ct-btn" id="cartTam" disabled title="Cambiar la cantidad de botones">▦ Cantidad de botones</button>
+      <button class="ct-btn ct-btn--peligro" id="cartEliminar" disabled>🗑 Eliminar</button>
+      <button class="ct-btn" id="cartReload">↻ Recargar</button>
+      <h3>Buscar</h3>
+      <input type="search" class="ct-in" id="cartFiltro" placeholder="Nombre de la paleta…" autocomplete="off">
+      <hr class="ct-sep">
+      <h3>Asignar una canción de la biblioteca</h3>
+      <label class="ox-hint" for="cartSlot" style="margin:0">Al botón</label>
+      <select class="ct-in" id="cartSlot"></select>
+      <input class="ct-in" id="cartBuscar" placeholder="Título o artista…" autocomplete="off">
+      <input class="ct-in" id="cartEtiqueta" maxlength="40" placeholder="Etiqueta del botón (opcional)">
+      <div class="ct-fila2">
+        <button class="ct-btn ct-btn--mini" id="cartPreescuchar" title="Suena por la salida de preescucha, no al aire">▶ Escuchar</button>
+        <button class="ct-btn ct-btn--mini" id="cartParar" title="Detener la escucha">■ Detener</button>
+      </div>
+      <button class="ct-btn ct-btn--pri" id="cartGuardar">Asignar</button>
+      <p class="ct-msg" id="cartMsg"></p>
+      <p class="ox-hint" style="margin-top:auto">Para cargar un efecto desde un archivo, abre la paleta y pulsa <b>＋</b> o <b>✎</b> en el botón.
+        En el Studio se hace igual con clic derecho.</p>
+    </aside>
+
+    <!-- Centro: las paletas creadas -->
+    <section class="ct-panel">
+      <div class="ct-tabla-wrap">
+        <table class="ct-tabla">
+          <thead><tr><th style="width:36px">#</th><th>Paleta</th><th>Botones</th><th>Cargados</th><th>Páginas</th></tr></thead>
+          <tbody id="cartLista"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Derecha: botones de la paleta elegida -->
+    <aside class="ct-panel" id="cartDet">
+      <p class="ct-vacio">Elige una paleta para ver sus botones.</p>
+    </aside>
   </div>
-  <style>
-    .cart-barra { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; }
-    .cart-pager { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-mid); margin-left: auto; }
-    .cart-cab-pal { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; }
-    .cart-cab-pal .flecha { color: var(--text-lo); width: 1em; }
-    .cart-cab-pal small { color: var(--text-lo); font-weight: 400; font-size: .72rem; }
-    .cart-vacio { padding: 24px; text-align: center; color: var(--text-lo); font-size: .88rem; }
-    /* Las paletas se reparten en columnas: en pantallas anchas quedan una al lado de otra */
-    #cartPaginas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 470px), 1fr)); gap: var(--s3); align-items: start; }
-    #cartPaginas > .cart-vacio { grid-column: 1 / -1; }
-    #cartPaginas > .ox-card { margin: 0; min-width: 0; }
-    #cartPaginas .ox-cart-grid { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: var(--s2); }
-    #cartPaginas .ox-slot { padding: var(--s2); }
-    #cartPaginas .ox-slot__actions .ox-btn { padding: 2px 7px; }
-    #cartPaginas h3 .ox-btn--sm { padding: 2px 8px; font-size: .68rem; }
-  </style>
-
-  <!-- Una tarjeta por paleta (se arman desde el servidor) -->
-  <div id="cartPaginas"></div>
 </div>
 
 <script>
@@ -79,190 +124,199 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmt = s => s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "—";
-  let NOMBRES = {};
+  const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const PAG = 9;                                   // 3×3: igual que las teclas 1–9 del Studio
+  const COLOR_DEFECTO = (typeof CartEditor !== "undefined" && CartEditor.COLOR_DEFECTO) || "#4a4a4a";
+  const json = (m, b) => ({ method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
 
-  let bancos = {}, slots = {}, elegido = null;     // elegido = audio escogido en el buscador
-  // Filtro y paginación de las paletas (con 100 paletas la página no puede crecer sin fin)
-  const POR_PAG = 6;
-  let filtro = "", pagP = 0;
-  const abiertas = new Set();                      // paletas desplegadas (si son pocas, todas)
-  const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const visibles = () => Object.keys(bancos).filter(b => !filtro || norm(NOMBRES[b] || b).includes(norm(filtro)));
+  let bancos = {}, NOMBRES = {}, slots = {}, sel = null, filtro = "", elegido = null;
+  const paginas = {};                              // paleta → página de botones
+  let sonando = null, tSonando = null;             // audio que se está escuchando desde aquí
 
+  async function api(url, opt) {
+    const r = await fetch(url, opt);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+    return d;
+  }
   function msg(texto, ok = true) {
     const el = $("cartMsg");
-    el.textContent = texto;
-    el.className = `ox-msg ${ok ? "ok" : "err"}`;
+    el.textContent = texto; el.className = `ct-msg ${ok ? "ok" : "err"}`;
+    clearTimeout(msg.t); msg.t = setTimeout(() => { el.textContent = ""; }, 6000);
   }
 
-  // Con decenas de miles de audios no se baja la biblioteca: el buscador consulta al servidor.
-  // Primero jingles, efectos, sweepers… (lo que suele ir en una cartuchera) y luego la música.
+  // Buscar entre decenas de miles de audios: el buscador consulta al servidor (primero efectos y jingles)
   OnixBuscador.attach($("cartBuscar"), { primero: "Efecto,Sweeper,Tips,Programa,Cuña", onElegir: a => { elegido = a; } });
-  function audioElegido() {
+  const audioElegido = () => {
     const id = parseInt($("cartBuscar").dataset.audioId);
     return Number.isFinite(id) && elegido?.id === id ? elegido : null;
-  }
+  };
 
+  // ── Carga y pintado ──────────────────────────────────────────────────────
   async function cargar() {
     try {
-      const cart = await fetch("/api/v1/cartuchera").then(r => r.json());
-      bancos = cart.bancos || {};
-      NOMBRES = cart.nombres || {};
-      slots = cart.slots || {};
-      // si hay pocas paletas se ven todas desplegadas; con muchas, solo la primera hasta que se abra otra
-      if (!abiertas.size && Object.keys(bancos).length) abiertas.add(Object.keys(bancos)[0]);
-      pintarPaginas();
-      llenarSelects();
-    } catch (err) {
-      msg(`No se pudo cargar la cartuchera: ${err.message}`, false);
-    }
+      const d = await api("/api/v1/cartuchera");
+      bancos = d.bancos || {}; NOMBRES = d.nombres || {}; slots = d.slots || {};
+      if (!(sel in bancos)) sel = Object.keys(bancos)[0] || null;
+      pintar();
+    } catch (err) { msg(`No se pudo cargar la cartuchera: ${err.message}`, false); }
+  }
+  function pintar() { pintarLista(); pintarDetalle(); pintarSelectBotones(); }
+
+  const totalPag = n => Math.max(1, Math.ceil(n / PAG));
+  const visibles = () => Object.keys(bancos).filter(b => !filtro || norm(NOMBRES[b] || b).includes(norm(filtro)));
+
+  function pintarLista() {
+    const claves = Object.keys(bancos), vis = visibles();
+    ["cartRenombrar", "cartTam", "cartEliminar"].forEach(id => { $(id).disabled = !sel; });
+    $("cartLista").innerHTML = vis.length ? vis.map(b => {
+      const cargados = (slots[b] || []).length, total = bancos[b], pc = total ? Math.round(cargados / total * 100) : 0;
+      return `<tr data-pal="${esc(b)}" class="${b === sel ? "sel" : ""}">
+        <td>${claves.indexOf(b) + 1}</td><td><b>${esc(NOMBRES[b] || b)}</b></td><td>${total}</td>
+        <td><div style="display:flex;align-items:center;gap:8px"><span>${cargados}</span><div class="ct-barra"><i style="width:${pc}%"></i></div></div></td>
+        <td>${totalPag(total)}</td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="ct-vacio">${filtro ? "Ninguna paleta se llama así." : "Todavía no hay paletas: crea la primera."}</td></tr>`;
   }
 
-  function pintarPaginas() {
-    const todas = Object.keys(bancos), vis = visibles();
-    const paginas = Math.max(1, Math.ceil(vis.length / POR_PAG));
-    pagP = Math.min(pagP, paginas - 1);
-    const lote = vis.slice(pagP * POR_PAG, pagP * POR_PAG + POR_PAG);
-    const pocas = todas.length <= 3;
-    $("cartPagTxt").textContent = vis.length
-      ? `${pagP * POR_PAG + 1}–${pagP * POR_PAG + lote.length} de ${vis.length}${vis.length !== todas.length ? ` (de ${todas.length})` : ""}` : "0 paletas";
-    $("cartPagAnt").disabled = pagP <= 0; $("cartPagSig").disabled = pagP >= paginas - 1;
-    $("cartBarra").hidden = todas.length <= 1;
-    $("cartExpandir").textContent = lote.length && lote.every(b => abiertas.has(b)) ? "▸ Cerrar todas" : "▾ Abrir todas";
-    $("cartPaginas").innerHTML = lote.length ? lote.map(b => {
-      const i = todas.indexOf(b), abierta = pocas || abiertas.has(b);
-      const cargados = (slots[b] || []).length;
-      return `<section class="ox-card">
-        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span class="cart-cab-pal" data-abrir="${b}" title="Abrir o cerrar esta paleta">
-            <span class="flecha">${abierta ? "▾" : "▸"}</span>${i + 1} · ${esc(NOMBRES[b] || b)}
-            <small>${cargados}/${bancos[b]} botones cargados</small></span>
-          <span class="ox-spacer"></span>
-          <button class="ox-btn ox-btn--sm" data-ren="${b}">Renombrar</button>
-          <button class="ox-btn ox-btn--sm" data-tam="${b}" title="Cambiar la cantidad de botones">${bancos[b]} botones</button>
-          <button class="ox-btn ox-btn--sm ox-btn--danger" data-del="${b}">Eliminar</button>
-        </h3>${abierta ? `<div class="ox-cart-grid" id="cartGrid-${b}"></div>` : ""}</section>`;
-    }).join("") : `<div class="cart-vacio">${filtro ? "Ninguna paleta se llama así." : "Todavía no hay paletas."}</div>`;
-    pintar();
+  function pintarDetalle() {
+    const det = $("cartDet");
+    if (!sel || !(sel in bancos)) { det.innerHTML = '<p class="ct-vacio">Elige una paleta para ver sus botones.</p>'; return; }
+    const n = bancos[sel], tp = totalPag(n), pg = Math.min(paginas[sel] ?? 0, tp - 1);
+    paginas[sel] = pg;
+    const desde = pg * PAG, hasta = Math.min(n, desde + PAG);
+    const cargados = (slots[sel] || []).length;
+    const ventana = Array.from({ length: tp }, (_, k) => k).filter(k => k === 0 || k === tp - 1 || Math.abs(k - pg) <= 2);
+    const tiles = Array.from({ length: hasta - desde }, (_, k) => desde + k + 1).map(num => {
+      const s = (slots[sel] || []).find(x => x.slot === num);
+      if (!s) return `<div class="ct vacio" data-n="${num}" title="Vacío: clic para cargar un efecto">
+        <i class="ct-num">${num}</i><span class="ct-nom">Vacío</span><span class="ct-play">＋</span></div>`;
+      const largo = (s.mark_out || s.mark_in) ? Math.max(0, (s.mark_out || s.duracion) - (s.mark_in || 0)) : s.duracion;
+      const on = sonando === s.audio_id;
+      return `<div class="ct ${on ? "on" : ""}" data-n="${num}" data-audio="${s.audio_id}" style="background-color:${esc(s.color || COLOR_DEFECTO)}"
+          title="${esc(s.titulo)} — clic: escuchar / otra vez: detener">
+        <i class="ct-num">${num}</i><span class="ct-nom">${esc(s.etiqueta || s.titulo)}</span>
+        <small>${fmt(largo)}</small><span class="ct-play">${on ? "■" : "▶"}</span>
+        <span class="ct-acc"><button data-a="editar" title="Editar">✎</button><button data-a="vaciar" title="Vaciar">🗑</button></span></div>`;
+    }).join("");
+    det.innerHTML = `
+      <div class="ct-det-cab"><b>${esc(NOMBRES[sel] || sel)}</b><small>${cargados}/${n} botones</small></div>
+      ${tp > 1 ? `<div class="ct-pag">
+        <button data-pag="-1" title="Página anterior" ${pg === 0 ? "disabled" : ""}>‹</button>
+        ${ventana.map((k, j, a) => `${j && k - a[j - 1] > 1 ? "<i>…</i>" : ""}<button class="${k === pg ? "act" : ""}" data-ir="${k}">${k + 1}</button>`).join("")}
+        <button data-pag="1" title="Página siguiente" ${pg >= tp - 1 ? "disabled" : ""}>›</button></div>` : ""}
+      <div class="ct-grid">${tiles}</div>
+      <p class="ox-hint" style="margin:2px 0 0">Botones ${desde + 1}–${hasta} · las teclas 1–9 del Studio los disparan.
+        Clic = escuchar (preescucha) · ✎ editar · 🗑 vaciar.</p>`;
   }
 
-  function llenarSelects() {
-    const banco = $("cartBanco").value || Object.keys(bancos)[0];
-    $("cartBanco").innerHTML = Object.keys(bancos)
-      .map(b => `<option value="${b}" ${b === banco ? "selected" : ""}>${NOMBRES[b] || b}</option>`).join("");
-    const slot = $("cartSlot").value;
-    $("cartSlot").innerHTML = Array.from({ length: bancos[banco] || 0 }, (_, i) => i + 1)
-      .map(n => `<option value="${n}" ${String(n) === slot ? "selected" : ""}>${n}</option>`).join("");
+  function pintarSelectBotones() {
+    const n = bancos[sel] || 0, prev = $("cartSlot").value;
+    $("cartSlot").innerHTML = Array.from({ length: n }, (_, i) => i + 1).map(k => {
+      const s = (slots[sel] || []).find(x => x.slot === k);
+      return `<option value="${k}" ${String(k) === prev ? "selected" : ""}>${k}${s ? " · " + (s.etiqueta || s.titulo).slice(0, 22) : " · vacío"}</option>`;
+    }).join("");
   }
 
-  function pintar() {
-    for (const banco of Object.keys(bancos)) {
-      const grid = $(`cartGrid-${banco}`);
-      if (!grid) continue;                         // paleta plegada o en otra página
-      grid.innerHTML = Array.from({ length: bancos[banco] }, (_, i) => {
-        const n = i + 1;
-        const s = (slots[banco] || []).find(x => x.slot === n);
-        return `<div class="ox-slot ${s ? "assigned" : ""}" ${s && s.color ? `style="border-left:6px solid ${esc(s.color)}"` : ""}>
-          <span class="ox-slot__num">${String(n).padStart(2, "0")}</span>
-          <span class="ox-slot__title">${s ? esc(s.etiqueta || s.titulo) : "<i>vacío</i>"}</span>
-          <span class="ox-slot__meta">${s ? `${esc(s.titulo)} · ${esc(s.tipo_audio)} · ${fmt(s.duracion)}` : "&nbsp;"}</span>
-          <div class="ox-slot__actions">
-            <button class="ox-btn ox-btn--sm" data-editar="${banco}:${n}">Editar</button>
-            ${s ? `<button class="ox-btn ox-btn--sm" data-cue="${s.audio_id}" data-desde="${s.mark_in || 0}" title="Escuchar (salida de preescucha, no sale al aire)">▶</button>
-                   <button class="ox-btn ox-btn--sm" data-parar="1" title="Detener la escucha">■</button>
-                   <button class="ox-btn ox-btn--sm ox-btn--danger" data-vaciar="${banco}:${n}">Vaciar</button>` : ""}
-          </div>
-        </div>`;
-      }).join("");
-    }
-  }
-
-  function cue(id, desde = 0) {
-    window.ShellWS?.send({ cmd: "cue", audio_id: id, desde });
-    msg("▶ Sonando por la salida de preescucha (no sale al aire). ■ lo detiene.");
-  }
+  // ── Escuchar (preescucha) ───────────────────────────────────────────────
+  function cue(id, desde = 0) { window.ShellWS?.send({ cmd: "cue", audio_id: id, desde }); }
   function parar() {
     window.ShellWS?.send({ cmd: "cue_stop" });
-    msg("■ Escucha detenida");
+    clearTimeout(tSonando); sonando = null;
+    if ($("cartDet").querySelector(".ct.on")) pintarDetalle();
   }
+  function alternar(s) {
+    if (sonando === s.audio_id) { parar(); return; }
+    cue(s.audio_id, s.mark_in || 0);
+    sonando = s.audio_id;
+    clearTimeout(tSonando);
+    const largo = (s.mark_out || s.duracion || 0) - (s.mark_in || 0);
+    tSonando = setTimeout(() => { sonando = null; pintarDetalle(); }, Math.max(1, largo) * 1000 + 400);
+    pintarDetalle();
+  }
+
+  // ── Acciones sobre la paleta elegida ─────────────────────────────────────
+  const slotDe = n => (slots[sel] || []).find(x => x.slot === n) || null;
+  function abrirEditor(n) {
+    CartEditor.abrir({
+      banco: sel, slot: n, boton: slotDe(n),
+      usados: Object.values(slots).flat().map(x => x.color), alGuardar: cargar,
+    });
+  }
+  $("cartDet").addEventListener("click", async e => {
+    const pg = e.target.closest("[data-pag]"), ir = e.target.closest("[data-ir]");
+    if (pg) { paginas[sel] = (paginas[sel] ?? 0) + +pg.dataset.pag; pintarDetalle(); return; }
+    if (ir) { paginas[sel] = +ir.dataset.ir; pintarDetalle(); return; }
+    const t = e.target.closest(".ct");
+    if (!t) return;
+    const n = +t.dataset.n, acc = e.target.closest("[data-a]")?.dataset.a, s = slotDe(n);
+    if (acc === "editar") { abrirEditor(n); return; }
+    if (acc === "vaciar") {
+      if (!confirm(`¿Vaciar el botón ${n} («${s?.etiqueta || s?.titulo}»)?`)) return;
+      try { await api(`/api/v1/cartuchera/${sel}/${n}`, { method: "DELETE" }); msg(`Botón ${n} vaciado`); parar(); cargar(); }
+      catch (err) { msg(err.message, false); }
+      return;
+    }
+    if (!s) abrirEditor(n);            // un botón vacío se carga
+    else alternar(s);                  // uno cargado se escucha
+  });
+  $("cartLista").addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-pal]");
+    if (!tr) return;
+    parar(); sel = tr.dataset.pal; pintar();
+  });
 
   async function paleta(metodo, clave, cuerpo) {
-    const res = await fetch(`/api/v1/paletas${clave ? "/" + clave : ""}`, {
-      method: metodo, headers: { "Content-Type": "application/json" },
-      body: cuerpo ? JSON.stringify(cuerpo) : undefined,
-    });
-    if (!res.ok) { msg((await res.json().catch(() => ({}))).detail || "No se pudo guardar la paleta", false); return; }
-    msg("✓ Paleta guardada");
-    cargar();
+    try {
+      const d = await api(`/api/v1/paletas${clave ? "/" + clave : ""}`, { method: metodo, headers: { "Content-Type": "application/json" },
+        body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+      msg("✓ Hecho");
+      return d;
+    } catch (err) { msg(err.message, false); return null; }
   }
-  $("cartFiltro").addEventListener("input", () => { filtro = $("cartFiltro").value.trim(); pagP = 0; pintarPaginas(); });
-  $("cartPagAnt").addEventListener("click", () => { pagP = Math.max(0, pagP - 1); pintarPaginas(); });
-  $("cartPagSig").addEventListener("click", () => { pagP += 1; pintarPaginas(); });
-  $("cartExpandir").addEventListener("click", () => {
-    const lote = visibles().slice(pagP * POR_PAG, pagP * POR_PAG + POR_PAG);
-    const todasAbiertas = lote.every(b => abiertas.has(b));
-    lote.forEach(b => todasAbiertas ? abiertas.delete(b) : abiertas.add(b));
-    pintarPaginas();
+  $("cartNueva").addEventListener("click", async () => {
+    const nombre = prompt("Nombre de la nueva paleta (p. ej. «SOLIS 1», «Efectos fiesta»):");
+    if (!nombre?.trim()) return;
+    const d = await paleta("POST", "", { nombre: nombre.trim() });
+    if (d?.clave) { sel = d.clave; filtro = ""; $("cartFiltro").value = ""; }
+    cargar();
   });
-  $("cartNueva").addEventListener("click", () => {
-    const nombre = prompt("Nombre de la nueva paleta (p. ej. «Tips genérico», «Efectos fiesta»):");
-    if (nombre?.trim()) paleta("POST", "", { nombre: nombre.trim() });
+  $("cartRenombrar").addEventListener("click", async () => {
+    const nombre = prompt("Nombre de la paleta:", NOMBRES[sel] || "");
+    if (nombre?.trim()) { await paleta("PUT", sel, { nombre: nombre.trim() }); cargar(); }
   });
-  $("cartBanco").addEventListener("change", () => { $("cartSlot").value = ""; llenarSelects(); });
+  $("cartTam").addEventListener("click", async () => {
+    const n = parseInt(prompt("¿Cuántos botones? (3 a 60)", bancos[sel]));
+    if (!(n >= 3 && n <= 60)) return;
+    const quedan = (slots[sel] || []).filter(s => s.slot > n).length;
+    if (quedan && !confirm(`Se quitarán ${quedan} botón(es) asignados que quedan fuera.`)) return;
+    await paleta("PUT", sel, { slots: n }); cargar();
+  });
+  $("cartEliminar").addEventListener("click", async () => {
+    if (!sel || !confirm(`¿Eliminar la paleta «${NOMBRES[sel]}» y sus botones?`)) return;
+    parar(); await paleta("DELETE", sel); sel = null; cargar();
+  });
   $("cartReload").addEventListener("click", cargar);
-  $("cartParar").addEventListener("click", parar);
+  $("cartFiltro").addEventListener("input", () => { filtro = $("cartFiltro").value.trim(); pintarLista(); });
+
+  // ── Asignar una canción de la biblioteca ─────────────────────────────────
   $("cartPreescuchar").addEventListener("click", () => {
     const a = audioElegido();
-    a ? cue(a.id) : msg("Elige un audio de la lista", false);
+    if (!a) { msg("Elige un audio de la lista", false); return; }
+    cue(a.id); msg("▶ Sonando por la salida de preescucha (no sale al aire). ■ lo detiene.");
   });
-
+  $("cartParar").addEventListener("click", () => { window.ShellWS?.send({ cmd: "cue_stop" }); msg("■ Escucha detenida"); });
   $("cartGuardar").addEventListener("click", async () => {
     const a = audioElegido();
+    if (!sel) { msg("Elige primero una paleta", false); return; }
     if (!a) { msg("Elige un audio de la lista (escribe y selecciona una sugerencia)", false); return; }
-    const banco = $("cartBanco").value, slot = $("cartSlot").value;
-    const res = await fetch(`/api/v1/cartuchera/${banco}/${slot}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ audio_id: a.id, etiqueta: $("cartEtiqueta").value.trim() }),
-    });
-    if (!res.ok) { msg("No se pudo asignar", false); return; }
-    msg(`✓ ${a.titulo} asignado a ${NOMBRES[banco]} ${slot}`);
-    $("cartBuscar").value = ""; $("cartBuscar").dataset.audioId = ""; elegido = null; $("cartEtiqueta").value = "";
-    cargar();
-  });
-
-  document.getElementById("cartRoot").addEventListener("click", async (e) => {
-    const ab = e.target.closest("[data-abrir]");
-    if (ab) { const k = ab.dataset.abrir; abiertas.has(k) ? abiertas.delete(k) : abiertas.add(k); pintarPaginas(); return; }
-    const b = e.target.closest("button");
-    if (!b) return;
-    if (b.dataset.cue) cue(parseInt(b.dataset.cue), parseFloat(b.dataset.desde) || 0);
-    if (b.dataset.parar) parar();
-    if (b.dataset.ren) {
-      const nombre = prompt("Nombre de la paleta:", NOMBRES[b.dataset.ren] || "");
-      if (nombre?.trim()) await paleta("PUT", b.dataset.ren, { nombre: nombre.trim() });
-    }
-    if (b.dataset.tam) {
-      const n = parseInt(prompt("¿Cuántos botones? (3 a 60)", bancos[b.dataset.tam]));
-      if (n >= 3 && n <= 60) {
-        const quedan = (slots[b.dataset.tam] || []).filter(s => s.slot > n).length;
-        if (!quedan || confirm(`Se quitarán ${quedan} botón(es) asignados que quedan fuera.`)) await paleta("PUT", b.dataset.tam, { slots: n });
-      }
-    }
-    if (b.dataset.del && confirm(`¿Eliminar la paleta «${NOMBRES[b.dataset.del]}» y sus botones?`)) await paleta("DELETE", b.dataset.del);
-    if (b.dataset.editar) {
-      // La ventana «Editar» de Soho: cargar el archivo, escucharlo, color, marcas y volumen
-      const [banco, n] = b.dataset.editar.split(":");
-      CartEditor.abrir({
-        banco, slot: parseInt(n), boton: (slots[banco] || []).find(x => x.slot === parseInt(n)) || null,
-        usados: Object.values(slots).flat().map(x => x.color), alGuardar: cargar,
-      });
-    }
-    if (b.dataset.vaciar) {
-      const [banco, n] = b.dataset.vaciar.split(":");
-      await fetch(`/api/v1/cartuchera/${banco}/${n}`, { method: "DELETE" });
-      msg(`Botón ${n} vaciado`);
+    const slot = $("cartSlot").value;
+    try {
+      await api(`/api/v1/cartuchera/${sel}/${slot}`, json("PUT", { audio_id: a.id, etiqueta: $("cartEtiqueta").value.trim() }));
+      msg(`✓ ${a.titulo} asignado a ${NOMBRES[sel]} · botón ${slot}`);
+      $("cartBuscar").value = ""; $("cartBuscar").dataset.audioId = ""; elegido = null; $("cartEtiqueta").value = "";
+      paginas[sel] = Math.floor((+slot - 1) / PAG);      // se muestra la página donde quedó
       cargar();
-    }
+    } catch (err) { msg(`No se pudo asignar: ${err.message}`, false); }
   });
 
   document.addEventListener("ws:cartuchera_updated", cargar);
