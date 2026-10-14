@@ -156,3 +156,28 @@ def test_ajuste_a_mano_de_las_tandas(client):
     assert client.delete("/api/v1/comerciales/tandas-dia/ajuste", params={"fecha": fecha, "hora": 9}).status_code == 200
     h9 = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": fecha}).json()["horas"][9]
     assert not h9["ajustada"] and p1 in [x["pauta_id"] for b in h9["bloques"] for x in b["cunas"]]
+
+
+def test_bloque_publicitario_se_programa_como_evento_de_relojes(client):
+    c = _db()
+    a1 = _audio(c, "Bloque cuña 1", "library/bl1.mp3")
+    a2 = _audio(c, "Bloque cuña 2", "library/bl2.mp3")
+    c.execute("UPDATE audios SET duracion = 120 WHERE id = ?", (a1,))
+    c.execute("UPDATE audios SET duracion = 300 WHERE id = ?", (a2,))
+    p1 = _pauta(c, "BLOQUE UNO", a1)
+    p2 = _pauta(c, "BLOQUE DOS", a2)
+    c.commit(); c.close()
+    r = client.post("/api/v1/comerciales/bloques", json={
+        "nombre": "Cierre de hora", "pautas": [p2, p1], "modo": "termina", "hora": "11:00",
+        "dias": [1, 2, 3], "cortar": True})
+    assert r.status_code == 201, r.text
+    d = r.json()
+    assert d["duracion"] == 420 and d["empieza"] == "10:53" and d["termina"] == "11:00" and d["inmediato"] is True
+    ev = next(e for e in client.get("/api/v1/relojes/eventos").json() if e["id"] == d["evento_id"])
+    assert ev["hora"] == "10:53" and ev["inmediato"] in (True, 1)
+    lista = [b for b in client.get("/api/v1/comerciales/bloques").json() if b["evento_id"] == d["evento_id"]][0]
+    assert lista["duracion"] == 420 and [x["titulo"] for x in lista["cunas"]] == ["Bloque cuña 2", "Bloque cuña 1"]
+    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "Cierre de hora", "pautas": [p1], "hora": "09:00"}).status_code == 409
+    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "X", "pautas": [999999], "hora": "09:00"}).status_code == 422
+    assert client.delete(f"/api/v1/comerciales/bloques/{d['evento_id']}").status_code == 200
+    assert not [b for b in client.get("/api/v1/comerciales/bloques").json() if b["evento_id"] == d["evento_id"]]

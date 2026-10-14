@@ -22,6 +22,7 @@ from backend.paths import DB_PATH, resolve_media
 
 router = APIRouter(tags=["Comerciales"])
 recargar_motor = None      # api_server lo conecta: el motor rehace el reparto de la hora
+replanificar = None        # api_server lo conecta: el motor rehace su plan (engine.plan_regenerar)
 
 TIPOS = {"clientes": ("comerciales_clientes", "cliente"), "agencias": ("comerciales_agencias", "agencia")}
 
@@ -322,4 +323,135 @@ def borrar_ajuste(fecha: str, hora: int):
     finally:
         c.close()
     _avisar_motor()
+    return {"ok": True}
+
+
+# ── Bloques publicitarios: una lista de cuñas elegidas, programada como evento de Relojes ──
+# Se guardan como un reloj (filas con audio fijo) + un evento a hora fija (reloj_eventos), así que
+# aparecen en Relojes › Eventos y el planificador los trata igual que cualquier otro evento.
+
+COLOR_BLOQUE = "#e6a800"
+PREFIJO = "Bloque: "
+
+
+class BloqueIn(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=70)
+    pautas: list[int] = Field(..., min_length=1, max_length=40)       # ids de pautas, en orden
+    modo: str = Field("empieza", pattern="^(empieza|inmediato|termina)$")
+    hora: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    dias: list[int] = Field(default_factory=lambda: list(range(7)))   # 0=Dom … 6=Sáb
+    fecha_inicio: str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    fecha_fin: str = Field("", pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    cortar: bool = False       # solo con «termina»: además corta la canción para terminar exacto
+
+
+def _duracion_pautas(c, ids: list[int]):
+    filas = {r["id"]: r for r in c.execute(
+        f"SELECT p.id, p.cliente, p.audio_id, a.titulo, a.duracion, a.activo FROM pautas p"
+        f" LEFT JOIN audios a ON a.id = p.audio_id WHERE p.id IN ({','.join('?' * len(ids))})", ids)}
+    faltan = [i for i in ids if i not in filas or not filas[i]["activo"]]
+    if faltan:
+        raise HTTPException(status_code=422, detail=f"Estas cuñas no existen o están en la Papelera: {faltan}")
+    return [filas[i] for i in ids], round(sum(float(filas[i]["duracion"] or 0) for i in ids))
+
+
+def _hora_menos(hora: str, seg: int) -> str:
+    h, m = (int(x) for x in hora.split(":"))
+    t = (h * 3600 + m * 60 - seg) % 86400
+    return f"{t // 3600:02d}:{(t % 3600) // 60:02d}"
+
+
+def _replanificar():
+    if replanificar:
+        try:
+            replanificar()
+        except Exception:
+            pass
+
+
+@router.get("/api/v1/comerciales/cunas-activas", summary="Spots activos con su duración, para armar un bloque")
+def cunas_activas():
+    hoy = date.today().isoformat()
+    c = _conn()
+    try:
+        return [{"pauta_id": r["id"], "cliente": r["cliente"] or "", "spot": r["titulo"] or r["audio_nombre"] or "",
+                 "rubro": r["rubro"] or "", "duracion": round(float(r["duracion"] or 0))}
+                for r in c.execute(
+                    "SELECT p.id, p.cliente, p.audio_nombre, p.rubro, a.titulo, a.duracion FROM pautas p"
+                    " JOIN audios a ON a.id = p.audio_id AND a.activo = 1 WHERE p.activo = 1"
+                    " AND (COALESCE(p.fecha_fin, '') = '' OR p.fecha_fin >= ?) ORDER BY p.cliente, a.titulo", (hoy,))]
+    finally:
+        c.close()
+
+
+@router.get("/api/v1/comerciales/bloques", summary="Bloques publicitarios programados")
+def listar_bloques():
+    c = _conn()
+    try:
+        out = []
+        for e in c.execute("SELECT e.*, r.nombre AS reloj FROM reloj_eventos e JOIN relojes r ON r.id = e.reloj_id"
+                           " WHERE r.nombre LIKE ? ORDER BY e.hora", (PREFIJO + "%",)).fetchall():
+            filas = c.execute("SELECT f.audio_id, a.titulo, a.duracion, f.nota AS cliente FROM reloj_filas f"
+                              " LEFT JOIN audios a ON a.id = f.audio_id"
+                              " WHERE f.reloj_id = ? ORDER BY f.orden", (e["reloj_id"],)).fetchall()
+            out.append({"evento_id": e["id"], "reloj_id": e["reloj_id"], "nombre": e["nombre"],
+                        "hora": e["hora"], "dias": [int(d) for d in e["dias"].split(",") if d != ""],
+                        "inmediato": bool(e["inmediato"]), "activo": bool(e["activo"]),
+                        "fecha_inicio": e["fecha_inicio"], "fecha_fin": e["fecha_fin"],
+                        "duracion": round(sum(float(f["duracion"] or 0) for f in filas)),
+                        "cunas": [{"titulo": f["titulo"] or "(sin audio)", "cliente": f["cliente"] or "",
+                                   "duracion": round(float(f["duracion"] or 0))} for f in filas]})
+        return out
+    finally:
+        c.close()
+
+
+@router.post("/api/v1/comerciales/bloques", status_code=201, summary="Crear un bloque publicitario programado")
+def crear_bloque(b: BloqueIn):
+    dias = sorted({int(d) for d in b.dias})
+    if not dias or any(d < 0 or d > 6 for d in dias):
+        raise HTTPException(status_code=422, detail="Elige al menos un día")
+    if b.fecha_inicio and b.fecha_fin and b.fecha_fin < b.fecha_inicio:
+        raise HTTPException(status_code=422, detail="La fecha final es anterior a la inicial")
+    c = _conn()
+    try:
+        filas, dur = _duracion_pautas(c, b.pautas)
+        nombre = " ".join(b.nombre.split())
+        # «termina a las HH:MM»: arranca antes según lo que dura (como las tandas al cierre)
+        inicio = _hora_menos(b.hora, dur) if b.modo == "termina" else b.hora
+        inmediato = b.modo == "inmediato" or (b.modo == "termina" and b.cortar)
+        try:
+            rid = c.execute("INSERT INTO relojes (nombre, color, comentario) VALUES (?, ?, ?)",
+                            (PREFIJO + nombre, COLOR_BLOQUE, "Bloque publicitario (Comerciales)")).lastrowid
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=409, detail=f"Ya existe un bloque llamado «{nombre}»")
+        for i, f in enumerate(filas):
+            c.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
+                      " VALUES (?, ?, 'Cuña', '{}', ?, ?)", (rid, i, f["audio_id"], f["cliente"] or ""))
+        eid = c.execute(
+            "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo, hasta)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 1, '')",
+            (nombre, rid, inicio, ",".join(map(str, dias)), b.fecha_inicio, b.fecha_fin, int(inmediato))).lastrowid
+        c.commit()
+    finally:
+        c.close()
+    _replanificar()
+    return {"evento_id": eid, "reloj_id": rid, "duracion": dur, "empieza": inicio,
+            "termina": _hora_menos(inicio, -dur), "inmediato": inmediato}
+
+
+@router.delete("/api/v1/comerciales/bloques/{evento_id}", summary="Quitar un bloque publicitario")
+def quitar_bloque(evento_id: int):
+    c = _conn()
+    try:
+        e = c.execute("SELECT e.reloj_id FROM reloj_eventos e JOIN relojes r ON r.id = e.reloj_id"
+                      " WHERE e.id = ? AND r.nombre LIKE ?", (evento_id, PREFIJO + "%")).fetchone()
+        if not e:
+            raise HTTPException(status_code=404, detail="No existe ese bloque")
+        c.execute("DELETE FROM reloj_eventos WHERE id = ?", (evento_id,))
+        c.execute("DELETE FROM relojes WHERE id = ?", (e["reloj_id"],))     # sus filas se van en cascada
+        c.commit()
+    finally:
+        c.close()
+    _replanificar()
     return {"ok": True}

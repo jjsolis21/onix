@@ -215,6 +215,7 @@ cartuchera_api.normalizar_nombre = lambda nombre: _normalize_filename(nombre)
 cartuchera_api.leer_duracion = lambda ruta: _probe_duration(ruta)
 cartuchera_api.medir_volumen = _normalizador.avisar
 comerciales_api.recargar_motor = lambda: engine.reload_config()
+comerciales_api.replanificar = lambda: engine.plan_regenerar()
 cartuchera_api.difundir = lambda evento, datos: _manager.broadcast(_ws_message(evento, datos))
 voicetrack_api.medir_volumen = _normalizador.avisar
 app.include_router(cartuchera_api.router)

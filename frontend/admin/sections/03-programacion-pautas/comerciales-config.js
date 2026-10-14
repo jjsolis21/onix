@@ -330,6 +330,106 @@
   }
 
   // ── Botones del panel izquierdo ──────────────────────────────────────────
+  // ══════════ Bloques publicitarios: playlist de cuñas elegidas, programada como evento de Relojes ══════════
+  async function abrirBloques() {
+    const { cuerpo } = ventana('🧩 Bloques publicitarios', 1060);
+    const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    const hhmm = (h, delta) => { const [a, b] = h.split(':').map(Number); const t = (((a * 60 + b) * 60 + delta) % 86400 + 86400) % 86400;
+      return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor(t % 3600 / 60)).padStart(2, '0')}`; };
+    const NOMBRES = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
+    let activas = [], elegidas = [], programados = [];
+    cuerpo.innerHTML = `<p class="ccf-hint">Arma una lista con los spots que quieras, mira cuánto dura y prográmala a una hora.
+        Queda como un <b>evento en Relojes</b> y el modo automático la saca sola.</p>
+      <div class="ccf-bq">
+        <div><h4>1 · Spots activos</h4><input id="ccfBqBus" placeholder="Buscar cliente o spot…" style="margin-bottom:6px">
+          <div class="ccf-tabla-wrap" style="max-height:44vh"><table class="ccf-tabla"><tbody id="ccfBqAct"></tbody></table></div></div>
+        <div><h4>2 · Tu bloque <span id="ccfBqDur" class="ccf-bq-dur"></span></h4>
+          <ol class="ccf-bq-lista" id="ccfBqLista"></ol>
+          <div class="ccf-bq-form">
+            <label>Nombre<input id="ccfBqNom" maxlength="70" placeholder="Ej: Cierre de las 11"></label>
+            <fieldset><legend>3 · ¿Cuándo?</legend>
+              <label class="ccf-radio"><input type="radio" name="ccfBqModo" value="empieza" checked> <b>Empieza a las</b> <span>espera a que termine la canción</span></label>
+              <label class="ccf-radio"><input type="radio" name="ccfBqModo" value="inmediato"> <b>Empieza inmediato a las</b> <span>corta la canción con fade</span></label>
+              <label class="ccf-radio"><input type="radio" name="ccfBqModo" value="termina"> <b>Termina a las</b> <span>calcula cuándo arrancar según la duración</span></label>
+              <label style="flex-direction:row;align-items:center;gap:8px"><input type="time" id="ccfBqHora" value="10:00" style="width:auto">
+                <span class="ccf-bq-calc" id="ccfBqCalc"></span></label>
+              <label class="ccf-radio" id="ccfBqCortarFila" hidden><input type="checkbox" id="ccfBqCortar" checked> Cortar la canción para terminar exacto</label>
+            </fieldset>
+            <div class="ccf-bq-dias" id="ccfBqDias">${NOMBRES.map(([n, t]) => `<label><input type="checkbox" value="${n}" checked>${t}</label>`).join('')}</div>
+            <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfBqCrear">Programar bloque</button><span class="ccf-msg" id="ccfBqMsg"></span></div>
+          </div></div>
+      </div>
+      <h4 style="margin-top:16px">Bloques programados</h4><div id="ccfBqProg"></div>`;
+    const $ = id => cuerpo.querySelector('#' + id);
+    const total = () => elegidas.reduce((a, p) => a + p.duracion, 0);
+    const modo = () => cuerpo.querySelector('input[name="ccfBqModo"]:checked').value;
+
+    const pintarAct = () => {
+      const q = $('ccfBqBus').value.trim().toLowerCase();
+      const usadas = new Set(elegidas.map(p => p.pauta_id));
+      $('ccfBqAct').innerHTML = activas.filter(p => !usadas.has(p.pauta_id) && (!q || (p.cliente + ' ' + p.spot).toLowerCase().includes(q)))
+        .map(p => `<tr data-add="${p.pauta_id}" title="Agregar al bloque"><td><b>${esc(p.cliente || p.spot)}</b><br><small>${esc(p.spot)}</small></td>
+          <td class="num">${mmss(p.duracion)}</td><td><button class="ccf-btn ccf-btn--mini">＋</button></td></tr>`).join('')
+        || '<tr><td class="ccf-vacio">No hay spots activos que mostrar</td></tr>';
+    };
+    const pintarLista = () => {
+      $('ccfBqLista').innerHTML = elegidas.map((p, i) => `<li><span class="n">${i + 1}</span><span class="t"><b>${esc(p.cliente || p.spot)}</b> <small>${esc(p.spot)}</small></span>
+        <span class="d">${mmss(p.duracion)}</span><button class="ccf-btn ccf-btn--mini" data-up="${i}" ${i ? '' : 'disabled'}>▲</button>
+        <button class="ccf-btn ccf-btn--mini" data-down="${i}" ${i < elegidas.length - 1 ? '' : 'disabled'}>▼</button>
+        <button class="ccf-btn ccf-btn--mini" data-del="${i}">✕</button></li>`).join('')
+        || '<li class="vacio">Agrega spots desde la lista de la izquierda</li>';
+      $('ccfBqDur').textContent = elegidas.length ? `· ${elegidas.length} cuñas · ${mmss(total())}` : '';
+      calc();
+    };
+    const calc = () => {
+      const h = $('ccfBqHora').value || '00:00', dur = total();
+      $('ccfBqCortarFila').hidden = modo() !== 'termina';
+      $('ccfBqCalc').textContent = !dur ? '' : modo() === 'termina'
+        ? `→ arranca a las ${hhmm(h, -dur)} y termina a las ${h}`
+        : `→ empieza a las ${h} y termina a las ${hhmm(h, dur)}`;
+    };
+    const pintarProg = () => {
+      $('ccfBqProg').innerHTML = programados.length ? `<table class="ccf-tabla"><thead><tr><th>Bloque</th><th>Empieza</th><th>Días</th><th>Cuñas</th><th>Dura</th><th></th></tr></thead><tbody>${
+        programados.map(b => `<tr><td><b>${esc(b.nombre)}</b>${b.inmediato ? ' <small title="Corta la canción">⚡</small>' : ''}<br>
+          <small>${b.cunas.map(c => esc(c.cliente || c.titulo)).join(' · ')}</small></td><td class="num">${esc(b.hora)}</td>
+          <td>${b.dias.length === 7 ? 'Todos' : NOMBRES.filter(([n]) => b.dias.includes(n)).map(x => x[1]).join(' ')}</td>
+          <td class="num">${b.cunas.length}</td><td class="num">${mmss(b.duracion)}</td>
+          <td><button class="ccf-btn ccf-btn--mini ccf-btn--peligro" data-quitar="${b.evento_id}">Quitar</button></td></tr>`).join('')}</tbody></table>`
+        : '<p class="ccf-hint">Todavía no hay bloques programados.</p>';
+    };
+    const cargarProg = async () => { try { programados = await api('/api/v1/comerciales/bloques'); } catch (_) { programados = []; } pintarProg(); };
+
+    cuerpo.addEventListener('click', async e => {
+      const add = e.target.closest('[data-add]'), up = e.target.closest('[data-up]'), dn = e.target.closest('[data-down]'),
+        del = e.target.closest('[data-del]'), qt = e.target.closest('[data-quitar]');
+      if (add) { elegidas.push(activas.find(p => p.pauta_id === +add.dataset.add)); pintarAct(); pintarLista(); }
+      else if (up) { const i = +up.dataset.up; [elegidas[i - 1], elegidas[i]] = [elegidas[i], elegidas[i - 1]]; pintarLista(); }
+      else if (dn) { const i = +dn.dataset.down; [elegidas[i + 1], elegidas[i]] = [elegidas[i], elegidas[i + 1]]; pintarLista(); }
+      else if (del) { elegidas.splice(+del.dataset.del, 1); pintarAct(); pintarLista(); }
+      else if (qt && confirm('¿Quitar este bloque? Deja de sonar y desaparece de Relojes › Eventos.')) {
+        try { await api(`/api/v1/comerciales/bloques/${qt.dataset.quitar}`, { method: 'DELETE' }); cargarProg(); }
+        catch (err) { msgEn($('ccfBqMsg'), err.message, false); }
+      }
+    });
+    cuerpo.addEventListener('input', e => { if (e.target.id === 'ccfBqBus') pintarAct(); else calc(); });
+    $('ccfBqCrear').addEventListener('click', async () => {
+      const msg = $('ccfBqMsg');
+      const dias = [...cuerpo.querySelectorAll('#ccfBqDias input:checked')].map(x => +x.value);
+      if (!elegidas.length) return msgEn(msg, 'Agrega al menos un spot', false);
+      if (!$('ccfBqNom').value.trim()) return msgEn(msg, 'Ponle un nombre al bloque', false);
+      if (!dias.length) return msgEn(msg, 'Elige al menos un día', false);
+      try {
+        const r = await api('/api/v1/comerciales/bloques', json('POST', {
+          nombre: $('ccfBqNom').value.trim(), pautas: elegidas.map(p => p.pauta_id), modo: modo(), hora: $('ccfBqHora').value, dias,
+          cortar: modo() === 'termina' && $('ccfBqCortar').checked }));
+        msgEn(msg, `✓ Programado: ${r.empieza} → ${r.termina} (${mmss(r.duracion)}). Ya está en Relojes › Eventos`);
+        elegidas = []; $('ccfBqNom').value = ''; pintarAct(); pintarLista(); cargarProg();
+      } catch (err) { msgEn(msg, err.message, false); }
+    });
+    try { activas = await api('/api/v1/comerciales/cunas-activas'); } catch (_) { activas = []; }
+    pintarAct(); pintarLista(); cargarProg();
+  }
+
   // ══════════ Tandas del día (solo lectura): lo que el motor va a sacar, bloque por bloque ══════════
   async function abrirTandasDia() {
     const { cuerpo } = ventana('📋 Tandas del día', 1040);
@@ -431,7 +531,8 @@
     if (e.target.closest('#btnCfgComerciales')) abrirConfig('general');
     else if (e.target.closest('#btnChequeo')) abrirChequeo();
     else if (e.target.closest('#btnTandasDia')) abrirTandasDia();
+    else if (e.target.closest('#btnBloques')) abrirBloques();
   });
   Catalogo.refrescar();
-  global.ComercialesConfig = { abrirConfig, abrirChequeo, abrirTandasDia };
+  global.ComercialesConfig = { abrirConfig, abrirChequeo, abrirTandasDia, abrirBloques };
 })(window);

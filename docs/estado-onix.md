@@ -60,6 +60,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   entre bloques, ✕ quitar ese día, ↺ volver a automático. Tablas `tanda_ajustes`/`tanda_quitadas` (creación perezosa),
   `leer_ajustes`/`aplicar_ajustes` en audio_engine (motor y planner), PUT/DELETE `/api/v1/comerciales/tandas-dia/ajuste`;
   `reload_config` rehace el reparto de la hora. PENDIENTE (Opus): rubros con conflictos.
+- «🧩 Bloques publicitarios»: elegir spots activos (con duración), orden, y programar «empieza / empieza inmediato / termina a las HH:MM»
+  + días. Se guarda como reloj «Bloque: X» (filas con audio fijo) + `reloj_eventos`, así sale en Relojes › Eventos.
+  API GET/POST/DELETE `/api/v1/comerciales/bloques`, GET `/cunas-activas`. UI sin verificar a ojo (el panel rechazó abrir la página de prueba).
 
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
