@@ -1054,6 +1054,7 @@ class AudioEngine:
         self._tandas_base: tuple = ([15, 45], [], [])
         self._tandas_grilla: dict = {}
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
+        self._dur_cierre: dict[int, float] = {}       # minuto al cierre -> segundos de su bloque (hora en curso)
         self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
         # Detector de aire muerto (ver _vigilar_silencio)
         self._silencio_seg: float = 10.0
@@ -2440,6 +2441,7 @@ class AudioEngine:
                 dur = sum(float(comerciales[pid]["duracion"] or 0)
                           for pid in self._plan[minuto] if pid in comerciales)
                 dur += sum(float(f["duracion"] or 0) for f in fijas)
+                self._dur_cierre[minuto] = dur
                 forzada = bool(forzar and forzar == (slot, minuto))
                 if not forzada and inicio_tanda(minuto, dur, True) > seg_hora:
                     continue
@@ -2525,18 +2527,31 @@ class AudioEngine:
         if not self._tandas_inmediatas or self._mode != "automatico" or self._pausado:
             return
         now = self._now()
-        if now.minute not in self._tandas_inmediatas:
+        seg_hora = now.minute * 60 + now.second
+        minuto = None
+        for m in self._tandas_inmediatas:
+            if m in self._tandas_cierre:
+                # Al cierre + inmediata: corta cuando falta justo lo que dura el
+                # bloque, para que termine en su minuto (0 = en punto) y la hora
+                # siguiente empiece con música
+                dur = self._dur_cierre.get(m)
+                fin = (60 if m == 0 else m) * 60
+                if dur is not None and inicio_tanda(m, dur, True) <= seg_hora < fin:
+                    minuto = m
+            elif now.minute == m:
+                minuto = m
+        if minuto is None:
             return
-        clave = (now.strftime("%Y-%m-%d-%H"), now.minute)
+        clave = (now.strftime("%Y-%m-%d-%H"), minuto)
         if clave in self._inmediatas_hechas:
             return
         self._inmediatas_hechas = {c for c in self._inmediatas_hechas if c[0] == clave[0]} | {clave}
         self._check_pautas(forzar=clave)
         sonando_musica = (self._current_track is not None and self._current_item
                           and self._current_item.get("origen") != "pauta")
-        if sonando_musica and any(p.get("tanda") == now.minute for p in self._priority_queue):
-            log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", now.minute)
-            self.bus.emit("tanda_inmediata", {"minuto": now.minute})
+        if sonando_musica and any(p.get("tanda") == minuto for p in self._priority_queue):
+            log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", minuto)
+            self.bus.emit("tanda_inmediata", {"minuto": minuto})
             self._advance()
 
     def _check_evento_inmediato(self):
@@ -2575,6 +2590,7 @@ class AudioEngine:
             self._plan = {m: [p["pauta_id"] for p in lst] for m, lst in plan.items()}
             self._plan_slot = slot
             self._tandas_lanzadas = set()
+            self._dur_cierre = {}
             self._pautas_fallidas = {f for f in self._pautas_fallidas if f[0] == slot}
             return
         if not self._plan:

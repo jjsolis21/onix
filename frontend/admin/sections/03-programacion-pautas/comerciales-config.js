@@ -83,7 +83,8 @@
         ${campo('ccfMin', 'Minutos de las tandas', 'En qué minuto de cada hora sale una tanda, separados por coma (por ejemplo <b>15,45</b>). '
           + 'Salen en el primer cambio de pista después de ese minuto.', c.tandas_minutos)}
         ${campo('ccfInm', 'Tandas con inicio inmediato', 'Minutos cuya tanda corta la canción con fade y sale en su hora exacta (por ejemplo <b>0</b> para la hora en punto). Vacío = ninguna.', c.tandas_inmediatas)}
-        ${campo('ccfCie', 'Tandas al cierre', 'Minutos en que la tanda <b>termina</b> en vez de empezar: el bloque arranca antes para acabar en punto. Vacío = ninguna.', c.tandas_cierre)}
+        ${campo('ccfCie', 'Tandas al cierre', 'Minutos en que la tanda <b>termina</b> en vez de empezar: el sistema suma lo que duran sus cuñas y la arranca antes (7 min de cuñas con <b>0</b> → empieza a las :53 y termina en punto). '
+          + 'Si además pones ese minuto en «inicio inmediato», corta la canción a la hora calculada para terminar exacto. Vacío = ninguna.', c.tandas_cierre)}
         ${campo('ccfMax', 'Duración máxima de la tanda (segundos)', 'Si una tanda dura más, el Studio avisa. 0 = sin límite.', c.tanda_max_seg, 'number')}
         ${campo('ccfTol', 'Tolerancia de tanda (segundos)', 'Cuánto puede atrasarse una tanda esperando que termine la canción en curso antes de buscar otra que encaje.', c.tolerancia_tanda_seg, 'number')}
         <div class="ccf-aviso">Estos valores valen para <b>todas las horas</b>, salvo las que cambies en la pestaña

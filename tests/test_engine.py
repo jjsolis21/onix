@@ -1155,3 +1155,25 @@ def test_ajuste_quita_una_cuna_ese_dia(engine, media):
     engine._check_pautas(forzar=("x", 0))
     engine._check_pautas(forzar=("x", 0))                    # tampoco vuelve como «pauta nueva»
     assert en_cola(engine) == ["B"]
+
+
+def test_bloque_al_cierre_e_inmediato_corta_para_terminar_en_punto(engine, media):
+    # 2 cuñas de 3,5 min = 7 min, al cierre en :00 e inmediata → corta la canción a las 10:53
+    _config(engine, tandas_minutos="0", tandas_cierre="0", tandas_inmediatas="0")
+    engine._mode = "automatico"                              # la config de prueba trae manual
+    for c in ("UNO", "DOS"):
+        pid = add_pauta(engine, media, c)
+        conn = db(engine)
+        conn.execute("UPDATE audios SET duracion = 210 WHERE id = (SELECT audio_id FROM pautas WHERE id = ?)", (pid,))
+        conn.commit()
+        conn.close()
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    engine._now.dt = datetime(2026, 10, 12, 10, 52, 30)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    engine._check_pautas(forzar=("x", 0))                    # el motor mide el bloque
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "auto"           # aún no: faltan 30 s
+    engine._now.dt = datetime(2026, 10, 12, 10, 53, 0)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "pauta"          # cortó: 7 min hasta las 11:00
+    assert any(e == "tanda_inmediata" and d["minuto"] == 0 for e, d in engine.events)
