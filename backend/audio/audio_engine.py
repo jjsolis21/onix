@@ -892,7 +892,7 @@ class AudioEngine:
     FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
-    VOZ_DUCK           = 0.3    # la música bajo la voz queda al 30 % (≈ -10 dB)
+    VOZ_DUCK           = 0.2    # la música bajo la voz queda al 20 % (≈ -14 dB); se cambia con config voz_fondo_pct
     VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
     VOZ_SALIDA_CAMA    = 1.5    # la música de fondo se va en este tiempo antes de que termine la voz
     VOZ_FIN            = 0.2    # la siguiente entra este tiempo antes del final de la voz
@@ -930,6 +930,7 @@ class AudioEngine:
         self._norm_activa      = True
         self._norm_lufs        = -16.0
         self._duck_until       = 0.0
+        self._voz_duck         = self.VOZ_DUCK   # volumen de la música bajo una locución (0–1)
         self._efx: dict[int, dict] = {}        # canal de cartuchera → {boton, audio_id, titulo, fin, hasta}
 
         # Salidas: rol -> dispositivo BASS (-1 = predeterminado del sistema)
@@ -1036,6 +1037,8 @@ class AudioEngine:
             modo = self._cfg("modo", "manual")
             self._mode = modo if modo in ("manual", "automatico") else "manual"
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
+            # Música bajo la voz del locutor / voice track, en % (Admin › Motor de audio)
+            self._voz_duck = max(0.0, min(float(self._cfg("voz_fondo_pct", str(int(self.VOZ_DUCK * 100)))), 100.0)) / 100
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:
@@ -1839,7 +1842,7 @@ class AudioEngine:
                 self._emit_error(track.get("id"), "error_play_backend",
                                  f"No se pudo reproducir: {track.get('titulo', '')}")
                 return False
-            self._audio.slide_volume(outgoing, self._target_volume(prev) * self.VOZ_DUCK, self.VOZ_BAJAR_MS)
+            self._audio.slide_volume(outgoing, self._target_volume(prev) * self._voz_duck, self.VOZ_BAJAR_MS)
             self._cama = {"canal": outgoing, "track": prev, "item": prev_item, "saliendo": False}
             self.bus.emit("voz_sobre_musica", {"voz_id": track.get("id"), "musica_id": prev.get("id"),
                                                "titulo": track.get("titulo", "")})

@@ -56,6 +56,8 @@
         <input type="number" class="ox-input" id="mMaxGenero" min="1" max="10"></div>
       <div class="ox-field"><label for="mDucking">Ducking cartuchera (dB)</label>
         <input type="number" class="ox-input" id="mDucking" min="-40" max="0" step="1"></div>
+      <div class="ox-field"><label for="mVozFondo" title="Cuánto queda sonando la canción mientras habla el locutor (Locutor IA y Voice Tracker). 20 = la música baja al 20 %.">Música bajo la voz (%)</label>
+        <input type="number" class="ox-input" id="mVozFondo" min="0" max="100" step="5"></div>
       <div class="ox-field"><label for="mTandas">Tandas (minutos)</label>
         <input class="ox-input" id="mTandas" placeholder="15,45"></div>
       <div class="ox-field"><label for="mSilencio">Aire muerto tras (s, 0 = apagado)</label>
@@ -257,7 +259,7 @@
   async function cargarConfig() {
     const c = await fetch("/api/v1/config/motor").then(r => r.json());
     $("mCrossfade").value = c.crossfade_seg; $("mVentana").value = c.ventana_artista_min;
-    $("mMaxGenero").value = c.max_mismo_genero; $("mDucking").value = c.ducking_db;
+    $("mMaxGenero").value = c.max_mismo_genero; $("mDucking").value = c.ducking_db; $("mVozFondo").value = c.voz_fondo_pct;
     $("mTandas").value = c.tandas_minutos; $("mSilencio").value = c.silencio_seg ?? 10;
     $("mHorasPlan").value = c.horas_planificadas; $("mAleat").value = c.aleatoriedad;
     $("mTol").value = c.tolerancia_tanda_seg; $("mSepDias").value = c.separacion_cancion_dias;
@@ -278,7 +280,7 @@
 
   $("mGuardarParams").addEventListener("click", () => guardar({
     crossfade_seg: parseFloat($("mCrossfade").value), ventana_artista_min: parseInt($("mVentana").value),
-    max_mismo_genero: parseInt($("mMaxGenero").value), ducking_db: parseFloat($("mDucking").value),
+    max_mismo_genero: parseInt($("mMaxGenero").value), ducking_db: parseFloat($("mDucking").value), voz_fondo_pct: parseInt($("mVozFondo").value),
     tandas_minutos: $("mTandas").value.trim(), silencio_seg: parseInt($("mSilencio").value) || 0,
     horas_planificadas: parseFloat($("mHorasPlan").value), aleatoriedad: parseInt($("mAleat").value),
     tolerancia_tanda_seg: parseInt($("mTol").value), separacion_cancion_dias: parseInt($("mSepDias").value),

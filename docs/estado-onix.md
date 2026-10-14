@@ -17,7 +17,7 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 - Admin › 11 IA: varias claves con orden de respaldo (Gemini, OpenAI, Groq, OpenRouter, compatibles, Fish Audio solo voz
   con voces «Nombre=id»: Britny y Dag). `backend/ia/proveedores.py`, `backend/api/ia.py`.
 - Voice Tracker (Studio › pestaña 🎙 VOZ): grabar con micrófono (WAV) o voz de IA; se inserta tras la canción elegida.
-  Motor: tipo de audio `Locucion` = talk-over (entra en el cue_outro o la mezcla, música al 30 %, la siguiente entra al
+  Motor: tipo de audio `Locucion` = talk-over (entra en el cue_outro o la mezcla, música al 20 % (configurable en Admin › Motor: «Música bajo la voz»), la siguiente entra al
   terminar la voz). `backend/api/voicetrack.py`, `frontend/studio/voicetracker.js`, `audio_engine.py` (_cama).
 - Publicidad/Biblioteca: las marcas suenan justo desde donde están; cerrar la ventana corta el audio.
 
@@ -32,7 +32,7 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
 - Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
-- Talk-over con la tarjeta real (BASS): volumen al 30 % y salida de 1,5 s pueden necesitar ajuste de oído.
+- Talk-over con la tarjeta real (BASS): volumen de fondo (20 %) y salida de 1,5 s pueden necesitar ajuste de oído.
 - Fish Audio y Gemini TTS con claves reales (la nube no llegaba a Fish; Gemini solo validó el formato).
 - El micrófono solo funciona con el Studio abierto como http://localhost (por IP de red local el navegador lo bloquea).
 

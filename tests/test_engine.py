@@ -1024,3 +1024,34 @@ def test_marcas_invalidas_se_ignoran_y_el_fin_natural_avisa(engine, media):
     assert engine._audio.get_position_sec(CANAL_EFX_BASE) < 0.5 and ev[-1][1]["duracion"] == 4.0
     engine._audio.set_position_sec(CANAL_EFX_BASE, 4.0); engine._vigilar_efectos()   # terminó solo
     assert ev[-1][0] == "effect_stopped" and ev[-1][1]["motivo"] == "fin" and engine._efx == {}
+
+
+def test_la_musica_bajo_la_voz_queda_al_20_por_ciento_y_es_configurable(engine, media):
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_outro=40.0, cue_mezcla=55.0)
+    voz = add_audio(engine, media, "VT", tipo="Locucion", seconds=8.0)
+    bajadas = []
+    real = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda canal, v, ms: (bajadas.append((canal, v)), real(canal, v, ms))[1]
+
+    def al_aire_con_voz():
+        bajadas.clear()
+        engine._mode = "manual"
+        engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+        canal_tema = engine._active_canal
+        pleno = engine._target_volume(engine._fetch_track(tema))
+        engine.queue_track(voz); engine._drain_commands()
+        _al(engine, 40.5)
+        assert engine._cama and engine._cama["canal"] == canal_tema
+        return [v for c, v in bajadas if c == canal_tema][-1] / pleno
+
+    assert engine._voz_duck == 0.2
+    assert al_aire_con_voz() == pytest.approx(0.2)            # por defecto: 20 %
+    engine._do_stop("prueba")
+
+    conn = db(engine)
+    conn.execute("INSERT INTO config (clave, valor) VALUES ('voz_fondo_pct', '35')"
+                 " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    conn.commit(); conn.close()
+    engine._load_config()
+    engine._mode = "manual"
+    assert al_aire_con_voz() == pytest.approx(0.35)           # lo que diga Admin › Motor de audio

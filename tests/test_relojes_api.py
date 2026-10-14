@@ -228,3 +228,10 @@ def test_memos_viajan_con_la_cancion_hasta_el_studio(client, tmp_path):
     cola = client.get("/api/v1/programa").json()["cola"]
     assert cola[0]["nota"] == "Saludar a Maracay"
     client.post("/api/v1/player/clear_queue")
+
+
+def test_config_musica_bajo_la_voz(client):
+    assert client.get("/api/v1/config/motor").json()["voz_fondo_pct"] == 20
+    assert client.put("/api/v1/config/motor", json={"voz_fondo_pct": 30}).json()["voz_fondo_pct"] == 30
+    assert client.put("/api/v1/config/motor", json={"voz_fondo_pct": 150}).status_code == 422
+    client.put("/api/v1/config/motor", json={"voz_fondo_pct": 20})
