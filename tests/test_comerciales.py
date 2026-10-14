@@ -73,6 +73,7 @@ def test_el_chequeo_encuentra_lo_que_no_va_a_sonar(client, tmp_path):
     bueno.write_bytes(b"x")
     c = _db()
     ok = _audio(c, "Cuña OK", "library/chequeo_ok.mp3")
+    c.execute("UPDATE audios SET genero_vocal = 'Hombre' WHERE id = ?", (ok,))      # con voz marcada: sin avisos
     perdido = _audio(c, "Cuña perdida", "library/no_existe_jamas.mp3")
     (MEDIA_ROOT / "library" / "chequeo_papelera.mp3").write_bytes(b"x")
     papelera = _audio(c, "Cuña en papelera", "library/chequeo_papelera.mp3", activo=0)
@@ -203,3 +204,28 @@ def test_editar_un_bloque_publicitario(client):
     assert [x["audio_id"] for x in b["cunas"]] == [a2, a1]
     assert client.put("/api/v1/comerciales/bloques/999999", json={"nombre": "x", "audios": [a1], "hora": "09:00"}).status_code == 404
     client.delete(f"/api/v1/comerciales/bloques/{d['evento_id']}")
+
+
+def test_voz_de_la_cuna_chequeo_y_tandas_del_dia(client):
+    c = _db()
+    a_m = _audio(c, "Voz mujer 1", "library/voz_m1.mp3", dur=20)
+    a_m2 = _audio(c, "Voz mujer 2", "library/voz_m2.mp3", dur=20)
+    a_h = _audio(c, "Voz hombre", "library/voz_h.mp3", dur=20)
+    a_s = _audio(c, "Sin voz", "library/voz_s.mp3", dur=20)
+    c.execute("UPDATE audios SET genero_vocal = 'Mujer' WHERE id IN (?, ?)", (a_m, a_m2))
+    c.execute("UPDATE audios SET genero_vocal = 'Hombre' WHERE id = ?", (a_h,))
+    _pauta(c, "VOZ F UNO", a_m, rubro="VozA", matriz={"4-8": True})
+    _pauta(c, "VOZ F DOS", a_m2, rubro="VozB", matriz={"4-8": True})
+    _pauta(c, "VOZ H", a_h, rubro="VozC", matriz={"4-8": True})
+    _pauta(c, "VOZ SIN", a_s, rubro="VozD", matriz={})
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.execute("DELETE FROM config WHERE clave = 'tandas_grilla'")
+    c.commit(); c.close()
+    assert client.put("/api/v1/config/motor", json={"regla_voces_mujer": True}).json()["regla_voces_mujer"] is True
+    r = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "2026-10-15"}).json()      # jueves = día 4
+    cunas = [x for b in r["horas"][8]["bloques"] for x in b["cunas"] if x["cliente"].startswith("VOZ")]
+    orden = [x["cliente"] for x in cunas]
+    assert len(orden) == 3 and orden[1] == "VOZ H"                    # el hombre separa a las dos mujeres
+    assert all("mujer" in x for x in cunas)
+    ch = client.get("/api/v1/comerciales/chequeo").json()["problemas"]
+    assert any(x["codigo"] == "sin_voz" and x["cliente"] == "VOZ SIN" for x in ch)

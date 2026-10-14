@@ -135,3 +135,6 @@
 .ccf-bq-dias { display: flex; gap: 6px; flex-wrap: wrap; }
 .ccf-bq-dias label { flex-direction: row; align-items: center; gap: 4px; background: var(--choc-3, #333); border-radius: 5px; padding: 4px 8px; color: var(--text-hi, #eee); }
 .ccf-bq-form input[type=time] { width: auto; }
+.ccf-chk { display: flex; flex-direction: row !important; align-items: center; gap: 8px; grid-row: auto !important; padding-top: 0 !important; font-size: .9rem; cursor: pointer; }
+.ccf-chk input { width: auto; max-width: none; }
+.ccf-voz { font-style: normal; color: #ff8fc4; font-size: .8rem; }

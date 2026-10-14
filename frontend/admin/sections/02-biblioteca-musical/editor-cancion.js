@@ -149,7 +149,7 @@
               <label data-musica>${esc(etq('cat1', 'Género'))} <select id="ecCat1">${opcionesCat('cat1', f.cat1)}</select></label>
               <label data-musica>${esc(etq('cat2', 'Rotación'))} <select id="ecCat2">${opcionesCat('cat2', f.cat2)}</select></label>
               <label data-musica>${esc(etq('cat3', 'Subgénero'))} <select id="ecCat3">${opcionesCat('cat3', f.cat3)}</select></label>
-              <label data-musica>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
+              <label data-musica data-cuna>Voz <select id="ecVoz">${opcionesCat('voz', f.voz)}</select></label>
               <label data-musica>Origen <select id="ecOrigen"><option value="">—</option>${['NACIONAL', 'INTERNACIONAL'].map(o => `<option ${String(f.origen || '').toUpperCase() === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
               <label data-musica>Energía <select id="ecEnergia"><option value="">—</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${+f.energia === n ? 'selected' : ''}>${n} · ${['', 'Lenta', 'Suave', 'Media', 'Movida', 'Rápida'][n]}</option>`).join('')}</select></label>
               <label>Prioridad <select id="ecPrioridad">${[1, 2, 3].map(n => `<option value="${n}" ${(+f.prioridad || 2) === n ? 'selected' : ''}>${PRIORIDAD[n]}</option>`).join('')}</select></label>
@@ -214,7 +214,7 @@
   function ajustarTipo() {
     const tipo = E.raiz.querySelector('#ecTipo').value, esCuna = tipo === 'Cuña';
     const esIdent = ['Efecto', 'Sweeper', 'Tips'].includes(tipo);
-    E.raiz.querySelectorAll('[data-musica]').forEach(l => { l.hidden = esIdent || esCuna; });
+    E.raiz.querySelectorAll('[data-musica]').forEach(l => { l.hidden = esIdent || (esCuna && !l.hasAttribute('data-cuna')); });
     const lbl = E.raiz.querySelector('#ecLblArtista'); if (lbl) lbl.textContent = esCuna ? 'Anunciante / cliente' : 'Artista';
     const l = E.raiz.querySelector('[data-ident]'), sel = E.raiz.querySelector('#ecIdent');
     l.hidden = !esIdent;

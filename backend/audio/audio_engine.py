@@ -62,6 +62,7 @@ import re
 import sqlite3
 import threading
 import time
+import unicodedata
 from collections import deque
 from ctypes import c_bool, c_char_p, c_double, c_float
 from ctypes import c_int, c_int64, c_uint32, c_void_p, c_wchar_p
@@ -219,13 +220,28 @@ def _rubro(pauta: dict) -> str:
     return (pauta.get("rubro") or "").strip().upper()
 
 
+SEPARAR_VOCES = True      # regla «voces de mujer no se pegan» (config regla_voces_mujer)
+
+
+def fijar_regla_voces(activa: bool) -> None:
+    global SEPARAR_VOCES
+    SEPARAR_VOCES = bool(activa)
+
+
+def es_voz_mujer(voz) -> bool:
+    """'Mujer', 'MUJER', 'Femenina'… (Dúo, Grupo, Instrumental, Hombre y vacío no cuentan como mujer)."""
+    v = unicodedata.normalize("NFKD", str(voz or "")).encode("ascii", "ignore").decode().strip().upper()
+    return v.startswith(("MUJER", "FEMEN", "FEMALE", "WOMAN")) or v == "F"
+
+
 def ordenar_tanda(pautas: list[dict]) -> list[dict]:
     """
     Orden de salida dentro de una tanda: las fijadas "primero" abren y las
     fijadas "último" cierran (como el alfiler de Jazler); después van las de
     orden manual (el que armó programación, tal cual) y el resto respeta el
     orden recibido (prioridad primero) evitando dos cuñas seguidas del mismo
-    rubro.
+    rubro y dos voces de mujer seguidas (regla de las radios venezolanas). Las
+    reglas ceden si no hay cómo cumplirlas: una cuña nunca se queda sin salir.
     """
     pos = lambda p: int(p.get("posicion") or 0)
     primeras = [p for p in pautas if pos(p) == 1]
@@ -233,11 +249,34 @@ def ordenar_tanda(pautas: list[dict]) -> list[dict]:
     medio = [p for p in pautas if pos(p) not in (1, 2)]
     primeras += sorted((p for p in medio if p.get("orden") is not None), key=lambda p: p["orden"])
     pendientes, orden = [p for p in medio if p.get("orden") is None], []
-    previo_ini = _rubro(primeras[-1]) if primeras else ""
+    mujer = lambda p: SEPARAR_VOCES and es_voz_mujer(p.get("voz"))
     while pendientes:
-        previo = _rubro(orden[-1]) if orden else previo_ini
-        idx = next((i for i, p in enumerate(pendientes)
-                    if not previo or _rubro(p) != previo), 0)
+        previo_p = orden[-1] if orden else (primeras[-1] if primeras else None)
+        prev_rubro = _rubro(previo_p) if previo_p else ""
+        prev_mujer = bool(previo_p) and mujer(previo_p)
+
+        def rubro_ok(p):
+            return not prev_rubro or _rubro(p) != prev_rubro
+
+        def voz_ok(p):
+            return not (prev_mujer and mujer(p))
+
+        def viable(i):
+            """Con esta cuña, ¿lo que queda se puede acomodar sin juntar dos mujeres?"""
+            if not SEPARAR_VOCES:
+                return True
+            resto = pendientes[:i] + pendientes[i + 1:]
+            m = sum(1 for q in resto if mujer(q))
+            return m <= (len(resto) - m) + (0 if mujer(pendientes[i]) else 1)
+
+        rango = range(len(pendientes))
+        idx = next((i for i in rango if rubro_ok(pendientes[i]) and voz_ok(pendientes[i]) and viable(i)), None)
+        if idx is None:
+            idx = next((i for i in rango if rubro_ok(pendientes[i]) and voz_ok(pendientes[i])), None)
+        if idx is None:
+            idx = next((i for i in rango if voz_ok(pendientes[i])), None)       # la voz pesa más que el rubro
+        if idx is None:
+            idx = next((i for i in rango if rubro_ok(pendientes[i])), 0)
         orden.append(pendientes.pop(idx))
     return primeras + orden + ultimas
 
@@ -1149,6 +1188,7 @@ class AudioEngine:
             self._voz_duck = max(0.0, min(float(self._cfg("voz_fondo_pct", str(int(self.VOZ_DUCK * 100)))), 100.0)) / 100
             self._fade_corte = max(0.2, min(float(self._cfg("fade_corte_seg", str(self.FADE_CORTE)) or self.FADE_CORTE), 15.0))
             self._fade_curva = parse_curva_fade(self._cfg("fade_corte_curva", ""))
+            fijar_regla_voces(self._cfg("regla_voces_mujer", "1") not in ("0", "false", ""))
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:
@@ -2422,7 +2462,7 @@ class AudioEngine:
                     SELECT p.id, p.cliente, p.audio_id, p.matriz, p.rubro,
                            p.menciones_diarias, p.cue_intro, p.cue_outro,
                            COALESCE(p.seccion, 3) AS seccion, a.duracion,
-                           COALESCE(p.posicion, 0) AS posicion, p.orden
+                           COALESCE(p.posicion, 0) AS posicion, p.orden, a.genero_vocal AS voz
                     FROM pautas p
                     JOIN audios a ON a.id = p.audio_id AND a.activo = 1
                     WHERE p.activo = 1
@@ -2460,6 +2500,8 @@ class AudioEngine:
                 durs = {r[0]: r[1] or 0 for r in conn.execute(
                     "SELECT id, duracion FROM audios WHERE id IN"
                     " (SELECT audio_id FROM pauta_audios)")}
+                voces_v = {r[0]: r[1] for r in conn.execute(
+                    "SELECT id, genero_vocal FROM audios WHERE id IN (SELECT audio_id FROM pauta_audios)")}
                 del_dia = dict(conn.execute(
                     "SELECT pauta_id, COUNT(*) FROM historial_emision"
                     " WHERE slot LIKE ? AND pauta_id IS NOT NULL GROUP BY pauta_id",
@@ -2491,6 +2533,7 @@ class AudioEngine:
                     "duracion": durs.get(audio_id, row["duracion"]) if audio_id != row["audio_id"]
                                 else (row["duracion"] or 0),
                     "posicion": row["posicion"], "slot": slot,
+                    "voz": voces_v.get(audio_id, row["voz"]) if audio_id != row["audio_id"] else row["voz"],
                 }
 
         # Seccion desconocida = comercial (asi nunca se pierde una cuña de cliente)

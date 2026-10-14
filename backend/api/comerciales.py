@@ -180,7 +180,7 @@ def chequeo():
                               "nivel": nivel, "codigo": codigo, "texto": texto})
 
         filas = c.execute(
-            "SELECT p.*, a.titulo, a.archivo_path, a.activo AS audio_activo, a.duracion, a.tipo_audio"
+            "SELECT p.*, a.titulo, a.archivo_path, a.activo AS audio_activo, a.duracion, a.tipo_audio, a.genero_vocal AS voz"
             " FROM pautas p LEFT JOIN audios a ON a.id = p.audio_id WHERE p.activo = 1 ORDER BY p.cliente, p.id").fetchall()
         for p in filas:
             if p["archivo_path"] is None:
@@ -192,6 +192,8 @@ def chequeo():
                     poner(p, "error", "archivo_perdido", "No se encuentra el archivo de audio en el disco.")
                 if not (p["duracion"] or 0):
                     poner(p, "aviso", "sin_duracion", "El audio no tiene duración registrada: las tandas no pueden medirlo.")
+                if not (p["voz"] or "").strip():
+                    poner(p, "aviso", "sin_voz", "No tiene la voz marcada (Hombre / Mujer): la regla de mujeres seguidas no puede aplicarla.")
                 if p["tipo_audio"] and p["tipo_audio"] != "Cuña":
                     poner(p, "aviso", "tipo", f"El audio está marcado como «{p['tipo_audio']}», no como Cuña.")
             if not _horarios(p["matriz"]):
@@ -220,7 +222,7 @@ def chequeo():
 
 @router.get("/api/v1/comerciales/tandas-dia", summary="Qué sale en cada tanda de un día, bloque por bloque")
 def tandas_dia(fecha: Optional[str] = None):
-    from backend.audio.audio_engine import cargar_grilla, leer_ajustes, parse_minutos, tandas_de_hora
+    from backend.audio.audio_engine import cargar_grilla, es_voz_mujer, leer_ajustes, parse_minutos, tandas_de_hora
     from backend.audio.planner import Planner
     try:
         dia = date.fromisoformat(fecha) if fecha else date.today()
@@ -248,7 +250,8 @@ def tandas_dia(fecha: Optional[str] = None):
                     "excede": bool(maximo and dur > maximo),
                     "cunas": [{"pauta_id": x["pauta_id"], "cliente": x["cliente"] or "", "spot": x["spot"] or "",
                                "rubro": x["rubro"] or "", "seccion": x["seccion"], "comercial": x["comercial"],
-                               "fijada": bool(x.get("fijada")),
+                               "fijada": bool(x.get("fijada")), "voz": x.get("voz") or "",
+                               "mujer": es_voz_mujer(x.get("voz")),
                                "duracion": round(x["dur"])} for x in cunas]})
             ajustes, quitadas = leer_ajustes(c, dia.isoformat(), h)
             nombres = {r[0]: r[1] for r in c.execute(

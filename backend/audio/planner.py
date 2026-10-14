@@ -556,13 +556,18 @@ class Planner:
 
     def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]) -> list[dict]:
         """Las cuñas de la tanda, en el orden en que saldrán (misma cuenta que el motor)."""
-        from backend.audio.audio_engine import aplicar_ajustes, leer_ajustes, planificar_tandas, version_rotada
+        from backend.audio.audio_engine import (aplicar_ajustes, fijar_regla_voces, leer_ajustes, planificar_tandas,
+                                                version_rotada)
+        fila_voz = conn.execute("SELECT valor FROM config WHERE clave = 'regla_voces_mujer'").fetchone()
+        fijar_regla_voces((fila_voz[0] if fila_voz else "1") not in ("0", "false", ""))
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
         secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
             "SELECT numero, opcional, comercial FROM tanda_secciones")}
         # Versiones que rotan: la duración es la de la versión que toca ahora
         # (la misma cuenta que usa el motor), no siempre la de la principal
+        voz_de = {r[0]: r[1] for r in conn.execute(
+            "SELECT id, genero_vocal FROM audios WHERE id IN (SELECT audio_id FROM pauta_audios)")}
         versiones: dict[int, list[tuple[int, float]]] = {}
         for pa in conn.execute(
                 "SELECT pa.pauta_id, a.id, a.duracion FROM pauta_audios pa"
@@ -580,7 +585,7 @@ class Planner:
         for r in conn.execute(
             """
             SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion,
-                   p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo FROM pautas p
+                   p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo, a.genero_vocal AS voz FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
               AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
@@ -598,13 +603,15 @@ class Planner:
                     continue
                 opcional, comercial = secciones.get(r["seccion"], (False, True))
                 dur = r["duracion"] or 30
+                voz = r["voz"]
                 if r["id"] in versiones:
                     ids = [v[0] for v in versiones[r["id"]]]
                     toca = version_rotada(ids, salidas.get(r["id"], 0))
                     dur = dict(versiones[r["id"]]).get(toca, dur)
+                    voz = voz_de.get(toca, voz)
                 p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": dur, "opcional": opcional,
                      "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
-                     "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial}
+                     "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial, "voz": voz}
                 (pautas if comercial else fijas).append(p)
         plan = planificar_tandas(pautas, sorted(minutos)) if pautas else {}
         if ajustes and plan:

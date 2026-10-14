@@ -1240,3 +1240,47 @@ def test_curva_del_fade_se_lee_de_la_config():
     assert parse_curva_fade("50") == [1.0, 0.7, 0.4, 0.3, 0.16]                 # un solo punto no es una curva
     assert parse_curva_fade("150,-5,10") == [1.0, 0.0, 0.1]                     # se recorta a 0–100 %
 
+
+
+# ── Voces de mujer: no dos seguidas (regla de las radios venezolanas) ──
+
+def _p(cliente, voz, rubro=""):
+    return {"pauta_id": cliente, "cliente": cliente, "voz": voz, "rubro": rubro, "posicion": 0, "orden": None}
+
+
+def _juntas(lista):
+    return any(a["voz"] == "Mujer" and b["voz"] == "Mujer" for a, b in zip(lista, lista[1:]))
+
+
+def test_es_voz_mujer():
+    from backend.audio.audio_engine import es_voz_mujer
+    assert es_voz_mujer("Mujer") and es_voz_mujer("MUJER") and es_voz_mujer("Femenina") and es_voz_mujer("f")
+    assert not es_voz_mujer("Hombre") and not es_voz_mujer("Dúo") and not es_voz_mujer("") and not es_voz_mujer(None)
+
+
+def test_mujeres_no_se_pegan_y_la_regla_cede_si_no_hay_como():
+    from backend.audio.audio_engine import fijar_regla_voces, ordenar_tanda
+    fijar_regla_voces(True)
+    try:
+        nombres = lambda l: [p["cliente"] for p in l]
+        # M M F F -> se reparten (M F M F): no deja las dos mujeres juntas al final
+        o = ordenar_tanda([_p("M1", "Hombre"), _p("M2", "Hombre"), _p("F1", "Mujer"), _p("F2", "Mujer")])
+        assert not _juntas(o)
+        # F F F M M -> F M F M F
+        o = ordenar_tanda([_p("F1", "Mujer"), _p("F2", "Mujer"), _p("F3", "Mujer"), _p("M1", "Hombre"), _p("M2", "Hombre")])
+        assert not _juntas(o) and len(o) == 5
+        # solo mujeres: la regla se rompe y salen todas
+        assert sorted(nombres(ordenar_tanda([_p("F1", "Mujer"), _p("F2", "Mujer")]))) == ["F1", "F2"]
+        # las sin voz marcada sirven de separador
+        assert nombres(ordenar_tanda([_p("F1", "Mujer"), _p("F2", "Mujer"), _p("X", "")]))[1] == "X"
+        # apagada: respeta el orden recibido
+        fijar_regla_voces(False)
+        assert nombres(ordenar_tanda([_p("F1", "Mujer"), _p("F2", "Mujer"), _p("M", "Hombre")])) == ["F1", "F2", "M"]
+    finally:
+        fijar_regla_voces(True)
+
+
+def test_la_voz_pesa_mas_que_el_rubro():
+    from backend.audio.audio_engine import ordenar_tanda
+    o = ordenar_tanda([_p("F1", "Mujer", "BANCA"), _p("F2", "Mujer", "BANCA"), _p("M", "Hombre", "BANCA")])
+    assert [p["cliente"] for p in o] == ["F1", "M", "F2"]       # mismo rubro, pero separa a las mujeres

@@ -18,7 +18,7 @@
     cargado = new Promise((ok, mal) => {
       const css = document.createElement('link'); css.rel = 'stylesheet';
       css.href = 'sections/02-biblioteca-musical/editor-cancion.css?v=7'; document.head.appendChild(css);
-      const js = document.createElement('script'); js.src = 'sections/02-biblioteca-musical/editor-cancion.js?v=14';
+      const js = document.createElement('script'); js.src = 'sections/02-biblioteca-musical/editor-cancion.js?v=15';
       js.onload = ok; js.onerror = () => { cargado = null; mal(new Error('No se pudo cargar el editor de onda')); };
       document.head.appendChild(js);
     });

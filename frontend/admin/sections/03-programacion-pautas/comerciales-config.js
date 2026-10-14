@@ -87,6 +87,9 @@
           + 'Si además pones ese minuto en «inicio inmediato», corta la canción a la hora calculada para terminar exacto. Vacío = ninguna.', c.tandas_cierre)}
         ${campo('ccfMax', 'Duración máxima de la tanda (segundos)', 'Si una tanda dura más, el Studio avisa. 0 = sin límite.', c.tanda_max_seg, 'number')}
         ${campo('ccfTol', 'Tolerancia de tanda (segundos)', 'Cuánto puede atrasarse una tanda esperando que termine la canción en curso antes de buscar otra que encaje.', c.tolerancia_tanda_seg, 'number')}
+        <div class="ccf-campo"><label for="ccfVoz">Voces de mujer</label>
+          <label class="ccf-chk"><input id="ccfVoz" type="checkbox" ${c.regla_voces_mujer ? 'checked' : ''}> No sonar dos voces de mujer seguidas</label>
+          <p>Cada cuña lleva su voz (Hombre / Mujer…) en la ventana de edición. Si no hay forma de separarlas (por ejemplo, solo hay dos cuñas y las dos son de mujer), la regla cede: ninguna cuña se queda sin salir.</p></div>
         <div class="ccf-aviso">Estos valores valen para <b>todas las horas</b>, salvo las que cambies en la pestaña
           <b>Breaks por hora</b>, donde cada día y hora puede tener sus propios minutos o no tener tandas.</div>
         <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfGuardarG">Guardar</button><span class="ccf-msg" id="ccfMsgG"></span></div>`;
@@ -95,7 +98,8 @@
           await api('/api/v1/config/motor', json('PUT', {
             tandas_minutos: pag.querySelector('#ccfMin').value.trim(), tandas_inmediatas: pag.querySelector('#ccfInm').value.trim(),
             tandas_cierre: pag.querySelector('#ccfCie').value.trim(), tanda_max_seg: parseInt(pag.querySelector('#ccfMax').value) || 0,
-            tolerancia_tanda_seg: parseInt(pag.querySelector('#ccfTol').value) || 0 }));
+            tolerancia_tanda_seg: parseInt(pag.querySelector('#ccfTol').value) || 0,
+            regla_voces_mujer: pag.querySelector('#ccfVoz').checked }));
           msgEn(pag.querySelector('#ccfMsgG'), '✓ Guardado: el motor ya lo usa');
         } catch (e) { msgEn(pag.querySelector('#ccfMsgG'), e.message, false); }
       });
@@ -485,7 +489,7 @@
           <em>${b.cunas.length} cuñas · ${mmss(b.duracion)}${b.excede ? ` · pasa del máximo (${mmss(datos.maximo)})` : ''}</em></header>
         <ol data-m="${b.minuto}">${b.cunas.map(c => `<li class="${c.comercial ? 'com' : 'fija'}${c.fijada ? ' fijada' : ''}"
             ${c.comercial ? `draggable="true" data-id="${c.pauta_id}" title="Arrastra para mover"` : 'title="ID y cortinas: van en cada tanda"'}>
-          <span class="cli">${esc(c.cliente || c.spot)}</span>
+          <span class="cli">${esc(c.cliente || c.spot)}${c.mujer ? ' <i class="ccf-voz" title="Voz de mujer">♀</i>' : ''}</span>
           <span class="spot">${esc(c.spot)}</span><span class="rub">${esc(c.rubro)}</span><span class="dur">${mmss(c.duracion)}</span>
           ${c.comercial ? `<button class="ccf-td-x" data-quitar="${c.pauta_id}" title="Quitar solo este día">✕</button>` : '<span></span>'}</li>`).join('')}
           ${b.cunas.some(c => c.comercial) ? '' : '<li class="vacio">Suelta aquí una cuña</li>'}</ol></section>`).join('') + quit;
