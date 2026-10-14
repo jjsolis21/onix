@@ -84,6 +84,11 @@
   .rj-pal:hover { border-color: var(--gold-0); }
   .rj-pal.on { border-color: var(--gold-0); background: var(--choc-4); box-shadow: inset 0 -3px 0 var(--gold-0); }
   .rj-cons h4 { margin: 12px 0 6px; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-1); font-weight: 500; }
+  .rj-cons-tabs { display: flex; gap: 2px; margin: 12px 0 8px; }
+  .rj-cons-tabs button { flex: 1; background: var(--choc-2); border: 1px solid var(--choc-5); color: var(--text-mid); padding: 7px 10px;
+    cursor: pointer; font: inherit; font-size: .8rem; font-weight: 600; }
+  .rj-cons-tabs button.on { background: var(--gold-0); color: #000; border-color: var(--gold-0); }
+  .rj-cons-filtros .ox-input[type=number] { width: 100%; }
   .rj-cons-filtros { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .rj-cons-filtros .ox-select { width: 100%; max-width: none; }
   .rj-contador { margin-top: 10px; padding: 10px 12px; background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 6px;
@@ -169,8 +174,15 @@
       <div class="rj-cons" id="rjConsRoot">
         <div>
           <div class="rj-paleta" id="rjPaleta"></div>
-          <h4>Qué se elige</h4>
+          <div class="rj-cons-tabs" id="rjConsTabs">
+            <button type="button" data-modo="filtros" class="on">Filtros</button>
+            <button type="button" data-modo="fijo">Canción fija</button>
+          </div>
           <div class="rj-cons-filtros" id="rjConsFiltros"></div>
+          <div id="rjConsFijo" hidden>
+            <input class="ox-input" id="rjConsBuscar" placeholder="Busca por título o artista…" autocomplete="off" style="width:100%">
+            <p class="ox-hint" style="margin:6px 0 0">Esa fila tocará siempre este audio (por ejemplo un ID o una canción concreta).</p>
+          </div>
           <div class="rj-contador" id="rjContador"></div>
         </div>
         <div class="rj-cons-botones">
@@ -343,7 +355,7 @@
 
   let relojes = [], grilla = [], valores = {}, actual = null, filas = [];
   let sel = -1;                                   // fila elegida (en la tabla y en el reloj)
-  const cons = { tipo: "Musica", filtros: {} };   // lo que arma el constructor
+  const cons = { tipo: "Musica", filtros: {}, modo: "filtros", audio: null };   // lo que arma el constructor
   let vistaActual = null;
   const audioCache = OnixBuscador.cache;      // audios ya vistos (la biblioteca no se baja entera)
   let eventos = [], evActual = null;
@@ -396,6 +408,23 @@
     <option value="">${txt}: todas</option>${[1, 2, 3, 4, 5].map(n =>
       `<option value="${n}" ${+valor === n ? "selected" : ""}>${txt.split(" ")[1]} ${n} · ${["", "Lenta", "Suave", "Media", "Movida", "Rápida"][n]}</option>`).join("")}</select>`;
 
+  // Año de lanzamiento (desde / hasta) y prioridad de la canción: filtros que también entiende el planificador
+  const PRIORIDADES = { 1: "Alta", 2: "Normal", 3: "Baja" };
+  const inputAnio = (campo, txt, valor) => `<input type="number" class="ox-input" data-filtro="${campo}" min="1900" max="2100"
+    placeholder="${txt}" title="${txt} (las canciones sin año no entran)" value="${esc(valor ?? "")}">`;
+  const selectPrioridad = valor => `<select class="ox-select" data-filtro="prioridad" title="Prioridad de la canción">
+    <option value="">Prioridad: todas</option>${Object.entries(PRIORIDADES).map(([n, t]) =>
+      `<option value="${n}" ${+valor === +n ? "selected" : ""}>Prioridad ${t}</option>`).join("")}</select>`;
+  const filtrosMusica = fl => selectEnergia("energia_min", "Energía desde", fl.energia_min) + selectEnergia("energia_max", "Energía hasta", fl.energia_max)
+    + inputAnio("anio_min", "Año desde", fl.anio_min) + inputAnio("anio_max", "Año hasta", fl.anio_max) + selectPrioridad(fl.prioridad);
+  function chipsDe(f) {
+    const fl = f.filtros || {};
+    return [...filtrosDe(f.tipo_audio).map(([k, t]) => fl[k] ? `<span class="chip" title="${t}">${esc(fl[k])}</span>` : ""),
+      fl.energia_min || fl.energia_max ? `<span class="chip">Energía ${fl.energia_min || 1}–${fl.energia_max || 5}</span>` : "",
+      fl.anio_min || fl.anio_max ? `<span class="chip">Años ${esc(fl.anio_min || "…")}–${esc(fl.anio_max || "…")}</span>` : "",
+      fl.prioridad ? `<span class="chip">Prioridad ${PRIORIDADES[fl.prioridad] || esc(fl.prioridad)}</span>` : ""].join("");
+  }
+
   function pintarFilas(vista) {
     const tb = $("rjFilas");
     if (sel >= filas.length) sel = filas.length - 1;
@@ -407,8 +436,7 @@
       const v = vista?.filas?.[i];
       const fijo = f.fijo;
       const audio = fijo ? audioCache.get(f.audio_id) : null;
-      const resumen = [...filtrosDe(f.tipo_audio).map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
-        f.filtros.energia_min || f.filtros.energia_max ? `<span class="chip">Energía ${f.filtros.energia_min || 1}–${f.filtros.energia_max || 5}</span>` : ""].join("");
+      const resumen = chipsDe(f);
       return `<tr data-i="${i}" class="${i === sel ? "elegida" : ""}">
         <td class="ox-mono">${i + 1}</td>
         <td class="rj-ini" data-ini></td>
@@ -421,7 +449,7 @@
                value="${audio ? esc(audioLabel(audio)) : ""}" data-audio-id="${f.audio_id ?? ""}">`
           : `<button type="button" class="rj-resumen" data-acc="filtros">${resumen || '<span class="todo">Cualquier ' + (f.tipo_audio === "Musica" ? "canción" : "audio de este tipo") + '</span>'}</button>
              <div class="rj-pop" hidden><div class="rj-filtros">${filtrosDe(f.tipo_audio).map(([k]) => selectValores(k, f.filtros[k], "", f.tipo_audio)).join("")}
-               ${esIdent(f.tipo_audio) ? "" : selectEnergia("energia_min", "Energía desde", f.filtros.energia_min) + selectEnergia("energia_max", "Energía hasta", f.filtros.energia_max)}</div></div>`}
+               ${esIdent(f.tipo_audio) ? "" : filtrosMusica(f.filtros)}</div></div>`}
         </td>
         <td data-cand></td>
         <td style="white-space:nowrap">
@@ -445,9 +473,13 @@
     }).join("");
   }
   function pintarConsFiltros() {
+    const fijo = cons.modo === "fijo";
+    $("rjConsTabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.modo === cons.modo));
+    $("rjConsFiltros").hidden = fijo; $("rjConsFijo").hidden = !fijo;
+    $("rjConsBuscar").value = cons.audio ? audioLabel(cons.audio) : "";
+    $("rjConsBuscar").dataset.audioId = cons.audio ? cons.audio.id : "";
     $("rjConsFiltros").innerHTML = filtrosDe(cons.tipo).map(([k]) => selectValores(k, cons.filtros[k], "", cons.tipo)).join("")
-      + (esIdent(cons.tipo) ? "" : selectEnergia("energia_min", "Energía desde", cons.filtros.energia_min)
-        + selectEnergia("energia_max", "Energía hasta", cons.filtros.energia_max));
+      + (esIdent(cons.tipo) ? "" : filtrosMusica(cons.filtros));
   }
   function leerCons() {
     cons.filtros = {};
@@ -456,6 +488,13 @@
   let tCont = null, nCont = 0;
   function contar() {
     clearTimeout(tCont);
+    if (cons.modo === "fijo") {                         // canción fija: no hay nada que contar, se muestra cuál es
+      const a = cons.audio;
+      $("rjContador").innerHTML = a
+        ? `<b class="num">1</b><span>${esc(audioLabel(a))}</span><b class="dur">${fmt(a.duracion || 0)}</b><span>duración</span>`
+        : `<b class="num cero">0</b><span>Elige el audio en el buscador</span>`;
+      return;
+    }
     tCont = setTimeout(async () => {
       const n = ++nCont;
       try {
@@ -474,14 +513,18 @@
       ${!n ? '<em>Ninguna: una fila así se saltaría.</em>' : n <= 2 ? '<em>Muy pocas: sonarán siempre las mismas.</em>' : ""}
       ${f.pendientes ? `<em>${f.pendientes} más esperan aprobación en la Bandeja de entrada.</em>` : ""}`;
   }
-  const filaNueva = () => ({ tipo_audio: cons.tipo, filtros: { ...cons.filtros }, audio_id: null, fijo: false });
+  const filaNueva = () => cons.modo === "fijo"
+    ? { tipo_audio: cons.tipo, filtros: {}, audio_id: cons.audio?.id ?? null, fijo: true }
+    : { tipo_audio: cons.tipo, filtros: { ...cons.filtros }, audio_id: null, fijo: false };
 
   function seleccionar(i) {
     sel = i;
     document.querySelectorAll("#rjFilas tr[data-i]").forEach(tr => tr.classList.toggle("elegida", +tr.dataset.i === i));
     const f = filas[i];
-    if (f && !f.fijo) {                       // lo elegido se carga en el constructor para cambiarlo
-      cons.tipo = f.tipo_audio; cons.filtros = { ...f.filtros };
+    if (f) {                                  // lo elegido se carga en el constructor para cambiarlo
+      cons.tipo = f.tipo_audio;
+      if (f.fijo) { cons.modo = "fijo"; cons.audio = audioCache.get(f.audio_id) || null; cons.filtros = {}; }
+      else { cons.modo = "filtros"; cons.filtros = { ...f.filtros }; }
       pintarPaleta(); pintarConsFiltros(); contar();
     }
     $("rjSelTxt").textContent = f ? `Fila elegida: ${i + 1}${f.fijo ? " (audio fijo)" : ""}. Cambiar la reemplaza.`
@@ -489,6 +532,10 @@
     if (vistaActual) pintarReloj(vistaActual);
   }
   function aplicar(accion) {
+    if (accion !== "eliminar" && cons.modo === "fijo" && !cons.audio) {
+      $("rjSelTxt").textContent = "Elige primero el audio en «Canción fija».";
+      return;
+    }
     leerFilas();
     if (accion === "agregar") { filas.push(filaNueva()); sel = filas.length - 1; }
     else if (accion === "insertar") { const i = sel >= 0 ? sel : filas.length; filas.splice(i, 0, filaNueva()); sel = i; }
@@ -506,9 +553,21 @@
     const antes = cons.tipo;
     cons.tipo = b.dataset.tipo;
     if (esIdent(antes) !== esIdent(cons.tipo) || cons.tipo !== antes && esIdent(cons.tipo)) cons.filtros = {};
+    if (cons.audio && cons.audio.tipo_audio && cons.audio.tipo_audio !== cons.tipo) cons.audio = null;
     pintarPaleta(); pintarConsFiltros(); contar();
   });
   $("rjConsFiltros").addEventListener("change", () => { leerCons(); contar(); });
+  $("rjConsTabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-modo]"); if (!b) return;
+    cons.modo = b.dataset.modo;
+    pintarConsFiltros(); contar();
+    if (cons.modo === "fijo") $("rjConsBuscar").focus();
+  });
+  OnixBuscador.attach($("rjConsBuscar"), {
+    tipos: () => cons.tipo,
+    onElegir: a => { audioCache.set(a.id, a); cons.audio = a; contar(); },
+  });
+  $("rjConsBuscar").addEventListener("input", () => { if (!$("rjConsBuscar").dataset.audioId) { cons.audio = null; contar(); } });
   $("rjBAgregar").addEventListener("click", () => aplicar("agregar"));
   $("rjBInsertar").addEventListener("click", () => aplicar("insertar"));
   $("rjBCambiar").addEventListener("click", () => aplicar("cambiar"));
@@ -581,7 +640,7 @@
         const espera = f.pendientes ? ` ${f.pendientes} esperan aprobación en la Bandeja de entrada.` : "";
         if (!f.candidatos) (v.respaldo_candidatos ? av : err).push(
           `Fila ${i + 1}: sin audios${v.respaldo_candidatos ? ", usará el respaldo" : ", se salta"}.${espera}`);
-        else if (f.candidatos <= 2) av.push(`Fila ${i + 1}: solo ${f.candidatos} audio(s), sonarán siempre los mismos.${espera}`);
+        else if (f.candidatos <= 2 && !filas[i]?.fijo) av.push(`Fila ${i + 1}: solo ${f.candidatos} audio(s), sonarán siempre los mismos.${espera}`);
       });
       if (v.respaldo_candidatos === 0) err.push("El respaldo no tiene canciones: elige otra categoría.");
       if (!v.duracion_ciclo) err.push("Ninguna fila tiene audios: esta hora sonará solo con música al azar.");
@@ -705,8 +764,7 @@
     if (e.target.dataset.filtro) {          // actualizar el resumen de la fila sin cerrar los filtros
       leerFilas();
       const f = filas[+tr.dataset.i];
-      const chips = [...filtrosDe(f.tipo_audio).map(([k, t]) => f.filtros[k] ? `<span class="chip" title="${t}">${esc(f.filtros[k])}</span>` : ""),
-        f.filtros.energia_min || f.filtros.energia_max ? `<span class="chip">Energía ${f.filtros.energia_min || 1}–${f.filtros.energia_max || 5}</span>` : ""].join("");
+      const chips = chipsDe(f);
       tr.querySelector(".rj-resumen").innerHTML = chips || '<span class="todo">Cualquier canción</span>';
     }
     previa();
