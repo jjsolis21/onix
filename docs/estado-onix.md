@@ -52,8 +52,10 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   tanda; Clientes y Agencias: catálogo con contacto, al renombrar se actualizan los spots) y «🩺 Chequeo de integridad»
   (audio perdido o en Papelera, sin horarios, fechas, vencido, sin rubro). `backend/api/comerciales.py`,
   `frontend/admin/sections/03-programacion-pautas/comerciales-config.js`.
-  PENDIENTE (Opus, toca `planificar_tandas`/motor): rubros con conflictos entre sí, y tandas por hora y por día
-  (hoy `tandas_minutos`, `tandas_inmediatas` y `tandas_cierre` son iguales todas las horas y días).
+- Tandas por día y hora (pestaña «Breaks por hora»): config `tandas_grilla` JSON {"dia-hora": {minutos, inmediatas,
+  cierre} | {off: true}}, dia 0=Dom como la matriz. Sin entrada = valores generales. Motor: `tandas_de_hora`,
+  `_tandas_de_ahora`; planner `_proxima_tanda` calcula cada hora. API GET/PUT `/api/v1/comerciales/tandas-grilla`.
+  PENDIENTE (Opus, toca `planificar_tandas`): rubros con conflictos entre sí.
 
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.

@@ -444,3 +444,13 @@ def test_filtros_de_anio_y_prioridad(tmp_db):
     assert titulos({"prioridad": 2}) == ["SIN ANIO", "VIEJA"]            # sin prioridad = Normal
     assert titulos({}) == ["MEDIA", "NUEVA", "SIN ANIO", "VIEJA"]
     conn.close()
+
+
+def test_grilla_de_tandas_por_dia_y_hora_en_el_plan(base):
+    _pauta(base)
+    for i in range(20):
+        audio(base, f"T{i}", dur=200)
+    cfg(base, tandas_grilla=json.dumps({"1-10": {"minutos": "30", "inmediatas": "30"}, "1-11": {"off": True}}))
+    tandas = [i for i in planear(base, minutos=120, tandas=(15, 45)) if i["tipo"] == "tanda"]
+    assert [(t["slot"][-2:], t["minuto"]) for t in tandas] == [("10", 30)]
+    assert tandas[0]["inmediata"] is True and tandas[0]["inicio"] == "2026-10-12T10:30:00"

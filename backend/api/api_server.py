@@ -2454,6 +2454,51 @@ def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(ge
     return _read_motor_config(conn)
 
 
+def _minutos_texto(v, campo: str) -> str:
+    partes = [x for x in re.split(r"[,;\s]+", str(v or "")) if x]
+    if any(not x.isdigit() or int(x) > 59 for x in partes):
+        raise HTTPException(status_code=422, detail=f"{campo}: minutos entre 0 y 59 separados por coma")
+    return ",".join(str(m) for m in sorted({int(x) for x in partes}))
+
+
+class GrillaTandas(BaseModel):
+    grilla: dict[str, dict] = Field(default_factory=dict)
+
+
+@app.get("/api/v1/comerciales/tandas-grilla", tags=["Comerciales"], summary="Tandas por día y hora")
+def get_grilla_tandas(conn: sqlite3.Connection = Depends(get_db)):
+    """Grilla {"dia-hora": {...}} (dia 0=Dom…6=Sab). Las horas que no aparecen usan los minutos generales."""
+    from backend.audio.audio_engine import cargar_grilla
+    fila = conn.execute("SELECT valor FROM config WHERE clave = 'tandas_grilla'").fetchone()
+    cfg = _read_motor_config(conn)
+    return {"grilla": cargar_grilla(fila["valor"] if fila else ""),
+            "general": {k: cfg[k] for k in ("tandas_minutos", "tandas_inmediatas", "tandas_cierre")}}
+
+
+@app.put("/api/v1/comerciales/tandas-grilla", tags=["Comerciales"], summary="Guardar tandas por día y hora")
+def put_grilla_tandas(body: GrillaTandas, conn: sqlite3.Connection = Depends(get_db)):
+    limpia = {}
+    for clave, e in body.grilla.items():
+        m = re.fullmatch(r"([0-6])-(\d{1,2})", clave)
+        if not m or int(m.group(2)) > 23:
+            raise HTTPException(status_code=422, detail=f"Clave inválida: {clave} (dia 0-6, hora 0-23)")
+        if e.get("off"):
+            limpia[clave] = {"off": True}
+            continue
+        d = {"minutos": _minutos_texto(e.get("minutos"), "minutos")}
+        if not d["minutos"]:
+            raise HTTPException(status_code=422, detail=f"{clave}: escribe los minutos o marca la hora sin tandas")
+        for k in ("inmediatas", "cierre"):
+            if k in e:
+                d[k] = _minutos_texto(e.get(k), k)
+        limpia[clave] = d
+    conn.execute("INSERT INTO config (clave, valor) VALUES ('tandas_grilla', ?)"
+                 " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (json.dumps(limpia),))
+    conn.commit()
+    engine.reload_config()
+    return get_grilla_tandas(conn)
+
+
 @app.get("/api/v1/audios/{audio_id}/stream", tags=["Audios"], summary="Preescucha del audio")
 def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
     """Sirve el archivo de audio (con soporte de Range) para preescucha en el navegador."""

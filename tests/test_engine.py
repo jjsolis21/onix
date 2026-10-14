@@ -1055,3 +1055,50 @@ def test_la_musica_bajo_la_voz_queda_al_20_por_ciento_y_es_configurable(engine, 
     engine._load_config()
     engine._mode = "manual"
     assert al_aire_con_voz() == pytest.approx(0.35)           # lo que diga Admin › Motor de audio
+
+
+# ── Tandas por día y hora (grilla, como los «Breaks comerciales» de Jazler) ──
+
+def test_tandas_de_hora_funcion_pura():
+    from backend.audio.audio_engine import tandas_de_hora
+    base = ([15, 45], [15], [])
+    assert tandas_de_hora({}, 1, 10, *base) == ([15, 45], [15], [])
+    assert tandas_de_hora({"1-10": {"off": True}}, 1, 10, *base) == ([], [], [])
+    assert tandas_de_hora({"1-10": {"minutos": "20,50"}}, 1, 10, *base) == ([20, 50], [], [])
+    assert tandas_de_hora({"1-10": {"minutos": "0,15", "inmediatas": "0", "cierre": "15,30"}}, 1, 10, *base) \
+        == ([0, 15], [0], [15])
+    assert tandas_de_hora({"1-10": {"minutos": "20"}}, 2, 10, *base) == ([15, 45], [15], [])   # otro día
+
+
+def test_grilla_cambia_los_minutos_de_esa_hora(engine, media):
+    add_pauta(engine, media, "CLIENTE A")
+    _config(engine, tandas_minutos="15,45", tandas_grilla=json.dumps({"1-10": {"minutos": "20"}}))
+    engine._now.dt = datetime(2026, 10, 12, 10, 16)          # lunes 10:16: la de :15 no existe esa hora
+    engine._check_pautas(forzar=("x", 0))
+    assert en_cola(engine) == []
+    engine._now.dt = datetime(2026, 10, 12, 10, 20)
+    engine._check_pautas(forzar=("x", 0))
+    assert en_cola(engine) == ["CLIENTE A"] and engine._priority_queue[0]["tanda"] == 20
+
+
+def test_grilla_hora_sin_tandas(engine, media):
+    add_pauta(engine, media, "CLIENTE A")
+    _config(engine, tandas_minutos="15,45", tandas_grilla=json.dumps({"1-10": {"off": True}}))
+    engine._now.dt = datetime(2026, 10, 12, 10, 50)
+    engine._check_pautas(forzar=("x", 0))
+    assert en_cola(engine) == [] and engine._tandas_minutos == []
+    engine._now.dt = datetime(2026, 10, 12, 11, 50)          # la hora siguiente vuelve a lo general
+    engine._check_pautas(forzar=("x", 0))
+    assert engine._tandas_minutos == [15, 45]
+
+
+def test_grilla_inicio_inmediato_solo_esa_hora(engine, media):
+    add_pauta(engine, media, "EN PUNTO")
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    _config(engine, tandas_minutos="0", tandas_grilla=json.dumps({"1-10": {"minutos": "0", "inmediatas": "0"}}))
+    engine._mode = "automatico"                              # la config de prueba trae manual
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "pauta"

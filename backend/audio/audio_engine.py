@@ -107,6 +107,39 @@ def parse_minutos(valor: str) -> list[int]:
     return sorted(minutos) or [0]
 
 
+def cargar_grilla(texto: str) -> dict:
+    """Config `tandas_grilla` (JSON) -> {"dia-hora": {...}}. Texto roto = sin grilla."""
+    try:
+        g = json.loads(texto or "{}")
+    except ValueError:
+        return {}
+    return {k: v for k, v in g.items() if isinstance(v, dict)} if isinstance(g, dict) else {}
+
+
+def tandas_de_hora(grilla: dict, dia: int, hora: int, minutos: list[int],
+                   inmediatas: list[int], cierre: list[int]) -> tuple[list[int], list[int], list[int]]:
+    """
+    Tandas de una hora concreta (como los «Breaks comerciales» de Jazler, que
+    varían por hora y por día). Clave "dia-hora", dia 0=Dom…6=Sab, igual que la
+    matriz de las pautas. Sin entrada valen los minutos generales; con
+    {"off": true} esa hora no tiene tandas; si no, la entrada manda:
+    {"minutos": "15,45", "inmediatas": "15", "cierre": ""}.
+    """
+    e = (grilla or {}).get(f"{dia}-{hora}")
+    if not isinstance(e, dict):
+        return list(minutos), list(inmediatas), list(cierre)
+    if e.get("off"):
+        return [], [], []
+    m = parse_minutos(str(e["minutos"])) if str(e.get("minutos") or "").strip() else list(minutos)
+
+    def lista(clave, defecto):
+        if clave not in e:
+            return [x for x in defecto if x in m]
+        txt = str(e.get(clave) or "").strip()
+        return [x for x in parse_minutos(txt) if x in m] if txt else []
+    return m, lista("inmediatas", inmediatas), lista("cierre", cierre)
+
+
 def inicio_tanda(minuto: int, duracion: float, cierre: bool) -> float:
     """
     Segundos desde el inicio de la hora en que arranca la tanda.
@@ -158,6 +191,8 @@ def planificar_tandas(pautas: list[dict], minutos: list[int]) -> dict[int, list[
     por prioridad. Cada pauta va a la tanda con menos anunciantes de su mismo
     rubro y, a igualdad, a la menos cargada (y la mas temprana).
     """
+    if not minutos:
+        return {}               # hora sin tandas (grilla por día y hora)
     tandas: dict[int, list[dict]] = {m: [] for m in minutos}
     for p in pautas:
         rubro = _rubro(p)
@@ -969,6 +1004,10 @@ class AudioEngine:
         self._plan:            dict[int, list[int]] = {}
         self._tandas_lanzadas: set[int] = set()
         self._tandas_inmediatas: list[int] = []      # minutos cuya tanda corta la cancion
+        # Valores generales y grilla por día y hora: la hora en curso toma de ahí
+        # sus minutos, inmediatas y cierre (ver _tandas_de_ahora)
+        self._tandas_base: tuple = ([15, 45], [], [])
+        self._tandas_grilla: dict = {}
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
         self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
         # Detector de aire muerto (ver _vigilar_silencio)
@@ -1056,9 +1095,12 @@ class AudioEngine:
             self._tandas_inmediatas = parse_minutos(inm) if inm.strip() else []
             self._tanda_max_seg = int(float(self._cfg("tanda_max_seg", "240") or 0))
             minutos = parse_minutos(self._cfg("tandas_minutos", "15,45"))
+            self._tandas_base = (minutos, list(self._tandas_inmediatas), list(self._tandas_cierre))
+            self._tandas_grilla = cargar_grilla(self._cfg("tandas_grilla", ""))
             if minutos != self._tandas_minutos:
                 self._tandas_minutos = minutos
                 self._plan_slot = None   # replanificar la hora con las nuevas tandas
+            self._tandas_de_ahora()
         except Exception as exc:
             log.warning("[Engine] Config no cargada: %s", exc)
 
@@ -1573,7 +1615,7 @@ class AudioEngine:
         lanzadas = {(self._plan_slot, m) for m in self._tandas_lanzadas} if self._plan_slot else set()
         try:
             nuevos = self._planner.extender(
-                actual, t, hasta, list(self._recent_history), self._tandas_minutos,
+                actual, t, hasta, list(self._recent_history), self._tandas_base[0],
                 excluir={i for i in self._failed_ids if isinstance(i, int)},
                 tandas_emitidas=lanzadas,
                 ultimo=self._ultimo_del_reloj(),
@@ -2227,6 +2269,7 @@ class AudioEngine:
         if forzar is None and time.monotonic() - self._last_pautas_check < self.PAUTAS_INTERVAL:
             return
         self._last_pautas_check = time.monotonic()
+        self._tandas_de_ahora()
 
         now  = self._now()
         slot = now.strftime("%Y-%m-%d-%H")
@@ -2408,12 +2451,24 @@ class AudioEngine:
                                    for p in lanzadas],
                     })
 
+    def _tandas_de_ahora(self):
+        """Con grilla por día y hora, la hora en curso usa sus propias tandas."""
+        if not self._tandas_grilla:
+            return
+        now = self._now()
+        m, i, c = tandas_de_hora(self._tandas_grilla, (now.weekday() + 1) % 7, now.hour, *self._tandas_base)
+        self._tandas_inmediatas, self._tandas_cierre = i, c
+        if m != self._tandas_minutos:
+            self._tandas_minutos = m
+            self._plan_slot = None
+
     def _check_tanda_inmediata(self):
         """
         Inicio inmediato (Jazler "Break Starts Immediately"): en automatico, al
         llegar el minuto de una tanda marcada, la cancion que suena sale con
         fade y la tanda empieza a su hora exacta. En manual decide el operador.
         """
+        self._tandas_de_ahora()
         if not self._tandas_inmediatas or self._mode != "automatico" or self._pausado:
             return
         now = self._now()
@@ -2469,6 +2524,8 @@ class AudioEngine:
             self._tandas_lanzadas = set()
             self._pautas_fallidas = {f for f in self._pautas_fallidas if f[0] == slot}
             return
+        if not self._plan:
+            return              # hora sin tandas
         planificadas = {pid for ids in self._plan.values() for pid in ids}
         for p in pautas:
             if p["pauta_id"] in planificadas:

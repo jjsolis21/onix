@@ -305,8 +305,8 @@ class Planner:
         sin_musica = 0       # ítems seguidos sin música (protección contra bucles)
         while t < hasta and len(nuevos) < 400:
             # ── Tanda pendiente en esta hora ───────────────────────────────
-            tanda = self._proxima_tanda(conn, t, tandas_minutos, tandas_hechas)
-            inmediata = bool(tanda and tanda["minuto"] in inmediatas)
+            tanda = self._proxima_tanda(conn, t, tandas_minutos, tandas_hechas, inmediatas)
+            inmediata = bool(tanda and tanda["inmediata"])
             if tanda and (tanda["hora"] <= t or (not inmediata and tanda["hora"] <= t + timedelta(seconds=tol))):
                 tandas_hechas.add((tanda["slot"], tanda["minuto"]))
                 if tanda["duracion"] > 0:
@@ -513,28 +513,34 @@ class Planner:
 
     # ── Tandas ──────────────────────────────────────────────────────────────
 
-    def _proxima_tanda(self, conn, t: datetime, minutos: list[int], hechas: set) -> Optional[dict]:
+    def _proxima_tanda(self, conn, t: datetime, minutos: list[int], hechas: set,
+                       inmediatas: set = frozenset()) -> Optional[dict]:
         """
         Próxima tanda (de esta hora o la siguiente) aún no planificada.
         Las tandas "al cierre" (config tandas_cierre) terminan en su minuto:
-        su hora de arranque depende de cuánto duran sus cuñas.
+        su hora de arranque depende de cuánto duran sus cuñas. Con grilla por
+        día y hora (config tandas_grilla) cada hora usa sus propios minutos.
         """
-        from backend.audio.audio_engine import inicio_tanda, parse_minutos
+        from backend.audio.audio_engine import cargar_grilla, inicio_tanda, parse_minutos, tandas_de_hora
         fila = conn.execute("SELECT valor FROM config WHERE clave = 'tandas_cierre'").fetchone()
-        cierre = set(parse_minutos(fila[0])) if fila and (fila[0] or "").strip() else set()
+        cierre_base = parse_minutos(fila[0]) if fila and (fila[0] or "").strip() else []
+        grilla = cargar_grilla(self.cfg.get("tandas_grilla", ""))
         for base in (t.replace(minute=0, second=0, microsecond=0),
                      t.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)):
             slot = base.strftime("%Y-%m-%d-%H")
+            minutos_h, inm_h, cie_h = tandas_de_hora(grilla, (base.weekday() + 1) % 7, base.hour,
+                                                     minutos, sorted(inmediatas), cierre_base)
+            cierre, inm_h = set(cie_h), set(inm_h)
             candidatas = []
-            for m in minutos:
+            for m in minutos_h:
                 if (slot, m) in hechas:
                     continue
-                cunas, dur = self._cunas_tanda(conn, base, m, minutos)
+                cunas, dur = self._cunas_tanda(conn, base, m, minutos_h)
                 hora = base + timedelta(seconds=inicio_tanda(m, dur, m in cierre))
                 if hora < t - timedelta(minutes=30):
                     continue
                 candidatas.append({"hora": hora, "minuto": m, "slot": slot, "cunas": cunas,
-                                   "duracion": dur, "cierre": m in cierre})
+                                   "duracion": dur, "cierre": m in cierre, "inmediata": m in inm_h})
             if candidatas:
                 return min(candidatas, key=lambda c: c["hora"])
         return None

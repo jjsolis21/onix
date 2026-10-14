@@ -3,11 +3,12 @@
  *
  * «Config. de comerciales» (como las Propiedades de spot de Jazler SoHo), en una sola ventana con pestañas:
  *   · General       → tandas: minutos, inicio inmediato, cierre, duración máxima y tolerancia.
+ *   · Breaks por hora → tandas distintas por día y hora (como «Breaks comerciales» de Soho).
  *   · Prioridades   → orden de las secciones de la tanda (ID, cortinas, comerciales) y su tipo.
  *   · Clientes / Agencias → catálogo con contacto; al renombrar se actualizan sus spots.
  * y «Chequeo de integridad»: spots con el audio perdido, sin horarios, vencidos, sin rubro…
  *
- * API: /api/v1/config/motor · /api/v1/tandas/secciones · /api/v1/comerciales/catalogo/{clientes|agencias}
+ * API: /api/v1/config/motor · /api/v1/comerciales/tandas-grilla · /api/v1/tandas/secciones · /api/v1/comerciales/catalogo/{clientes|agencias}
  *      /api/v1/comerciales/chequeo
  * Expone: window.ComercialesCatalogo { clientes, agencias, refrescar() } para las listas del formulario del spot.
  */
@@ -60,13 +61,13 @@
     const { cuerpo } = ventana('⚙ Config. de comerciales', 940);
     cuerpo.innerHTML = `
       <nav class="ccf-tabs">
-        <button data-t="general">General</button><button data-t="prioridades">Prioridades</button>
+        <button data-t="general">General</button><button data-t="breaks">Breaks por hora</button><button data-t="prioridades">Prioridades</button>
         <button data-t="clientes">Clientes</button><button data-t="agencias">Agencias</button>
       </nav><div class="ccf-pagina"></div>`;
     const pag = cuerpo.querySelector('.ccf-pagina');
     const ir = t => {
       cuerpo.querySelectorAll('.ccf-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-      ({ general, prioridades, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
+      ({ general, breaks, prioridades, clientes: () => catalogo('clientes'), agencias: () => catalogo('agencias') })[t]();
     };
     cuerpo.querySelector('.ccf-tabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) ir(b.dataset.t); });
 
@@ -85,8 +86,8 @@
         ${campo('ccfCie', 'Tandas al cierre', 'Minutos en que la tanda <b>termina</b> en vez de empezar: el bloque arranca antes para acabar en punto. Vacío = ninguna.', c.tandas_cierre)}
         ${campo('ccfMax', 'Duración máxima de la tanda (segundos)', 'Si una tanda dura más, el Studio avisa. 0 = sin límite.', c.tanda_max_seg, 'number')}
         ${campo('ccfTol', 'Tolerancia de tanda (segundos)', 'Cuánto puede atrasarse una tanda esperando que termine la canción en curso antes de buscar otra que encaje.', c.tolerancia_tanda_seg, 'number')}
-        <div class="ccf-aviso"><b>Hoy estas tandas son las mismas todas las horas y todos los días.</b>
-          La tabla de breaks por hora y por día (como «Breaks comerciales» de Soho) es el siguiente paso.</div>
+        <div class="ccf-aviso">Estos valores valen para <b>todas las horas</b>, salvo las que cambies en la pestaña
+          <b>Breaks por hora</b>, donde cada día y hora puede tener sus propios minutos o no tener tandas.</div>
         <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfGuardarG">Guardar</button><span class="ccf-msg" id="ccfMsgG"></span></div>`;
       pag.querySelector('#ccfGuardarG').addEventListener('click', async () => {
         try {
@@ -96,6 +97,93 @@
             tolerancia_tanda_seg: parseInt(pag.querySelector('#ccfTol').value) || 0 }));
           msgEn(pag.querySelector('#ccfMsgG'), '✓ Guardado: el motor ya lo usa');
         } catch (e) { msgEn(pag.querySelector('#ccfMsgG'), e.message, false); }
+      });
+    }
+
+    // ── Breaks por hora: grilla día × hora ──
+    async function breaks() {
+      pag.innerHTML = '<p class="ccf-hint">Cargando…</p>';
+      let d;
+      try { d = await api('/api/v1/comerciales/tandas-grilla'); } catch (e) { pag.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; return; }
+      const grilla = d.grilla || {}, gen = d.general || {};
+      const DIAS = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];   // clave: 0 = domingo
+      const sel = new Set();
+      let ancla = null;
+      const texto = k => {
+        const e = grilla[k];
+        if (!e) return `<span class="g-gen">${esc(gen.tandas_minutos || '')}</span>`;
+        if (e.off) return '<span class="g-off">—</span>';
+        const inm = e.inmediatas ? ` <i title="Inicio inmediato: ${esc(e.inmediatas)}">⚡</i>` : '';
+        const cie = e.cierre ? ` <i title="Al cierre: ${esc(e.cierre)}">⇥</i>` : '';
+        return `<b>${esc(e.minutos)}</b>${inm}${cie}`;
+      };
+      const pintar = () => {
+        pag.querySelector('#ccfGrilla').innerHTML = `<thead><tr><th></th>${DIAS.map(([n, t]) => `<th data-dia="${n}" title="Elegir todo el día">${t}</th>`).join('')}</tr></thead>
+          <tbody>${Array.from({ length: 24 }, (_, h) => `<tr><th data-hora="${h}" title="Elegir esta hora todos los días">${String(h).padStart(2, '0')}:00</th>
+            ${DIAS.map(([n]) => { const k = `${n}-${h}`; return `<td data-k="${k}" class="${sel.has(k) ? 'sel' : ''} ${grilla[k] ? (grilla[k].off ? 'off' : 'propia') : ''}">${texto(k)}</td>`; }).join('')}</tr>`).join('')}</tbody>`;
+        const n = sel.size;
+        pag.querySelector('#ccfSelN').textContent = n ? `${n} hora${n > 1 ? 's' : ''} elegida${n > 1 ? 's' : ''}` : 'Elige horas en la tabla';
+        pag.querySelectorAll('#ccfEd [data-acc], #ccfEd input').forEach(x => { x.disabled = !n; });
+        if (n === 1) {                                     // una sola: el editor muestra lo que tiene
+          const e = grilla[[...sel][0]];
+          pag.querySelector('#ccfGMin').value = e && !e.off ? e.minutos : '';
+          pag.querySelector('#ccfGInm').value = e && !e.off ? (e.inmediatas ?? '') : '';
+          pag.querySelector('#ccfGCie').value = e && !e.off ? (e.cierre ?? '') : '';
+        }
+      };
+      pag.innerHTML = `
+        <p class="ccf-hint">Cada celda es una hora de un día. En gris, la hora usa los minutos generales (<b>${esc(gen.tandas_minutos || '')}</b>, pestaña General);
+          en blanco, sus propios minutos; <b>—</b> = esa hora no tiene tandas. ⚡ inicio inmediato · ⇥ al cierre.
+          Clic para elegir una hora, <b>Mayús+clic</b> para un rango, <b>Ctrl+clic</b> para sumar; clic en el día o la hora elige toda la columna o fila.</p>
+        <div class="ccf-breaks">
+          <div class="ccf-tabla-wrap ccf-grilla-wrap"><table class="ccf-grilla" id="ccfGrilla"></table></div>
+          <div class="ccf-ed" id="ccfEd">
+            <h4 id="ccfSelN"></h4>
+            <label>Minutos de las tandas<input id="ccfGMin" placeholder="Ej: 15,45"></label>
+            <label>Inicio inmediato<input id="ccfGInm" placeholder="Ej: 15 (vacío = ninguna)"></label>
+            <label>Al cierre<input id="ccfGCie" placeholder="Ej: 0 (vacío = ninguna)"></label>
+            <button class="ccf-btn ccf-btn--pri" data-acc="propia">Aplicar a lo elegido</button>
+            <button class="ccf-btn" data-acc="off">Sin tandas</button>
+            <button class="ccf-btn" data-acc="general">Volver a lo general</button>
+            <hr>
+            <button class="ccf-btn ccf-btn--pri" id="ccfGuardarB" style="margin-top:auto">Guardar la grilla</button>
+            <span class="ccf-msg" id="ccfMsgB"></span>
+          </div>
+        </div>`;
+      pintar();
+      const orden = k => { const [dd, h] = k.split('-').map(Number); return [DIAS.findIndex(x => x[0] === dd), h]; };
+      pag.querySelector('#ccfGrilla').addEventListener('click', e => {
+        const td = e.target.closest('td[data-k]'), dia = e.target.closest('th[data-dia]'), hora = e.target.closest('th[data-hora]');
+        if (!e.ctrlKey && !e.shiftKey) sel.clear();
+        if (dia) for (let h = 0; h < 24; h++) sel.add(`${dia.dataset.dia}-${h}`);
+        else if (hora) DIAS.forEach(([n]) => sel.add(`${n}-${hora.dataset.hora}`));
+        else if (td && e.shiftKey && ancla) {              // rectángulo entre el ancla y esta celda
+          const [c1, h1] = orden(ancla), [c2, h2] = orden(td.dataset.k);
+          for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
+            for (let h = Math.min(h1, h2); h <= Math.max(h1, h2); h++) sel.add(`${DIAS[c][0]}-${h}`);
+        } else if (td) {
+          if (e.ctrlKey && sel.has(td.dataset.k)) sel.delete(td.dataset.k); else sel.add(td.dataset.k);
+          ancla = td.dataset.k;
+        }
+        pintar();
+      });
+      const msg = pag.querySelector('#ccfMsgB');
+      pag.querySelector('#ccfEd').addEventListener('click', async e => {
+        const acc = e.target.closest('[data-acc]')?.dataset.acc;
+        if (acc === 'propia') {
+          const v = id => pag.querySelector(id).value.trim();
+          if (!v('#ccfGMin')) { msgEn(msg, 'Escribe los minutos (o usa «Sin tandas»)', false); return; }
+          sel.forEach(k => { grilla[k] = { minutos: v('#ccfGMin'), inmediatas: v('#ccfGInm'), cierre: v('#ccfGCie') }; });
+        } else if (acc === 'off') sel.forEach(k => { grilla[k] = { off: true }; });
+        else if (acc === 'general') sel.forEach(k => { delete grilla[k]; });
+        if (acc) { msgEn(msg, 'Sin guardar todavía', false); pintar(); }
+        if (e.target.id === 'ccfGuardarB') {
+          try {
+            const r = await api('/api/v1/comerciales/tandas-grilla', json('PUT', { grilla }));
+            Object.keys(grilla).forEach(k => delete grilla[k]); Object.assign(grilla, r.grilla);
+            pintar(); msgEn(msg, '✓ Guardado: el motor ya lo usa');
+          } catch (err) { msgEn(msg, err.message, false); }
+        }
       });
     }
 

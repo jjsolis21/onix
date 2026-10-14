@@ -100,3 +100,15 @@ def test_el_chequeo_encuentra_lo_que_no_va_a_sonar(client, tmp_path):
     # los errores van primero
     niveles = [p["nivel"] for p in r["problemas"]]
     assert niveles == sorted(niveles, key=lambda n: n != "error")
+
+
+def test_grilla_de_tandas_api(client):
+    r = client.put("/api/v1/comerciales/tandas-grilla",
+                   json={"grilla": {"1-10": {"minutos": "45, 15", "inmediatas": "15"}, "0-3": {"off": True}}})
+    assert r.status_code == 200
+    g = client.get("/api/v1/comerciales/tandas-grilla").json()
+    assert g["grilla"] == {"1-10": {"minutos": "15,45", "inmediatas": "15"}, "0-3": {"off": True}}
+    assert "tandas_minutos" in g["general"]
+    assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"7-10": {"minutos": "0"}}}).status_code == 422
+    assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"1-10": {"minutos": "70"}}}).status_code == 422
+    assert client.put("/api/v1/comerciales/tandas-grilla", json={"grilla": {"1-10": {"minutos": ""}}}).status_code == 422
