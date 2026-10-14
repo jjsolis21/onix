@@ -143,3 +143,10 @@
 .ec-sug-fuentes { margin-top: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-mid); }
 .ec-sug-fuentes label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
 .ec-sug-fuentes small { color: var(--text-lo); }
+
+/* Publicar metadata */
+.ec-meta label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-lo, #999); }
+.ec-meta select, .ec-meta input { background: var(--choc-0, #0d0907); border: 1px solid var(--choc-5, #555); border-radius: 5px; color: var(--text-hi, #eee);
+  padding: 6px 8px; font: inherit; font-size: 13px; color-scheme: dark; width: 100%; box-sizing: border-box; }
+.ec-meta-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+@media (max-width: 700px) { .ec-meta-campos { grid-template-columns: 1fr; } }

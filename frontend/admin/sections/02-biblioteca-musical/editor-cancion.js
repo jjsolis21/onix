@@ -166,6 +166,20 @@
                 </div>
               </div>
             </section>
+            <section class="ec-sec ec-meta"><h3>Publicar metadata</h3>
+              <label>Al sonar <select id="ecMetaModo">
+                <option value="" ${!f.meta_modo ? 'selected' : ''}>Según el tipo (música sí, cuñas no)</option>
+                <option value="actualizar" ${f.meta_modo === 'actualizar' ? 'selected' : ''}>Actualizar</option>
+                <option value="no_actualizar" ${f.meta_modo === 'no_actualizar' ? 'selected' : ''}>No actualizar</option></select></label>
+              <div class="ec-meta-campos">
+                <label>Título <input id="ecMetaTitulo" value="${esc(f.meta_titulo || '')}" placeholder="AUTO"></label>
+                <label>Artista <input id="ecMetaArtista" value="${esc(f.meta_artista || '')}" placeholder="AUTO"></label>
+                <label>Campo extra 1 <input id="ecMetaExtra1" value="${esc(f.meta_extra1 || '')}"></label>
+                <label>Campo extra 2 <input id="ecMetaExtra2" value="${esc(f.meta_extra2 || '')}"></label>
+              </div>
+              <p class="ec-ayuda">Es el texto que se muestra al aire mientras suena (RDS, streaming). AUTO = el título y el artista del audio.
+                «No actualizar» deja lo que ya se mostraba.</p>
+            </section>
             <section class="ec-sec"><h3>Bloqueo en automático</h3>
               <label class="ec-rep">No repetir hasta
                 <input type="number" id="ecRepN" min="0" max="999" value="${repInicial(f.repeticion_horas).n || ''}" placeholder="0">
@@ -541,6 +555,8 @@
       tipo_audio: v('#ecTipo'), cat1: v('#ecCat1'), cat2: v('#ecCat2'), cat3: v('#ecCat3'), voz: v('#ecVoz'),
       origen: v('#ecOrigen') || null, energia: v('#ecEnergia') ? +v('#ecEnergia') : null, prioridad: +v('#ecPrioridad'),
       fade_in: +v('#ecFadeIn'), fade_out: +v('#ecFadeOut'), ganancia_db: +v('#ecGan'), repeticion_horas: horas,
+      meta_modo: v('#ecMetaModo'), meta_titulo: v('#ecMetaTitulo'), meta_artista: v('#ecMetaArtista'),
+      meta_extra1: v('#ecMetaExtra1'), meta_extra2: v('#ecMetaExtra2'),
     };
     MARCAS.forEach(m => { d[m.k] = E.valores[m.k] || 0; });
     return d;
@@ -553,7 +569,8 @@
     if (aprobar && (!d.cat1 || !d.cat2)) { toast('Para aprobarla necesita género y rotación', 'error'); return; }
     // PUT no acepta vacíos en categorías; null = no tocar
     const { categoria_ident: catIdent, ...resto } = d;        // la categoría de identificadores tiene su propio endpoint
-    const cuerpo = Object.fromEntries(Object.entries(resto).filter(([, x]) => x !== '' && x !== null && x !== undefined));
+    // (la metadata sí admite vacío: así se vuelve a AUTO)
+    const cuerpo = Object.fromEntries(Object.entries(resto).filter(([k, x]) => k.startsWith('meta_') || (x !== '' && x !== null && x !== undefined)));
     est.textContent = 'Guardando…';
     try {
       let id = E.id;

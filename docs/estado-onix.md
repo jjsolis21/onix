@@ -90,6 +90,8 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
    Sin verificar con la tarjeta real: el corte en la marca out es seco (sin fundido) y se revisa cada tick (~50 ms).
    Límite conocido: hay 6 canales de efectos; el botón 7 comparte canal con el 1 (y lo corta).
 3. RDS + encoder propio (falta saber marca/modelo y cómo recibe el texto: red, puerto COM o archivo).
+   Hecho de ese punto: «Publicar metadata» por audio (migración 39, audios.meta_*; editor de canción; `backend/audio/publicar.py`;
+   GET `/api/v1/nowplaying` = texto que se publicaría, manteniendo el de la última que actualizó). FALTA: enviarlo al RDS/encoder.
 4. Página de salud y prueba de 72 h seguidas (lo último antes de publicar).
 5. Voice tracking de días futuros: hoy el programa vive en memoria unas horas; hace falta guardar la programación diaria.
 6. Opcionales: análisis por lote en segundo plano; icono propio para Identificadores.

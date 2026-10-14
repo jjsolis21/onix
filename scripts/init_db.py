@@ -846,6 +846,17 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     cursor.execute("UPDATE paletas SET slots = MIN(63, ((MAX(slots, 1) + 8) / 9) * 9) WHERE slots % 9 != 0 OR slots > 63 OR slots < 9")
     logger.info("  → paletas de 9 en 9 (tope 63): OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 39 — «Publicar metadata» por audio (como Soho): qué texto se muestra al aire cuando suena.
+    #   meta_modo: '' = según el tipo | 'actualizar' | 'no_actualizar' · título/artista vacío = AUTO (los del audio)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    cols = {r["name"] for r in cursor.fetchall()}
+    for col in ("meta_modo", "meta_titulo", "meta_artista", "meta_extra1", "meta_extra2"):
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE audios ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+    logger.info("  → audios.meta_*: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

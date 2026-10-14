@@ -771,6 +771,12 @@ class AudioUpdateRequest(BaseModel):
     fade_out:        Optional[float] = Field(default=None)
     cue_outro:       Optional[float] = Field(default=None, description="Fin de la voz (no es la mezcla)")
     prioridad:       Optional[int]   = Field(default=None, ge=1, le=3)
+    # «Publicar metadata»: '' = según el tipo, 'actualizar' o 'no_actualizar'; título/artista vacío = AUTO
+    meta_modo:       Optional[str]   = Field(default=None, pattern="^(|actualizar|no_actualizar)$")
+    meta_titulo:     Optional[str]   = Field(default=None, max_length=200)
+    meta_artista:    Optional[str]   = Field(default=None, max_length=200)
+    meta_extra1:     Optional[str]   = Field(default=None, max_length=200)
+    meta_extra2:     Optional[str]   = Field(default=None, max_length=200)
     repeticion_horas: Optional[int]  = Field(default=None, ge=0, le=MAX_REPETICION_HORAS,
                                               description="No repetir hasta N horas después (0 = sin regla)")
 
@@ -1325,6 +1331,9 @@ async def update_audio(
     if body.cue_outro       is not None: campos_update["cue_outro"]       = body.cue_outro or None
     if body.prioridad       is not None: campos_update["prioridad"]       = body.prioridad
     if body.repeticion_horas is not None: campos_update["repeticion_horas"] = body.repeticion_horas or None
+    for _m in ("meta_modo", "meta_titulo", "meta_artista", "meta_extra1", "meta_extra2"):
+        if getattr(body, _m) is not None:
+            campos_update[_m] = " ".join(getattr(body, _m).split())      # tal como se escribe: no se fuerza a mayúsculas
 
     if not campos_update:
         return {"mensaje": "Sin cambios que aplicar", "data": {"id": audio_id}}
@@ -2049,6 +2058,31 @@ def health_check():
         return {"status": "ok", "db": "connected", "version": "2.0.0"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"DB no disponible: {e}")
+
+
+@app.get("/api/v1/nowplaying", tags=["Sistema"], summary="Qué texto se publica ahora (metadata al aire)")
+def now_playing(conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Aplica «Publicar metadata» de cada audio: si lo que suena actualiza, se publica; si no, se mantiene el texto
+    del último audio que sí actualizó. Los consumidores (RDS, encoder, pantallas) leen este resultado.
+    """
+    from backend.audio.publicar import texto_publicado
+    st = dict(engine.status)
+    ahora = st.get("current_track") or {}
+    fila = conn.execute("SELECT * FROM audios WHERE id = ?", (ahora.get("id"),)).fetchone() if ahora.get("id") else None
+    actual = texto_publicado(fila) if fila else None
+    publicado, motivo = actual, "suena"
+    if actual is None or not actual["actualizar"]:
+        publicado, motivo = None, "mantiene el anterior"
+        for r in conn.execute(
+                "SELECT a.* FROM historial_emision h JOIN audios a ON a.id = h.audio_id"
+                " WHERE h.audio_id IS NOT NULL ORDER BY h.id DESC LIMIT 60"):
+            t = texto_publicado(r)
+            if t["actualizar"]:
+                publicado = t
+                break
+    return {"suena": {"id": ahora.get("id"), "titulo": ahora.get("titulo"), "artista": ahora.get("artista")} if ahora else None,
+            "actualiza": bool(actual and actual["actualizar"]), "publicado": publicado, "motivo": motivo}
 
 
 @app.get("/api/v1/status", tags=["Sistema"])
