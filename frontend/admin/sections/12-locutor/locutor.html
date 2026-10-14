@@ -80,6 +80,8 @@
       <label>Noticias cada (min) <input id="lczNotMin" type="number" min="5" max="720"></label>
       <label>Franja desde <input id="lczDesde" type="time"></label>
       <label>Franja hasta <input id="lczHasta" type="time"></label>
+      <label>Datos del artista y la canción
+        <select id="lczDatos"><option value="1">Sí: presenta con un dato verificado</option><option value="0">No: solo artista y título</option></select></label>
       <label class="lcz-ancho">Personalidad <textarea id="lczPers" rows="2" maxlength="600"></textarea></label>
       <label class="lcz-ancho">Frases que nunca dice (separadas por coma) <input id="lczProh" maxlength="400"></label>
     </div>
@@ -99,6 +101,23 @@
         <small id="lczVozNota" style="color:var(--text-lo)"></small></div>
     </form>
     <div id="lczTurnos"></div>
+  </div>
+
+  <div class="lcz-card">
+    <div class="lcz-barra"><b>Datos de artistas y canciones (lo único que el locutor puede contar)</b><span class="lcz-msg" id="lczDatMsg"></span>
+      <input id="lczDatQ" placeholder="Buscar artista o canción…" style="margin-left:auto;background:var(--choc-0);border:1px solid var(--choc-5);border-radius:5px;color:var(--text-hi);padding:7px 9px;font:inherit;font-size:.84rem">
+      <button class="lcz-btn lcz-btn--pri" id="lczDatNuevo">+ Escribir un dato</button></div>
+    <form class="lcz-form" id="lczDatForm" autocomplete="off">
+      <label>Es de <select id="lczDAmbito"><option value="artista">Un artista</option><option value="cancion">Una canción</option></select></label>
+      <label>Artista <input id="lczDArtista" maxlength="120" required></label>
+      <label id="lczDTituloL">Título de la canción <input id="lczDTitulo" maxlength="160"></label>
+      <label style="grid-column:1/-1">Dato (se dirá con otras palabras, sin cambiar el sentido)
+        <textarea id="lczDDato" rows="2" maxlength="400" required placeholder="La canción que lo llevó al estrellato en 2017."></textarea></label>
+      <div class="pie"><button class="lcz-btn lcz-btn--pri">Guardar dato</button>
+        <button type="button" class="lcz-btn" id="lczDatCancelar">Cancelar</button>
+        <small style="color:var(--text-lo)">Los datos se buscan solos la primera vez (Wikipedia y MusicBrainz). Revísalos: lo que esté aquí es lo que puede salir al aire.</small></div>
+    </form>
+    <div id="lczDatos2"></div>
   </div>
 
   <div class="lcz-card">
@@ -212,6 +231,7 @@
     $("lczNombre").value = p.nombre || ""; $("lczVoz").innerHTML = opcionesVoz(p.voz || ""); $("lczPers").value = p.personalidad || "";
     $("lczProh").value = (p.prohibidos || []).join(", ");
     $("lczCada").value = r.cada_canciones; $("lczNotMin").value = r.noticias_cada_min;
+    $("lczDatos").value = r.datos_curiosos === false ? "0" : "1";
     const f = (r.franjas || [])[0];
     $("lczDesde").value = f ? f[0] : ""; $("lczHasta").value = f ? f[1] : "";
   }
@@ -232,6 +252,29 @@
     abrir("lczTurForm", true);
     $("lczTDesde").focus();
   }
+  async function datosLista() {
+    const t = await api("/api/v1/locutor/datos?limit=80&q=" + encodeURIComponent($("lczDatQ").value.trim()));
+    const F = { wikipedia: "Wikipedia", musicbrainz: "MusicBrainz", biblioteca: "Biblioteca", manual: "Escrito a mano" };
+    $("lczDatos2").innerHTML = lista(t.map(x => `
+      <div class="lcz-fila ${x.estado === "ok" ? "" : "apagada"}" data-id="${x.id}" data-ambito="${esc(x.ambito)}" data-etiqueta="${esc(x.etiqueta)}" data-dato="${esc(x.dato)}">
+        <div class="t"><b>${esc(x.etiqueta || x.clave)}</b> <span class="lcz-badge">${x.ambito === "artista" ? "artista" : "canción"}</span>
+          <small>${x.estado === "sin_datos" ? "Sin datos confiables: el locutor solo dirá artista y título." : x.estado === "descartado" ? "Descartado: no se dirá. " + esc(x.dato) : esc(x.dato)}
+            ${x.estado === "ok" ? " · " + esc(F[x.fuente] || x.fuente) : ""}</small></div>
+        <button class="lcz-btn" data-a="editar">Editar</button>
+        ${x.estado === "ok" ? '<button class="lcz-btn" data-a="descartar">No decirlo</button>' : ""}
+        <button class="lcz-btn lcz-btn--peligro" data-a="quitar" title="Borrarlo: la próxima vez se busca de nuevo">Borrar</button></div>`).join(""),
+      "Todavía no hay datos: aparecen solos cuando el locutor presenta una canción.");
+  }
+  function abrirDato(fila) {
+    const cancion = fila?.dataset.ambito === "cancion";
+    const partes = (fila?.dataset.etiqueta || "").split(" - ");
+    $("lczDAmbito").value = cancion ? "cancion" : "artista";
+    $("lczDArtista").value = partes[0] || ""; $("lczDTitulo").value = cancion ? partes.slice(1).join(" - ") : "";
+    $("lczDDato").value = fila?.dataset.dato || "";
+    $("lczDTituloL").style.display = $("lczDAmbito").value === "cancion" ? "" : "none";
+    abrir("lczDatForm", true); $("lczDDato").focus();
+  }
+
   async function patrocinios() {
     const t = await api("/api/v1/locutor/patrocinios");
     $("lczPatrocinios").innerHTML = lista(t.map(x => `
@@ -276,6 +319,7 @@
         persona: { nombre: $("lczNombre").value.trim(), voz: $("lczVoz").value.trim(), personalidad: $("lczPers").value.trim(),
                    prohibidos: $("lczProh").value.split(",").map(s => s.trim()).filter(Boolean) },
         reglas: { cada_canciones: +$("lczCada").value || 2, noticias_cada_min: +$("lczNotMin").value || 60,
+                  datos_curiosos: $("lczDatos").value === "1",
                   franjas: d && h ? [[d, h]] : [] } }));
       msg("lczCfgMsg", "✓ Guardado");
     } catch (e) { msg("lczCfgMsg", e.message, false); }
@@ -285,6 +329,28 @@
   $("lczTurNuevo").addEventListener("click", () => abrirTurno(null));
   $("lczTurCancelar").addEventListener("click", () => abrir("lczTurForm", false));
   form("lczPatNuevo", "lczPatForm", "lczPatCancelar");
+  $("lczDatNuevo").addEventListener("click", () => abrirDato(null));
+  $("lczDatCancelar").addEventListener("click", () => abrir("lczDatForm", false));
+  $("lczDAmbito").addEventListener("change", () => { $("lczDTituloL").style.display = $("lczDAmbito").value === "cancion" ? "" : "none"; });
+  $("lczDatQ").addEventListener("input", () => { clearTimeout(datosLista.t); datosLista.t = setTimeout(() => datosLista().catch(() => { }), 300); });
+  $("lczDatForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      await api("/api/v1/locutor/datos", json("PUT", { ambito: $("lczDAmbito").value, artista: $("lczDArtista").value,
+        titulo: $("lczDTitulo").value, dato: $("lczDDato").value }));
+      abrir("lczDatForm", false); await datosLista(); msg("lczDatMsg", "✓ Dato guardado");
+    } catch (err) { msg("lczDatMsg", err.message, false); }
+  });
+  $("lczDatos2").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-a]"); if (!b) return;
+    const fila = b.closest(".lcz-fila"), id = +fila.dataset.id, a = b.dataset.a;
+    try {
+      if (a === "editar") return abrirDato(fila);
+      if (a === "descartar") await api(`/api/v1/locutor/datos/${id}/descartar`, { method: "POST" });
+      if (a === "quitar") { if (!confirm("¿Borrar este dato? La próxima vez se buscará de nuevo.")) return; await api(`/api/v1/locutor/datos/${id}`, { method: "DELETE" }); }
+      await datosLista();
+    } catch (err) { msg("lczDatMsg", err.message, false); }
+  });
   form("lczFueNueva", "lczFueForm", "lczFueCancelar"); form("lczMenNuevo", "lczMenForm", "lczMenCancelar");
 
   $("lczTurForm").addEventListener("submit", async e => {
@@ -346,7 +412,7 @@
   delegar("lczFuentes", "/api/v1/locutor/fuentes", fuentes, "lczFueMsg", "esta fuente");
   delegar("lczMensajes", "/api/v1/locutor/mensajes", mensajes, "lczMenMsg", "este saludo");
 
-  voces().catch(() => { }).then(() => Promise.all([estado(), config(), turnos(), patrocinios(), fuentes(), mensajes()]))
+  voces().catch(() => { }).then(() => Promise.all([estado(), config(), turnos(), patrocinios(), fuentes(), mensajes(), datosLista()]))
     .catch(e => msg("lczMsg", e.message, false));
   setInterval(() => { if ($("lczEstado")?.isConnected) estado().catch(() => { }); }, 15000);
 })();

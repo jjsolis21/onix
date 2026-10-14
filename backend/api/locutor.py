@@ -24,7 +24,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.locutor import almacen, moderacion, noticias, servicio as svc
+from backend.locutor import almacen, datos as datos_mod, moderacion, noticias, servicio as svc
 from backend.paths import DB_PATH, RESPALDOS_BD_DIR
 
 router = APIRouter(tags=["Locutor IA"])
@@ -308,6 +308,64 @@ def revisar_fuentes():
 @router.delete("/api/v1/locutor/fuentes/{rid}")
 def quitar_fuente(rid: int):
     return _borrar("locutor_fuentes", rid)
+
+
+# ── Datos verificados de artistas y canciones ───────────────────────────────
+
+class DatoIn(BaseModel):
+    ambito: str = Field(..., pattern=r"^(artista|cancion)$")
+    artista: str = Field(..., min_length=1, max_length=120)
+    titulo: str = Field(default="", max_length=160)
+    dato: str = Field(..., min_length=3, max_length=400)
+
+
+@router.get("/api/v1/locutor/datos", summary="Lo que el locutor puede contar de cada artista y canción")
+def datos(q: str = "", limit: int = 80):
+    c = _c()
+    try:
+        sql, args = "SELECT * FROM locutor_datos", []
+        if q.strip():
+            sql += " WHERE clave LIKE ? OR etiqueta LIKE ?"
+            args += [f"%{datos_mod.norm(q)}%", f"%{q.strip()}%"]
+        sql += " ORDER BY (estado = 'sin_datos'), revisado_en DESC LIMIT ?"
+        return _filas(c.execute(sql, args + [max(1, min(limit, 300))]))
+    finally:
+        c.close()
+
+
+@router.put("/api/v1/locutor/datos", summary="Escribir a mano el dato de un artista o de una canción")
+def poner_dato(b: DatoIn):
+    if b.ambito == "cancion" and not b.titulo.strip():
+        raise HTTPException(status_code=422, detail="Para una canción hace falta el título")
+    artista = datos_mod.artista_principal(b.artista)
+    if b.ambito == "artista":
+        clave, etiqueta = datos_mod.norm(artista), artista
+    else:
+        clave, etiqueta = f"{datos_mod.norm(artista)}|{datos_mod.norm(b.titulo)}", f"{artista} - {b.titulo.strip()}"
+    c = _c()
+    try:
+        datos_mod.guardar(c, b.ambito, clave, etiqueta, " ".join(b.dato.split()), "manual")
+        return {"ok": True, "clave": clave}
+    finally:
+        c.close()
+
+
+@router.post("/api/v1/locutor/datos/{rid}/descartar", summary="Que el locutor no diga ese dato (ni lo vuelva a buscar)")
+def descartar_dato(rid: int):
+    c = _c()
+    try:
+        if not c.execute("UPDATE locutor_datos SET estado = 'descartado', revisado_en = datetime('now') WHERE id = ?",
+                         (rid,)).rowcount:
+            raise HTTPException(status_code=404, detail="No existe")
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.delete("/api/v1/locutor/datos/{rid}", summary="Borrarlo: la próxima vez se busca de nuevo")
+def borrar_dato(rid: int):
+    return _borrar("locutor_datos", rid)
 
 
 # ── Mensajes de oyentes ─────────────────────────────────────────────────────

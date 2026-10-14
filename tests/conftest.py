@@ -53,6 +53,16 @@ def make_wav(path: Path, seconds: float = 2.0, amplitude: float = 0.5,
     return path
 
 
+@pytest.fixture(autouse=True)
+def _sin_internet_para_los_datos_del_locutor(monkeypatch):
+    """Ninguna prueba sale a Wikipedia ni a MusicBrainz: las que prueban los datos traen su propia fuente falsa."""
+    from backend.locutor import datos
+
+    def sin_red(url):
+        raise OSError("las pruebas no salen a internet")
+    monkeypatch.setattr(datos, "_get_json", sin_red)
+
+
 @pytest.fixture
 def tmp_db(tmp_path):
     """Base de datos nueva y migrada, aislada por prueba."""

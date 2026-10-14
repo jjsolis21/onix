@@ -43,7 +43,7 @@ class IAError(Exception):
 _fallos: dict[int, float] = {}   # id de clave → momento (monotonic) de su último fallo
 MODELOS_GEMINI = (PROVEEDORES["gemini"]["modelo"], "gemini-3.5-flash")   # el vigente y su anterior
 _gemini_ok: dict = {}            # id de clave → último modelo de texto que le respondió
-PAUSAS_503 = (2, 4, 8)           # segundos entre reintentos cuando Gemini responde «alta demanda»
+PAUSAS_503 = (2, 5)              # segundos entre reintentos cuando Gemini responde «alta demanda»
 
 
 def _detalle_http(e: "urllib.error.HTTPError") -> str:

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 # tipo -> (segundos objetivo, segundos máximos aceptados)
 DURACIONES = {
     "corta": (8, 10),
-    "contenido": (25, 30),
+    "contenido": (22, 32),
     "hora_clima": (9, 12),
     "patrocinio": (9, 12),
     "saludo": (8, 10),
@@ -49,7 +49,12 @@ FORMATO
 
 INSTRUCCIONES = {
     "corta": "Despide brevemente la canción que acaba de sonar y presenta la que viene.",
-    "contenido": "Presenta la canción que viene contando UNO de los datos verificados, con naturalidad.",
+    "contenido": ("Haz una entrada de locutor de radio entre dos canciones. Despide la que sonó diciendo artista y "
+                  "título; si DATOS trae un dato verificado de ella o de su artista, cuéntalo con naturalidad. Luego "
+                  "presenta la que viene con su artista y título y, si DATOS trae un dato verificado de ella o de su "
+                  "artista, úsalo. Cierra identificando la emisora (por ejemplo «estás en sintonía de …»). Como mucho "
+                  "un dato por canción, dicho con tus palabras pero sin cambiar su sentido; no añadas apodos, años, "
+                  "premios ni nada que no esté en DATOS."),
     "hora_clima": "Di la hora local y, si hay clima en DATOS, el clima de la ciudad.",
     "patrocinio": ("Lee la publicidad COMPLETA y fiel al texto de DATOS, con energía de cuña comercial. No omitas "
                    "ningún dato (precios, teléfonos, direcciones web) ni agregues ofertas. Solo adapta lo necesario "
@@ -90,6 +95,7 @@ class Contexto:
     anterior: dict | None = None  # {"artista": ..., "titulo": ...}
     siguiente: dict | None = None
     datos_verificados: list[str] = field(default_factory=list)
+    datos_anterior: list[str] = field(default_factory=list)   # datos verificados de la canción que sonó
     patrocinio: str | None = None
     clima: str | None = None
     recientes: list[str] = field(default_factory=list)
@@ -116,8 +122,10 @@ class Contexto:
             lineas.append(f"{etiqueta}: {self.anterior['artista']} - {self.anterior['titulo']}")
         if self.siguiente:
             lineas.append(f"Canción que viene: {self.siguiente['artista']} - {self.siguiente['titulo']}")
+        for dato in self.datos_anterior:
+            lineas.append(f"Dato verificado de la canción que sonó (o de su artista): {dato}")
         for dato in self.datos_verificados:
-            lineas.append(f"Dato verificado: {dato}")
+            lineas.append(f"Dato verificado de la canción que viene (o de su artista): {dato}")
         if self.patrocinio:
             lineas.append(f"Patrocinio: {self.patrocinio}")
         for anunciante in self.anunciantes:

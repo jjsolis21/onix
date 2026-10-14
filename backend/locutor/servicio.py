@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
 from backend.ia import proveedores
-from backend.locutor import almacen, guion as g, noticias, plantillas
+from backend.locutor import almacen, datos as datos_mod, guion as g, noticias, plantillas
 from backend.locutor.metadatos import limpiar_pista
 from backend.locutor.clima import clima_actual
 from backend.locutor.validador import validar_guion
@@ -145,14 +145,40 @@ def elegir_tipo(c, reglas: dict, ahora: datetime) -> Optional[str]:
 
 # ── Escribir ────────────────────────────────────────────────────────────────
 
+def _datos_de(c, pista: Optional[dict], audio_id: Optional[int], buscar: Callable) -> list:
+    """Datos verificados de esa canción y su artista (vacío si no hay o si algo falla: entonces va la corta)."""
+    if not pista:
+        return []
+    anio = None
+    if audio_id:
+        try:
+            r = c.execute("SELECT fecha_lanzamiento FROM audios WHERE id = ?", (audio_id,)).fetchone()
+            anio = r[0] if r else None
+        except Exception:
+            pass
+    try:
+        return buscar(c, pista["artista"], pista["titulo"], anio)
+    except Exception as e:
+        log.warning("datos de «%s»: %s", pista.get("titulo"), e)
+        return []
+
+
 def preparar(c, tipo: str, anterior: Optional[dict], siguiente: Optional[dict], ahora: datetime,
              *, anterior_id: Optional[int] = None, siguiente_id: Optional[int] = None,
-             forzar_manual: bool = False) -> dict:
+             forzar_manual: bool = False, buscar_datos: Optional[Callable] = None) -> dict:
     """
     Escribe y valida el texto de una intervención y la deja `borrador` (si pide aprobación) o `aprobada`.
     Devuelve {"id", "estado", "texto", "tipo"}; si no se puede escribir, estado `fallo` con el motivo.
     """
     emi, per, reg = almacen.emisora(c), almacen.persona_al_aire(c, ahora.strftime("%H:%M")), almacen.reglas(c)
+    # Una presentación de canciones lleva un dato verificado cuando lo hay; si no, se queda en la corta de siempre
+    datos_ant, datos_sig = [], []
+    buscar_datos = buscar_datos or datos_mod.datos_para
+    if tipo in ("corta", "contenido") and siguiente and reg.get("datos_curiosos", True):
+        datos_ant = _datos_de(c, anterior, anterior_id, buscar_datos)[:2]      # el del artista y el de la canción
+        datos_sig = _datos_de(c, siguiente, siguiente_id, buscar_datos)[:2]
+    if tipo in ("corta", "contenido"):
+        tipo = "contenido" if (datos_ant or datos_sig) else "corta"
     modo = "manual" if forzar_manual else almacen.aprobacion(c).get(tipo, "manual")
     hoy = ahora.strftime("%Y-%m-%d")
     origen_id = None
@@ -179,6 +205,7 @@ def preparar(c, tipo: str, anterior: Optional[dict], siguiente: Optional[dict], 
         if not siguiente:
             return fallo("Falta la canción siguiente")
         ctx.anterior, ctx.siguiente = anterior, siguiente
+        ctx.datos_anterior, ctx.datos_verificados = datos_ant, datos_sig
     elif tipo == "patrocinio":
         vig = _patrocinios_vigentes(c, hoy)
         if not vig:

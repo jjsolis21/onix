@@ -16,7 +16,7 @@ from backend.paths import DB_PATH
 TIPOS = ("corta", "contenido", "hora_clima", "patrocinio", "identificacion", "noticia", "apertura", "complacencia")
 
 # Quién decide qué sale al aire: "auto" entra solo; "manual" queda en borrador hasta que alguien lo aprueba.
-APROBACION_DEFECTO = {"corta": "auto", "contenido": "auto", "hora_clima": "auto", "identificacion": "auto",
+APROBACION_DEFECTO = {"corta": "auto", "contenido": "manual", "hora_clima": "auto", "identificacion": "auto",
                       "apertura": "auto", "patrocinio": "manual", "noticia": "manual", "complacencia": "manual"}
 
 # Estados de una intervención:
@@ -108,6 +108,18 @@ CREATE TABLE IF NOT EXISTS locutor_intervenciones (
     al_aire_en    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_locutor_interv_estado ON locutor_intervenciones (estado, creado_en);
+-- Datos verificados de artistas y canciones: lo único que el locutor puede contar sobre ellos
+CREATE TABLE IF NOT EXISTS locutor_datos (
+    id          INTEGER PRIMARY KEY,
+    ambito      TEXT NOT NULL,              -- artista | cancion
+    clave       TEXT NOT NULL,              -- artista normalizado, o "artista|titulo"
+    etiqueta    TEXT NOT NULL DEFAULT '',   -- como se muestra: "Danny Ocean", "Danny Ocean - Me Rehúso"
+    dato        TEXT NOT NULL DEFAULT '',
+    fuente      TEXT NOT NULL DEFAULT '',   -- wikipedia | musicbrainz | biblioteca | manual
+    estado      TEXT NOT NULL DEFAULT 'ok', -- ok | sin_datos | descartado
+    revisado_en TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (ambito, clave)
+);
 """
 
 
@@ -158,6 +170,7 @@ def persona(c: sqlite3.Connection) -> dict:
 def reglas(c: sqlite3.Connection) -> dict:
     r = {"tipos_permitidos": [], "franjas": [], "salidas": {}, "noticias_cada_min": 60, "noticias_vetos": [],
          "noticias_max_horas": 18, "patron": [], "cada_canciones": 2, "intervenciones_por_hora": 4,
+         "datos_curiosos": True,     # presentar con un dato verificado del artista o la canción cuando lo haya
          "cierre_complacencia": "Claro que sí, aquí te complacemos, {nombre}. ¡Disfrútala!"}
     r.update(leer(c, "reglas", {}) or {})
     return r

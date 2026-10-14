@@ -376,3 +376,21 @@ def test_la_locucion_no_se_inserta_dos_veces_aunque_el_motor_tarde_en_aplicarla(
     svc.ciclo(motor, ruta, AHORA)
     cuantas = [i for i in motor.items if i.get("tipo_audio") == "Locucion" and i["audio_id"] == motor.insertados[0][0]]
     assert len(cuantas) == 1
+
+
+def test_api_datos_escribir_descartar_y_borrar(client):
+    r = client.put("/api/v1/locutor/datos", json={"ambito": "artista", "artista": "Danny Ocean ft Otro",
+                                                   "dato": "Danny Ocean es un cantante venezolano."})
+    assert r.status_code == 200 and r.json()["clave"] == "danny ocean"
+    assert client.put("/api/v1/locutor/datos", json={"ambito": "cancion", "artista": "Danny Ocean", "dato": "x y z"}).status_code == 422
+    client.put("/api/v1/locutor/datos", json={"ambito": "cancion", "artista": "Danny Ocean", "titulo": "Me Rehúso",
+                                              "dato": "Se lanzó en 2017."})
+    filas = client.get("/api/v1/locutor/datos?q=danny").json()
+    assert {f["ambito"] for f in filas} == {"artista", "cancion"} and all(f["fuente"] == "manual" for f in filas)
+    cancion = next(f for f in filas if f["ambito"] == "cancion")
+    assert cancion["clave"] == "danny ocean|me rehuso"
+    assert client.post(f"/api/v1/locutor/datos/{cancion['id']}/descartar").status_code == 200
+    assert next(f for f in client.get("/api/v1/locutor/datos?q=danny").json() if f["id"] == cancion["id"])["estado"] == "descartado"
+    for f in filas:
+        assert client.delete(f"/api/v1/locutor/datos/{f['id']}").status_code == 200
+    assert client.get("/api/v1/locutor/datos?q=danny").json() == []

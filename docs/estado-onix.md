@@ -29,6 +29,12 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   Nace APAGADO. Los mensajes de oyentes aún no llegan (no hay canal de entrada): se cargan a mano por API.
   Arreglo de paso: `MockBackend.get_position_sec` perdía precisión en Windows (2 pruebas del talk-over fallaban).
 
+- Locutor IA con datos: `backend/locutor/datos.py` busca UNA vez por artista (Wikipedia es) y por canción (año en
+  MusicBrainz, o `audios.fecha_lanzamiento`), lo guarda en `locutor_datos` y la entrada pasa de «corta» a «contenido»
+  (despide con dato, presenta con dato, cierra con la emisora). Sin coincidencia clara no guarda nada y va la corta.
+  Editable en Admin › 12 › «Datos de artistas y canciones». «contenido» nace en aprobación manual.
+  Gemini gratis: cuota muy corta de texto y de voz (429) y picos de 503; no aguanta hablar tras cada canción.
+
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
 - Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
