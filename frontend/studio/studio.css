@@ -697,3 +697,13 @@ kbd {
   font: inherit; font-size: 13px; }
 .pal-vacia { color: var(--txt-lo); font-size: 12px; margin: 6px; }
 
+/* ── Paleta paginada de 9 en 9 ── */
+.cart-pag { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin: 0 0 4px; flex-wrap: wrap; }
+.cart-pag > span { display: flex; align-items: center; gap: 3px; flex: 1; justify-content: center; }
+.cart-pag i { color: var(--txt-lo); font-style: normal; font-size: 11px; }
+.cart-pag button { background: linear-gradient(#444, #262626); border: 1px solid #000; color: #ddd; border-radius: 3px; cursor: pointer;
+  min-width: 28px; height: 26px; font: inherit; font-size: 12px; padding: 0 6px; }
+.cart-pag button:hover { border-color: var(--ambar); color: var(--ambar-vivo); }
+.cart-pag button.act { background: var(--ambar); color: var(--bg-0); border-color: var(--ambar); font-weight: 600; }
+.cart-pag small { flex-basis: 100%; text-align: center; color: var(--txt-lo); font-size: 10px; letter-spacing: .04em; }
+

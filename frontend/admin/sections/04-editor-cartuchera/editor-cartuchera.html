@@ -42,7 +42,26 @@
     <p class="ox-msg" id="cartMsg"></p>
   </section>
 
-  <!-- Una tarjeta por página de la cartuchera (se arman desde el servidor) -->
+  <!-- Con decenas de paletas: buscador, paginación y tarjetas plegables -->
+  <div class="ox-card cart-barra" id="cartBarra">
+    <input class="ox-input" id="cartFiltro" placeholder="Buscar paleta por nombre…" autocomplete="off" style="flex:1 1 220px;min-width:160px">
+    <button class="ox-btn ox-btn--sm" id="cartExpandir" title="Abrir o cerrar todas las paletas de esta página">▾ Abrir todas</button>
+    <span class="cart-pager">
+      <button class="ox-btn ox-btn--sm" id="cartPagAnt" title="Página anterior">‹</button>
+      <span id="cartPagTxt"></span>
+      <button class="ox-btn ox-btn--sm" id="cartPagSig" title="Página siguiente">›</button>
+    </span>
+  </div>
+  <style>
+    .cart-barra { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; }
+    .cart-pager { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-mid); margin-left: auto; }
+    .cart-cab-pal { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; }
+    .cart-cab-pal .flecha { color: var(--text-lo); width: 1em; }
+    .cart-cab-pal small { color: var(--text-lo); font-weight: 400; font-size: .72rem; }
+    .cart-vacio { padding: 24px; text-align: center; color: var(--text-lo); font-size: .88rem; }
+  </style>
+
+  <!-- Una tarjeta por paleta (se arman desde el servidor) -->
   <div id="cartPaginas"></div>
 </div>
 
@@ -55,6 +74,12 @@
   let NOMBRES = {};
 
   let bancos = {}, slots = {}, elegido = null;     // elegido = audio escogido en el buscador
+  // Filtro y paginación de las paletas (con 100 paletas la página no puede crecer sin fin)
+  const POR_PAG = 8;
+  let filtro = "", pagP = 0;
+  const abiertas = new Set();                      // paletas desplegadas (si son pocas, todas)
+  const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const visibles = () => Object.keys(bancos).filter(b => !filtro || norm(NOMBRES[b] || b).includes(norm(filtro)));
 
   function msg(texto, ok = true) {
     const el = $("cartMsg");
@@ -75,19 +100,42 @@
       const cart = await fetch("/api/v1/cartuchera").then(r => r.json());
       bancos = cart.bancos || {};
       NOMBRES = cart.nombres || {};
-      $("cartPaginas").innerHTML = Object.keys(bancos).map((b, i) => `<section class="ox-card">
-        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${i + 1} · ${esc(NOMBRES[b] || b)}
+      slots = cart.slots || {};
+      // si hay pocas paletas se ven todas desplegadas; con muchas, solo la primera hasta que se abra otra
+      if (!abiertas.size && Object.keys(bancos).length) abiertas.add(Object.keys(bancos)[0]);
+      pintarPaginas();
+      llenarSelects();
+    } catch (err) {
+      msg(`No se pudo cargar la cartuchera: ${err.message}`, false);
+    }
+  }
+
+  function pintarPaginas() {
+    const todas = Object.keys(bancos), vis = visibles();
+    const paginas = Math.max(1, Math.ceil(vis.length / POR_PAG));
+    pagP = Math.min(pagP, paginas - 1);
+    const lote = vis.slice(pagP * POR_PAG, pagP * POR_PAG + POR_PAG);
+    const pocas = todas.length <= 3;
+    $("cartPagTxt").textContent = vis.length
+      ? `${pagP * POR_PAG + 1}–${pagP * POR_PAG + lote.length} de ${vis.length}${vis.length !== todas.length ? ` (de ${todas.length})` : ""}` : "0 paletas";
+    $("cartPagAnt").disabled = pagP <= 0; $("cartPagSig").disabled = pagP >= paginas - 1;
+    $("cartBarra").hidden = todas.length <= 1;
+    $("cartExpandir").textContent = lote.length && lote.every(b => abiertas.has(b)) ? "▸ Cerrar todas" : "▾ Abrir todas";
+    $("cartPaginas").innerHTML = lote.length ? lote.map(b => {
+      const i = todas.indexOf(b), abierta = pocas || abiertas.has(b);
+      const cargados = (slots[b] || []).length;
+      return `<section class="ox-card">
+        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="cart-cab-pal" data-abrir="${b}" title="Abrir o cerrar esta paleta">
+            <span class="flecha">${abierta ? "▾" : "▸"}</span>${i + 1} · ${esc(NOMBRES[b] || b)}
+            <small>${cargados}/${bancos[b]} botones cargados</small></span>
           <span class="ox-spacer"></span>
           <button class="ox-btn ox-btn--sm" data-ren="${b}">Renombrar</button>
           <button class="ox-btn ox-btn--sm" data-tam="${b}" title="Cambiar la cantidad de botones">${bancos[b]} botones</button>
           <button class="ox-btn ox-btn--sm ox-btn--danger" data-del="${b}">Eliminar</button>
-        </h3><div class="ox-cart-grid" id="cartGrid-${b}"></div></section>`).join("");
-      slots = cart.slots || {};
-      llenarSelects();
-      pintar();
-    } catch (err) {
-      msg(`No se pudo cargar la cartuchera: ${err.message}`, false);
-    }
+        </h3>${abierta ? `<div class="ox-cart-grid" id="cartGrid-${b}"></div>` : ""}</section>`;
+    }).join("") : `<div class="cart-vacio">${filtro ? "Ninguna paleta se llama así." : "Todavía no hay paletas."}</div>`;
+    pintar();
   }
 
   function llenarSelects() {
@@ -102,7 +150,7 @@
   function pintar() {
     for (const banco of Object.keys(bancos)) {
       const grid = $(`cartGrid-${banco}`);
-      if (!grid) continue;
+      if (!grid) continue;                         // paleta plegada o en otra página
       grid.innerHTML = Array.from({ length: bancos[banco] }, (_, i) => {
         const n = i + 1;
         const s = (slots[banco] || []).find(x => x.slot === n);
@@ -139,6 +187,15 @@
     msg("✓ Paleta guardada");
     cargar();
   }
+  $("cartFiltro").addEventListener("input", () => { filtro = $("cartFiltro").value.trim(); pagP = 0; pintarPaginas(); });
+  $("cartPagAnt").addEventListener("click", () => { pagP = Math.max(0, pagP - 1); pintarPaginas(); });
+  $("cartPagSig").addEventListener("click", () => { pagP += 1; pintarPaginas(); });
+  $("cartExpandir").addEventListener("click", () => {
+    const lote = visibles().slice(pagP * POR_PAG, pagP * POR_PAG + POR_PAG);
+    const todasAbiertas = lote.every(b => abiertas.has(b));
+    lote.forEach(b => todasAbiertas ? abiertas.delete(b) : abiertas.add(b));
+    pintarPaginas();
+  });
   $("cartNueva").addEventListener("click", () => {
     const nombre = prompt("Nombre de la nueva paleta (p. ej. «Tips genérico», «Efectos fiesta»):");
     if (nombre?.trim()) paleta("POST", "", { nombre: nombre.trim() });
@@ -166,6 +223,8 @@
   });
 
   document.getElementById("cartRoot").addEventListener("click", async (e) => {
+    const ab = e.target.closest("[data-abrir]");
+    if (ab) { const k = ab.dataset.abrir; abiertas.has(k) ? abiertas.delete(k) : abiertas.add(k); pintarPaginas(); return; }
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.cue) cue(parseInt(b.dataset.cue), parseFloat(b.dataset.desde) || 0);

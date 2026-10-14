@@ -42,7 +42,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 
 - Studio › paletas con muchas paletas: con más de 6 se pasa de pestañas a un selector (▦) con buscador, agrupado por
   nombre («SOLIS 1», «SOLIS 2» → grupo SOLIS), las últimas usadas al lado, flechas ◀ ▶ en la cabecera y atajos `,` y `.`.
-  Una paleta sigue teniendo hasta 60 botones; para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
+  Cada paleta se ve de 9 en 9 (3×3): teclas 1–9 = botones de la página visible, `-` y `+` cambian de página.
+  Admin › Cartuchera: buscador de paletas, paginación de 8 y tarjetas plegables.
+  Para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
 
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.

@@ -1170,8 +1170,22 @@ const Derecha = (() => {
       pintarVista();
     } catch { /* aviso de conexión */ }
   }
+  // Una paleta se ve de 9 en 9 (3×3): las teclas 1–9 disparan los botones de la página visible
+  const PAG = 9;
+  const paginas = {};                                     // clave de paleta → página (0, 1, 2…)
+  const totalPaginas = n => Math.max(1, Math.ceil(n / PAG));
+  function pagina(delta) {                                // página anterior / siguiente (dando la vuelta)
+    const tp = totalPaginas(bancos[banco] ?? 0);
+    if (tp < 2) return;
+    paginas[banco] = (((paginas[banco] ?? 0) + delta) % tp + tp) % tp;
+    pintarCart();
+  }
   function pintarCart() {
     const n = bancos[banco] ?? 0;
+    const tp = totalPaginas(n);
+    const pg = Math.min(paginas[banco] ?? 0, tp - 1);
+    paginas[banco] = pg;
+    const desde = pg * PAG, hasta = Math.min(n, desde + PAG);
     // Como la paleta de Soho: nombre de la paleta y cuenta atrás del efecto, y debajo los botones de color
     const cs = claves(), pos = cs.indexOf(banco) + 1;
     const flechas = cs.length > 1;
@@ -1180,7 +1194,13 @@ const Derecha = (() => {
         <span class="cart-nom">${esc(nombres[banco] || banco || "")}${flechas ? ` <small>${pos}/${cs.length}</small>` : ""}</span>
         ${flechas ? '<button class="cart-nav" data-nav="1" title="Paleta siguiente (.)">▶</button>' : ""}
         <b id="cartCuenta">00.0s</b></div>`
-      + Array.from({ length: n }, (_, i) => {
+      + (tp > 1 ? `<div class="cart-pag">
+          <button data-pag="-1" title="Página anterior (-)">‹</button>
+          <span>${Array.from({ length: tp }, (_, k) => k).filter(k => k === 0 || k === tp - 1 || Math.abs(k - pg) <= 2)
+            .map((k, j, a) => `${j && k - a[j - 1] > 1 ? "<i>…</i>" : ""}<button class="pg ${k === pg ? "act" : ""}" data-pag-ir="${k}">${k + 1}</button>`).join("")}</span>
+          <button data-pag="1" title="Página siguiente (+)">›</button>
+          <small>teclas 1–9 → botones ${desde + 1}–${hasta}</small></div>` : "")
+      + Array.from({ length: hasta - desde }, (_, k) => desde + k).map(i => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
       const num = i + 1;
       const largo = s && (s.mark_out || s.mark_in) ? Math.max(0, (s.mark_out || s.duracion) - (s.mark_in || 0)) : (s ? s.duracion : 0);
@@ -1203,7 +1223,11 @@ const Derecha = (() => {
   });
   $("cartuchera").addEventListener("click", e => {
     const n = e.target.closest("[data-nav]");
-    if (n) vecina(+n.dataset.nav);
+    if (n) { vecina(+n.dataset.nav); return; }
+    const pg = e.target.closest("[data-pag]");
+    if (pg) { pagina(+pg.dataset.pag); return; }
+    const ir = e.target.closest("[data-pag-ir]");
+    if (ir) { paginas[banco] = +ir.dataset.pagIr; pintarCart(); }
   });
   // El operador carga sus botones: arrastra una canción de la biblioteca sobre un botón
   const botonDe = e => e.target.closest(".cart-btn[data-slot], .cart-btn.vacio-btn");
@@ -1246,13 +1270,14 @@ const Derecha = (() => {
   });
   /** Atajo 1–8: botón n del banco que se está viendo */
   function dispararSlot(n) {
-    if (vista === "hist") { toast("Abre una paleta para usar los números 1–9", "info", 2000); return; }
-    const b = $("cartuchera").querySelector(`.cart-btn[data-slot="${n}"]`);
+    if (vista === "hist" || vista === "vt") { toast("Abre una paleta para usar los números 1–9", "info", 2000); return; }
+    const slot = (paginas[banco] ?? 0) * PAG + n;
+    const b = $("cartuchera").querySelector(`.cart-btn[data-slot="${slot}"]`);
     if (b) disparar(b);
-    else toast(`El botón ${n} de la cartuchera está vacío`, "info", 2000);
+    else toast(`El botón ${slot} de la cartuchera está vacío`, "info", 2000);
   }
 
-  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector };
+  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector, pagina };
 })();
 
 /* ─────────────────────────── vúmetro ───────────────────────────
@@ -1323,6 +1348,9 @@ const Atajos = (() => {
     } else if (/^Digit[1-9]$/.test(e.code)) {
       e.preventDefault();
       Derecha.dispararSlot(+e.code.slice(5));
+    } else if (e.key === "-" || e.key === "+") {
+      e.preventDefault();
+      Derecha.pagina(e.key === "-" ? -1 : 1);                 // página anterior / siguiente de la paleta
     } else if (e.key === "," || e.key === ".") {
       e.preventDefault();
       Derecha.vecina(e.key === "," ? -1 : 1);                 // paleta anterior / siguiente
