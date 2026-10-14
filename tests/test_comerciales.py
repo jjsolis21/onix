@@ -131,3 +131,28 @@ def test_tandas_del_dia_muestra_cada_bloque(client):
     assert any(x["cliente"] == "CLIENTE DIA" for b in h10["bloques"] for x in b["cunas"])
     assert r["horas"][11]["sin_tandas"] is True and r["horas"][11]["bloques"] == []
     assert client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "mal"}).status_code == 422
+
+
+def test_ajuste_a_mano_de_las_tandas(client):
+    c = _db()
+    a = _audio(c, "Cuña aj 1", "library/aj1.mp3")
+    p1 = _pauta(c, "AJ UNO", a, rubro="Autos", matriz={"2-9": True})
+    p2 = _pauta(c, "AJ DOS", a, rubro="Ropa", matriz={"2-9": True})
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '15,45')"
+              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.commit(); c.close()
+    fecha = "2026-10-13"                                       # martes
+    r = client.put("/api/v1/comerciales/tandas-dia/ajuste",
+                   json={"fecha": fecha, "hora": 9, "bloques": {"45": [p2, p1]}, "quitadas": []})
+    assert r.status_code == 200
+    h9 = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": fecha}).json()["horas"][9]
+    b45 = next(b for b in h9["bloques"] if b["minuto"] == 45)
+    assert [x["pauta_id"] for x in b45["cunas"] if x["comercial"]][:2] == [p2, p1]
+    assert all(x["fijada"] for x in b45["cunas"][:2]) and h9["ajustada"]
+    client.put("/api/v1/comerciales/tandas-dia/ajuste", json={"fecha": fecha, "hora": 9, "quitadas": [p1]})
+    h9 = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": fecha}).json()["horas"][9]
+    assert p1 not in [x["pauta_id"] for b in h9["bloques"] for x in b["cunas"]]
+    assert h9["quitadas"][0]["cliente"] == "AJ UNO"
+    assert client.delete("/api/v1/comerciales/tandas-dia/ajuste", params={"fecha": fecha, "hora": 9}).status_code == 200
+    h9 = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": fecha}).json()["horas"][9]
+    assert not h9["ajustada"] and p1 in [x["pauta_id"] for b in h9["bloques"] for x in b["cunas"]]

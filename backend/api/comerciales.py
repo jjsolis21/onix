@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from backend.paths import DB_PATH, resolve_media
 
 router = APIRouter(tags=["Comerciales"])
+recargar_motor = None      # api_server lo conecta: el motor rehace el reparto de la hora
 
 TIPOS = {"clientes": ("comerciales_clientes", "cliente"), "agencias": ("comerciales_agencias", "agencia")}
 
@@ -218,7 +219,7 @@ def chequeo():
 
 @router.get("/api/v1/comerciales/tandas-dia", summary="Qué sale en cada tanda de un día, bloque por bloque")
 def tandas_dia(fecha: Optional[str] = None):
-    from backend.audio.audio_engine import cargar_grilla, parse_minutos, tandas_de_hora
+    from backend.audio.audio_engine import cargar_grilla, leer_ajustes, parse_minutos, tandas_de_hora
     from backend.audio.planner import Planner
     try:
         dia = date.fromisoformat(fecha) if fecha else date.today()
@@ -246,8 +247,79 @@ def tandas_dia(fecha: Optional[str] = None):
                     "excede": bool(maximo and dur > maximo),
                     "cunas": [{"pauta_id": x["pauta_id"], "cliente": x["cliente"] or "", "spot": x["spot"] or "",
                                "rubro": x["rubro"] or "", "seccion": x["seccion"], "comercial": x["comercial"],
+                               "fijada": bool(x.get("fijada")),
                                "duracion": round(x["dur"])} for x in cunas]})
-            horas.append({"hora": h, "bloques": bloques, "sin_tandas": not minutos})
+            ajustes, quitadas = leer_ajustes(c, dia.isoformat(), h)
+            nombres = {r[0]: r[1] for r in c.execute(
+                f"SELECT p.id, COALESCE(NULLIF(p.cliente, ''), a.titulo) FROM pautas p LEFT JOIN audios a ON a.id = p.audio_id"
+                f" WHERE p.id IN ({','.join('?' * len(quitadas))})", list(quitadas))} if quitadas else {}
+            horas.append({"hora": h, "bloques": bloques, "sin_tandas": not minutos,
+                          "ajustada": bool(ajustes or quitadas),
+                          "quitadas": [{"pauta_id": q, "cliente": nombres.get(q, f"pauta {q}")} for q in sorted(quitadas)]})
         return {"fecha": dia.isoformat(), "maximo": maximo, "horas": horas}
     finally:
         c.close()
+
+
+class AjusteIn(BaseModel):
+    fecha: str
+    hora: int = Field(..., ge=0, le=23)
+    bloques: dict[int, list[int]] = Field(default_factory=dict)
+    quitadas: list[int] = Field(default_factory=list)
+
+
+def _fecha(txt: str) -> str:
+    try:
+        return date.fromisoformat(txt).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Fecha inválida (AAAA-MM-DD)")
+
+
+def _avisar_motor():
+    if recargar_motor:
+        try:
+            recargar_motor()
+        except Exception:
+            pass
+
+
+@router.put("/api/v1/comerciales/tandas-dia/ajuste", summary="Orden a mano de las tandas de una hora")
+def guardar_ajuste(b: AjusteIn):
+    """Reemplaza los ajustes de esa hora: qué cuñas van en cada bloque y en qué orden, y cuáles no salen ese día."""
+    from backend.audio.audio_engine import leer_ajustes
+    fecha = _fecha(b.fecha)
+    if any(not 0 <= m <= 59 for m in b.bloques):
+        raise HTTPException(status_code=422, detail="Minuto de tanda inválido")
+    c = _conn()
+    try:
+        leer_ajustes(c, fecha, b.hora)          # crea las tablas si faltan
+        c.execute("DELETE FROM tanda_ajustes WHERE fecha = ? AND hora = ?", (fecha, b.hora))
+        c.execute("DELETE FROM tanda_quitadas WHERE fecha = ? AND hora = ?", (fecha, b.hora))
+        quitadas = set(b.quitadas)
+        for m, ids in b.bloques.items():
+            ids = [i for i in dict.fromkeys(ids) if i not in quitadas]
+            c.execute("INSERT INTO tanda_ajustes (fecha, hora, minuto, ids) VALUES (?, ?, ?, ?)",
+                      (fecha, b.hora, m, json.dumps(ids)))
+        for q in quitadas:
+            c.execute("INSERT INTO tanda_quitadas (fecha, hora, pauta_id) VALUES (?, ?, ?)", (fecha, b.hora, q))
+        c.commit()
+    finally:
+        c.close()
+    _avisar_motor()
+    return {"ok": True}
+
+
+@router.delete("/api/v1/comerciales/tandas-dia/ajuste", summary="Volver al reparto automático en esa hora")
+def borrar_ajuste(fecha: str, hora: int):
+    from backend.audio.audio_engine import leer_ajustes
+    fecha = _fecha(fecha)
+    c = _conn()
+    try:
+        leer_ajustes(c, fecha, hora)
+        c.execute("DELETE FROM tanda_ajustes WHERE fecha = ? AND hora = ?", (fecha, hora))
+        c.execute("DELETE FROM tanda_quitadas WHERE fecha = ? AND hora = ?", (fecha, hora))
+        c.commit()
+    finally:
+        c.close()
+    _avisar_motor()
+    return {"ok": True}

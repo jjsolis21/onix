@@ -1102,3 +1102,56 @@ def test_grilla_inicio_inmediato_solo_esa_hora(engine, media):
     engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
     engine._check_tanda_inmediata()
     assert engine._current_item["origen"] == "pauta"
+
+
+# ── Orden a mano de las tandas (Admin › Comerciales › Tandas del día) ────────
+
+def test_aplicar_ajustes_funcion_pura():
+    from backend.audio.audio_engine import aplicar_ajustes
+    plan = {15: [1, 2], 45: [3, 4]}
+    assert aplicar_ajustes(plan, {}) == plan
+    assert aplicar_ajustes(plan, {45: [2, 4]}) == {15: [1], 45: [2, 4, 3]}      # 2 pasa a :45, 4 primero
+    assert aplicar_ajustes(plan, {30: [1]}) == plan                              # minuto que ya no existe
+    assert aplicar_ajustes(plan, {15: [9, 2]}) == {15: [2, 1], 45: [3, 4]}       # una que no es de la hora se ignora
+
+
+def _ajuste(engine, minuto_ids=None, quitadas=()):
+    from backend.audio.audio_engine import leer_ajustes
+    conn = db(engine)
+    leer_ajustes(conn, "2026-10-12", 10)
+    for m, ids in (minuto_ids or {}).items():
+        conn.execute("INSERT INTO tanda_ajustes VALUES ('2026-10-12', 10, ?, ?)", (m, json.dumps(ids)))
+    for q in quitadas:
+        conn.execute("INSERT INTO tanda_quitadas VALUES ('2026-10-12', 10, ?)", (q,))
+    conn.commit()
+    conn.close()
+
+
+def _id_de(engine, cliente):
+    conn = db(engine)
+    pid = conn.execute("SELECT id FROM pautas WHERE cliente = ?", (cliente,)).fetchone()[0]
+    conn.close()
+    return pid
+
+
+def test_ajuste_mueve_y_ordena_las_cunas(engine, media):
+    for c in ("A", "B", "C"):
+        add_pauta(engine, media, c)
+    a, b, c = (_id_de(engine, x) for x in "ABC")
+    _ajuste(engine, {15: [c, a, b]})                         # todo en :15, en este orden
+    engine._tandas_minutos = [15, 45]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas(forzar=("x", 0))
+    assert en_cola(engine) == ["C", "A", "B"]
+    assert engine._plan[45] == []
+
+
+def test_ajuste_quita_una_cuna_ese_dia(engine, media):
+    add_pauta(engine, media, "A")
+    add_pauta(engine, media, "B")
+    _ajuste(engine, quitadas=[_id_de(engine, "A")])
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas(forzar=("x", 0))
+    engine._check_pautas(forzar=("x", 0))                    # tampoco vuelve como «pauta nueva»
+    assert en_cola(engine) == ["B"]

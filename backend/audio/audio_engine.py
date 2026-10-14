@@ -140,6 +140,51 @@ def tandas_de_hora(grilla: dict, dia: int, hora: int, minutos: list[int],
     return m, lista("inmediatas", inmediatas), lista("cierre", cierre)
 
 
+_ESQUEMA_AJUSTES = """
+CREATE TABLE IF NOT EXISTS tanda_ajustes (
+    fecha TEXT NOT NULL, hora INTEGER NOT NULL, minuto INTEGER NOT NULL, ids TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (fecha, hora, minuto));
+CREATE TABLE IF NOT EXISTS tanda_quitadas (
+    fecha TEXT NOT NULL, hora INTEGER NOT NULL, pauta_id INTEGER NOT NULL,
+    PRIMARY KEY (fecha, hora, pauta_id));
+"""
+
+
+def leer_ajustes(conn, fecha: str, hora: int) -> tuple[dict[int, list[int]], set[int]]:
+    """
+    Ajustes a mano del operador (Admin › Comerciales › Tandas del día) para una
+    hora de un día: {minuto: [pauta_id en orden]} y las cuñas quitadas ese día.
+    """
+    conn.executescript(_ESQUEMA_AJUSTES)
+    bloques = {}
+    for m, ids in conn.execute("SELECT minuto, ids FROM tanda_ajustes WHERE fecha = ? AND hora = ?", (fecha, hora)):
+        try:
+            bloques[int(m)] = [int(i) for i in json.loads(ids or "[]")]
+        except (TypeError, ValueError):
+            continue
+    quitadas = {int(r[0]) for r in conn.execute(
+        "SELECT pauta_id FROM tanda_quitadas WHERE fecha = ? AND hora = ?", (fecha, hora))}
+    return bloques, quitadas
+
+
+def aplicar_ajustes(plan: dict[int, list[int]], bloques: dict[int, list[int]]) -> dict[int, list[int]]:
+    """
+    Aplica el orden a mano sobre el reparto automático: las cuñas de cada bloque
+    ajustado van primero y en ese orden (aunque el reparto las pusiera en otra
+    tanda); las demás siguen donde estaban, detrás. Un bloque ajustado cuyo
+    minuto ya no existe (cambió la grilla) se ignora.
+    """
+    bloques = {m: ids for m, ids in bloques.items() if m in plan}
+    todos = {i for ids in plan.values() for i in ids}
+    fijadas = {i for ids in bloques.values() for i in ids if i in todos}
+    nuevo = {}
+    for m, ids in plan.items():
+        resto = [i for i in ids if i not in fijadas]
+        propias = list(dict.fromkeys(i for i in bloques.get(m, []) if i in todos))
+        nuevo[m] = propias + resto
+    return nuevo
+
+
 def inicio_tanda(minuto: int, duracion: float, cierre: bool) -> float:
     """
     Segundos desde el inicio de la hora en que arranca la tanda.
@@ -1069,6 +1114,9 @@ class AudioEngine:
         modo_actual = self._mode
         self._load_config()
         self._mode = modo_actual   # el modo solo se cambia con set_mode()
+        # Rehacer el reparto de la hora: un ajuste a mano que se deshace vuelve
+        # al automático (lo ya emitido no se repite: se mira el historial)
+        self._plan_slot = None
 
     def _load_config(self):
         try:
@@ -2334,6 +2382,7 @@ class AudioEngine:
                     " WHERE slot LIKE ? AND pauta_id IS NOT NULL GROUP BY pauta_id",
                     (hoy + "-%",),
                 ).fetchall())
+                ajustes, quitadas = leer_ajustes(conn, hoy, now.hour)
             finally:
                 conn.close()
         except Exception as exc:
@@ -2363,7 +2412,8 @@ class AudioEngine:
 
         # Seccion desconocida = comercial (asi nunca se pierde una cuña de cliente)
         es_comercial = lambda p: secciones.get(p["seccion"], {"comercial": True})["comercial"]
-        comerciales = {pid: p for pid, p in de_la_hora.items() if es_comercial(p)}
+        # Las quitadas a mano para hoy no entran (ni como «pauta nueva»)
+        comerciales = {pid: p for pid, p in de_la_hora.items() if es_comercial(p) and pid not in quitadas}
         fijas = [p for p in de_la_hora.values() if not es_comercial(p)]
         self._plan_hour(slot, now.minute, list(comerciales.values()))
         # El orden del bloque (posición fija u orden manual) se aplica en vivo,
@@ -2372,6 +2422,9 @@ class AudioEngine:
             conocidas = [comerciales[i] for i in ids if i in comerciales]
             self._plan[m] = ([p["pauta_id"] for p in ordenar_tanda(conocidas)]
                              + [i for i in ids if i not in comerciales])
+        # Orden a mano del operador (Tandas del día): manda sobre el automático
+        if ajustes:
+            self._plan = aplicar_ajustes(self._plan, ajustes)
 
         # forzar=(slot, minuto): el programa llego al marcador de esa tanda
         # unos segundos antes de su minuto; sale ya.

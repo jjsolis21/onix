@@ -93,7 +93,7 @@
 .ccf-bloque header em { margin-left: auto; font-style: normal; color: var(--text-mid, #bbb); }
 .ccf-bloque.excede header em { color: #ff6b6b; }
 .ccf-bloque ol { list-style: none; margin: 0; padding: 0; counter-reset: c; }
-.ccf-bloque li { counter-increment: c; display: grid; grid-template-columns: 28px minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, .8fr) 48px; gap: 8px;
+.ccf-bloque li { counter-increment: c; display: grid; grid-template-columns: 28px minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, .8fr) 48px 26px; gap: 8px;
   padding: 6px 12px; border-top: 1px solid var(--choc-3, #333); font-size: .82rem; align-items: center; }
 .ccf-bloque li::before { content: counter(c); color: var(--text-lo, #999); font-family: var(--font-data, monospace); }
 .ccf-bloque li.fija { color: var(--text-lo, #999); background: color-mix(in srgb, var(--choc-3, #333) 40%, transparent); }
@@ -102,3 +102,15 @@
 .ccf-bloque li .rub { color: var(--text-lo, #999); font-size: .74rem; }
 .ccf-bloque li .dur { font-family: var(--font-data, monospace); text-align: right; }
 .ccf-bloque li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccf-bloque li.com { cursor: grab; }
+.ccf-bloque li.com:hover { background: var(--choc-3, #333); }
+.ccf-bloque li.fijada .cli::after { content: " ✋"; font-size: .7rem; }
+.ccf-bloque li.arrastrando { opacity: .4; }
+.ccf-bloque li.vacio { display: block; text-align: center; color: var(--text-lo, #999); font-size: .78rem; padding: 10px; }
+.ccf-bloque li.vacio::before { content: none; }
+.ccf-bloque.sobre { border-color: var(--gold-0, #e6a800); box-shadow: 0 0 0 1px var(--gold-0, #e6a800); }
+.ccf-td-x { background: transparent; border: 0; color: var(--text-lo, #999); cursor: pointer; font-size: .85rem; padding: 0; }
+.ccf-td-x:hover { color: #ff4d4d; }
+.ccf-td-ajuste { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: .84rem;
+  background: color-mix(in srgb, var(--gold-0, #e6a800) 12%, transparent); border-left: 3px solid var(--gold-0, #e6a800); }
+.ccf-td-quitadas { font-size: .82rem; color: var(--text-lo, #999); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

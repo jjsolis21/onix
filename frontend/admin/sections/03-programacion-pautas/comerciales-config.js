@@ -336,8 +336,8 @@
     let fecha = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10), hora = new Date().getHours();
     cuerpo.innerHTML = `<div class="ccf-td-barra"><button class="ccf-btn ccf-btn--mini" data-d="-1">◀</button>
       <input type="date" id="ccfTdFecha"><button class="ccf-btn ccf-btn--mini" data-d="1">▶</button>
-      <span class="ccf-hint" style="margin:0">Solo lectura: es lo que el motor va a sacar con los spots y los breaks de hoy.
-      Para cambiar algo edita el spot o la pestaña «Breaks por hora».</span></div>
+      <span class="ccf-hint" style="margin:0">Es lo que el motor va a sacar. <b>Arrastra</b> una cuña para cambiar su orden o pasarla a otro bloque;
+      <b>✕</b> la quita solo ese día. Los cambios valen solo para esa hora de ese día.</span></div>
       <div class="ccf-td"><div class="ccf-td-horas" id="ccfTdHoras"></div><div class="ccf-td-bloques" id="ccfTdBloques"></div></div>`;
     const horas = cuerpo.querySelector('#ccfTdHoras'), bloques = cuerpo.querySelector('#ccfTdBloques'), inp = cuerpo.querySelector('#ccfTdFecha');
     let datos = null;
@@ -349,13 +349,20 @@
       }).join('');
       const h = datos.horas[hora];
       if (h.sin_tandas) { bloques.innerHTML = '<p class="ccf-hint">Esta hora no tiene tandas (así lo marca la pestaña «Breaks por hora»).</p>'; return; }
-      bloques.innerHTML = h.bloques.map(b => `<section class="ccf-bloque ${b.excede ? 'excede' : ''}">
+      const aviso = h.ajustada ? `<div class="ccf-td-ajuste">✋ Esta hora está ordenada a mano.
+          <button class="ccf-btn ccf-btn--mini" data-auto="1">↺ Volver al orden automático</button></div>` : '';
+      const quit = h.quitadas.length ? `<div class="ccf-td-quitadas">Quitadas este día:
+          ${h.quitadas.map(q => `<button class="ccf-btn ccf-btn--mini" data-devolver="${q.pauta_id}" title="Devolverla a la hora">↩ ${esc(q.cliente)}</button>`).join(' ')}</div>` : '';
+      bloques.innerHTML = aviso + h.bloques.map(b => `<section class="ccf-bloque ${b.excede ? 'excede' : ''}">
         <header><b>:${String(b.minuto).padStart(2, '0')}</b>
           ${b.inmediata ? '<span title="Corta la canción">⚡ inmediata</span>' : ''}${b.cierre ? '<span title="Termina en su minuto">⇥ al cierre</span>' : ''}
           <em>${b.cunas.length} cuñas · ${mmss(b.duracion)}${b.excede ? ` · pasa del máximo (${mmss(datos.maximo)})` : ''}</em></header>
-        ${b.cunas.length ? `<ol>${b.cunas.map(c => `<li class="${c.comercial ? 'com' : 'fija'}"><span class="cli">${esc(c.cliente || c.spot)}</span>
-          <span class="spot">${esc(c.spot)}</span><span class="rub">${esc(c.rubro)}</span><span class="dur">${mmss(c.duracion)}</span></li>`).join('')}</ol>`
-          : '<p class="ccf-hint" style="margin:6px 10px">Sin cuñas en esta tanda.</p>'}</section>`).join('');
+        <ol data-m="${b.minuto}">${b.cunas.map(c => `<li class="${c.comercial ? 'com' : 'fija'}${c.fijada ? ' fijada' : ''}"
+            ${c.comercial ? `draggable="true" data-id="${c.pauta_id}" title="Arrastra para mover"` : 'title="ID y cortinas: van en cada tanda"'}>
+          <span class="cli">${esc(c.cliente || c.spot)}</span>
+          <span class="spot">${esc(c.spot)}</span><span class="rub">${esc(c.rubro)}</span><span class="dur">${mmss(c.duracion)}</span>
+          ${c.comercial ? `<button class="ccf-td-x" data-quitar="${c.pauta_id}" title="Quitar solo este día">✕</button>` : '<span></span>'}</li>`).join('')}
+          ${b.cunas.some(c => c.comercial) ? '' : '<li class="vacio">Suelta aquí una cuña</li>'}</ol></section>`).join('') + quit;
     };
     const cargar = async () => {
       inp.value = fecha; bloques.innerHTML = '<p class="ccf-hint">Cargando…</p>';
@@ -363,6 +370,54 @@
       catch (e) { bloques.innerHTML = `<p class="ccf-msg err">${esc(e.message)}</p>`; }
     };
     inp.addEventListener('change', () => { if (inp.value) { fecha = inp.value; cargar(); } });
+
+    // ── Orden a mano: se guarda la hora entera (cada bloque con sus cuñas en orden) ──
+    const guardar = async (quitadas) => {
+      const bl = {};
+      bloques.querySelectorAll('ol[data-m]').forEach(ol => { bl[ol.dataset.m] = [...ol.querySelectorAll('li[data-id]')].map(li => +li.dataset.id); });
+      try {
+        await api('/api/v1/comerciales/tandas-dia/ajuste', json('PUT', { fecha, hora, bloques: bl, quitadas }));
+        await cargar();
+      } catch (e) { alert(e.message); cargar(); }
+    };
+    const quitadasDe = () => datos.horas[hora].quitadas.map(q => q.pauta_id);
+    let arrastrada = null;
+    bloques.addEventListener('dragstart', e => {
+      arrastrada = e.target.closest('li[data-id]');
+      if (!arrastrada) return;
+      arrastrada.classList.add('arrastrando'); e.dataTransfer.effectAllowed = 'move';
+    });
+    bloques.addEventListener('dragend', () => { arrastrada?.classList.remove('arrastrando'); bloques.querySelectorAll('.sobre').forEach(x => x.classList.remove('sobre')); });
+    bloques.addEventListener('dragover', e => {
+      const ol = e.target.closest('ol[data-m]');
+      if (!arrastrada || !ol) return;
+      e.preventDefault();
+      bloques.querySelectorAll('.sobre').forEach(x => x.classList.remove('sobre'));
+      ol.closest('.ccf-bloque').classList.add('sobre');
+    });
+    bloques.addEventListener('drop', e => {
+      const ol = e.target.closest('ol[data-m]');
+      if (!arrastrada || !ol) return;
+      e.preventDefault();
+      const destino = e.target.closest('li[data-id]');
+      if (destino && destino !== arrastrada) {               // antes o después según la mitad donde se suelta
+        const r = destino.getBoundingClientRect();
+        destino.parentNode.insertBefore(arrastrada, e.clientY > r.top + r.height / 2 ? destino.nextSibling : destino);
+      } else if (!destino) {
+        const ultima = [...ol.querySelectorAll('li[data-id]')].pop();
+        ol.insertBefore(arrastrada, ultima ? ultima.nextSibling : ol.querySelector('li.fija') || null);
+      }
+      guardar(quitadasDe());
+    });
+    bloques.addEventListener('click', async e => {
+      const q = e.target.closest('[data-quitar]'), dv = e.target.closest('[data-devolver]'), au = e.target.closest('[data-auto]');
+      if (q) { q.closest('li').remove(); guardar([...quitadasDe(), +q.dataset.quitar]); }
+      else if (dv) guardar(quitadasDe().filter(i => i !== +dv.dataset.devolver));
+      else if (au && confirm('¿Volver al orden automático en esta hora? Se pierden los cambios a mano.')) {
+        try { await api(`/api/v1/comerciales/tandas-dia/ajuste?fecha=${fecha}&hora=${hora}`, { method: 'DELETE' }); cargar(); }
+        catch (err) { alert(err.message); }
+      }
+    });
     cuerpo.addEventListener('click', e => {
       const d = e.target.closest('[data-d]'), h = e.target.closest('[data-h]');
       if (d) { const t = new Date(fecha + 'T12:00:00'); t.setDate(t.getDate() + +d.dataset.d); fecha = t.toISOString().slice(0, 10); cargar(); }

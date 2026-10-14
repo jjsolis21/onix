@@ -556,7 +556,7 @@ class Planner:
 
     def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]) -> list[dict]:
         """Las cuñas de la tanda, en el orden en que saldrán (misma cuenta que el motor)."""
-        from backend.audio.audio_engine import ordenar_tanda, planificar_tandas, version_rotada
+        from backend.audio.audio_engine import aplicar_ajustes, leer_ajustes, planificar_tandas, version_rotada
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
         secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
@@ -572,6 +572,7 @@ class Planner:
             "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL GROUP BY pauta_id"
         ).fetchall()) if versiones else {}
         # Las que ya cumplieron sus menciones de hoy no van en la tanda
+        ajustes, quitadas = leer_ajustes(conn, dia, base.hour)
         hoy = dict(conn.execute(
             "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL"
             " AND slot LIKE ? GROUP BY pauta_id", (dia + "-%",)).fetchall())
@@ -591,6 +592,8 @@ class Planner:
             except ValueError:
                 continue
             if isinstance(matriz, dict) and matriz.get(key):
+                if r["id"] in quitadas:
+                    continue
                 if r["menciones_diarias"] and hoy.get(r["id"], 0) >= r["menciones_diarias"]:
                     continue
                 opcional, comercial = secciones.get(r["seccion"], (False, True))
@@ -603,7 +606,13 @@ class Planner:
                      "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
                      "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial}
                 (pautas if comercial else fijas).append(p)
-        lista = planificar_tandas(pautas, sorted(minutos)).get(minuto, []) if pautas else []
+        plan = planificar_tandas(pautas, sorted(minutos)) if pautas else {}
+        if ajustes and plan:
+            por_id = {p["pauta_id"]: p for p in pautas}
+            ids = aplicar_ajustes({m: [p["pauta_id"] for p in lst] for m, lst in plan.items()}, ajustes)
+            plan = {m: [por_id[i] for i in lst] for m, lst in ids.items()}
+        fijadas = set(ajustes.get(minuto, []))
+        lista = [{**p, "fijada": p["pauta_id"] in fijadas} for p in plan.get(minuto, [])]
         lista += [f for f in fijas if lista or not f["opcional"]]
         return sorted(lista, key=lambda p: p["seccion"] or 0)
 
