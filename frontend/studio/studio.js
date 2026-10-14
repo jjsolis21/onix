@@ -1010,17 +1010,97 @@ const Derecha = (() => {
   // Qué se ve en el panel de la derecha: "hist" (historial) o la clave de una paleta
   let vista = "hist";
   try { vista = localStorage.getItem("onix_vista_der") || "hist"; } catch { /* sin almacenamiento */ }
+  // Con pocas paletas se muestran como pestañas (como siempre). Con muchas, un selector compacto con buscador,
+  // las últimas usadas y las paletas agrupadas por nombre («SOLIS 1», «SOLIS 2»… = grupo «SOLIS»).
+  const COMPACTO = 6;
+  let recientes = [];
+  try { recientes = JSON.parse(localStorage.getItem("onix_pal_rec") || "[]"); } catch { /* sin almacenamiento */ }
+  const claves = () => Object.keys(bancos);
+  function baseDe(nombre) {
+    const m = /^(.*?)[\s_-]*(\d+)$/.exec((nombre || "").trim());
+    return m && m[1].trim() ? { base: m[1].trim(), n: +m[2] } : { base: (nombre || "").trim(), n: null };
+  }
+  function irA(clave) {
+    vista = clave;
+    recientes = [clave, ...recientes.filter(c => c !== clave)].slice(0, 6);
+    try { localStorage.setItem("onix_vista_der", vista); localStorage.setItem("onix_pal_rec", JSON.stringify(recientes)); } catch { /* sin almacenamiento */ }
+    cerrarSelector();
+    pintarVista();
+  }
+  /** Paleta anterior (-1) o siguiente (+1), dando la vuelta */
+  function vecina(delta) {
+    const c = claves();
+    if (!c.length) return;
+    const i = c.indexOf(banco);
+    irA(c[(i + delta + c.length) % c.length]);
+  }
   function pintarVista() {
-    const claves = Object.keys(bancos);
+    const cs = claves();
     if (vista !== "hist" && vista !== "vt") banco = vista;
-    $("derTabs").innerHTML = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
-      + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`
-      + claves.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
+    let html = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
+      + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`;
+    if (cs.length > COMPACTO) {
+      const enPaleta = vista !== "hist" && vista !== "vt";
+      html += `<button class="der-tab der-sel ${enPaleta ? "active" : ""}" data-selector="1" title="Elegir paleta (${cs.length}) · , y . cambian a la anterior y a la siguiente">`
+        + `▦ ${esc(((enPaleta ? nombres[banco] : "") || "PALETAS").toUpperCase())} ▾</button>`;
+      html += recientes.filter(c => c in bancos && c !== vista).slice(0, 4)
+        .map(c => `<button class="der-tab der-rec" data-vista="${esc(c)}" title="Paleta usada hace poco">${esc((nombres[c] || c).toUpperCase())}</button>`).join("");
+    } else {
+      html += cs.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
+    }
+    $("derTabs").innerHTML = html;
     $("historial").hidden = vista !== "hist";
     $("voiceTracker").hidden = vista !== "vt";
     $("cartuchera").hidden = vista === "hist" || vista === "vt";
     if (vista === "vt") { if (typeof VoiceTracker !== "undefined") VoiceTracker.mostrar(); }
     else if (vista !== "hist") pintarCart();
+  }
+
+  // ── Selector de paletas (para cuando hay decenas) ──
+  let selector = null;
+  function cerrarSelector() {
+    selector?.remove(); selector = null;
+    document.removeEventListener("mousedown", fueraSelector, true);
+  }
+  const fueraSelector = e => { if (selector && !selector.contains(e.target) && !e.target.closest("[data-selector]")) cerrarSelector(); };
+  function abrirSelector() {
+    if (selector) { cerrarSelector(); return; }
+    selector = document.createElement("div");
+    selector.className = "pal-sel";
+    selector.innerHTML = `<input class="pal-q" placeholder="Buscar paleta…" autocomplete="off"><div class="pal-lista"></div>`;
+    document.body.appendChild(selector);
+    const r = $("derTabs").getBoundingClientRect();
+    selector.style.left = `${Math.max(6, r.left)}px`; selector.style.top = `${r.bottom + 2}px`; selector.style.width = `${Math.max(280, r.width)}px`;
+    const q = selector.querySelector(".pal-q"), lista = selector.querySelector(".pal-lista");
+    const norm2 = t => (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const pintarLista = () => {
+      const f = norm2(q.value.trim());
+      const grupos = new Map();                                   // base → [{clave, nombre, n, total, cargados}]
+      claves().forEach(c => {
+        const nom = nombres[c] || c;
+        if (f && !norm2(nom).includes(f)) return;
+        const { base, n } = baseDe(nom);
+        const clave = n === null ? `#${c}` : norm2(base);         // sin número: no se agrupa
+        if (!grupos.has(clave)) grupos.set(clave, { base: n === null ? nom : base, items: [] });
+        grupos.get(clave).items.push({ clave: c, nombre: nom, n, total: bancos[c] ?? 0, cargados: (slots[c] ?? []).length });
+      });
+      lista.innerHTML = [...grupos.values()].map(g => {
+        const it = g.items.sort((x, y) => (x.n ?? 0) - (y.n ?? 0));
+        if (it.length === 1)
+          return `<button class="pal-fila ${it[0].clave === vista ? "act" : ""}" data-pal="${esc(it[0].clave)}"><b>${esc(it[0].nombre)}</b><small>${it[0].cargados}/${it[0].total}</small></button>`;
+        return `<div class="pal-grupo"><span>${esc(g.base)}</span><div>${it.map(x =>
+          `<button class="pal-chip ${x.clave === vista ? "act" : ""}" data-pal="${esc(x.clave)}" title="${esc(x.nombre)} · ${x.cargados} de ${x.total} botones cargados">${x.n}<small>${x.cargados}/${x.total}</small></button>`).join("")}</div></div>`;
+      }).join("") || `<p class="pal-vacia">Sin paletas con ese nombre</p>`;
+    };
+    q.addEventListener("input", pintarLista);
+    q.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.stopPropagation(); cerrarSelector(); }
+      if (e.key === "Enter") { const p = lista.querySelector("[data-pal]"); if (p) irA(p.dataset.pal); }
+    });
+    lista.addEventListener("click", e => { const b = e.target.closest("[data-pal]"); if (b) irA(b.dataset.pal); });
+    pintarLista();
+    document.addEventListener("mousedown", fueraSelector, true);
+    q.focus();
   }
 
   function tanda(prog, st) {
@@ -1093,7 +1173,13 @@ const Derecha = (() => {
   function pintarCart() {
     const n = bancos[banco] ?? 0;
     // Como la paleta de Soho: nombre de la paleta y cuenta atrás del efecto, y debajo los botones de color
-    $("cartuchera").innerHTML = `<div class="cart-cab"><span>${esc(nombres[banco] || banco || "")}</span><b id="cartCuenta">00.0s</b></div>`
+    const cs = claves(), pos = cs.indexOf(banco) + 1;
+    const flechas = cs.length > 1;
+    $("cartuchera").innerHTML = `<div class="cart-cab">
+        ${flechas ? '<button class="cart-nav" data-nav="-1" title="Paleta anterior (,)">◀</button>' : ""}
+        <span class="cart-nom">${esc(nombres[banco] || banco || "")}${flechas ? ` <small>${pos}/${cs.length}</small>` : ""}</span>
+        ${flechas ? '<button class="cart-nav" data-nav="1" title="Paleta siguiente (.)">▶</button>' : ""}
+        <b id="cartCuenta">00.0s</b></div>`
       + Array.from({ length: n }, (_, i) => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
       const num = i + 1;
@@ -1108,9 +1194,16 @@ const Derecha = (() => {
   $("derTabs").addEventListener("click", e => {
     const t = e.target.closest(".der-tab");
     if (!t) return;
-    vista = t.dataset.vista;
-    try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
-    pintarVista();
+    if (t.dataset.selector) { abrirSelector(); return; }
+    if (t.dataset.vista === "hist" || t.dataset.vista === "vt") {
+      vista = t.dataset.vista;
+      try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
+      cerrarSelector(); pintarVista();
+    } else irA(t.dataset.vista);
+  });
+  $("cartuchera").addEventListener("click", e => {
+    const n = e.target.closest("[data-nav]");
+    if (n) vecina(+n.dataset.nav);
   });
   // El operador carga sus botones: arrastra una canción de la biblioteca sobre un botón
   const botonDe = e => e.target.closest(".cart-btn[data-slot], .cart-btn.vacio-btn");
@@ -1159,7 +1252,7 @@ const Derecha = (() => {
     else toast(`El botón ${n} de la cartuchera está vacío`, "info", 2000);
   }
 
-  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot };
+  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector };
 })();
 
 /* ─────────────────────────── vúmetro ───────────────────────────
@@ -1230,6 +1323,9 @@ const Atajos = (() => {
     } else if (/^Digit[1-9]$/.test(e.code)) {
       e.preventDefault();
       Derecha.dispararSlot(+e.code.slice(5));
+    } else if (e.key === "," || e.key === ".") {
+      e.preventDefault();
+      Derecha.vecina(e.key === "," ? -1 : 1);                 // paleta anterior / siguiente
     } else if (e.key.toLowerCase() === "p") {
       $("btnPausa").click();
     } else if (e.key.toLowerCase() === "d") {

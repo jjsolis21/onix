@@ -670,3 +670,30 @@ kbd {
 .cart-btn.vacio-btn .cart-n { color: #8a8a8a; font-size: 12px; }
 .cart-btn.disparado { filter: brightness(1.6); }
 .cart-btn.sonando { outline: 3px solid #19f019; outline-offset: -3px; }
+
+/* ── Muchas paletas: selector compacto, recientes y flechas en la cabecera ── */
+.der-tab.der-sel { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.der-tab.der-rec { opacity: .8; }
+.cart-cab { gap: 6px; align-items: center; }
+.cart-cab .cart-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.cart-cab .cart-nom small { font-size: 12px; color: #8a8a8a; font-weight: 400; margin-left: 4px; }
+.cart-nav { background: linear-gradient(#444, #262626); border: 1px solid #000; color: #ddd; border-radius: 3px; cursor: pointer;
+  width: 30px; height: 30px; font-size: 13px; flex: none; }
+.cart-nav:hover { border-color: var(--ambar); color: var(--ambar-vivo); }
+.pal-sel { position: fixed; z-index: 90; background: var(--bg-2); border: 1px solid var(--ambar); border-radius: 6px; padding: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .55); display: flex; flex-direction: column; gap: 6px; max-height: 70vh; }
+.pal-q { background: var(--bg-0); border: 1px solid var(--line); border-radius: 4px; color: var(--txt-hi); padding: 7px 9px; font: inherit; font-size: 13px; }
+.pal-lista { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.pal-fila { display: flex; justify-content: space-between; align-items: center; background: var(--bg-3); border: 1px solid transparent;
+  color: var(--txt-hi); border-radius: 4px; padding: 6px 9px; cursor: pointer; font: inherit; font-size: 13px; text-align: left; }
+.pal-fila small, .pal-chip small { color: var(--txt-lo); font-size: 10px; margin-left: 6px; }
+.pal-fila:hover, .pal-chip:hover { border-color: var(--ambar); }
+.pal-fila.act, .pal-chip.act { background: var(--ambar); color: var(--bg-0); }
+.pal-fila.act small, .pal-chip.act small { color: var(--bg-0); }
+.pal-grupo { display: flex; align-items: center; gap: 8px; background: var(--bg-3); border-radius: 4px; padding: 5px 9px; }
+.pal-grupo > span { font-size: 13px; font-weight: 600; color: var(--txt-hi); min-width: 70px; }
+.pal-grupo > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.pal-chip { background: var(--bg-1); border: 1px solid var(--line); color: var(--txt-hi); border-radius: 4px; padding: 3px 9px; cursor: pointer;
+  font: inherit; font-size: 13px; }
+.pal-vacia { color: var(--txt-lo); font-size: 12px; margin: 6px; }
+

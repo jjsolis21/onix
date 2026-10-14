@@ -40,6 +40,10 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   reloj circular coloreable por tipo, género, rotación o subgénero, y verificador único. La tabla de filas sigue
   siendo la fuente de datos. Falta (bloque 2): pestaña Canciones, filtros por año, BPM y prioridad (tocan el planificador).
 
+- Studio › paletas con muchas paletas: con más de 6 se pasa de pestañas a un selector (▦) con buscador, agrupado por
+  nombre («SOLIS 1», «SOLIS 2» → grupo SOLIS), las últimas usadas al lado, flechas ◀ ▶ en la cabecera y atajos `,` y `.`.
+  Una paleta sigue teniendo hasta 60 botones; para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
+
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
 - Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
