@@ -624,6 +624,13 @@
     _pintarCaratula();
   }
 
+  /** «Nombre del spot»: se propone el del archivo, salvo que el operador ya haya escrito el suyo. */
+  function _proponerNombreSpot(titulo) {
+    const el = $('fNombreSpot');
+    if (!el) return;
+    if (!el.value.trim() || el.dataset.auto !== '0') { el.value = titulo || ''; el.dataset.auto = '1'; }
+  }
+
   function _pintarVersiones() {
     _pintarCaratula();
     const ol = $('cmVersiones');
@@ -1128,6 +1135,7 @@
       $('modalTitle').textContent = `Editar — ${p.cliente}`;
       $('fCliente').value   = p.cliente;
       $('fAudio').value     = p.audio_nombre;
+      if ($('fNombreSpot')) { $('fNombreSpot').value = p.audio_nombre || ''; $('fNombreSpot').dataset.auto = '0'; }
       $('fAudio')._selectedId     = p.audio_id;
       $('fAudio')._selectedNombre = p.audio_nombre;
       $('fAudio')._selectedPath   = '';
@@ -1181,6 +1189,7 @@
       $('modalTitle').textContent  = 'Nueva Pauta';
       $('fCliente').value          = '';
       $('fAudio').value            = '';
+      if ($('fNombreSpot')) { $('fNombreSpot').value = ''; $('fNombreSpot').dataset.auto = '1'; }
       $('fAudio')._selectedId      = null;
       $('fAudio')._selectedNombre  = '';
       $('fAudio')._selectedPath    = '';
@@ -1333,7 +1342,7 @@
     // Resolver el audio seleccionado
     const fAudioEl      = $('fAudio');
     const audioId       = fAudioEl?._selectedId    ?? null;
-    const audioNombre   = fAudioEl?._selectedNombre || audioVal;
+    const audioNombre   = ($('fNombreSpot')?.value || '').trim() || fAudioEl?._selectedNombre || audioVal;
 
     const payload = {
       cliente,
@@ -1421,6 +1430,7 @@
     f._selectedId = c.id;
     f._selectedNombre = c.titulo;
     f._selectedPath = c.archivo_path || '';
+    _proponerNombreSpot(c.titulo);
     const hint = $('audioHint');
     if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
     if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;
@@ -1646,6 +1656,7 @@
     // ── Selector de audio ──
     $('btnSelectAudio')?.addEventListener('click', () => _cargarConEditor(null));
     $('btnElegirBib')?.addEventListener('click', _elegirCuna);
+    $('fNombreSpot')?.addEventListener('input', e => { e.target.dataset.auto = '0'; });
     $('auCaratArchivo')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) _caratulaAccion('archivo', f); });
     $('auCaratEtiqueta')?.addEventListener('click', () => _caratulaAccion('etiqueta'));
     $('auCaratQuitar')?.addEventListener('click', () => _caratulaAccion('quitar'));

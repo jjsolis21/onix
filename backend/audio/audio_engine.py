@@ -972,7 +972,7 @@ class AudioEngine:
     FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
-    FADE_CORTE         = 3.0    # fade de la canción cuando una tanda o evento INMEDIATO la corta (config fade_corte_seg)
+    FADE_CORTE         = 5.0    # fade de la canción cuando una tanda o evento INMEDIATO la corta (config fade_corte_seg)
     VOZ_DUCK           = 0.2    # la música bajo la voz queda al 20 % (≈ -14 dB); se cambia con config voz_fondo_pct
     VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
     VOZ_SALIDA_CAMA    = 1.5    # la música de fondo se va en este tiempo antes de que termine la voz
@@ -2584,6 +2584,7 @@ class AudioEngine:
         if sonando_musica and any(p.get("tanda") == minuto for p in self._priority_queue):
             log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", minuto)
             self.bus.emit("tanda_inmediata", {"minuto": minuto})
+            log.info("[Pautas] Corte inmediato :%02d con fade de %.1f s", minuto, self._fade_corte)
             self._corte_fade = self._fade_corte
             try:
                 self._advance()
@@ -2617,6 +2618,7 @@ class AudioEngine:
         log.info("[Engine] Evento '%s' a las %s: entra en punto", ev.get("evento"), ev["evento_hora"][11:16])
         self.bus.emit("evento_inmediato", {"evento": ev.get("evento"), "hora": ev["evento_hora"][11:16]})
         self._emit_programa()
+        log.info("[Engine] Evento inmediato: la cancion sale con fade de %.1f s", self._fade_corte)
         self._corte_fade = self._fade_corte
         try:
             self._advance()
@@ -2883,6 +2885,7 @@ class AudioEngine:
             "pautas_pendientes": len(self._priority_queue),
             "tandas_minutos":    list(self._tandas_minutos),
             "tandas_cierre":     list(self._tandas_cierre),
+            "fade_corte_seg":    self._fade_corte,
             # Modo manual: cuñas esperando a que el operador lance la tanda
             "tanda_en_espera":   (len(self._priority_queue)
                                   if self._mode == "manual" and not self._tanda_liberada else 0),

@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=12">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=13">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=5">
 
@@ -377,6 +377,11 @@
               <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
             </div>
           </div>
+
+          <label class="au-nombre">Nombre del spot
+            <input id="fNombreSpot" type="text" maxlength="120" placeholder="Ej: Promo Verano 2026" autocomplete="off">
+            <small>Es el nombre que verás en la lista. Por defecto el del archivo; cámbialo cuando quieras.</small>
+          </label>
 
           <div class="au-acciones">
             <button class="au-btn au-btn--pri" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">

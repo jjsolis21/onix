@@ -2449,7 +2449,7 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
         "max_mismo_genero":    int(float(valores.get("max_mismo_genero", 2))),
         "ducking_db":          float(valores.get("ducking_db", -12)),
         "voz_fondo_pct":       int(float(valores.get("voz_fondo_pct", 20))),
-        "fade_corte_seg":      float(valores.get("fade_corte_seg", 3) or 3),
+        "fade_corte_seg":      float(valores.get("fade_corte_seg", 5) or 5),
         "tandas_minutos":      valores.get("tandas_minutos", "15,45"),
         "tandas_inmediatas":   valores.get("tandas_inmediatas", ""),
         "tandas_cierre":       valores.get("tandas_cierre", ""),

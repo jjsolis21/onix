@@ -1497,3 +1497,9 @@
 .pm-pane[data-pane="audio"] .au-layout .au-btn { width: 100%; max-width: 100%; height: auto; min-height: 48px; padding: 8px 16px; flex: none; white-space: normal; }
 .pm-pane[data-pane="audio"] .au-layout .au-btn > span { width: auto; flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; color: inherit; }
 .pm-pane[data-pane="audio"] .au-layout .au-btn > i { flex: none; }
+
+.au-layout .au-nombre { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--p-text, #eee); }
+.au-layout .au-nombre input { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 8px;
+  padding: 0 12px; height: 44px; font: inherit; font-size: 15px; font-weight: 400; width: 100%; box-sizing: border-box; color-scheme: dark; }
+.au-layout .au-nombre input:focus { outline: none; border-color: var(--p-accent, #ee9b00); }
+.au-layout .au-nombre small { font-weight: 400; font-size: 12px; color: var(--p-text-lo, #999); line-height: 1.4; }
