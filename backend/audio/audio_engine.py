@@ -1952,10 +1952,16 @@ class AudioEngine:
                 self._emit_error(track.get("id"), "error_play_backend",
                                  f"No se pudo reproducir: {track.get('titulo', '')}")
                 return False
+            corte = self._corte_fade is not None
             self._audio.slide_volume(canal, target, int(fade_in * 1000))
-            self._audio.slide_volume(outgoing, 0.0, int(fade_out * 1000))
+            if not corte:
+                self._audio.slide_volume(outgoing, 0.0, int(fade_out * 1000))
             fade = max(fade_in, fade_out)
             self._xfade = {"canal": outgoing, "until": time.monotonic() + fade, "track": prev}
+            if corte:
+                # La rampa lineal de BASS casi no se oye al principio y la música "desaparece" de golpe al final:
+                # el corte inmediato baja en decibelios (curva de consola), como un fader.
+                self._fade_db(outgoing, fade_out, self._target_volume(prev))
             self.bus.emit("crossfade_start", {
                 "from_id": prev.get("id"),
                 "to_id":   track.get("id"),
@@ -2130,6 +2136,26 @@ class AudioEngine:
             if p_out > cue_in:
                 cue_out = p_out
         return cue_in, cue_out
+
+    def _fade_db(self, canal: int, segundos: float, vol_inicial: float,
+                 db_final: float = -40.0, paso: float = 0.2) -> None:
+        """
+        Baja el canal `canal` de `vol_inicial` a 0 en `segundos`, lineal en dB (no en amplitud):
+        a un tercio del tiempo ya va unos 13 dB abajo y la cuña entra sobre música baja.
+        Corre en su propio hilo; se corta sola si el canal deja de ser el que sale.
+        """
+        n = max(1, int(round(segundos / paso)))
+
+        def correr():
+            for i in range(1, n + 1):
+                xf = self._xfade
+                if not xf or xf.get("canal") != canal:
+                    return
+                v = 0.0 if i == n else vol_inicial * 10 ** (db_final * (i / n) / 20)
+                self._audio.slide_volume(canal, v, int(paso * 1000))
+                time.sleep(paso)
+
+        threading.Thread(target=correr, name="onix-fade-corte", daemon=True).start()
 
     def _fade_times(self, prev_item: Optional[dict], item: dict) -> tuple[float, float]:
         """

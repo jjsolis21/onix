@@ -1192,5 +1192,27 @@ def test_corte_inmediato_usa_el_fade_configurable(engine, media):
     engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
     engine._check_tanda_inmediata()
     assert engine._current_item["origen"] == "pauta"
-    assert (0.0, 4000) in fades                              # la canción salió en 4 s, no en 1
+    import time as _t
+    _t.sleep(4.4)
+    assert fades and fades[-1][0] == 0.0 or any(v == 0.0 for v, _ in fades)   # llegó a cero en los 4 s
+    assert sum(ms for v, ms in fades if v != 1.0) >= 3000        # la salida duró ~4 s en pasos, no 1
     assert engine._corte_fade is None                        # y el siguiente cambio vuelve a lo normal
+
+
+def test_corte_inmediato_baja_en_decibelios_no_en_rampa_lineal(engine, media):
+    add_pauta(engine, media, "EN PUNTO")
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="0.6")
+    engine._mode = "automatico"
+    saliente = []
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    canal_cancion = engine._active_canal
+    engine._audio.slide_volume = lambda canal, vol, ms: saliente.append(vol) if canal == canal_cancion else None
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    engine._check_tanda_inmediata()
+    import time as _t
+    _t.sleep(0.9)
+    assert len(saliente) >= 3 and saliente[-1] == 0.0
+    assert saliente == sorted(saliente, reverse=True)        # solo baja
+    assert saliente[0] < 0.5                                 # la rampa lineal estaria en ~0.8: aqui ya bajo -6 dB al primer paso
