@@ -866,6 +866,8 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     if not cursor.execute("SELECT 1 FROM config WHERE clave = 'migracion_promos_separador'").fetchone():
         cursor.execute("INSERT OR IGNORE INTO tanda_secciones (numero, nombre, opcional, comercial) VALUES (0, 'Promociones', 0, 0)")
         cursor.execute("UPDATE tanda_secciones SET nombre = 'Separador de entrada' WHERE numero = 2 AND nombre = 'Cortina de entrada'")
+        # el separador sale en cada tanda (decisión del operador: «Siempre»); antes era opcional o se repartía como comercial
+        cursor.execute("UPDATE tanda_secciones SET opcional = 0, comercial = 0 WHERE numero = 2 AND nombre = 'Separador de entrada'")
         cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_promos_separador', '1')")
     logger.info("  → secciones Promociones y Separador de entrada: OK")
 
