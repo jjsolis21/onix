@@ -550,8 +550,13 @@
     _llenarSelect('filtCliente', unicos(p => p.cliente), 'Todos');
     const agencias = unicos(p => p.agencia);
     _llenarSelect('filtAgencia', agencias, 'Todas');
-    const dl = $('cmAgencias');
-    if (dl) dl.innerHTML = agencias.map(a => `<option value="${_esc(a)}">`).join('');
+    const cat = global.ComercialesCatalogo || {};
+    const lista = (id, propios, delCatalogo) => {
+      const dl = $(id);
+      if (dl) dl.innerHTML = [...new Set([...(delCatalogo || []), ...propios])].sort().map(a => `<option value="${_esc(a)}">`).join('');
+    };
+    lista('cmAgencias', agencias, cat.agencias);
+    lista('cmClientes', unicos(p => p.cliente), cat.clientes);
     _filterRubro     = $('filtRubro')?.value   ?? '';
     _filtros.cliente = $('filtCliente')?.value ?? '';
     _filtros.agencia = $('filtAgencia')?.value ?? '';

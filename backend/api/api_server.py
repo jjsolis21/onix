@@ -63,6 +63,7 @@ from backend.api import ia as ia_api
 from backend.api import voicetrack as voicetrack_api
 from backend.api import locutor as locutor_api
 from backend.api import cartuchera as cartuchera_api
+from backend.api import comerciales as comerciales_api
 from backend.locutor.servicio import Servicio as LocutorServicio
 from backend.api import problemas as problemas_api
 from backend.api import respaldos as respaldos_api
@@ -216,6 +217,7 @@ cartuchera_api.medir_volumen = _normalizador.avisar
 cartuchera_api.difundir = lambda evento, datos: _manager.broadcast(_ws_message(evento, datos))
 voicetrack_api.medir_volumen = _normalizador.avisar
 app.include_router(cartuchera_api.router)
+app.include_router(comerciales_api.router)
 app.include_router(voicetrack_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)

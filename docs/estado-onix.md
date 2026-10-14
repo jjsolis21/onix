@@ -48,6 +48,13 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   Tope fijo: 63 botones por paleta (7 páginas de 9). Una paleta nace con 1 página y crece con «＋ Agregar página» en el
   Admin (ya no hay «cantidad de botones»). Para más efectos se crean más paletas (SOLIS 1, 2, 3…), como en Soho.
 
+- Admin › Comerciales como Soho (bloque 1): botón «⚙ Config. de comerciales» (General: tandas; Prioridades: secciones de la
+  tanda; Clientes y Agencias: catálogo con contacto, al renombrar se actualizan los spots) y «🩺 Chequeo de integridad»
+  (audio perdido o en Papelera, sin horarios, fechas, vencido, sin rubro). `backend/api/comerciales.py`,
+  `frontend/admin/sections/03-programacion-pautas/comerciales-config.js`.
+  PENDIENTE (Opus, toca `planificar_tandas`/motor): rubros con conflictos entre sí, y tandas por hora y por día
+  (hoy `tandas_minutos`, `tandas_inmediatas` y `tandas_cierre` son iguales todas las horas y días).
+
 ## No verificado todavía
 - Locutor IA: nunca ha corrido con la tarjeta real ni con claves reales; la prueba de 72 h debe incluirlo.
 - Windows no trae `tzdata`: la hora de la emisora cae a UTC-4 fijo (Caracas) si falta; `pip install tzdata` lo evita.
