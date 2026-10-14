@@ -1185,8 +1185,10 @@ async def create_audio(
             tipo_audio,
             origen,
             energia,
-            # La música nueva entra a la Bandeja: no suena en automático hasta aprobarla
-            0 if tipo_audio == "Musica" else 1,
+            # La música nueva entra a la Bandeja y no suena en automático hasta aprobarla, salvo que ya venga
+            # clasificada (género y rotación): sin eso el reloj no sabría dónde ponerla. Lo que no es música
+            # (cuñas, efectos, locuciones) no pasa por la Bandeja.
+            1 if (tipo_audio != "Musica" or (cat1 and cat2)) else 0,
         ))
         nuevo_id = cursor.lastrowid
 

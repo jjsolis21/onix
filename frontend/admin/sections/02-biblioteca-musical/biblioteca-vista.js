@@ -8,8 +8,9 @@
  *   · Edición masiva: seleccionar (clic, Mayús+clic, Ctrl+A) y cambiar
  *     género, rotación, subgénero, voz, origen o energía de todas a la vez;
  *     aprobar, devolver a la Bandeja, re-detectar marcas o desactivar.
- *   · Bandeja de entrada: la música recién cargada NO suena en automático
- *     hasta clasificarla (género y rotación) y aprobarla.
+ *   · Bandeja de entrada: la música recién cargada que NO trae género y rotación
+ *     no suena en automático hasta clasificarla y aprobarla (la que ya viene
+ *     clasificada entra aprobada).
  *
  * Reutiliza del Admin: el editor de canción (openModal), la carga por lote
  * (openLoteModal) y las categorías (onixCategories.open) de admin-app.js.

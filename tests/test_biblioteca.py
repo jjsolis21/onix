@@ -140,3 +140,36 @@ def test_editor_guarda_outro_prioridad_y_caratula(client, tmp_path):
     assert client.get(f"/api/v1/audios/{a['id']}/caratula").status_code == 404
     ac = client.post(f"/api/v1/biblioteca/{a['id']}/autocue")
     assert ac.status_code in (200, 422, 503)
+
+
+def _aprobada(audio_id):
+    import sqlite3
+    from backend.paths import DB_PATH
+    c = sqlite3.connect(DB_PATH)
+    try:
+        return c.execute("SELECT aprobada FROM audios WHERE id = ?", (audio_id,)).fetchone()[0]
+    finally:
+        c.close()
+
+
+def test_la_musica_nueva_se_aprueba_sola_solo_si_ya_trae_genero_y_rotacion(client, tmp_path):
+    schema = client.get("/api/v1/config/biblioteca/schema").json()["categorias"]
+    valores = {c["nombre_interno"]: c["valores"][0]["valor"] for c in schema if c["valores"]}
+    assert "cat1" in valores and "cat2" in valores, "la base de pruebas debe traer géneros y rotaciones"
+
+    def subir(titulo, **extra):
+        wav = make_wav(tmp_path / f"{titulo}.wav", seconds=2.0)
+        with open(wav, "rb") as fh:
+            r = client.post("/api/v1/audios", data={"titulo": titulo, "artista": "PRUEBA APROBAR", **extra},
+                            files={"file": (wav.name, fh, "audio/wav")})
+        assert r.status_code == 201, r.text
+        return r.json()["data"]["id"]
+
+    # clasificada (género y rotación): entra aprobada
+    assert _aprobada(subir("Con Todo", cat1=valores["cat1"], cat2=valores["cat2"])) == 1
+    # sin clasificar, o a medias: a la Bandeja
+    assert _aprobada(subir("Sin Nada")) == 0
+    assert _aprobada(subir("Solo Genero", cat1=valores["cat1"])) == 0
+    assert _aprobada(subir("Solo Rotacion", cat2=valores["cat2"])) == 0
+    # lo que no es música no pasa por la Bandeja
+    assert _aprobada(subir("Un Efecto", tipo_audio="Efecto")) == 1
