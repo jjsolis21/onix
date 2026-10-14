@@ -1058,6 +1058,10 @@ class AudioEngine:
         self._dur_cierre: dict[int, float] = {}       # minuto al cierre -> segundos de su bloque (hora en curso)
         self._fade_corte: float = self.FADE_CORTE     # config fade_corte_seg
         self._corte_fade: Optional[float] = None      # fade a usar en el próximo arranque (corte inmediato en curso)
+        # Corte inmediato en dos tiempos: la canción BAJA los segundos previos y la cuña entra a la hora exacta
+        self._corte_pend: Optional[dict] = None       # {clave, minuto, target, canal, vol}
+        self._prefade: Optional[dict] = None          # {canal, vol} mientras la canción baja antes del corte
+        self._evento_prefade: set = set()             # eventos inmediatos cuya canción ya empezó a bajar
         self._eventos_emitidos: set[str] = set()     # evento_key de eventos a hora fija ya al aire
         # Detector de aire muerto (ver _vigilar_silencio)
         self._silencio_seg: float = 10.0
@@ -1893,6 +1897,10 @@ class AudioEngine:
             return False
 
         self._finish_crossfade(force=True)
+        if self._corte_pend:
+            self._inmediatas_hechas.discard(self._corte_pend["clave"])      # si sigue en la ventana, se vuelve a preparar
+            self._corte_pend = None
+        self._prefade = None
 
         if self._pausado:
             # Lo que estaba en pausa sale sin mezcla: la nueva entra limpia
@@ -2138,7 +2146,7 @@ class AudioEngine:
         return cue_in, cue_out
 
     def _fade_db(self, canal: int, segundos: float, vol_inicial: float,
-                 db_final: float = -40.0, paso: float = 0.2) -> None:
+                 db_final: float = -40.0, paso: float = 0.2, mientras: Optional[Callable] = None) -> None:
         """
         Baja el canal `canal` de `vol_inicial` a 0 en `segundos`, lineal en dB (no en amplitud):
         a un tercio del tiempo ya va unos 13 dB abajo y la cuña entra sobre música baja.
@@ -2148,14 +2156,33 @@ class AudioEngine:
 
         def correr():
             for i in range(1, n + 1):
-                xf = self._xfade
-                if not xf or xf.get("canal") != canal:
-                    return
+                if mientras is not None:
+                    if not mientras():
+                        return
+                else:
+                    xf = self._xfade
+                    if not xf or xf.get("canal") != canal:
+                        return
                 v = 0.0 if i == n else vol_inicial * 10 ** (db_final * (i / n) / 20)
                 self._audio.slide_volume(canal, v, int(paso * 1000))
                 time.sleep(paso)
 
         threading.Thread(target=correr, name="onix-fade-corte", daemon=True).start()
+
+    def _prefade_iniciar(self, segundos: float) -> bool:
+        """
+        Empieza a bajar la canción que suena (curva en dB) para que llegue a silencio justo cuando entre
+        la cuña. La cuña NO arranca hasta que el fade termina: así no lo tapa. False si no suena música.
+        """
+        canal, prev, item = self._active_canal, self._current_track, self._current_item
+        if prev is None or not item or item.get("origen") == "pauta" or self._is_spot(item) \
+                or not self._audio.is_active(canal):
+            return False
+        vol = self._target_volume(prev)
+        self._prefade = {"canal": canal, "vol": vol}
+        self._fade_db(canal, max(0.3, segundos), vol,
+                      mientras=lambda: bool(self._prefade) and self._prefade["canal"] == canal and self._active_canal == canal)
+        return True
 
     def _fade_times(self, prev_item: Optional[dict], item: dict) -> tuple[float, float]:
         """
@@ -2551,45 +2578,68 @@ class AudioEngine:
 
     def _check_tanda_inmediata(self):
         """
-        Inicio inmediato (Jazler "Break Starts Immediately"): en automatico, al
-        llegar el minuto de una tanda marcada, la cancion que suena sale con
-        fade y la tanda empieza a su hora exacta. En manual decide el operador.
+        Inicio inmediato (Jazler "Break Starts Immediately"): en automatico, la tanda empieza a su hora exacta.
+        La cancion que suena empieza a bajar `fade_corte_seg` segundos ANTES (curva en dB) y la tanda entra cuando
+        el fade termina, justo a la hora: la cuña no tapa el fade. En manual decide el operador.
         """
         self._tandas_de_ahora()
         if not self._tandas_inmediatas or self._mode != "automatico" or self._pausado:
             return
         now = self._now()
-        seg_hora = now.minute * 60 + now.second
-        minuto = None
+        self._ejecutar_corte(now)
+        if self._corte_pend:
+            return
+        seg = now.minute * 60 + now.second + now.microsecond / 1e6
+        adelanto = max(0.5, self._fade_corte)
         for m in self._tandas_inmediatas:
             if m in self._tandas_cierre:
-                # Al cierre + inmediata: corta cuando falta justo lo que dura el
-                # bloque, para que termine en su minuto (0 = en punto) y la hora
-                # siguiente empiece con música
+                # Al cierre + inmediata: entra cuando falta justo lo que dura el bloque, para que termine
+                # en su minuto (0 = en punto) y la hora siguiente empiece con música
                 dur = self._dur_cierre.get(m)
                 fin = (60 if m == 0 else m) * 60
-                if dur is not None and inicio_tanda(m, dur, True) <= seg_hora < fin:
-                    minuto = m
-            elif now.minute == m:
-                minuto = m
-        if minuto is None:
+                if dur is None or seg >= fin:
+                    continue
+                falta = inicio_tanda(m, dur, True) - seg
+                if falta > adelanto:
+                    continue
+            else:
+                falta = (m * 60 - seg) % 3600
+                if falta >= 3598:
+                    falta = 0.0                    # el minuto acaba de pasar
+                if falta > adelanto:
+                    continue
+            falta = max(0.0, falta)
+            target = now + timedelta(seconds=falta)
+            clave = (target.strftime("%Y-%m-%d-%H"), m)
+            if clave in self._inmediatas_hechas:
+                continue
+            self._inmediatas_hechas = {c for c in self._inmediatas_hechas if c[0] >= clave[0]} | {clave}
+            canal = self._active_canal
+            if falta > 0.05 and self._prefade_iniciar(min(falta, adelanto)):
+                log.info("[Pautas] Tanda inmediata :%02d — la cancion baja %.1f s y la tanda entra a su hora", m, falta)
+            self._corte_pend = {"clave": clave, "minuto": m, "target": target, "canal": canal,
+                                "vol": (self._prefade or {}).get("vol")}
+            self._ejecutar_corte(now)              # si ya es la hora, entra ahora
             return
-        clave = (now.strftime("%Y-%m-%d-%H"), minuto)
-        if clave in self._inmediatas_hechas:
+
+    def _ejecutar_corte(self, now) -> None:
+        """Si ya llegó la hora del corte pendiente: lanza la tanda (la cancion ya bajó; la cuña entra limpia)."""
+        p = self._corte_pend
+        if not p or now < p["target"]:
             return
-        self._inmediatas_hechas = {c for c in self._inmediatas_hechas if c[0] == clave[0]} | {clave}
-        self._check_pautas(forzar=clave)
+        self._corte_pend = None
+        canal, vol, minuto = p["canal"], p["vol"], p["minuto"]
+        self._prefade = None
+        self._check_pautas(forzar=(now.strftime("%Y-%m-%d-%H"), minuto))
         sonando_musica = (self._current_track is not None and self._current_item
                           and self._current_item.get("origen") != "pauta")
-        if sonando_musica and any(p.get("tanda") == minuto for p in self._priority_queue):
-            log.info("[Pautas] Tanda inmediata :%02d — se corta la cancion", minuto)
+        if sonando_musica and any(x.get("tanda") == minuto for x in self._priority_queue):
+            log.info("[Pautas] Tanda inmediata :%02d — entra a su hora", minuto)
             self.bus.emit("tanda_inmediata", {"minuto": minuto})
-            log.info("[Pautas] Corte inmediato :%02d con fade de %.1f s", minuto, self._fade_corte)
-            self._corte_fade = self._fade_corte
-            try:
-                self._advance()
-            finally:
-                self._corte_fade = None
+            self._advance()                        # sin _corte_fade: la cancion ya está en silencio
+        elif vol is not None and canal == self._active_canal and self._audio.is_active(canal):
+            # No había nada que poner: la cancion que bajó vuelve a su volumen
+            self._audio.slide_volume(canal, vol, 400)
 
     def _check_evento_inmediato(self):
         """
@@ -2607,6 +2657,14 @@ class AudioEngine:
                         if it.get("inmediato") and it.get("evento_hora")
                         and datetime.fromisoformat(it["evento_hora"]) <= now), None)
             if idx is None:
+                # Aún no es la hora: los segundos previos la canción ya baja (la cuña entrará a la hora exacta)
+                prox = next((it for it in items if it.get("inmediato") and it.get("evento_hora")), None)
+                if prox:
+                    falta = (datetime.fromisoformat(prox["evento_hora"]) - now).total_seconds()
+                    if 0.05 < falta <= max(0.5, self._fade_corte) and prox["evento_hora"] not in self._evento_prefade:
+                        self._evento_prefade.add(prox["evento_hora"])
+                        if self._prefade_iniciar(falta):
+                            log.info("[Engine] Evento inmediato: la cancion baja %.1f s y el evento entra a su hora", falta)
                 return
             ev = items[idx]
             if datetime.fromisoformat(ev["evento_hora"]) < now - timedelta(minutes=15):
@@ -2618,8 +2676,12 @@ class AudioEngine:
         log.info("[Engine] Evento '%s' a las %s: entra en punto", ev.get("evento"), ev["evento_hora"][11:16])
         self.bus.emit("evento_inmediato", {"evento": ev.get("evento"), "hora": ev["evento_hora"][11:16]})
         self._emit_programa()
-        log.info("[Engine] Evento inmediato: la cancion sale con fade de %.1f s", self._fade_corte)
-        self._corte_fade = self._fade_corte
+        ya_bajo = ev["evento_hora"] in self._evento_prefade or bool(self._prefade)
+        self._evento_prefade.discard(ev["evento_hora"])
+        self._prefade = None
+        if not ya_bajo:                            # el motor llegó tarde: no hubo fade previo, sale con fade normal
+            log.info("[Engine] Evento inmediato: la cancion sale con fade de %.1f s", self._fade_corte)
+            self._corte_fade = self._fade_corte
         try:
             self._advance()
         finally:

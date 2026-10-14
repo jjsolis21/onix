@@ -1179,40 +1179,54 @@ def test_bloque_al_cierre_e_inmediato_corta_para_terminar_en_punto(engine, media
     assert any(e == "tanda_inmediata" and d["minuto"] == 0 for e, d in engine.events)
 
 
-def test_corte_inmediato_usa_el_fade_configurable(engine, media):
+def test_corte_inmediato_primero_baja_la_cancion_y_la_cuna_entra_a_la_hora(engine, media):
+    """El fade termina justo a la hora y SOLO entonces entra la cuña: nunca se mezclan (la cuña no tapa el fade)."""
     add_pauta(engine, media, "EN PUNTO")
     cancion = add_audio(engine, media, "CANCION", seconds=60.0)
-    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="4")
-    engine._mode = "automatico"
-    fades = []
-    original = engine._audio.slide_volume
-    engine._audio.slide_volume = lambda canal, vol, ms: (fades.append((vol, ms)), original(canal, vol, ms))[1]
-    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
-    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
-    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
-    engine._check_tanda_inmediata()
-    assert engine._current_item["origen"] == "pauta"
-    import time as _t
-    _t.sleep(4.4)
-    assert fades and fades[-1][0] == 0.0 or any(v == 0.0 for v, _ in fades)   # llegó a cero en los 4 s
-    assert sum(ms for v, ms in fades if v != 1.0) >= 3000        # la salida duró ~4 s en pasos, no 1
-    assert engine._corte_fade is None                        # y el siguiente cambio vuelve a lo normal
-
-
-def test_corte_inmediato_baja_en_decibelios_no_en_rampa_lineal(engine, media):
-    add_pauta(engine, media, "EN PUNTO")
-    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
-    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="0.6")
+    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="1")
     engine._mode = "automatico"
     saliente = []
-    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 0)
     assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
     canal_cancion = engine._active_canal
-    engine._audio.slide_volume = lambda canal, vol, ms: saliente.append(vol) if canal == canal_cancion else None
-    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    original = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda canal, vol, ms: (saliente.append(vol) if canal == canal_cancion else None, original(canal, vol, ms))[1]
+
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 30)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "auto" and not saliente          # falta mucho: ni baja ni entra
+
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 59)                          # 1 s antes: empieza a bajar
     engine._check_tanda_inmediata()
     import time as _t
-    _t.sleep(0.9)
+    _t.sleep(1.3)
+    assert engine._current_item["origen"] == "auto"                             # la cuña TODAVIA no entró
     assert len(saliente) >= 3 and saliente[-1] == 0.0
-    assert saliente == sorted(saliente, reverse=True)        # solo baja
-    assert saliente[0] < 0.5                                 # la rampa lineal estaria en ~0.8: aqui ya bajo -6 dB al primer paso
+    assert saliente == sorted(saliente, reverse=True)                           # solo baja
+    assert saliente[0] < 0.7                                                    # curva en dB (lineal estaría en ~0.9)
+
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)                           # la hora: entra la cuña
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "pauta"
+    assert any(e == "tanda_inmediata" for e, _ in engine.events)
+
+
+def test_corte_inmediato_si_no_hay_tanda_la_cancion_recupera_su_volumen(engine, media):
+    cancion = add_audio(engine, media, "CANCION", seconds=60.0)
+    _config(engine, tandas_minutos="0", tandas_inmediatas="0", fade_corte_seg="1")
+    engine._mode = "automatico"
+    volumenes = []
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 0)
+    assert engine._start({"track": engine._fetch_track(cancion), "origen": "auto"})
+    canal = engine._active_canal
+    original = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda c, vol, ms: (volumenes.append(vol) if c == canal else None, original(c, vol, ms))[1]
+    engine._now.dt = datetime(2026, 10, 12, 9, 59, 59)
+    engine._check_tanda_inmediata()
+    import time as _t
+    _t.sleep(1.3)
+    engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)
+    engine._check_tanda_inmediata()
+    assert engine._current_item["origen"] == "auto"                             # no había cuñas: sigue la canción
+    assert volumenes[-1] > 0.5                                                  # y volvió a oírse
+
