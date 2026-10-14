@@ -167,8 +167,12 @@ def test_bloque_publicitario_se_programa_como_evento_de_relojes(client):
     p1 = _pauta(c, "BLOQUE UNO", a1)
     p2 = _pauta(c, "BLOQUE DOS", a2)
     c.commit(); c.close()
+    suelta = _audio(c2 := _db(), "Cuña sin spot", "library/bl3.mp3"); c2.commit(); c2.close()
+    lib = client.get("/api/v1/comerciales/cunas-activas").json()
+    por = {x["audio_id"]: x for x in lib}
+    assert por[a1]["con_spot"] and por[a1]["cliente"] == "BLOQUE UNO" and not por[suelta]["con_spot"]   # aparece aunque no tenga spot
     r = client.post("/api/v1/comerciales/bloques", json={
-        "nombre": "Cierre de hora", "pautas": [p2, p1], "modo": "termina", "hora": "11:00",
+        "nombre": "Cierre de hora", "audios": [a2, a1], "modo": "termina", "hora": "11:00",
         "dias": [1, 2, 3], "cortar": True})
     assert r.status_code == 201, r.text
     d = r.json()
@@ -177,7 +181,7 @@ def test_bloque_publicitario_se_programa_como_evento_de_relojes(client):
     assert ev["hora"] == "10:53" and ev["inmediato"] in (True, 1)
     lista = [b for b in client.get("/api/v1/comerciales/bloques").json() if b["evento_id"] == d["evento_id"]][0]
     assert lista["duracion"] == 420 and [x["titulo"] for x in lista["cunas"]] == ["Bloque cuña 2", "Bloque cuña 1"]
-    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "Cierre de hora", "pautas": [p1], "hora": "09:00"}).status_code == 409
-    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "X", "pautas": [999999], "hora": "09:00"}).status_code == 422
+    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "Cierre de hora", "audios": [a1], "hora": "09:00"}).status_code == 409
+    assert client.post("/api/v1/comerciales/bloques", json={"nombre": "X", "audios": [999999], "hora": "09:00"}).status_code == 422
     assert client.delete(f"/api/v1/comerciales/bloques/{d['evento_id']}").status_code == 200
     assert not [b for b in client.get("/api/v1/comerciales/bloques").json() if b["evento_id"] == d["evento_id"]]

@@ -336,7 +336,7 @@ PREFIJO = "Bloque: "
 
 class BloqueIn(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=70)
-    pautas: list[int] = Field(..., min_length=1, max_length=40)       # ids de pautas, en orden
+    audios: list[int] = Field(..., min_length=1, max_length=40)       # ids de audios (cuñas), en orden
     modo: str = Field("empieza", pattern="^(empieza|inmediato|termina)$")
     hora: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     dias: list[int] = Field(default_factory=lambda: list(range(7)))   # 0=Dom … 6=Sáb
@@ -345,10 +345,9 @@ class BloqueIn(BaseModel):
     cortar: bool = False       # solo con «termina»: además corta la canción para terminar exacto
 
 
-def _duracion_pautas(c, ids: list[int]):
+def _duracion_audios(c, ids: list[int]):
     filas = {r["id"]: r for r in c.execute(
-        f"SELECT p.id, p.cliente, p.audio_id, a.titulo, a.duracion, a.activo FROM pautas p"
-        f" LEFT JOIN audios a ON a.id = p.audio_id WHERE p.id IN ({','.join('?' * len(ids))})", ids)}
+        f"SELECT id, titulo, duracion, activo FROM audios WHERE id IN ({','.join('?' * len(ids))})", ids)}
     faltan = [i for i in ids if i not in filas or not filas[i]["activo"]]
     if faltan:
         raise HTTPException(status_code=422, detail=f"Estas cuñas no existen o están en la Papelera: {faltan}")
@@ -369,17 +368,24 @@ def _replanificar():
             pass
 
 
-@router.get("/api/v1/comerciales/cunas-activas", summary="Spots activos con su duración, para armar un bloque")
+@router.get("/api/v1/comerciales/cunas-activas", summary="Cuñas de la Biblioteca de comerciales, con su duración")
 def cunas_activas():
-    hoy = date.today().isoformat()
+    """Todo audio activo tipo Cuña (o guardado en COMERCIALES), tenga o no spot con contrato."""
     c = _conn()
     try:
-        return [{"pauta_id": r["id"], "cliente": r["cliente"] or "", "spot": r["titulo"] or r["audio_nombre"] or "",
-                 "rubro": r["rubro"] or "", "duracion": round(float(r["duracion"] or 0))}
-                for r in c.execute(
-                    "SELECT p.id, p.cliente, p.audio_nombre, p.rubro, a.titulo, a.duracion FROM pautas p"
-                    " JOIN audios a ON a.id = p.audio_id AND a.activo = 1 WHERE p.activo = 1"
-                    " AND (COALESCE(p.fecha_fin, '') = '' OR p.fecha_fin >= ?) ORDER BY p.cliente, a.titulo", (hoy,))]
+        spots = {}
+        for r in c.execute("SELECT audio_id, cliente, rubro FROM pautas WHERE activo = 1 ORDER BY id DESC"):
+            spots.setdefault(r["audio_id"], r)
+        out = []
+        for r in c.execute(
+                "SELECT id, titulo, archivo_path, duracion FROM audios WHERE activo = 1"
+                " AND (tipo_audio = 'Cu\u00f1a' OR UPPER(COALESCE(archivo_path, '')) LIKE '%COMERCIALES%')"
+                " ORDER BY titulo COLLATE NOCASE"):
+            sp = spots.get(r["id"])
+            out.append({"audio_id": r["id"], "spot": r["titulo"] or "", "cliente": sp["cliente"] if sp else "",
+                        "rubro": sp["rubro"] if sp else "", "con_spot": sp is not None,
+                        "duracion": round(float(r["duracion"] or 0))})
+        return out
     finally:
         c.close()
 
@@ -415,7 +421,7 @@ def crear_bloque(b: BloqueIn):
         raise HTTPException(status_code=422, detail="La fecha final es anterior a la inicial")
     c = _conn()
     try:
-        filas, dur = _duracion_pautas(c, b.pautas)
+        filas, dur = _duracion_audios(c, b.audios)
         nombre = " ".join(b.nombre.split())
         # «termina a las HH:MM»: arranca antes según lo que dura (como las tandas al cierre)
         inicio = _hora_menos(b.hora, dur) if b.modo == "termina" else b.hora
@@ -427,7 +433,7 @@ def crear_bloque(b: BloqueIn):
             raise HTTPException(status_code=409, detail=f"Ya existe un bloque llamado «{nombre}»")
         for i, f in enumerate(filas):
             c.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
-                      " VALUES (?, ?, 'Cuña', '{}', ?, ?)", (rid, i, f["audio_id"], f["cliente"] or ""))
+                      " VALUES (?, ?, 'Cuña', '{}', ?, ?)", (rid, i, f["id"], f["titulo"] or ""))
         eid = c.execute(
             "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo, hasta)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, 1, '')",

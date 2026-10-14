@@ -341,7 +341,7 @@
     cuerpo.innerHTML = `<p class="ccf-hint">Arma una lista con los spots que quieras, mira cuánto dura y prográmala a una hora.
         Queda como un <b>evento en Relojes</b> y el modo automático la saca sola.</p>
       <div class="ccf-bq">
-        <div><h4>1 · Spots activos</h4><input id="ccfBqBus" placeholder="Buscar cliente o spot…" style="margin-bottom:6px">
+        <div><h4>1 · Biblioteca de comerciales</h4><input id="ccfBqBus" placeholder="Buscar cuña o cliente…" style="margin-bottom:6px">
           <div class="ccf-tabla-wrap" style="max-height:44vh"><table class="ccf-tabla"><tbody id="ccfBqAct"></tbody></table></div></div>
         <div><h4>2 · Tu bloque <span id="ccfBqDur" class="ccf-bq-dur"></span></h4>
           <ol class="ccf-bq-lista" id="ccfBqLista"></ol>
@@ -366,14 +366,14 @@
 
     const pintarAct = () => {
       const q = $('ccfBqBus').value.trim().toLowerCase();
-      const usadas = new Set(elegidas.map(p => p.pauta_id));
-      $('ccfBqAct').innerHTML = activas.filter(p => !usadas.has(p.pauta_id) && (!q || (p.cliente + ' ' + p.spot).toLowerCase().includes(q)))
-        .map(p => `<tr data-add="${p.pauta_id}" title="Agregar al bloque"><td><b>${esc(p.cliente || p.spot)}</b><br><small>${esc(p.spot)}</small></td>
+      const usadas = new Set(elegidas.map(p => p.audio_id));
+      $('ccfBqAct').innerHTML = activas.filter(p => !usadas.has(p.audio_id) && (!q || (p.cliente + ' ' + p.spot).toLowerCase().includes(q)))
+        .map(p => `<tr data-add="${p.audio_id}" title="Agregar al bloque"><td><b>${esc(p.spot || p.cliente)}</b><br><small>${p.cliente ? esc(p.cliente) : 'sin spot con contrato'}</small></td>
           <td class="num">${mmss(p.duracion)}</td><td><button class="ccf-btn ccf-btn--mini">＋</button></td></tr>`).join('')
-        || '<tr><td class="ccf-vacio">No hay spots activos que mostrar</td></tr>';
+        || '<tr><td class="ccf-vacio">No hay cuñas en la Biblioteca de comerciales (o ya están todas en el bloque)</td></tr>';
     };
     const pintarLista = () => {
-      $('ccfBqLista').innerHTML = elegidas.map((p, i) => `<li><span class="n">${i + 1}</span><span class="t"><b>${esc(p.cliente || p.spot)}</b> <small>${esc(p.spot)}</small></span>
+      $('ccfBqLista').innerHTML = elegidas.map((p, i) => `<li><span class="n">${i + 1}</span><span class="t"><b>${esc(p.spot || p.cliente)}</b> <small>${esc(p.cliente)}</small></span>
         <span class="d">${mmss(p.duracion)}</span><button class="ccf-btn ccf-btn--mini" data-up="${i}" ${i ? '' : 'disabled'}>▲</button>
         <button class="ccf-btn ccf-btn--mini" data-down="${i}" ${i < elegidas.length - 1 ? '' : 'disabled'}>▼</button>
         <button class="ccf-btn ccf-btn--mini" data-del="${i}">✕</button></li>`).join('')
@@ -402,7 +402,7 @@
     cuerpo.addEventListener('click', async e => {
       const add = e.target.closest('[data-add]'), up = e.target.closest('[data-up]'), dn = e.target.closest('[data-down]'),
         del = e.target.closest('[data-del]'), qt = e.target.closest('[data-quitar]');
-      if (add) { elegidas.push(activas.find(p => p.pauta_id === +add.dataset.add)); pintarAct(); pintarLista(); }
+      if (add) { elegidas.push(activas.find(p => p.audio_id === +add.dataset.add)); pintarAct(); pintarLista(); }
       else if (up) { const i = +up.dataset.up; [elegidas[i - 1], elegidas[i]] = [elegidas[i], elegidas[i - 1]]; pintarLista(); }
       else if (dn) { const i = +dn.dataset.down; [elegidas[i + 1], elegidas[i]] = [elegidas[i], elegidas[i + 1]]; pintarLista(); }
       else if (del) { elegidas.splice(+del.dataset.del, 1); pintarAct(); pintarLista(); }
@@ -420,13 +420,15 @@
       if (!dias.length) return msgEn(msg, 'Elige al menos un día', false);
       try {
         const r = await api('/api/v1/comerciales/bloques', json('POST', {
-          nombre: $('ccfBqNom').value.trim(), pautas: elegidas.map(p => p.pauta_id), modo: modo(), hora: $('ccfBqHora').value, dias,
+          nombre: $('ccfBqNom').value.trim(), audios: elegidas.map(p => p.audio_id), modo: modo(), hora: $('ccfBqHora').value, dias,
           cortar: modo() === 'termina' && $('ccfBqCortar').checked }));
         msgEn(msg, `✓ Programado: ${r.empieza} → ${r.termina} (${mmss(r.duracion)}). Ya está en Relojes › Eventos`);
         elegidas = []; $('ccfBqNom').value = ''; pintarAct(); pintarLista(); cargarProg();
       } catch (err) { msgEn(msg, err.message, false); }
     });
-    try { activas = await api('/api/v1/comerciales/cunas-activas'); } catch (_) { activas = []; }
+    try { activas = await api('/api/v1/comerciales/cunas-activas'); } catch (e) {
+      activas = []; $('ccfBqAct').innerHTML = `<tr><td class="ccf-vacio">No se pudo leer la biblioteca: ${esc(e.message)}. ¿Reiniciaste ONIX?</td></tr>`; return;
+    }
     pintarAct(); pintarLista(); cargarProg();
   }
 
