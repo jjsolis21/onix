@@ -43,6 +43,21 @@ class IAError(Exception):
 _fallos: dict[int, float] = {}   # id de clave → momento (monotonic) de su último fallo
 
 
+def _detalle_http(e: "urllib.error.HTTPError") -> str:
+    """El mensaje del proveedor: viene en {"error": {"message"}} (Gemini, OpenAI) o en {"message"} (Fish Audio)."""
+    try:
+        crudo = e.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+    try:
+        d = json.loads(crudo)
+        err = d.get("error", d.get("message", d.get("detail", "")))
+        texto = err.get("message", "") if isinstance(err, dict) else str(err)
+    except Exception:
+        texto = crudo
+    return " ".join(str(texto).split())[:200]
+
+
 def http_post(url: str, cabeceras: dict, cuerpo: dict, tiempo: int = TIEMPO_LIMITE) -> dict:
     """POST JSON → JSON. Los tests lo sustituyen para no salir a internet."""
     req = urllib.request.Request(url, data=json.dumps(cuerpo).encode("utf-8"),
@@ -51,17 +66,7 @@ def http_post(url: str, cabeceras: dict, cuerpo: dict, tiempo: int = TIEMPO_LIMI
         with urllib.request.urlopen(req, timeout=tiempo) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        detalle = ""
-        try:
-            crudo = e.read().decode("utf-8", "replace")
-            try:                                  # los mensajes útiles vienen en {"error": {"message": …}}
-                err = json.loads(crudo).get("error", {})
-                detalle = err.get("message", "") if isinstance(err, dict) else str(err)
-            except Exception:
-                detalle = crudo
-        except Exception:
-            pass
-        raise RuntimeError(f"HTTP {e.code}: {' '.join(detalle.split())[:200]}".strip())
+        raise RuntimeError(f"HTTP {e.code}: {_detalle_http(e)}".strip())
     except Exception as e:                       # red caída, tiempo agotado, JSON roto…
         raise RuntimeError(str(e) or e.__class__.__name__)
 
@@ -178,12 +183,7 @@ def http_post_bytes(url: str, cabeceras: dict, cuerpo: dict, tiempo: int = 60) -
         with urllib.request.urlopen(req, timeout=tiempo) as r:
             return r.read()
     except urllib.error.HTTPError as e:
-        try:
-            err = json.loads(e.read().decode("utf-8", "replace")).get("error", {})
-            detalle = err.get("message", "") if isinstance(err, dict) else str(err)
-        except Exception:
-            detalle = ""
-        raise RuntimeError(f"HTTP {e.code}: {' '.join(detalle.split())[:200]}".strip())
+        raise RuntimeError(f"HTTP {e.code}: {_detalle_http(e)}".strip())
     except Exception as e:
         raise RuntimeError(str(e) or e.__class__.__name__)
 

@@ -103,3 +103,17 @@ def test_solo_admin_ve_las_claves():
         assert not permiso(rol, "GET", "/api/v1/ia/claves")
         assert not permiso(rol, "POST", "/api/v1/ia/claves/1/probar")
     assert permiso("admin", "GET", "/api/v1/ia/claves")
+
+
+def test_el_error_del_proveedor_muestra_su_mensaje_aunque_venga_sin_error():
+    """Fish Audio responde {"status":402,"message":"Insufficient API credit…"}: antes se mostraba solo «HTTP 402:»."""
+    import io
+    import urllib.error
+    from backend.ia import proveedores
+    e = urllib.error.HTTPError("https://api.fish.audio/v1/tts", 402, "Payment Required", {},
+                               io.BytesIO(b'{"status":402,"message":"Insufficient API credit."}'))
+    assert proveedores._detalle_http(e) == "Insufficient API credit."
+    e = urllib.error.HTTPError("u", 404, "x", {}, io.BytesIO(b'{"error": {"message": "modelo retirado"}}'))
+    assert proveedores._detalle_http(e) == "modelo retirado"
+    e = urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b"<html>boom</html>"))
+    assert proveedores._detalle_http(e) == "<html>boom</html>"
