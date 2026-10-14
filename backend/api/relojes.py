@@ -38,7 +38,8 @@ router = APIRouter(tags=["Relojes"])
 # api_server.py asigna aquí el motor (local o remoto) al arrancar
 engine = None
 
-CLAVES_FILTRO = set(FILTRO_COLUMNA) | {"energia_min", "energia_max"}
+CLAVES_FILTRO = set(FILTRO_COLUMNA) | {"energia_min", "energia_max", "anio_min", "anio_max", "prioridad"}
+CLAVES_NUMERO = {"energia_min", "energia_max", "anio_min", "anio_max", "prioridad"}
 
 
 def get_db():
@@ -64,7 +65,13 @@ def _limpiar_filtros(filtros: dict) -> dict:
     out = {}
     for k, v in (filtros or {}).items():
         if k in CLAVES_FILTRO and v not in (None, ""):
-            out[k] = int(v) if k.startswith("energia") else str(v).strip().upper()
+            if k in CLAVES_NUMERO:
+                try:
+                    out[k] = int(v)
+                except (TypeError, ValueError):
+                    pass                      # un número mal escrito no filtra (ni rompe el reloj)
+            else:
+                out[k] = str(v).strip().upper()
     return out
 
 

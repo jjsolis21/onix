@@ -610,6 +610,19 @@ class Planner:
         if filtros.get("energia_max") not in (None, ""):
             clauses.append("COALESCE(a.energia, 99) <= ?")
             params.append(int(filtros["energia_max"]))
+        # Año de lanzamiento (los 4 primeros dígitos de fecha_lanzamiento). Una canción sin año no entra
+        # cuando la fila pide un rango: no se puede saber si lo cumple.
+        anio = "CAST(SUBSTR(COALESCE(a.fecha_lanzamiento, ''), 1, 4) AS INTEGER)"
+        if filtros.get("anio_min") not in (None, ""):
+            clauses.append(f"{anio} >= ?")
+            params.append(int(filtros["anio_min"]))
+        if filtros.get("anio_max") not in (None, ""):
+            clauses.append(f"{anio} BETWEEN 1 AND ?")
+            params.append(int(filtros["anio_max"]))
+        # Prioridad de la canción: 1 Alta · 2 Normal (también las que no la tienen) · 3 Baja
+        if filtros.get("prioridad") not in (None, ""):
+            clauses.append("COALESCE(a.prioridad, 2) = ?")
+            params.append(int(filtros["prioridad"]))
         return clauses, params
 
     def _elegir(self, conn, fila: dict, t: datetime, previos: list, en_plan: set,

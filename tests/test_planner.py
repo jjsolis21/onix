@@ -423,3 +423,24 @@ def test_playlist_programada_entra_a_su_hora(base):
     assert items[k]["inicio"] == "2026-10-12T10:20:00" and items[k + 1]["titulo"] == "PL DOS"
     # La playlist entra una sola vez (sus temas pueden volver luego por la rotación normal)
     assert sum(1 for it in items if it.get("evento") == "Playlist Prog") == 2
+
+
+def test_filtros_de_anio_y_prioridad(tmp_db):
+    audio(tmp_db, "VIEJA", fecha_lanzamiento="1998-01-01")
+    audio(tmp_db, "MEDIA", fecha_lanzamiento="2010", prioridad=1)
+    audio(tmp_db, "NUEVA", fecha_lanzamiento="2025", prioridad=3)
+    audio(tmp_db, "SIN ANIO")
+    conn = db(tmp_db)
+
+    def titulos(filtros):
+        clauses, params = Planner(tmp_db)._where_filtros(filtros)
+        sql = "SELECT a.titulo FROM audios a WHERE " + " AND ".join(["1 = 1"] + clauses) + " ORDER BY a.titulo"
+        return [r[0] for r in conn.execute(sql, params)]
+
+    assert titulos({"anio_min": 2000}) == ["MEDIA", "NUEVA"]
+    assert titulos({"anio_max": 2010}) == ["MEDIA", "VIEJA"]             # la que no tiene año no entra
+    assert titulos({"anio_min": 2000, "anio_max": 2012}) == ["MEDIA"]
+    assert titulos({"prioridad": 1}) == ["MEDIA"]
+    assert titulos({"prioridad": 2}) == ["SIN ANIO", "VIEJA"]            # sin prioridad = Normal
+    assert titulos({}) == ["MEDIA", "NUEVA", "SIN ANIO", "VIEJA"]
+    conn.close()
