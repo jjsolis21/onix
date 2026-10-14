@@ -117,3 +117,50 @@ def test_el_error_del_proveedor_muestra_su_mensaje_aunque_venga_sin_error():
     assert proveedores._detalle_http(e) == "modelo retirado"
     e = urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b"<html>boom</html>"))
     assert proveedores._detalle_http(e) == "<html>boom</html>"
+
+
+def test_gemini_cede_al_modelo_siguiente_y_recuerda_el_que_funciona(monkeypatch):
+    from backend.ia import proveedores
+    visto = []
+
+    def falso(url, cabeceras, cuerpo, tiempo=20):
+        modelo = url.split("/models/")[1].split(":")[0]
+        visto.append(modelo)
+        if modelo == "gemini-3.8-flash":
+            raise RuntimeError("HTTP 429: You exceeded your current quota")
+        return {"candidates": [{"content": {"parts": [{"text": "Hola."}]}}]}
+    monkeypatch.setattr(proveedores, "http_post", falso)
+    proveedores._gemini_ok.clear()
+    k = {"id": 77, "proveedor": "gemini", "modelo": "", "clave": "x", "base_url": ""}
+    assert proveedores._llamar(k, "hola", "") == "Hola."
+    assert visto == ["gemini-3.8-flash", "gemini-3.5-flash"]
+    visto.clear()
+    assert proveedores._llamar(k, "hola", "") == "Hola."        # la siguiente vez empieza por el que funcionó
+    assert visto == ["gemini-3.5-flash"]
+    # un error que no es de modelo (clave inválida) no se reintenta con otro
+    visto.clear()
+    monkeypatch.setattr(proveedores, "http_post", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("HTTP 400: API key not valid")))
+    with pytest.raises(RuntimeError):
+        proveedores._llamar(dict(k, id=78), "hola", "")
+    # con modelo propio en la clave se respeta ese y solo ese
+    monkeypatch.setattr(proveedores, "http_post", falso)
+    visto.clear()
+    assert proveedores._llamar(dict(k, id=79, modelo="gemini-3.5-flash"), "hola", "") == "Hola."
+    assert visto == ["gemini-3.5-flash"]
+
+
+def test_gemini_reintenta_cuando_esta_saturado(monkeypatch):
+    from backend.ia import proveedores
+    monkeypatch.setattr(proveedores, "PAUSAS_503", (0, 0))
+    llamadas = []
+
+    def falso(url, cabeceras, cuerpo, tiempo=20):
+        llamadas.append(1)
+        if len(llamadas) < 3:
+            raise RuntimeError("HTTP 503: This model is currently experiencing high demand.")
+        return {"candidates": [{"content": {"parts": [{"text": "Listo."}]}}]}
+    monkeypatch.setattr(proveedores, "http_post", falso)
+    proveedores._gemini_ok.clear()
+    k = {"id": 90, "proveedor": "gemini", "modelo": "", "clave": "x", "base_url": ""}
+    assert proveedores._llamar(k, "hola", "") == "Listo."
+    assert len(llamadas) == 3                      # dos 503 y la tercera responde, sin saltar de modelo

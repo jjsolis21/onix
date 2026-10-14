@@ -41,6 +41,9 @@ class IAError(Exception):
 
 
 _fallos: dict[int, float] = {}   # id de clave → momento (monotonic) de su último fallo
+MODELOS_GEMINI = (PROVEEDORES["gemini"]["modelo"], "gemini-3.5-flash")   # el vigente y su anterior
+_gemini_ok: dict = {}            # id de clave → último modelo de texto que le respondió
+PAUSAS_503 = (2, 4, 8)           # segundos entre reintentos cuando Gemini responde «alta demanda»
 
 
 def _detalle_http(e: "urllib.error.HTTPError") -> str:
@@ -77,17 +80,35 @@ def _llamar(k: dict, prompt: str, sistema: str) -> str:
         cuerpo = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
         if sistema:
             cuerpo["systemInstruction"] = {"parts": [{"text": sistema}]}
-        # Sin modelo propio en la clave: el vigente y, si Google lo tiene saturado (503) o retirado (404), el anterior
-        modelos = [modelo] if modelo else [PROVEEDORES["gemini"]["modelo"], "gemini-3.5-flash"]
+        # Sin modelo propio en la clave: se prueban los vigentes y se recuerda el que respondió. Un modelo que se
+        # agota (cuota 429), se satura (503), se retira (404) o no contesta a tiempo cede al siguiente.
+        propio = (k.get("modelo") or "").strip()
+        if propio:
+            modelos = [propio]
+        else:
+            modelos = list(MODELOS_GEMINI)
+            previo = _gemini_ok.get(k.get("id"))
+            if previo in modelos:
+                modelos.remove(previo)
+                modelos.insert(0, previo)
         d, ultimo = None, None
         for m in modelos:
-            try:
-                d = http_post(GEMINI_URL.format(modelo=m), {"x-goog-api-key": k["clave"]}, cuerpo)
+            for intento in range(PAUSAS_503 and len(PAUSAS_503) + 1):
+                try:
+                    d = http_post(GEMINI_URL.format(modelo=m), {"x-goog-api-key": k["clave"]}, cuerpo)
+                    if not propio:
+                        _gemini_ok[k.get("id")] = m
+                    break
+                except RuntimeError as e:
+                    ultimo = e
+                    if str(e).startswith("HTTP 503") and intento < len(PAUSAS_503):
+                        time.sleep(PAUSAS_503[intento])      # «alta demanda»: suele ser cosa de segundos
+                        continue
+                    if not (str(e).startswith(("HTTP 404", "HTTP 429", "HTTP 503", "HTTP 500")) or "timed out" in str(e)):
+                        raise
+                    break
+            if d is not None:
                 break
-            except RuntimeError as e:
-                ultimo = e
-                if not str(e).startswith(("HTTP 404", "HTTP 503", "HTTP 429")):
-                    raise
         if d is None:
             raise ultimo
         partes = (((d.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
