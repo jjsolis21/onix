@@ -1201,9 +1201,9 @@ def test_corte_inmediato_primero_baja_la_cancion_y_la_cuna_entra_a_la_hora(engin
     import time as _t
     _t.sleep(1.3)
     assert engine._current_item["origen"] == "auto"                             # la cuña TODAVIA no entró
-    assert len(saliente) >= 3 and saliente[-1] == 0.0
+    assert len(saliente) >= 5 and saliente[-1] == pytest.approx(0.16, abs=0.01)  # termina en 16 %: NO en silencio
     assert saliente == sorted(saliente, reverse=True)                           # solo baja
-    assert saliente[0] < 0.7                                                    # curva en dB (lineal estaría en ~0.9)
+    assert min(saliente) > 0.1                                                  # nunca se vacía antes de que entre la cuña
 
     engine._now.dt = datetime(2026, 10, 12, 10, 0, 0)                           # la hora: entra la cuña
     engine._check_tanda_inmediata()
@@ -1229,4 +1229,14 @@ def test_corte_inmediato_si_no_hay_tanda_la_cancion_recupera_su_volumen(engine, 
     engine._check_tanda_inmediata()
     assert engine._current_item["origen"] == "auto"                             # no había cuñas: sigue la canción
     assert volumenes[-1] > 0.5                                                  # y volvió a oírse
+
+
+def test_curva_del_fade_se_lee_de_la_config():
+    from backend.audio.audio_engine import parse_curva_fade
+    assert parse_curva_fade("100,70,40,30,16") == [1.0, 0.7, 0.4, 0.3, 0.16]
+    assert parse_curva_fade("100; 50 0") == [1.0, 0.5, 0.0]
+    assert parse_curva_fade("") == [1.0, 0.7, 0.4, 0.3, 0.16]
+    assert parse_curva_fade("abc") == [1.0, 0.7, 0.4, 0.3, 0.16]
+    assert parse_curva_fade("50") == [1.0, 0.7, 0.4, 0.3, 0.16]                 # un solo punto no es una curva
+    assert parse_curva_fade("150,-5,10") == [1.0, 0.0, 0.1]                     # se recorta a 0–100 %
 

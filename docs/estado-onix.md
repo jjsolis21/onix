@@ -62,7 +62,8 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   `reload_config` rehace el reparto de la hora. PENDIENTE (Opus): rubros con conflictos.
 - Corte inmediato (tandas y eventos): la canción baja en dB los `fade_corte_seg` (5 s por defecto) PREVIOS a la hora y la cuña entra
   a la hora exacta con la canción ya en silencio (no se mezclan). `_check_tanda_inmediata` → `_corte_pend`/`_prefade`/`_ejecutar_corte`,
-  `_prefade_iniciar`. Si no había nada que poner, la canción recupera su volumen. Medido con BASS real.
+  `_prefade_iniciar`. Curva configurable `fade_corte_curva` (% en partes iguales; defecto 100,70,40,30,16): termina con la
+  canción aún audible y esa cola se va bajo el empalme de la cuña (sin «vacío» antes de entrar). Si no había nada que poner, la canción recupera su volumen. Medido con BASS real.
 - Lista de spots: «☰ Columnas» (como la Biblioteca Musical): `data-col` en cada celda, estilo generado, preferencia en localStorage `cm_cols`.
   Paso «Audio y versiones» del spot: panel lateral (Elegir de la biblioteca / Subir archivo / Agregar versión), zona para soltar archivo,
   y el selector de cuñas con panel de filtros (anunciante, con/sin pauta) y subida directa. UI sin verificar a ojo (panel rechazó la página de prueba).

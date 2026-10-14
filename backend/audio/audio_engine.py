@@ -185,6 +185,18 @@ def aplicar_ajustes(plan: dict[int, list[int]], bloques: dict[int, list[int]]) -
     return nuevo
 
 
+CURVA_FADE_DEFECTO = (1.0, 0.70, 0.40, 0.30, 0.16)
+
+
+def parse_curva_fade(texto: str) -> list[float]:
+    """'100,70,40,30,16' -> [1.0, .7, .4, .3, .16] (volumen en % repartido en partes iguales del fade). Vacío o roto = defecto."""
+    try:
+        v = [max(0.0, min(100.0, float(x))) / 100 for x in re.split(r"[,;\s]+", (texto or "").strip()) if x != ""]
+    except ValueError:
+        return list(CURVA_FADE_DEFECTO)
+    return v if 2 <= len(v) <= 12 else list(CURVA_FADE_DEFECTO)
+
+
 def inicio_tanda(minuto: int, duracion: float, cierre: bool) -> float:
     """
     Segundos desde el inicio de la hora en que arranca la tanda.
@@ -1057,6 +1069,7 @@ class AudioEngine:
         self._inmediatas_hechas: set[tuple] = set()  # (slot, minuto) ya cortadas
         self._dur_cierre: dict[int, float] = {}       # minuto al cierre -> segundos de su bloque (hora en curso)
         self._fade_corte: float = self.FADE_CORTE     # config fade_corte_seg
+        self._fade_curva: list[float] = list(CURVA_FADE_DEFECTO)   # config fade_corte_curva (multiplicadores 0–1)
         self._corte_fade: Optional[float] = None      # fade a usar en el próximo arranque (corte inmediato en curso)
         # Corte inmediato en dos tiempos: la canción BAJA los segundos previos y la cuña entra a la hora exacta
         self._corte_pend: Optional[dict] = None       # {clave, minuto, target, canal, vol}
@@ -1135,6 +1148,7 @@ class AudioEngine:
             # Música bajo la voz del locutor / voice track, en % (Admin › Motor de audio)
             self._voz_duck = max(0.0, min(float(self._cfg("voz_fondo_pct", str(int(self.VOZ_DUCK * 100)))), 100.0)) / 100
             self._fade_corte = max(0.2, min(float(self._cfg("fade_corte_seg", str(self.FADE_CORTE)) or self.FADE_CORTE), 15.0))
+            self._fade_curva = parse_curva_fade(self._cfg("fade_corte_curva", ""))
             self._norm_activa = self._cfg("normalizacion_activa", "1") not in ("0", "false", "")
             self._norm_lufs   = float(self._cfg("normalizacion_lufs", "-16"))
             for rol in ROLES_SALIDA:
@@ -1969,7 +1983,7 @@ class AudioEngine:
             if corte:
                 # La rampa lineal de BASS casi no se oye al principio y la música "desaparece" de golpe al final:
                 # el corte inmediato baja en decibelios (curva de consola), como un fader.
-                self._fade_db(outgoing, fade_out, self._target_volume(prev))
+                self._fade_db(outgoing, fade_out, self._target_volume(prev), final_cero=True)
             self.bus.emit("crossfade_start", {
                 "from_id": prev.get("id"),
                 "to_id":   track.get("id"),
@@ -2145,14 +2159,23 @@ class AudioEngine:
                 cue_out = p_out
         return cue_in, cue_out
 
-    def _fade_db(self, canal: int, segundos: float, vol_inicial: float,
-                 db_final: float = -40.0, paso: float = 0.2, mientras: Optional[Callable] = None) -> None:
+    def _fade_db(self, canal: int, segundos: float, vol_inicial: float, paso: float = 0.1,
+                 mientras: Optional[Callable] = None, final_cero: bool = False) -> None:
         """
-        Baja el canal `canal` de `vol_inicial` a 0 en `segundos`, lineal en dB (no en amplitud):
-        a un tercio del tiempo ya va unos 13 dB abajo y la cuña entra sobre música baja.
+        Baja el canal `canal` desde `vol_inicial` siguiendo la curva del corte (config fade_corte_curva, % repartidos
+        en partes iguales del fade: por defecto 100 → 70 → 40 → 30 → 16). El último punto NO es silencio: la cuña entra con
+        la canción todavía audible y esa cola se va con el empalme de la cuña. `final_cero` lo lleva a 0 (empalme tardío).
         Corre en su propio hilo; se corta sola si el canal deja de ser el que sale.
         """
+        curva = self._fade_curva or list(CURVA_FADE_DEFECTO)
         n = max(1, int(round(segundos / paso)))
+
+        def nivel(u: float) -> float:
+            pos = max(0.0, min(1.0, u)) * (len(curva) - 1)
+            i = int(pos)
+            if i >= len(curva) - 1:
+                return curva[-1]
+            return curva[i] + (curva[i + 1] - curva[i]) * (pos - i)
 
         def correr():
             for i in range(1, n + 1):
@@ -2163,7 +2186,7 @@ class AudioEngine:
                     xf = self._xfade
                     if not xf or xf.get("canal") != canal:
                         return
-                v = 0.0 if i == n else vol_inicial * 10 ** (db_final * (i / n) / 20)
+                v = 0.0 if (final_cero and i == n) else vol_inicial * nivel(i / n)
                 self._audio.slide_volume(canal, v, int(paso * 1000))
                 time.sleep(paso)
 
@@ -2948,6 +2971,7 @@ class AudioEngine:
             "tandas_minutos":    list(self._tandas_minutos),
             "tandas_cierre":     list(self._tandas_cierre),
             "fade_corte_seg":    self._fade_corte,
+            "fade_corte_curva":  [round(c * 100) for c in self._fade_curva],
             # Modo manual: cuñas esperando a que el operador lance la tanda
             "tanda_en_espera":   (len(self._priority_queue)
                                   if self._mode == "manual" and not self._tanda_liberada else 0),
