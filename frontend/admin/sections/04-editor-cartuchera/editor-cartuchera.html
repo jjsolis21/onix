@@ -59,6 +59,14 @@
     .cart-cab-pal .flecha { color: var(--text-lo); width: 1em; }
     .cart-cab-pal small { color: var(--text-lo); font-weight: 400; font-size: .72rem; }
     .cart-vacio { padding: 24px; text-align: center; color: var(--text-lo); font-size: .88rem; }
+    /* Las paletas se reparten en columnas: en pantallas anchas quedan una al lado de otra */
+    #cartPaginas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 470px), 1fr)); gap: var(--s3); align-items: start; }
+    #cartPaginas > .cart-vacio { grid-column: 1 / -1; }
+    #cartPaginas > .ox-card { margin: 0; min-width: 0; }
+    #cartPaginas .ox-cart-grid { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: var(--s2); }
+    #cartPaginas .ox-slot { padding: var(--s2); }
+    #cartPaginas .ox-slot__actions .ox-btn { padding: 2px 7px; }
+    #cartPaginas h3 .ox-btn--sm { padding: 2px 8px; font-size: .68rem; }
   </style>
 
   <!-- Una tarjeta por paleta (se arman desde el servidor) -->
@@ -75,7 +83,7 @@
 
   let bancos = {}, slots = {}, elegido = null;     // elegido = audio escogido en el buscador
   // Filtro y paginación de las paletas (con 100 paletas la página no puede crecer sin fin)
-  const POR_PAG = 8;
+  const POR_PAG = 6;
   let filtro = "", pagP = 0;
   const abiertas = new Set();                      // paletas desplegadas (si son pocas, todas)
   const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");

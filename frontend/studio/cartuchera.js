@@ -36,51 +36,51 @@ const CartEditor = (() => {
     st.id = "ce-css";
     st.textContent = `
 .ce-fondo{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9000;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",system-ui,sans-serif}
-.ce{background:#262626;border:1px solid #777;color:#ddd;width:min(1000px,96vw);max-height:96vh;overflow:auto;padding:22px 26px 18px;box-sizing:border-box}
+.ce{background:#262626;border:1px solid #777;color:#ddd;width:min(800px,96vw);max-height:94vh;overflow:auto;padding:16px 20px 14px;box-sizing:border-box}
 .ce *{box-sizing:border-box}
-.ce-cab{display:flex;align-items:center;gap:18px;margin-bottom:22px}
-.ce-cab svg{width:64px;height:64px;fill:#fff}
-.ce-cab h2{margin:0;font-size:54px;font-weight:300;color:#aaa;letter-spacing:0}
-.ce-cuerpo{display:grid;grid-template-columns:230px 1fr;gap:38px}
-.ce-tile{height:150px;display:flex;flex-direction:column;justify-content:space-between;padding:8px;color:#fff;background:#4a4a4a}
-.ce-tile b{font-weight:400;font-size:22px;text-align:center;margin-top:34px;overflow:hidden;text-overflow:ellipsis}
-.ce-tile small{font-size:15px}
-.ce-izq h4{margin:16px 0 8px;font-size:24px;font-weight:400;color:#fff}
-.ce-izq h4.ce-tenue{color:#777;margin-top:26px}
+.ce-cab{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.ce-cab svg{width:44px;height:44px;fill:#fff}
+.ce-cab h2{margin:0;font-size:38px;font-weight:300;color:#aaa;letter-spacing:0}
+.ce-cuerpo{display:grid;grid-template-columns:180px 1fr;gap:26px}
+.ce-tile{height:112px;display:flex;flex-direction:column;justify-content:space-between;padding:8px;color:#fff;background:#4a4a4a}
+.ce-tile b{font-weight:400;font-size:18px;text-align:center;margin-top:24px;overflow:hidden;text-overflow:ellipsis}
+.ce-tile small{font-size:13px}
+.ce-izq h4{margin:12px 0 6px;font-size:19px;font-weight:400;color:#fff}
+.ce-izq h4.ce-tenue{color:#777;margin-top:18px}
 .ce-sel{display:flex;align-items:center;gap:8px;border:1px solid #bbb;background:#111;padding:3px}
-.ce-sel i{width:28px;height:28px;flex:none}
-.ce-sel select{flex:1;background:#111;color:#ccc;border:0;font:inherit;font-size:17px;padding:4px;color-scheme:dark;outline:0}
+.ce-sel i{width:22px;height:22px;flex:none}
+.ce-sel select{flex:1;background:#111;color:#ccc;border:0;font:inherit;font-size:14px;padding:4px;color-scheme:dark;outline:0}
 .ce-usados{display:flex;flex-wrap:wrap;gap:3px}
-.ce-usados button{width:38px;height:38px;border:0;padding:0;cursor:pointer}
-.ce-der label.ce-l{display:block;font-size:25px;color:#8a8a8a;margin:0 0 4px}
-.ce-linea{display:flex;gap:8px;margin-bottom:14px}
-.ce-in{flex:1;min-width:0;background:#0c0c0c;border:0;color:#fff;font:inherit;font-size:17px;padding:9px 10px;outline:0}
+.ce-usados button{width:30px;height:30px;border:0;padding:0;cursor:pointer}
+.ce-der label.ce-l{display:block;font-size:19px;color:#8a8a8a;margin:0 0 3px}
+.ce-linea{display:flex;gap:8px;margin-bottom:10px}
+.ce-in{flex:1;min-width:0;background:#0c0c0c;border:0;color:#fff;font:inherit;font-size:14px;padding:7px 9px;outline:0}
 .ce-b{background:linear-gradient(#3b3b3b,#1d1d1d);border:1px solid #111;color:#ddd;font:inherit;cursor:pointer}
 .ce-b:hover:not(:disabled){filter:brightness(1.25)}
 .ce-b:disabled{opacity:.35;cursor:default}
-.ce-panel{background:#000;padding:14px}
+.ce-panel{background:#000;padding:10px}
 .ce-marcas{display:flex;justify-content:space-between;gap:20px}
-.ce-marca{width:276px;max-width:46%;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.ce-marca .ce-num{grid-column:1/-1;height:112px;font-size:58px;font-weight:300;position:relative;color:#eee}
-.ce-marca .ce-num span{position:absolute;left:8px;bottom:6px;font-size:16px;color:#ccc}
-.ce-marca .ce-paso{height:38px;text-align:left;padding-left:8px;font-size:13px}
-.ce-marca .ce-prev{grid-column:1/-1;height:62px;text-align:left;padding:30px 0 0 8px;font-size:16px}
+.ce-marca{width:240px;max-width:48%;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ce-marca .ce-num{grid-column:1/-1;height:78px;font-size:42px;font-weight:300;position:relative;color:#eee}
+.ce-marca .ce-num span{position:absolute;left:7px;bottom:4px;font-size:13px;color:#ccc}
+.ce-marca .ce-paso{height:30px;text-align:left;padding-left:8px;font-size:13px}
+.ce-marca .ce-prev{grid-column:1/-1;height:46px;text-align:left;padding:22px 0 0 8px;font-size:13px}
 .ce-trans{display:flex;align-items:stretch;margin-top:8px;background:#151515}
-.ce-trans .ce-t{width:76px;height:84px;font-size:38px;color:#fff;line-height:1}
+.ce-trans .ce-t{width:58px;height:62px;font-size:28px;color:#fff;line-height:1}
 .ce-barra{flex:1;padding:0 0 0 8px;display:flex;flex-direction:column;justify-content:flex-start}
-.ce-prog{height:30px;background:#2a2a2a;position:relative;cursor:pointer;margin-top:4px}
+.ce-prog{height:24px;background:#2a2a2a;position:relative;cursor:pointer;margin-top:4px}
 .ce-prog i{position:absolute;inset:0 auto 0 0;width:0;background:#5d5d5d}
 .ce-prog u{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.14);text-decoration:none}
-.ce-prog span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:16px}
-.ce-tiempo{color:#e6b800;font-size:27px;margin-top:10px}
-.ce-vol{margin-top:34px;font-size:14px;color:#fff}
+.ce-prog span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px}
+.ce-tiempo{color:#e6b800;font-size:21px;margin-top:6px}
+.ce-vol{margin-top:20px;font-size:13px;color:#fff}
 .ce-vol input{width:100%;accent-color:#bbb}
 .ce-err{color:#ff8080;min-height:18px;margin:8px 0 0;font-size:14px}
 .ce-pie{display:flex;gap:8px;margin-top:10px;align-items:stretch}
-.ce-pie .ce-acc{width:172px;height:84px;text-align:left;padding:8px;font-size:16px;display:flex;flex-direction:column;justify-content:space-between}
-.ce-pie .ce-acc svg{width:38px;height:38px;fill:#fff;align-self:center}
+.ce-pie .ce-acc{width:130px;height:62px;text-align:left;padding:6px;font-size:13px;display:flex;flex-direction:column;justify-content:space-between}
+.ce-pie .ce-acc svg{width:28px;height:28px;fill:#fff;align-self:center}
 .ce-pie .ce-esp{flex:1}
-.ce-ok,.ce-no{width:256px;height:84px;font-size:44px;font-weight:300;border:1px solid #111;color:#ddd;cursor:pointer;font-family:inherit}
+.ce-ok,.ce-no{width:190px;height:62px;font-size:32px;font-weight:300;border:1px solid #111;color:#ddd;cursor:pointer;font-family:inherit}
 .ce-ok{background:linear-gradient(#0a5a0a,#053a05)} .ce-no{background:linear-gradient(#6b0a0a,#450505)}
 .ce-ok:hover:not(:disabled),.ce-no:hover{filter:brightness(1.3)} .ce-ok:disabled{opacity:.5}
 @media(max-width:820px){.ce-cuerpo{grid-template-columns:1fr}.ce-ok,.ce-no{width:auto;flex:1;font-size:30px}.ce-pie .ce-acc{width:auto;flex:1}}
