@@ -87,7 +87,8 @@
             resolve({ id, titulo: f.titulo, artista: f.artista, archivo_path: f.archivo_path || '', duracion: f.duracion });
           } catch (_) { resolve({ id, titulo: '', artista: '', archivo_path: '' }); }
         },
-        onCerrar: () => { if (!listo) resolve(null); },
+        // Al guardar, el editor se cierra ANTES de avisar «guardada»: se espera un tick para no tomarlo por cancelado
+        onCerrar: () => setTimeout(() => { if (!listo) resolve(null); }, 50),
       });
     });
   }
