@@ -85,7 +85,10 @@ def test_programa(client, tmp_path):
     assert prog["items"] and prog["items"][0]["hora"]
     uid = prog["items"][0]["uid"]
     client.post(f"/api/v1/programa/{uid}/quitar")
-    time.sleep(0.2)
+    for _ in range(60):                                   # el motor aplica el comando en su siguiente ciclo
+        if uid not in [i["uid"] for i in client.get("/api/v1/programa").json()["items"]]:
+            break
+        time.sleep(0.1)
     assert uid not in [i["uid"] for i in client.get("/api/v1/programa").json()["items"]]
 
 

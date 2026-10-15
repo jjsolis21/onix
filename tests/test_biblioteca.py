@@ -211,3 +211,19 @@ def test_anios_que_faltan_buscar_y_aplicar_sin_pisar(client, monkeypatch):
     c.execute("DELETE FROM audios WHERE artista IN ('Danny Ocean', 'Grupo Raro', 'Alguien', 'Otro Artista')")
     c.commit(); c.close()
     assert client.post("/api/v1/biblioteca/anios/aplicar", json={"items": [{"id": 1, "anio": 1800}]}).status_code == 422
+
+
+def test_borrar_definitivo_reintenta_si_el_archivo_esta_ocupado(client, tmp_path):
+    """En Windows un archivo abierto no se puede borrar al instante: se reintenta y no queda huérfano."""
+    import threading
+    import time
+    from backend.paths import resolve_media
+    a = subir(client, tmp_path, "Archivo Ocupado", "Artista Ocupado")
+    ruta = resolve_media(a["archivo_path"])
+    client.post("/api/v1/biblioteca/lote", json={"ids": [a["id"]], "accion": "desactivar"})
+    fh = open(ruta, "rb")                                   # alguien lo tiene abierto (medidor de volumen, preescucha…)
+    threading.Timer(0.8, fh.close).start()
+    t0 = time.time()
+    r = client.post("/api/v1/biblioteca/borrar", json={"ids": [a["id"]]}).json()
+    assert r["borrados"] == 1 and r["archivos_borrados"] == 1 and r["archivos_pendientes"] == 0
+    assert not ruta.exists() and time.time() - t0 < 6

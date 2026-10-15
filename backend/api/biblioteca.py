@@ -283,6 +283,36 @@ def restaurar(body: IdsIn):
         conn.close()
 
 
+def _borrar_archivo(ruta) -> bool:
+    """
+    Borra el archivo. En Windows puede estar abierto un instante (medición de volumen, preescucha): se reintenta
+    unos segundos y, si sigue ocupado, se sigue intentando en segundo plano para que no quede huérfano en el disco.
+    """
+    import time as _t
+    for _ in range(12):
+        try:
+            ruta.unlink()
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            _t.sleep(0.25)
+
+    def _despues():
+        for _ in range(60):
+            _t.sleep(2)
+            try:
+                ruta.unlink()
+                return
+            except FileNotFoundError:
+                return
+            except OSError:
+                continue
+    import threading as _th
+    _th.Thread(target=_despues, name="onix-borrado-pendiente", daemon=True).start()
+    return False
+
+
 @router.post("/api/v1/biblioteca/borrar", summary="Borrar definitivamente (solo desde la papelera)")
 def borrar_definitivo(body: IdsIn):
     """
@@ -297,7 +327,7 @@ def borrar_definitivo(body: IdsIn):
                              body.ids).fetchall()
         en_pauta = {r[0] for r in conn.execute(
             f"SELECT DISTINCT audio_id FROM pautas WHERE audio_id IN ({ph})", body.ids)}
-        borrados, archivos, omitidos = 0, 0, []
+        borrados, archivos, pendientes, omitidos = 0, 0, 0, []
         raiz = MEDIA_ROOT.resolve()
         for f in filas:
             if f["id"] in en_pauta:
@@ -308,12 +338,14 @@ def borrar_definitivo(body: IdsIn):
             try:
                 ruta = resolve_media(f["archivo_path"] or "").resolve()
                 if raiz in ruta.parents and ruta.is_file():      # nunca fuera de la carpeta de medios
-                    ruta.unlink()
-                    archivos += 1
+                    if _borrar_archivo(ruta):
+                        archivos += 1
+                    else:
+                        pendientes += 1
             except OSError:
                 pass
         conn.commit()
-        return {"borrados": borrados, "archivos_borrados": archivos, "omitidos": omitidos}
+        return {"borrados": borrados, "archivos_borrados": archivos, "archivos_pendientes": pendientes, "omitidos": omitidos}
     finally:
         conn.close()
 
