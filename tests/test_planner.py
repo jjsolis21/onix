@@ -454,3 +454,15 @@ def test_grilla_de_tandas_por_dia_y_hora_en_el_plan(base):
     tandas = [i for i in planear(base, minutos=120, tandas=(15, 45)) if i["tipo"] == "tanda"]
     assert [(t["slot"][-2:], t["minuto"]) for t in tandas] == [("10", 30)]
     assert tandas[0]["inmediata"] is True and tandas[0]["inicio"] == "2026-10-12T10:30:00"
+
+
+def test_la_tanda_al_cierre_se_marca_en_el_plan_y_entra_antes_de_su_minuto(base):
+    """Al cierre en :00 con 31 s de cuñas: el plan la pone a las 10:59:29 (no a las 11:00) y la rotula «cierre»."""
+    _pauta(base, dur=31)
+    for i in range(30):
+        audio(base, f"C{i}", dur=200)
+    cfg(base, tandas_cierre="0", tandas_inmediatas="0")          # el ejemplo B: minuto 0 con inicio inmediato y al cierre
+    items = planear(base, minutos=75, tandas=(0,))
+    t = next(i for i in items if i["tipo"] == "tanda" and i["slot"].endswith("-10"))
+    assert t["cierre"] is True and t["inmediata"] is True and t["minuto"] == 0
+    assert t["inicio"][:16] == "2026-10-12T10:59" and t["duracion"] == 31

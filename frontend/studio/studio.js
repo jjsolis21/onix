@@ -458,7 +458,7 @@ const Decks = (() => {
           : `<div class="deck-sep"><i style="background:${esc(it.color || "var(--txt-lo)")}"></i>${it.reloj ? esc(it.reloj) : "Solo música (sin reloj)"}</div>`;
       }
       if (it.tipo === "tanda") {
-        const marcas = (it.inmediata ? " ⚡ EN PUNTO" : "") + (it.excede ? " ⚠ LARGA" : "");
+        const marcas = (it.cierre ? " ⇥ TERMINA EN PUNTO" : (it.inmediata ? " ⚡ EN PUNTO" : "")) + (it.excede ? " ⚠ LARGA" : "");
         html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tanda">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
           <div class="deck-txt"><div class="deck-tit">📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
@@ -1125,8 +1125,13 @@ const Derecha = (() => {
     const d = new Date(); d.setHours(h, m, s || 0, 0);
     if (d.getTime() < Date.now() - 12 * 3600e3) d.setDate(d.getDate() + 1);
     proxima = d;
-    $("tandaHora").textContent = `· ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}${it.inmediata ? " ⚡" : ""}`;
-    $("tandaDet").textContent = `${it.cunas} cuña(s) · ${fmt(it.duracion)}${it.excede ? " · ⚠ supera el máximo" : ""}${it.inmediata ? " · en punto" : ""}`;
+    const hm = x => `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}`;
+    const fin = new Date(d.getTime() + (it.duracion || 0) * 1000);
+    // Al cierre: la tanda ENTRA antes y TERMINA en su minuto (no empieza en él)
+    $("tandaHora").textContent = it.cierre
+      ? `· entra ${hm(d)}:${String(d.getSeconds()).padStart(2, "0")} → termina ${hm(fin)}`
+      : `· ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}${it.inmediata ? " ⚡" : ""}`;
+    $("tandaDet").textContent = `${it.cunas} cuña(s) · ${fmt(it.duracion)}${it.excede ? " · ⚠ supera el máximo" : ""}${it.cierre ? " · termina en punto" : (it.inmediata ? " · en punto" : "")}`;
   }
 
   function cuentaTanda() {
@@ -1528,7 +1533,9 @@ WS.on("tanda_scheduled", d => {
   if (d.requiere_operador) toast(`📢 Tanda :${String(d.minuto).padStart(2, "0")} lista. Lánzala cuando quieras.`, "aviso", 8000);
 });
 WS.on("evento_inmediato", d => toast(`⏰ ${d.hora} · ${d.evento ?? "Evento"} entra en punto: se cortó la canción`, "aviso", 5000));
-WS.on("tanda_inmediata", d => toast(`⚡ Tanda :${String(d.minuto).padStart(2, "0")} en punto: se cortó la canción`, "aviso", 5000));
+WS.on("tanda_inmediata", d => toast(d.cierre
+  ? `⇥ Tanda :${String(d.minuto).padStart(2, "0")} entra ahora para terminar en punto`
+  : `⚡ Tanda :${String(d.minuto).padStart(2, "0")} en punto: se cortó la canción`, "aviso", 5000));
 WS.on("tanda_excedida", d => toast(`⚠ La tanda :${String(d.minuto).padStart(2, "0")} dura ${fmt(d.duracion)} (máximo ${fmt(d.maximo)})`, "aviso", 8000));
 WS.on("watchdog_stall", () => toast("⚠ El motor se trabó y se está recuperando", "error", 8000));
 

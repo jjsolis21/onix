@@ -87,12 +87,33 @@
           + 'Si además pones ese minuto en «inicio inmediato», corta la canción a la hora calculada para terminar exacto. Vacío = ninguna.', c.tandas_cierre)}
         ${campo('ccfMax', 'Duración máxima de la tanda (segundos)', 'Si una tanda dura más, el Studio avisa. 0 = sin límite.', c.tanda_max_seg, 'number')}
         ${campo('ccfTol', 'Tolerancia de tanda (segundos)', 'Cuánto puede atrasarse una tanda esperando que termine la canción en curso antes de buscar otra que encaje.', c.tolerancia_tanda_seg, 'number')}
+        <div class="ccf-previa" id="ccfPrevia">Calculando cómo quedarán las próximas tandas…</div>
         <div class="ccf-campo"><label for="ccfVoz">Voces de mujer</label>
           <label class="ccf-chk"><input id="ccfVoz" type="checkbox" ${c.regla_voces_mujer ? 'checked' : ''}> No sonar dos voces de mujer seguidas</label>
           <p>Cada cuña lleva su voz (Hombre / Mujer…) en la ventana de edición. Si no hay forma de separarlas (por ejemplo, solo hay dos cuñas y las dos son de mujer), la regla cede: ninguna cuña se queda sin salir.</p></div>
         <div class="ccf-aviso">Estos valores valen para <b>todas las horas</b>, salvo las que cambies en la pestaña
           <b>Breaks por hora</b>, donde cada día y hora puede tener sus propios minutos o no tener tandas.</div>
         <div class="ccf-pie"><button class="ccf-btn ccf-btn--pri" id="ccfGuardarG">Guardar</button><span class="ccf-msg" id="ccfMsgG"></span></div>`;
+      // Vista previa con los spots de hoy: a qué hora ENTRA y a qué hora TERMINA cada tanda de la hora que viene
+      api('/api/v1/comerciales/tandas-dia').then(r => {
+        const ahora = new Date(), hAct = ahora.getHours();
+        const hh = r.horas[(hAct + 1) % 24];
+        const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        const hora = (h, seg) => { const t = ((h * 3600 + seg) % 86400 + 86400) % 86400;
+          return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor(t % 3600 / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+        const filas = hh.bloques.filter(b => b.duracion > 0).map(b => {
+          if (b.cierre) {
+            const fin = (b.minuto === 0 ? 60 : b.minuto) * 60, ini = fin - b.duracion;
+            return `<li><b>Tanda :${String(b.minuto).padStart(2, '0')}</b> (al cierre): dura ${mmss(b.duracion)} → <b>entra ${hora(hh.hora, ini)}</b> y <b>termina ${hora(hh.hora, fin)}</b>${b.inmediata ? ' · corta la canción' : ' · espera a que termine la canción'}</li>`;
+          }
+          return `<li><b>Tanda :${String(b.minuto).padStart(2, '0')}</b>: <b>entra ${hora(hh.hora, b.minuto * 60)}</b>${b.inmediata ? ' en punto (corta la canción)' : ' cuando termine la canción en curso'} y dura ${mmss(b.duracion)}</li>`;
+        });
+        const el = pag.querySelector('#ccfPrevia');
+        if (!el) return;
+        el.innerHTML = `<b>Qué pasará a las ${String(hh.hora).padStart(2, '0')}:00 de hoy</b> (con los spots marcados para esa hora)` +
+          (hh.sin_tandas ? '<br>Esa hora no tiene tandas.' : filas.length ? `<ul>${filas.join('')}</ul>` : '<br>Ningún spot está marcado para esa hora: no sale ninguna tanda.');
+      }).catch(() => { const el = pag.querySelector('#ccfPrevia'); if (el) el.remove(); });
+
       pag.querySelector('#ccfGuardarG').addEventListener('click', async () => {
         try {
           await api('/api/v1/config/motor', json('PUT', {

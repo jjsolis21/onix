@@ -624,7 +624,11 @@
     _pintarCaratula();
   }
 
-  /** «Voz de la cuña»: lista de la biblioteca y valor del audio elegido. `original` = lo que ya tenía (para guardar solo si cambió). */
+  // Datos del AUDIO que se editan aquí mismo (voz, volumen y metadata): se leen de su ficha y se guardan una sola vez con el spot
+  let _audioOrig = {};
+  const _CAMPOS_AUDIO = { voz: 'fVozSpot', ganancia_db: 'fGananciaSpot', meta_modo: 'fMetaModo', meta_titulo: 'fMetaTitulo',
+                          meta_artista: 'fMetaArtista', meta_extra1: 'fMetaExtra1', meta_extra2: 'fMetaExtra2' };
+
   async function _pintarVozSpot(valor) {
     const sel = $('fVozSpot');
     if (!sel) return;
@@ -634,7 +638,36 @@
     if (valor && !lista.includes(valor)) lista = [...lista, valor];
     sel.innerHTML = '<option value="">— sin marcar —</option>' + lista.map(v => `<option value="${_esc(v)}">${_esc(v)}</option>`).join('');
     sel.value = valor || '';
-    sel.dataset.original = valor || '';
+  }
+
+  /** Rellena los controles del audio con su ficha (o los vacía si no hay audio). */
+  async function _cargarDatosAudio(audioId) {
+    _audioOrig = {};
+    let f = {};
+    if (audioId) {
+      try { f = await fetch(`/api/v1/biblioteca/${audioId}/ficha`).then(r => r.ok ? r.json() : {}); } catch (_) { f = {}; }
+    }
+    await _pintarVozSpot(f.voz || '');
+    const g = Number(f.ganancia_db) || 0;
+    if ($('fGananciaSpot')) { $('fGananciaSpot').value = g; $('fGananciaV').textContent = `${g > 0 ? '+' : ''}${g.toFixed(1)} dB`; }
+    for (const k of ['meta_modo', 'meta_titulo', 'meta_artista', 'meta_extra1', 'meta_extra2']) {
+      if ($(_CAMPOS_AUDIO[k])) $(_CAMPOS_AUDIO[k]).value = f[k] || '';
+    }
+    _audioOrig = { voz: f.voz || '', ganancia_db: g, meta_modo: f.meta_modo || '', meta_titulo: f.meta_titulo || '',
+                   meta_artista: f.meta_artista || '', meta_extra1: f.meta_extra1 || '', meta_extra2: f.meta_extra2 || '' };
+  }
+
+  /** Lo que el operador cambió del audio desde que se cargó su ficha (solo eso se envía). */
+  function _cambiosAudio() {
+    const diff = {};
+    for (const [k, id] of Object.entries(_CAMPOS_AUDIO)) {
+      const el = $(id);
+      if (!el) continue;
+      const v = k === 'ganancia_db' ? parseFloat(el.value || '0') : String(el.value || '').trim();
+      if (k === 'voz' && !v) continue;                              // la voz no se puede dejar vacía desde aquí
+      if (String(v) !== String(_audioOrig[k] ?? '')) diff[k] = v;
+    }
+    return diff;
   }
 
   /** «Nombre del spot»: se propone el del archivo, salvo que el operador ya haya escrito el suyo. */
@@ -1149,8 +1182,7 @@
       $('fCliente').value   = p.cliente;
       $('fAudio').value     = p.audio_nombre;
       if ($('fNombreSpot')) { $('fNombreSpot').value = p.audio_nombre || ''; $('fNombreSpot').dataset.auto = '0'; }
-      _pintarVozSpot('');
-      if (p.audio_id) fetch(`/api/v1/biblioteca/${p.audio_id}/ficha`).then(r => r.ok ? r.json() : null).then(f => { if (f) _pintarVozSpot(f.voz || ''); }).catch(() => { });
+      _cargarDatosAudio(p.audio_id || null);
       $('fAudio')._selectedId     = p.audio_id;
       $('fAudio')._selectedNombre = p.audio_nombre;
       $('fAudio')._selectedPath   = '';
@@ -1205,7 +1237,7 @@
       $('fCliente').value          = '';
       $('fAudio').value            = '';
       if ($('fNombreSpot')) { $('fNombreSpot').value = ''; $('fNombreSpot').dataset.auto = '1'; }
-      _pintarVozSpot('');
+      _cargarDatosAudio(null);
       $('fAudio')._selectedId      = null;
       $('fAudio')._selectedNombre  = '';
       $('fAudio')._selectedPath    = '';
@@ -1394,12 +1426,12 @@
 
     try {
       // La voz es del audio: si la cambiaron aquí, se guarda en la cuña (Biblioteca de cuñas) antes de guardar el spot
-      const _vozSel = $('fVozSpot'), _audioId = $('fAudio')?._selectedId;
-      if (_vozSel && _audioId && _vozSel.value && _vozSel.value !== (_vozSel.dataset.original || '')) {
+      const _audioId = $('fAudio')?._selectedId, _cambios = _cambiosAudio();
+      if (_audioId && Object.keys(_cambios).length) {
         const rv = await fetch(`/api/v1/audios/${_audioId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voz: _vozSel.value }) });
-        if (!rv.ok) throw new Error('No se pudo guardar la voz de la cuña');
-        _vozSel.dataset.original = _vozSel.value;
+          body: JSON.stringify(_cambios) });
+        if (!rv.ok) { const j = await rv.json().catch(() => ({})); throw new Error(typeof j.detail === 'string' ? j.detail : 'No se pudo guardar los datos del audio'); }
+        _audioOrig = { ..._audioOrig, ..._cambios };
       }
       if (_editingId) {
         const updated = await _apiUpdatePauta(_editingId, payload);
@@ -1430,15 +1462,27 @@
     $('audioFileInput')?.click();
   }
 
-  /** Subir un comercial = la ventana de canción (onda, marcas, fundidos, datos), como en Soho. */
-  async function _cargarConEditor(file) {
-    if (!global.CunasBiblioteca?.cargarConEditor) { if (file) _onAudioFileSelected({ target: { files: [file], value: '' } }); else _openFilePicker(); return; }
+  /** Subir un audio: va directo a la Biblioteca de cuñas (anunciante = cliente del spot) y queda elegido en este spot. */
+  async function _subirArchivo(file) {
+    if (!file) return;
+    if (!global.CunasBiblioteca?.subir) { _showModalError('La biblioteca de cuñas no está disponible.'); return; }
+    const wrap = $('uploadProgress'), bar = $('uploadProgressBar'), lbl = $('uploadProgressLabel');
+    const btns = ['btnSelectAudio', 'btnElegirBib', 'btnAddVersion'].map($);
+    btns.forEach(b => { if (b) b.disabled = true; });
+    _clearModalError();
+    if (wrap) { _showEl(wrap); bar.style.width = '0%'; lbl.textContent = `Subiendo ${file.name}…`; }
     try {
-      const c = await global.CunasBiblioteca.cargarConEditor({ archivo: file || null, anunciante: ($('fCliente')?.value || '').trim() });
-      if (c) _asignarCuna(c);
+      const creada = await global.CunasBiblioteca.subir(file, ($('fCliente')?.value || '').trim(), pct => {
+        if (bar) bar.style.width = `${pct}%`;
+        if (lbl) lbl.textContent = `Subiendo… ${pct}%`;
+      });
+      if (lbl) lbl.textContent = '✓ Cargada';
+      _asignarCuna({ ...creada, titulo: creada.titulo || file.name.replace(/\.[^.]+$/, '') });
     } catch (err) {
-      _showModalError(err.message || 'No se pudo abrir la ventana de edición');
-      if (file) _onAudioFileSelected({ target: { files: [file], value: '' } }); else _openFilePicker();
+      _showModalError(err.message || 'No se pudo subir el archivo.');
+    } finally {
+      btns.forEach(b => { if (b) b.disabled = false; });
+      setTimeout(() => { if (wrap) _hideEl(wrap); }, 1200);
     }
   }
 
@@ -1456,7 +1500,7 @@
     f._selectedNombre = c.titulo;
     f._selectedPath = c.archivo_path || '';
     _proponerNombreSpot(c.titulo);
-    _pintarVozSpot(c.voz || '');
+    _cargarDatosAudio(c.id);
     const hint = $('audioHint');
     if (hint) { hint.textContent = `✅ ${c.titulo} (${c.artista})`; hint.style.color = ''; }
     if (!$('fCliente').value.trim() && c.artista && c.artista !== 'SIN ANUNCIANTE') $('fCliente').value = c.artista;
@@ -1470,146 +1514,6 @@
     document.querySelector('.cunas-tab[data-tab="pautas"]')?.click();
     await _openModal(null);
     _asignarCuna(c);
-  }
-
-  /**
-   * Sube el archivo a /api/v1/upload incluyendo la subcarpeta
-   * anualizada MEDIA/COMERCIALES/{AÑO}/ y luego activa el
-   * waveform via wfLoadFile(file) para análisis inmediato.
-   */
-  async function _onAudioFileSelected(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fAudio    = $('fAudio');
-    const audioHint = $('audioHint');
-    fAudio.value    = file.name;
-    if (audioHint) audioHint.textContent =
-      `📤 Preparando: ${file.name} (${_fmtFileSize(file.size)})`;
-
-    // Mostrar progreso
-    const progressWrap = $('uploadProgress');
-    const progressBar  = $('uploadProgressBar');
-    const progressLbl  = $('uploadProgressLabel');
-    _showEl(progressWrap);
-    progressBar.style.width = '0%';
-    progressLbl.textContent = 'Subiendo…';
-
-    const btnSelect = $('btnSelectAudio');
-    if (btnSelect) btnSelect.disabled = true;
-
-    // Cargar en WaveSurfer de inmediato (no esperar la subida)
-    // para que el operador ya pueda editar los cues mientras sube.
-    if (global.PautaOnda) {
-      global.PautaOnda.loadFile(file);
-    }
-
-    try {
-      // Se sube a la Biblioteca de cuñas (tipo Cuña, anunciante = cliente):
-      // la respuesta trae el id, así que la pauta queda vinculada siempre.
-      const creada = await global.CunasBiblioteca.subir(file, ($('fCliente')?.value || '').trim(), pct => {
-        progressBar.style.width = `${pct}%`;
-        progressLbl.textContent = `Subiendo… ${pct}%`;
-      });
-      const result = { audio_id: creada.id, filename: creada.titulo, archivo_path: creada.archivo_path };
-      const subdir = '';
-
-      const nombre = result.filename ?? file.name;
-      const path   = result.archivo_path ?? `${subdir}/${nombre}`;
-
-      fAudio.value             = nombre;
-      fAudio._selectedNombre   = nombre;
-      fAudio._selectedPath     = path;
-
-      // ─── BUG FIX: audio_id NOT NULL constraint ──────────────────────
-      // El endpoint de upload devuelve filename y archivo_path pero NO
-      // devuelve un audio_id. La tabla pautas tiene audio_id NOT NULL,
-      // por lo que guardar con _selectedId = null produce un error 500.
-      //
-      // Solución: después del upload, refrescar el catálogo de audios
-      // y buscar el ID por coincidencia de nombre de archivo.
-      // El backend registra el audio en la tabla audios durante el upload,
-      // así que al refrescar debería aparecer.
-      //
-      // Primero: intentar leer el audio_id directo de la respuesta del
-      // upload (si el backend lo incluye en una versión futura).
-      if (result.audio_id) {
-        fAudio._selectedId = result.audio_id;
-        console.info(`[PautasController] audio_id resuelto desde respuesta upload: ${result.audio_id}`);
-      } else {
-        // El backend no retornó el ID → refrescar catálogo y buscar por nombre
-        progressLbl.textContent = 'Verificando registro…';
-        _audios = await fetchAudios();
-
-        // Normalizar el nombre para la comparación: quitar extensión, minúsculas
-        const baseName = nombre.replace(/\.[^/.]+$/, '').toLowerCase();
-
-        const match = _audios.find(a => {
-          const aNombre = (a.nombre ?? '').replace(/\.[^/.]+$/, '').toLowerCase();
-          return aNombre === baseName || a.nombre === nombre;
-        });
-
-        if (match) {
-          fAudio._selectedId = match.id;
-          console.info(`[PautasController] audio_id resuelto desde catálogo: ${match.id} → "${match.nombre}"`);
-        } else {
-          // Último recurso: el audio fue subido pero el catálogo aún no lo refleja.
-          // Dejar _selectedId = null y mostrar un aviso claro al operador para que
-          // seleccione el audio desde la biblioteca en vez de subir uno nuevo.
-          fAudio._selectedId = null;
-          console.warn(`[PautasController] Audio subido pero no encontrado en catálogo (nombre: "${nombre}"). El operador debe seleccionarlo desde la biblioteca para obtener el audio_id.`);
-          if (audioHint) {
-            audioHint.textContent = `⚠ Subido pero no vinculado. Seleccioná "${nombre}" desde la lista para poder guardar.`;
-            audioHint.style.color = 'var(--p-warn, #e6a817)';
-          }
-        }
-      }
-      // ────────────────────────────────────────────────────────────────
-
-      if (audioHint && fAudio._selectedId) {
-        audioHint.textContent = `✅ Subido y vinculado: ${nombre}`;
-        audioHint.style.color = '';
-      }
-      progressBar.style.width = '100%';
-      progressLbl.textContent = '¡Subida completada!';
-      setTimeout(() => _hideEl(progressWrap), 2200);
-
-    } catch (err) {
-      console.error('[PautasController] Error al subir audio:', err);
-      fAudio.value           = '';
-      fAudio._selectedId     = null;
-      fAudio._selectedNombre = '';
-      if (audioHint) audioHint.textContent = `⚠ Error: ${err.message}`;
-      progressBar.style.width = '0%';
-      progressLbl.textContent = 'Error en la subida';
-      progressLbl.style.color = 'var(--p-red)';
-      setTimeout(() => {
-        _hideEl(progressWrap);
-        progressLbl.style.color = '';
-      }, 3500);
-    } finally {
-      if (btnSelect) btnSelect.disabled = false;
-      e.target.value = ''; // permitir re-selección del mismo archivo
-    }
-  }
-
-  function _uploadWithProgress(url, formData, onProgress) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', url);
-      xhr.upload.addEventListener('progress', e => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-      });
-      xhr.addEventListener('load', () => {
-        let json = {};
-        try { json = JSON.parse(xhr.responseText); } catch (_) { /* no-op */ }
-        if (xhr.status >= 200 && xhr.status < 300) resolve(json);
-        else reject(new Error(json?.detail ?? json?.message ?? `HTTP ${xhr.status}`));
-      });
-      xhr.addEventListener('error', () => reject(new Error('Error de red al subir.')));
-      xhr.addEventListener('abort', () => reject(new Error('Subida cancelada.')));
-      xhr.send(formData);
-    });
   }
 
   // ──────────────────────────────────────────────────────────
@@ -1680,9 +1584,10 @@
     _initMencionesUI();
 
     // ── Selector de audio ──
-    $('btnSelectAudio')?.addEventListener('click', () => _cargarConEditor(null));
+    $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
     $('btnElegirBib')?.addEventListener('click', _elegirCuna);
     $('fNombreSpot')?.addEventListener('input', e => { e.target.dataset.auto = '0'; });
+    $('fGananciaSpot')?.addEventListener('input', e => { const g = parseFloat(e.target.value) || 0; $('fGananciaV').textContent = `${g > 0 ? '+' : ''}${g.toFixed(1)} dB`; });
     $('auCaratArchivo')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) _caratulaAccion('archivo', f); });
     $('auCaratEtiqueta')?.addEventListener('click', () => _caratulaAccion('etiqueta'));
     $('auCaratQuitar')?.addEventListener('click', () => _caratulaAccion('quitar'));
@@ -1694,11 +1599,11 @@
       _drop.addEventListener('drop', ev => {
         ev.preventDefault(); _drop.classList.remove('encima');
         const f = [...ev.dataTransfer.files].find(x => x.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(x.name));
-        if (f) _cargarConEditor(f);
+        if (f) _subirArchivo(f);
       });
     }
     $('fAudio')?.addEventListener('click', _elegirCuna);
-    $('audioFileInput')?.addEventListener('change', _onAudioFileSelected);
+    $('audioFileInput')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; _subirArchivo(f); });
 
     // ── Relleno rápido de la Matriz ──
     $('btnQfLV')?.addEventListener('click',       _matrixLV);

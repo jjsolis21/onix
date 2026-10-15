@@ -2737,7 +2737,7 @@ class AudioEngine:
                           and self._current_item.get("origen") != "pauta")
         if sonando_musica and any(x.get("tanda") == minuto for x in self._priority_queue):
             log.info("[Pautas] Tanda inmediata :%02d — entra a su hora", minuto)
-            self.bus.emit("tanda_inmediata", {"minuto": minuto})
+            self.bus.emit("tanda_inmediata", {"minuto": minuto, "cierre": minuto in self._tandas_cierre})
             self._advance()                        # sin _corte_fade: la cancion ya está en silencio
         elif vol is not None and canal == self._active_canal and self._audio.is_active(canal):
             # No había nada que poner: la cancion que bajó vuelve a su volumen

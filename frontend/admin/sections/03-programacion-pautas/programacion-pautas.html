@@ -3,9 +3,9 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=14">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=15">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
-<link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=7">
+<link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=8">
 
 <div class="pautas-root" id="pautasRoot">
 
@@ -388,10 +388,15 @@
             <small>Hombre o Mujer. La regla «voces de mujer no seguidas» la usa para separarlas dentro de la tanda.</small>
           </label>
 
+          <label class="au-nombre">Volumen de la cuña
+            <span class="au-vol"><input type="range" id="fGananciaSpot" min="-12" max="6" step="0.5" value="0"><b id="fGananciaV">0 dB</b></span>
+            <small>Sube o baja esta cuña respecto a las demás. 0 = como viene.</small>
+          </label>
+
           <div class="au-acciones">
             <button class="au-btn au-btn--pri" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">
               <i>📚</i><span>Elegir de la biblioteca</span></button>
-            <button class="au-btn" id="btnSelectAudio" type="button" title="Abre la ventana de edición (onda, marcas, fundidos y datos) para cargar un archivo">
+            <button class="au-btn" id="btnSelectAudio" type="button" title="Sube un archivo desde tu PC: queda en la Biblioteca y se elige para este spot">
               <i>⬆</i><span>Subir archivo…</span></button>
             <button class="au-btn" id="btnAddVersion" type="button" title="Otra versión del mismo spot: salen en rotación (A, B, C…)">
               <i>＋</i><span>Agregar versión</span></button>
@@ -408,6 +413,18 @@
             </div>
             <span class="au-ayuda" id="auCaratMsg">Se guarda con el audio y se usa en la metadata.</span>
           </div>
+
+          <details class="au-meta">
+            <summary>Publicar metadata (RDS / streaming)</summary>
+            <label>Al sonar <select id="fMetaModo">
+              <option value="">Según el tipo (las cuñas no actualizan)</option>
+              <option value="actualizar">Actualizar</option><option value="no_actualizar">No actualizar</option></select></label>
+            <label>Título <input id="fMetaTitulo" placeholder="AUTO"></label>
+            <label>Artista <input id="fMetaArtista" placeholder="AUTO"></label>
+            <label>Campo extra 1 <input id="fMetaExtra1"></label>
+            <label>Campo extra 2 <input id="fMetaExtra2"></label>
+            <small>El texto que se muestra al aire mientras suena. AUTO = el título y el anunciante del audio.</small>
+          </details>
 
           <!-- Input file oculto, disparado por el botón -->
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">

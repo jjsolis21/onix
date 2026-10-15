@@ -1510,3 +1510,13 @@
   font: inherit; font-size: 12px; color-scheme: dark; max-width: 130px; }
 .cunas-voz--mujer { border-color: #ff8fc4; color: #ff8fc4; }
 .cunas-barra select { background: var(--p-bg, #111); color: inherit; border: 1px solid var(--p-border, #333); border-radius: 6px; padding: 8px 9px; font: inherit; color-scheme: dark; }
+
+.au-layout .au-vol { display: flex; align-items: center; gap: 10px; }
+.au-layout .au-vol input[type=range] { flex: 1; accent-color: var(--p-accent, #ee9b00); }
+.au-layout .au-vol b { min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.au-layout .au-meta { border: 1px solid var(--p-border, #444); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.au-layout .au-meta summary { cursor: pointer; font-weight: 600; }
+.au-layout .au-meta label { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; color: var(--p-text-lo, #999); font-size: 12px; }
+.au-layout .au-meta input, .au-layout .au-meta select { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444);
+  border-radius: 6px; padding: 0 10px; height: 38px; font: inherit; font-size: 14px; color-scheme: dark; width: 100%; box-sizing: border-box; }
+.au-layout .au-meta small { display: block; margin-top: 10px; color: var(--p-text-lo, #888); line-height: 1.4; }

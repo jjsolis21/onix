@@ -312,7 +312,7 @@ class Planner:
                 if tanda["duracion"] > 0:
                     nuevos.append(_item("tanda", t, tanda["duracion"], minuto=tanda["minuto"],
                                         slot=tanda["slot"], cunas=tanda["cunas"],
-                                        inmediata=inmediata,
+                                        inmediata=inmediata, cierre=bool(tanda.get("cierre")),
                                         excede=bool(maximo and tanda["duracion"] > maximo),
                                         titulo=f"TANDA :{tanda['minuto']:02d}"))
                     t += timedelta(seconds=tanda["duracion"])

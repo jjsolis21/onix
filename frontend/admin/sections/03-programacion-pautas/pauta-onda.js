@@ -2,14 +2,14 @@
  * pauta-onda.js — Ónix FM · onda y marcas de una pauta (pestaña «Audio y versiones»)
  *
  * No es un editor aparte: reutiliza la MISMA ventana que se usa al cargar una canción
- * (editor-cancion.js, función montar), ajustada a lo que necesita una cuña: Intro (cuándo
- * entra la voz), Outro (cuándo termina) y Mezcla (cuándo entra lo siguiente).
+ * (editor-cancion.js, función montar), ajustada a lo que necesita una cuña: Intro (desde dónde
+ * suena) y Outro (dónde termina). La Mezcla no se usa con una cuña, por eso no se muestra.
  * Expone la misma interfaz que el controlador de pautas ya usaba con la onda anterior.
  */
 (function (global) {
   'use strict';
 
-  const MARCAS = ['cue_intro', 'cue_outro', 'cue_mezcla'];
+  const MARCAS = ['cue_intro', 'cue_outro'];
   let cargado = null;
 
   function conEditor() {
