@@ -1126,6 +1126,7 @@ class AudioEngine:
         self._tandas_minutos:  list[int] = [15, 45]
         self._tandas_cierre:   list[int] = []   # tandas que TERMINAN en su minuto
         self._plan_slot:       Optional[str] = None
+        self._cierres_hechos:  set[tuple] = set()    # (slot, minuto) de tandas «al cierre» ya lanzadas (sobreviven al cambio de hora)
         self._plan:            dict[int, list[int]] = {}
         self._tandas_lanzadas: set[int] = set()
         self._tandas_inmediatas: list[int] = []      # minutos cuya tanda corta la cancion
@@ -1759,7 +1760,7 @@ class AudioEngine:
         hasta = self._now() + timedelta(hours=self._horas_plan)
         if t >= hasta:
             return
-        lanzadas = {(self._plan_slot, m) for m in self._tandas_lanzadas} if self._plan_slot else set()
+        lanzadas = ({(self._plan_slot, m) for m in self._tandas_lanzadas} if self._plan_slot else set()) | self._cierres_hechos
         try:
             nuevos = self._planner.extender(
                 actual, t, hasta, list(self._recent_history), self._tandas_base[0],
@@ -2483,9 +2484,12 @@ class AudioEngine:
         key  = f"{(now.weekday() + 1) % 7}-{now.hour}"
         hoy  = now.date().isoformat()
 
-        perdidas = [p for p in self._priority_queue if p["slot"] != slot]
+        # Lo que no salió en su hora se descarta, SALVO una tanda «al cierre» que esperaba a que terminara la canción:
+        # esa sale en cuanto termine (unos segundos tarde es mejor que perder la publicidad). Gracia: 5 min.
+        vigente = lambda p: p["slot"] == slot or bool(p.get("cierre_hasta") and now < p["cierre_hasta"])
+        perdidas = [p for p in self._priority_queue if not vigente(p)]
         if perdidas:
-            self._priority_queue = deque(p for p in self._priority_queue if p["slot"] == slot)
+            self._priority_queue = deque(p for p in self._priority_queue if vigente(p))
             for p in perdidas:
                 log.warning("[Pautas] No salio en su hora: %s (%s)", p["cliente"], p["slot"])
                 self.bus.emit("pauta_missed", p)
@@ -2597,6 +2601,11 @@ class AudioEngine:
         en_cola_tanda = {(p["pauta_id"], p.get("tanda")) for p in self._priority_queue}
         seg_hora = now.minute * 60 + now.second
         for minuto in sorted(self._plan):
+            extra_cierre = {}
+            if minuto in self._tandas_cierre:
+                fin_bloque = now.replace(minute=0, second=0, microsecond=0) + (
+                    timedelta(hours=1) if minuto == 0 else timedelta(minutes=minuto))
+                extra_cierre = {"cierre_hasta": fin_bloque + timedelta(minutes=5)}
             if minuto in self._tandas_cierre:
                 # Bloque al cierre: arranca cuando falta lo que dura
                 dur = sum(float(comerciales[pid]["duracion"] or 0)
@@ -2617,7 +2626,7 @@ class AudioEngine:
                 tope = pauta["menciones_diarias"]
                 if tope and del_dia.get(pid, 0) >= tope:
                     continue
-                pauta = {**pauta, "tanda": minuto}
+                pauta = {**pauta, "tanda": minuto, **extra_cierre}
                 self._priority_queue.append(pauta)
                 en_cola.add(pid)
                 lanzadas.append(pauta)
@@ -2638,13 +2647,17 @@ class AudioEngine:
                 tope = pauta["menciones_diarias"]
                 if tope and del_dia.get(pid, 0) >= tope:
                     continue
-                pauta = {**pauta, "tanda": minuto}
+                pauta = {**pauta, "tanda": minuto, **extra_cierre}
                 self._priority_queue.append(pauta)
                 en_cola_tanda.add((pid, minuto))
                 lanzadas.append(pauta)
                 self.bus.emit("pauta_scheduled", pauta)
 
             if lanzadas:
+                if minuto in self._tandas_cierre:
+                    self._cierres_hechos.add((slot, minuto))
+                    self._cierres_hechos = {c for c in self._cierres_hechos
+                                            if c[0] >= (now - timedelta(hours=3)).strftime("%Y-%m-%d-%H")}
                 # Orden dentro de la tanda: por seccion (estable: respeta el
                 # reparto por rubro y prioridad de las comerciales)
                 self._priority_queue = deque(sorted(

@@ -525,8 +525,9 @@ class Planner:
         fila = conn.execute("SELECT valor FROM config WHERE clave = 'tandas_cierre'").fetchone()
         cierre_base = parse_minutos(fila[0]) if fila and (fila[0] or "").strip() else []
         grilla = cargar_grilla(self.cfg.get("tandas_grilla", ""))
-        for base in (t.replace(minute=0, second=0, microsecond=0),
-                     t.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)):
+        hora_t = t.replace(minute=0, second=0, microsecond=0)
+        for base in (hora_t - timedelta(hours=1), hora_t, hora_t + timedelta(hours=1)):
+            previa = base < hora_t               # solo una tanda «al cierre» que se quedó esperando a la canción
             slot = base.strftime("%Y-%m-%d-%H")
             minutos_h, inm_h, cie_h = tandas_de_hora(grilla, (base.weekday() + 1) % 7, base.hour,
                                                      minutos, sorted(inmediatas), cierre_base)
@@ -538,6 +539,9 @@ class Planner:
                 cunas, dur = self._cunas_tanda(conn, base, m, minutos_h)
                 hora = base + timedelta(seconds=inicio_tanda(m, dur, m in cierre))
                 if hora < t - timedelta(minutes=30):
+                    continue
+                if previa and not (m in cierre and dur > 0 and hora <= t
+                                   and (t - hora).total_seconds() <= dur + 600):
                     continue
                 candidatas.append({"hora": hora, "minuto": m, "slot": slot, "cunas": cunas,
                                    "duracion": dur, "cierre": m in cierre, "inmediata": m in inm_h})

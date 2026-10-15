@@ -1314,3 +1314,44 @@ def test_orden_de_la_tanda_promociones_id_separador_y_comerciales(engine, media)
     engine._now.dt = datetime(2026, 10, 12, 10, 15)
     engine._check_pautas()
     assert en_cola(engine) == ["PROMO", "ID ESTACION", "SEPARADOR", "CLIENTE"]
+
+
+# ── Tanda «al cierre» sin inicio inmediato: si la canción cruza la hora, la tanda no se pierde ──
+
+def test_tanda_al_cierre_que_espera_la_cancion_sobrevive_al_cambio_de_hora(engine, media):
+    add_pauta(engine, media, "CIERRE A")
+    add_pauta(engine, media, "CIERRE B")
+    conn = db(engine)
+    conn.execute("UPDATE audios SET duracion = 30 WHERE tipo_audio = 'Cuña'")
+    conn.commit()
+    conn.close()
+    _config(engine, tandas_minutos="0", tandas_cierre="0", tandas_inmediatas="")
+    engine._mode = "automatico"
+    engine._now.dt = datetime(2026, 10, 12, 10, 58, 59)      # el bloque (60 s) entra a las 10:59:00 y termina a las 11:00
+    engine._check_pautas()
+    assert en_cola(engine) == []
+    engine._now.dt = datetime(2026, 10, 12, 10, 59, 1)
+    engine._check_pautas()
+    assert sorted(en_cola(engine)) == ["CIERRE A", "CIERRE B"]   # en cola, esperando a que termine la canción
+    # la canción cruza la hora: ya son las 11:00:20 y la cola sigue ahí
+    engine._now.dt = datetime(2026, 10, 12, 11, 0, 20)
+    engine._check_pautas()
+    assert sorted(en_cola(engine)) == ["CIERRE A", "CIERRE B"]
+    assert not [d for e, d in engine.events if e == "pauta_missed"]
+    assert engine._pick_next()["origen"] == "pauta"             # y sale en cuanto termina la canción
+    # pasada la gracia (5 min) ya no tiene sentido: se descarta
+    engine._now.dt = datetime(2026, 10, 12, 11, 6, 0)
+    engine._check_pautas()
+    assert en_cola(engine) == []
+
+
+def test_una_pauta_normal_de_la_hora_anterior_sigue_descartandose(engine, media):
+    add_pauta(engine, media, "NORMAL")
+    engine._tandas_minutos = [15]
+    engine._now.dt = datetime(2026, 10, 12, 10, 15)
+    engine._check_pautas()
+    assert en_cola(engine) == ["NORMAL"]
+    engine._now.dt = datetime(2026, 10, 12, 11, 1)           # cambió la hora y no salió: se pierde (no se acumula)
+    engine._check_pautas()
+    assert en_cola(engine) == []
+    assert [d for e, d in engine.events if e == "pauta_missed"]

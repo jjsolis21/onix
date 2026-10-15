@@ -466,3 +466,15 @@ def test_la_tanda_al_cierre_se_marca_en_el_plan_y_entra_antes_de_su_minuto(base)
     t = next(i for i in items if i["tipo"] == "tanda" and i["slot"].endswith("-10"))
     assert t["cierre"] is True and t["inmediata"] is True and t["minuto"] == 0
     assert t["inicio"][:16] == "2026-10-12T10:59" and t["duracion"] == 31
+
+
+def test_tanda_al_cierre_sin_inmediato_no_se_pierde_del_plan_si_la_cancion_cruza_la_hora(base):
+    """Canciones de 200 s que cruzan las 11:00: la tanda de las 10:59:29 queda marcada justo al terminar la canción."""
+    _pauta(base, dur=31)
+    for i in range(30):
+        audio(base, f"C{i}", dur=200)
+    cfg(base, tandas_cierre="0", tandas_inmediatas="")
+    items = planear(base, minutos=75, tandas=(0,))
+    tandas = [i for i in items if i["tipo"] == "tanda"]
+    assert len(tandas) == 1 and tandas[0]["cierre"] is True and tandas[0]["slot"].endswith("-10")
+    assert tandas[0]["inicio"][11:16] == "11:00"                 # entra al terminar la canción que cruzó la hora

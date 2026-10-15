@@ -69,6 +69,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
   chequeo avisa «sin_voz»; Tandas del día marca ♀. Rubros incompatibles (misma tanda sí, seguidos no): tabla `comerciales_conflictos_rubros`,
   `rubros_chocan`/`norm_rubro` en `ordenar_tanda` (sin tildes ni mayúsculas), pestaña «Rubros» en Config. de comerciales,
   GET `/api/v1/comerciales/rubros`, POST/DELETE `.../rubros/conflictos`. PENDIENTE (Opus): secciones Promociones + separador de entrada.
+- Tanda «al cierre» robusta: si la canción cruza la hora, la tanda (en cola) NO se descarta al cambiar la hora (gracia 5 min,
+  `cierre_hasta`), sale al terminar la canción; el plan la mantiene marcada (`_cierres_hechos`, `_proxima_tanda` mira la hora anterior).
+  Studio rotula «entra HH:MM → termina HH:MM». General › vista previa de las próximas tandas.
 - Lista de spots: «☰ Columnas» (como la Biblioteca Musical): `data-col` en cada celda, estilo generado, preferencia en localStorage `cm_cols`.
   Paso «Audio y versiones» del spot: panel lateral (Elegir de la biblioteca / Subir archivo / Agregar versión), zona para soltar archivo,
   y el selector de cuñas con panel de filtros (anunciante, con/sin pauta) y subida directa. UI sin verificar a ojo (panel rechazó la página de prueba).
