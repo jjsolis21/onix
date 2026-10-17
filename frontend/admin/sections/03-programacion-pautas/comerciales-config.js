@@ -231,7 +231,7 @@
           ${sec.map((s, i) => `<section class="ccf-sep" data-i="${i}">
             <header><b>${esc(s.numero)} · ${esc(s.nombre)}</b>
               <span class="ccf-sep-tipo ${s.opcional ? 'opc' : 'sie'}">${s.opcional ? 'Opcional · solo si la tanda lleva comerciales' : 'Siempre · en cada tanda'}</span></header>
-            ${s.numero === 0 ? `<p class="ccf-hint" style="margin:6px 0">Las promociones son <b>spots</b> de esta sección: <b>Nuevo spot › 1 · Datos › Sección: ${esc(s.nombre)}</b>.
+            ${s.numero === 0 ? `<p class="ccf-hint" style="margin:6px 0">Las promociones son <b>spots</b> de esta sección: <b>Nuevo spot › 2 · Datos del cliente › Sección: ${esc(s.nombre)}</b>.
                 Suenan siempre primero; entre ellas manda la <b>prioridad</b> del spot. Ahora hay <b>${s.otras_pautas}</b>.</p>` : `
               <ol class="ccf-sep-lista">${s.audios.length ? s.audios.map((a, j) => `<li><span class="n">${String.fromCharCode(65 + j)}</span>
                 <span class="t"><b>${esc(a.titulo)}</b> <small>${esc(tipoTxt[a.tipo] || a.tipo)} · ${mmss(a.duracion)}</small></span>

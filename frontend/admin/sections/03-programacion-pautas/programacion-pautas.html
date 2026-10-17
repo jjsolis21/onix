@@ -3,7 +3,7 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=15">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=16">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=8">
 
@@ -231,8 +231,8 @@
 
     <!-- ── Pestañas (como las "Propiedades de spot" de Jazler): cada tema tiene toda la altura del modal ── -->
     <nav class="pm-tabs" role="tablist" aria-label="Secciones de la pauta">
-      <button type="button" class="pm-tab activo" role="tab" data-pane="datos">1 · Datos <i class="pm-dot" id="pmDotDatos"></i></button>
-      <button type="button" class="pm-tab" role="tab" data-pane="audio">2 · Audio y versiones <i class="pm-dot" id="pmDotAudio"></i></button>
+      <button type="button" class="pm-tab activo" role="tab" data-pane="audio">1 · Audio <i class="pm-dot" id="pmDotAudio"></i></button>
+      <button type="button" class="pm-tab" role="tab" data-pane="datos">2 · Datos del cliente <i class="pm-dot" id="pmDotDatos"></i></button>
       <button type="button" class="pm-tab" role="tab" data-pane="horarios">3 · Horarios <small id="pmCuenta"></small></button>
       <span class="pm-resumen" id="pmResumen"></span>
     </nav>
@@ -250,7 +250,7 @@
       <!-- ╔══════════════════════════════════════╗
            ║  PESTAÑA 1 — DATOS DE LA PAUTA      ║
            ╚══════════════════════════════════════╝ -->
-      <div class="modal-col-a pm-pane activo" data-pane="datos" role="tabpanel">
+      <div class="modal-col-a pm-pane" data-pane="datos" role="tabpanel">
 
         <!-- Formulario: scrollable, ocupa todo el espacio disponible entre picker y waveform -->
         <section class="form-section" aria-label="Datos de la pauta">
@@ -357,7 +357,7 @@
       <!-- ╔══════════════════════════════════════╗
            ║  PESTAÑA 2 — AUDIO, VERSIONES, ONDA ║
            ╚══════════════════════════════════════╝ -->
-      <div class="modal-col-a pm-pane" data-pane="audio" role="tabpanel">
+      <div class="modal-col-a pm-pane activo" data-pane="audio" role="tabpanel">
 
         <!-- Columna izquierda del paso 2 (la onda va a la derecha): audio actual, acciones, carátula y versiones -->
         <div class="au-layout">
@@ -429,10 +429,27 @@
           <!-- Input file oculto, disparado por el botón -->
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
 
+          <button class="au-btn au-btn--pri" id="btnAuSiguiente" type="button" title="Pasa a los datos del cliente">
+            <i>→</i><span>Continuar: datos del cliente</span></button>
+
           <div class="cm-versiones">
             <div class="cm-versiones-cab"><span>Versiones que rotan</span></div>
             <ol class="cm-ver-lista" id="cmVersiones"></ol>
             <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
+          </div>
+        </div>
+
+        <!-- Sin audio todavía: zona grande para cargar el comercial (desaparece al elegir uno) -->
+        <div class="au-vacio" id="auVacio">
+          <div class="au-vacio-tarj" id="auVacioDrop">
+            <div class="au-vacio-ico">🎙</div>
+            <h3>Carga el comercial</h3>
+            <p>Arrastra aquí el archivo de audio (MP3, WAV, OGG, FLAC, AAC o M4A) o elígelo desde tu PC.</p>
+            <div class="au-vacio-btns">
+              <button class="au-btn au-btn--pri" id="btnVacioSubir" type="button"><i>⬆</i><span>Elegir archivo…</span></button>
+              <button class="au-btn" id="btnVacioBib" type="button"><i>📚</i><span>Usar uno de la biblioteca</span></button>
+            </div>
+            <small>Después marcas Intro y Outro sobre la onda, ajustas el volumen y completas los datos del cliente y los horarios.</small>
           </div>
         </div>
 
@@ -596,8 +613,8 @@
   }
   ["input", "change", "click", "mouseup"].forEach(ev => modal.addEventListener(ev, () => setTimeout(resumen, 0)));
 
-  // Al abrir: siempre en "Datos". Al fallar el guardado: va a la pestaña del campo que falta.
-  new MutationObserver(() => { if (!modal.classList.contains("hidden")) { ir("datos"); setTimeout(resumen, 150); } })
+  // Al abrir: spot NUEVO → directo a cargar el archivo (Audio); spot existente → Datos. Al fallar el guardado: va a la pestaña del campo que falta.
+  new MutationObserver(() => { if (!modal.classList.contains("hidden")) { ir(modal.dataset.nueva === "0" ? "datos" : "audio"); setTimeout(resumen, 150); } })
     .observe(modal, { attributes: true, attributeFilter: ["class"] });
   const error = $("modalError");
   if (error) new MutationObserver(() => {

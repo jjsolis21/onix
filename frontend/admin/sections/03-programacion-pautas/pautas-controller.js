@@ -653,7 +653,7 @@
     for (const k of ['meta_modo', 'meta_titulo', 'meta_artista', 'meta_extra1', 'meta_extra2']) {
       if ($(_CAMPOS_AUDIO[k])) $(_CAMPOS_AUDIO[k]).value = f[k] || '';
     }
-    _audioOrig = { voz: f.voz || '', ganancia_db: g, meta_modo: f.meta_modo || '', meta_titulo: f.meta_titulo || '',
+    _audioOrig = { artista: f.artista || '', voz: f.voz || '', ganancia_db: g, meta_modo: f.meta_modo || '', meta_titulo: f.meta_titulo || '',
                    meta_artista: f.meta_artista || '', meta_extra1: f.meta_extra1 || '', meta_extra2: f.meta_extra2 || '' };
   }
 
@@ -667,6 +667,9 @@
       if (k === 'voz' && !v) continue;                              // la voz no se puede dejar vacía desde aquí
       if (String(v) !== String(_audioOrig[k] ?? '')) diff[k] = v;
     }
+    // Se subió antes de escribir el cliente (quedó «SIN ANUNCIANTE»): el anunciante del audio pasa a ser el cliente del spot
+    const cli = ($('fCliente')?.value || '').trim().toUpperCase();
+    if (cli && String(_audioOrig.artista || '').toUpperCase() === 'SIN ANUNCIANTE') diff.artista = cli;
     return diff;
   }
 
@@ -679,6 +682,8 @@
 
   function _pintarVersiones() {
     _pintarCaratula();
+    const _vacio = $('auVacio');
+    if (_vacio) _vacio.hidden = !!$('fAudio')?._selectedId;
     const ol = $('cmVersiones');
     if (!ol) return;
     const f = $('fAudio');
@@ -1165,6 +1170,7 @@
 
   async function _openModal(pautaId = null) {
     _editingId = pautaId;
+    if ($('pautaModal')) $('pautaModal').dataset.nueva = pautaId ? '0' : '1';
     _clearModalError();
     _setSaving(false);
 
@@ -1592,8 +1598,8 @@
     $('auCaratEtiqueta')?.addEventListener('click', () => _caratulaAccion('etiqueta'));
     $('auCaratQuitar')?.addEventListener('click', () => _caratulaAccion('quitar'));
     // Soltar un archivo de audio sobre la zona del audio = subirlo
-    const _drop = $('auDrop');
-    if (_drop) {
+    [$('auDrop'), $('auVacioDrop')].forEach(_drop => {
+      if (!_drop) return;
       _drop.addEventListener('dragover', ev => { ev.preventDefault(); _drop.classList.add('encima'); });
       _drop.addEventListener('dragleave', () => _drop.classList.remove('encima'));
       _drop.addEventListener('drop', ev => {
@@ -1601,7 +1607,15 @@
         const f = [...ev.dataTransfer.files].find(x => x.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(x.name));
         if (f) _subirArchivo(f);
       });
-    }
+    });
+    $('btnVacioSubir')?.addEventListener('click', _openFilePicker);
+    $('btnVacioBib')?.addEventListener('click', _elegirCuna);
+    $('btnAuSiguiente')?.addEventListener('click', () => {
+      if (!$('fAudio')?._selectedId) { _showModalError('Primero carga o elige el audio del comercial.'); return; }
+      _clearModalError();
+      document.querySelector('#pautaModal .pm-tab[data-pane="datos"]')?.click();
+      $('fCliente')?.focus();
+    });
     $('fAudio')?.addEventListener('click', _elegirCuna);
     $('audioFileInput')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; _subirArchivo(f); });
 
