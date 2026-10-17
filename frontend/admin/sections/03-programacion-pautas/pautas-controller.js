@@ -634,8 +634,8 @@
     if (!sel) return;
     let lista = [];
     try { lista = global.CunasBiblioteca?.voces ? await global.CunasBiblioteca.voces() : []; } catch (_) { }
-    if (!lista.length) lista = ['Hombre', 'Mujer', 'Dúo', 'Grupo', 'Instrumental'];
-    if (valor && !lista.includes(valor)) lista = [...lista, valor];
+    if (!lista.length) lista = ['Hombre', 'Mujer', 'Genérico'];
+    if (valor && !lista.includes(valor)) lista = [...lista, valor];          // una voz antigua (Dúo, Grupo…) se conserva
     sel.innerHTML = '<option value="">— sin marcar —</option>' + lista.map(v => `<option value="${_esc(v)}">${_esc(v)}</option>`).join('');
     sel.value = valor || '';
   }

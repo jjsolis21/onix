@@ -217,7 +217,7 @@ def chequeo():
                 if not (p["duracion"] or 0):
                     poner(p, "aviso", "sin_duracion", "El audio no tiene duración registrada: las tandas no pueden medirlo.")
                 if not (p["voz"] or "").strip() and not str(p["contrato_id"] or "").startswith("SEP-"):
-                    poner(p, "aviso", "sin_voz", "No tiene la voz marcada (Hombre / Mujer): la regla de mujeres seguidas no puede aplicarla.")
+                    poner(p, "aviso", "sin_voz", "No tiene la voz marcada (Hombre / Mujer / Genérico): la regla de mujeres seguidas no puede aplicarla.")
                 if p["tipo_audio"] and p["tipo_audio"] != "Cuña":
                     poner(p, "aviso", "tipo", f"El audio está marcado como «{p['tipo_audio']}», no como Cuña.")
             if not _horarios(p["matriz"]):

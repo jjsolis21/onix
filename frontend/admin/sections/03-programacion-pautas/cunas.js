@@ -24,21 +24,12 @@
   const TIPO = 'Cuña';
 
   let cunas = [], usos = {}, audio = null, sonando = null, listo = false;
-  let vocesCache = null;
+  const VOCES_CUNA = ['Hombre', 'Mujer', 'Genérico'];
+  let vocesCache = VOCES_CUNA;
 
-  /** Voces disponibles (las mismas de la biblioteca musical: Hombre, Mujer, Dúo…), sin repetidas por mayúsculas. */
+  /** Voces de un comercial: Hombre, Mujer o Genérico (sin género definido: coro, jingle, efectos, voz mezclada…). */
   async function voces() {
-    if (vocesCache) return vocesCache;
-    let lista = [];
-    try {
-      const s = await fetch('/api/v1/config/biblioteca/schema').then(r => r.json());
-      const c = (s.categorias || []).find(x => x.nombre_interno === 'voz');
-      lista = (c?.valores || []).map(v => String(v.valor));
-    } catch (_) { }
-    if (!lista.length) lista = ['Hombre', 'Mujer', 'Dúo', 'Grupo', 'Instrumental'];
-    const vistos = new Set();
-    vocesCache = lista.filter(v => { const k = v.trim().toUpperCase(); if (vistos.has(k)) return false; vistos.add(k); return true; });
-    return vocesCache;
+    return VOCES_CUNA;
   }
   const esMujer = v => /^(MUJER|FEMEN|FEMALE|WOMAN)/.test(String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase());
 
@@ -125,7 +116,7 @@
         <input type="search" id="cunasBuscar" placeholder="Buscar cuña o anunciante…" autocomplete="off">
         <select id="cunasVoz" title="Filtrar por la voz de la cuña">
           <option value="">Todas las voces</option><option value="__mujer">Mujer</option><option value="__hombre">Hombre</option>
-          <option value="__otra">Otras (dúo, grupo…)</option><option value="__sin">Sin voz marcada</option></select>
+          <option value="__generico">Genérico</option><option value="__sin">Sin voz marcada</option></select>
         <input id="cunasAnunciante" list="cunasAnunciantes" placeholder="Anunciante de las que vas a subir" autocomplete="off">
         <datalist id="cunasAnunciantes"></datalist>
         <button type="button" class="btn-primary" id="cunasSubir" title="Sube una o varias cuñas de una vez">⬆ Subir cuñas</button>
@@ -211,7 +202,7 @@
     const lista = cunas.filter(c => (!q || `${c.titulo} ${c.artista}`.toUpperCase().includes(q))
       && (!fv || (fv === '__sin' ? !c.voz : fv === '__mujer' ? esMujer(c.voz)
         : fv === '__hombre' ? /^(HOMBRE|MALE|MASCUL)/.test(String(c.voz || '').toUpperCase())
-        : (c.voz && !esMujer(c.voz) && !/^(HOMBRE|MALE|MASCUL)/.test(String(c.voz).toUpperCase())))));
+        : (c.voz && !esMujer(c.voz) && !/^(HOMBRE|MALE|MASCUL)/.test(String(c.voz).toUpperCase())))));   // __generico: lo que no es hombre ni mujer
     const vocesLista = vocesCache || [];
     $('cunasFilas').innerHTML = lista.length ? lista.map(c => {
       const u = usos[c.id] || { total: 0, vigentes: 0 };

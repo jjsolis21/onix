@@ -313,3 +313,13 @@ def test_catalogo_de_rubros_principales_agregar_y_quitar(client):
     assert client.delete("/api/v1/comerciales/rubros/catalogo", params={"nombre": "No existe"}).status_code == 404
     nombres = {x["nombre"] for x in client.get("/api/v1/comerciales/rubros").json()["rubros"]}
     assert "Gimnasios y deporte" not in nombres
+
+
+def test_voz_generica_de_una_cuna(client):
+    from backend.audio.audio_engine import es_voz_mujer
+    c = _db()
+    aid = _audio(c, "Cuña genérica", "library/generica.mp3", dur=15)
+    c.commit(); c.close()
+    assert client.put(f"/api/v1/audios/{aid}", json={"voz": "Genérico"}).status_code == 200
+    fila = next(x for x in client.get("/api/v1/audios", params={"tipo": "Cuña", "limit": 50000}).json()["data"] if x["id"] == aid)
+    assert fila["voz"] == "Genérico" and not es_voz_mujer(fila["voz"])        # no cuenta como mujer: separa a las mujeres
