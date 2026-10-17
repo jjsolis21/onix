@@ -3,7 +3,8 @@
      Cargado dinámicamente por admin-app.js
      Requiere: pautas-css.css, pautas-alertas.css, onix-waveform.js
      ============================================================ -->
-<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=16">
+<link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=7">
+<link rel="stylesheet" href="sections/03-programacion-pautas/pautas-css.css?v=17">
 <link rel="stylesheet" href="sections/03-programacion-pautas/pautas-alertas.css?v=10">
 <link rel="stylesheet" href="sections/03-programacion-pautas/comerciales-config.css?v=8">
 
@@ -232,7 +233,7 @@
     <!-- ── Pestañas (como las "Propiedades de spot" de Jazler): cada tema tiene toda la altura del modal ── -->
     <nav class="pm-tabs" role="tablist" aria-label="Secciones de la pauta">
       <button type="button" class="pm-tab activo" role="tab" data-pane="audio">1 · Audio <i class="pm-dot" id="pmDotAudio"></i></button>
-      <button type="button" class="pm-tab" role="tab" data-pane="datos">2 · Datos del cliente <i class="pm-dot" id="pmDotDatos"></i></button>
+      <button type="button" class="pm-tab" role="tab" data-pane="datos">2 · Vigencia y contrato <i class="pm-dot" id="pmDotDatos"></i></button>
       <button type="button" class="pm-tab" role="tab" data-pane="horarios">3 · Horarios <small id="pmCuenta"></small></button>
       <span class="pm-resumen" id="pmResumen"></span>
     </nav>
@@ -256,26 +257,11 @@
         <section class="form-section" aria-label="Datos de la pauta">
           <h4 class="section-label">Datos de la Pauta</h4>
 
-          <!-- Cliente -->
-          <div class="form-group">
-            <label for="fCliente">Cliente <span class="required">*</span></label>
-            <input type="text" id="fCliente" placeholder="Ej: COCA-COLA ARGENTINA" autocomplete="off" list="cmClientes">
-            <datalist id="cmClientes"></datalist>
-            <span class="field-hint">Se normaliza automáticamente a MAYÚSCULAS</span>
-          </div>
-
           <!-- Agencia de publicidad -->
           <div class="form-group">
             <label for="fAgencia">Agencia de publicidad</label>
             <input type="text" id="fAgencia" placeholder="Opcional · Ej: MEDIOS SUR" autocomplete="off" list="cmAgencias">
             <datalist id="cmAgencias"></datalist>
-          </div>
-
-          <!-- Rubro -->
-          <div class="form-group">
-            <label for="fRubro">Rubro</label>
-            <input type="text" id="fRubro" placeholder="Ej: Bebidas, Política, Tecnología, Automotriz…">
-            <span class="field-hint">Dos spots del mismo rubro nunca salen seguidos y se reparten en tandas distintas</span>
           </div>
 
           <!-- Sección de la tanda (orden dentro del corte, como en Jazler) -->
@@ -359,103 +345,107 @@
            ╚══════════════════════════════════════╝ -->
       <div class="modal-col-a pm-pane activo" data-pane="audio" role="tabpanel">
 
-        <!-- Columna izquierda del paso 2 (la onda va a la derecha): audio actual, acciones, carátula y versiones -->
-        <div class="au-layout">
-          <h5 class="au-tit">Audio del spot</h5>
+        <!-- Misma estructura que la ventana de «Nueva canción» (Biblioteca musical): Archivo → Onda y marcas → Datos | Carátula y metadata -->
+        <div class="ec ec-embed au-ec">
 
-          <div class="au-drop" id="auDrop">
-            <div class="au-tapa" id="auTapa" title="Carátula">
-              <img id="auTapaImg" alt="" hidden>
-              <span id="auTapaVacio">♪</span>
-            </div>
-            <div class="au-info">
-              <textarea id="fAudio" rows="2" readonly placeholder="Aún no hay audio"></textarea>
-              <span class="field-hint" id="audioHint">Elige una cuña de la biblioteca o suelta aquí un archivo</span>
-            </div>
+          <section class="ec-sec">
+            <h3>Archivo</h3>
+            <label class="ec-zona" id="auZona">
+              <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" hidden>
+              <span id="auZonaTxt">Arrastra aquí el archivo del comercial o haz clic para elegirlo</span>
+            </label>
             <div class="upload-progress hidden" id="uploadProgress">
               <div class="upload-progress__bar" id="uploadProgressBar" style="width:0%"></div>
               <span class="upload-progress__label" id="uploadProgressLabel">Subiendo…</span>
             </div>
-          </div>
-
-          <label class="au-nombre">Nombre del spot
-            <input id="fNombreSpot" type="text" maxlength="120" placeholder="Ej: Promo Verano 2026" autocomplete="off">
-            <small>Es el nombre que verás en la lista. Por defecto el del archivo; cámbialo cuando quieras.</small>
-          </label>
-
-          <label class="au-nombre">Voz de la cuña
-            <select id="fVozSpot"><option value="">— sin marcar —</option></select>
-            <small>Hombre o Mujer. La regla «voces de mujer no seguidas» la usa para separarlas dentro de la tanda.</small>
-          </label>
-
-          <label class="au-nombre">Volumen de la cuña
-            <span class="au-vol"><input type="range" id="fGananciaSpot" min="-12" max="6" step="0.5" value="0"><b id="fGananciaV">0 dB</b></span>
-            <small>Sube o baja esta cuña respecto a las demás. 0 = como viene.</small>
-          </label>
-
-          <div class="au-acciones">
-            <button class="au-btn au-btn--pri" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">
-              <i>📚</i><span>Elegir de la biblioteca</span></button>
-            <button class="au-btn" id="btnSelectAudio" type="button" title="Sube un archivo desde tu PC: queda en la Biblioteca y se elige para este spot">
-              <i>⬆</i><span>Subir archivo…</span></button>
-            <button class="au-btn" id="btnAddVersion" type="button" title="Otra versión del mismo spot: salen en rotación (A, B, C…)">
-              <i>＋</i><span>Agregar versión</span></button>
-          </div>
-          <p class="au-ayuda">MP3, WAV, OGG, FLAC, AAC o M4A. También puedes arrastrar el archivo a la tarjeta de arriba.</p>
-
-          <div class="au-caratula">
-            <h6>Carátula</h6>
-            <div class="au-caratula-btns">
-              <label class="au-mini" id="auCaratArchivoLbl">🖼 Importar imagen
-                <input type="file" id="auCaratArchivo" accept="image/png,image/jpeg" hidden></label>
-              <button type="button" class="au-mini" id="auCaratEtiqueta" title="Leerla de la etiqueta del archivo">🏷 De la etiqueta</button>
-              <button type="button" class="au-mini" id="auCaratQuitar">✕ Quitar</button>
+            <p class="ec-aviso" id="audioHint">MP3, WAV, OGG, FLAC, AAC o M4A</p>
+            <div class="au-ec-botones">
+              <button class="ec-btn" id="btnElegirBib" type="button" title="Elegir una cuña que ya está cargada en la Biblioteca de comerciales">📚 Elegir de la biblioteca</button>
+              <button class="ec-btn" id="btnAddVersion" type="button" title="Otra versión del mismo spot: salen en rotación (A, B, C…)">＋ Agregar versión</button>
             </div>
-            <span class="au-ayuda" id="auCaratMsg">Se guarda con el audio y se usa en la metadata.</span>
+            <input type="hidden" id="fAudio">
+          </section>
+
+          <section class="ec-sec">
+            <h3>Onda y marcas</h3>
+            <div class="ec-onda" id="auOndaVacia"><p class="ec-onda-vacia">La onda aparece al elegir el archivo</p></div>
+            <!-- La onda y las marcas Intro / Outro: la MISMA ventana que la de una canción (editor-cancion.js); la monta pauta-onda.js -->
+            <div class="pm-onda" id="pautaOnda" hidden></div>
+            <div class="ec-ajustes">
+              <label title="Sube o baja esta cuña respecto a las demás. 0 = como viene.">Volumen
+                <input type="range" id="fGananciaSpot" min="-12" max="6" step="0.5" value="0"><b id="fGananciaV">0 dB</b></label>
+            </div>
+          </section>
+
+          <div class="ec-dos">
+            <div class="ec-col">
+            <section class="ec-sec">
+              <h3>Datos</h3>
+              <div class="ec-campos">
+                <label class="ec-ancho">Anunciante / cliente *
+                  <input type="text" id="fCliente" placeholder="Ej: COCA-COLA" autocomplete="off" list="cmClientes">
+                  <datalist id="cmClientes"></datalist></label>
+                <label class="ec-ancho">Nombre del spot
+                  <input id="fNombreSpot" type="text" maxlength="120" placeholder="Ej: Promo Verano 2026" autocomplete="off"></label>
+                <label class="ec-ancho">Rubro
+                  <select id="fRubro"><option value="">— elige el rubro —</option></select></label>
+                <div class="ec-ancho au-rubro-nuevo" id="fRubroNuevaFila" hidden>
+                  <input type="text" id="fRubroNuevo" maxlength="60" placeholder="Nombre del nuevo rubro" autocomplete="off">
+                  <button class="ec-btn ec-pri" id="btnRubroAgregar" type="button">Agregar</button>
+                  <button class="ec-btn" id="btnRubroCancelar" type="button" title="Cancelar">✕</button>
+                </div>
+                <label>Tipo
+                  <select disabled><option>Comercial / Cuña</option></select></label>
+                <label>Voz
+                  <select id="fVozSpot"><option value="">— sin marcar —</option></select></label>
+              </div>
+              <p class="ec-ayuda" id="fRubroMsg">Nombre del spot: es el que verás en la lista (por defecto, el del archivo). Voz: la regla «voces de mujer no seguidas» la usa para separarlas en la tanda.
+                Rubro: dos spots del mismo rubro nunca salen seguidos.</p>
+            </section>
+            <section class="ec-sec">
+              <h3>Versiones que rotan</h3>
+              <ol class="cm-ver-lista" id="cmVersiones"></ol>
+              <p class="ec-ayuda">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</p>
+            </section>
+            </div>
+
+            <div class="ec-col">
+              <section class="ec-sec">
+                <h3>Carátula</h3>
+                <div class="ec-tapa-fila">
+                  <div class="ec-tapa" id="auTapa"><img id="auTapaImg" alt="" hidden><span id="auTapaVacio">♪</span></div>
+                  <div class="ec-tapa-btns">
+                    <label class="ec-btn" id="auCaratArchivoLbl">🖼 Importar imagen<input type="file" id="auCaratArchivo" accept="image/png,image/jpeg" hidden></label>
+                    <button class="ec-btn" id="auCaratEtiqueta" type="button">🏷 Leer de la etiqueta</button>
+                    <button class="ec-btn" id="auCaratQuitar" type="button">✕ Quitar</button>
+                  </div>
+                </div>
+                <p class="ec-ayuda" id="auCaratMsg">Se guarda con el audio y se usa en la metadata.</p>
+              </section>
+
+              <section class="ec-sec ec-meta">
+                <h3>Publicar metadata</h3>
+                <label>Al sonar <select id="fMetaModo">
+                  <option value="">Según el tipo (las cuñas no actualizan)</option>
+                  <option value="actualizar">Actualizar</option>
+                  <option value="no_actualizar">No actualizar</option></select></label>
+                <div class="ec-meta-campos">
+                  <label>Título <input id="fMetaTitulo" placeholder="AUTO"></label>
+                  <label>Artista <input id="fMetaArtista" placeholder="AUTO"></label>
+                  <label>Campo extra 1 <input id="fMetaExtra1"></label>
+                  <label>Campo extra 2 <input id="fMetaExtra2"></label>
+                </div>
+                <p class="ec-ayuda">Es el texto que se muestra al aire mientras suena (RDS, streaming). AUTO = el título y el anunciante del audio.
+                  «No actualizar» deja lo que ya se mostraba.</p>
+              </section>
+
+            </div>
           </div>
 
-          <details class="au-meta">
-            <summary>Publicar metadata (RDS / streaming)</summary>
-            <label>Al sonar <select id="fMetaModo">
-              <option value="">Según el tipo (las cuñas no actualizan)</option>
-              <option value="actualizar">Actualizar</option><option value="no_actualizar">No actualizar</option></select></label>
-            <label>Título <input id="fMetaTitulo" placeholder="AUTO"></label>
-            <label>Artista <input id="fMetaArtista" placeholder="AUTO"></label>
-            <label>Campo extra 1 <input id="fMetaExtra1"></label>
-            <label>Campo extra 2 <input id="fMetaExtra2"></label>
-            <small>El texto que se muestra al aire mientras suena. AUTO = el título y el anunciante del audio.</small>
-          </details>
-
-          <!-- Input file oculto, disparado por el botón -->
-          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" aria-hidden="true">
-
-          <button class="au-btn au-btn--pri" id="btnAuSiguiente" type="button" title="Pasa a los datos del cliente">
-            <i>→</i><span>Continuar: datos del cliente</span></button>
-
-          <div class="cm-versiones">
-            <div class="cm-versiones-cab"><span>Versiones que rotan</span></div>
-            <ol class="cm-ver-lista" id="cmVersiones"></ol>
-            <span class="field-hint">Cada salida usa la siguiente versión: A, B, C, A… La principal es la de arriba.</span>
+          <div class="au-ec-pie">
+            <button class="ec-btn ec-pri" id="btnAuSiguiente" type="button" title="Pasa a la vigencia y los datos del contrato">Continuar: vigencia y contrato →</button>
           </div>
         </div>
-
-        <!-- Sin audio todavía: zona grande para cargar el comercial (desaparece al elegir uno) -->
-        <div class="au-vacio" id="auVacio">
-          <div class="au-vacio-tarj" id="auVacioDrop">
-            <div class="au-vacio-ico">🎙</div>
-            <h3>Carga el comercial</h3>
-            <p>Arrastra aquí el archivo de audio (MP3, WAV, OGG, FLAC, AAC o M4A) o elígelo desde tu PC.</p>
-            <div class="au-vacio-btns">
-              <button class="au-btn au-btn--pri" id="btnVacioSubir" type="button"><i>⬆</i><span>Elegir archivo…</span></button>
-              <button class="au-btn" id="btnVacioBib" type="button"><i>📚</i><span>Usar uno de la biblioteca</span></button>
-            </div>
-            <small>Después marcas Intro y Outro sobre la onda, ajustas el volumen y completas los datos del cliente y los horarios.</small>
-          </div>
-        </div>
-
-        <!-- Onda y marcas: la MISMA ventana que se usa al cargar una canción (editor-cancion.js), ajustada a la pauta.
-             Lo monta pauta-onda.js. -->
-        <div class="pm-onda" id="pautaOnda" hidden></div>
 
       </div><!-- /pane audio -->
 
@@ -601,8 +591,8 @@
   // Puntos de estado y resumen: se recalculan al escribir o marcar
   function resumen() {
     const v = id => ($(id)?.value ?? "").trim();
-    const datosOk = v("fCliente") && v("fFechaInicio") && v("fFechaFin");
-    const audioOk = !!($("fAudio")?._selectedId || v("fAudio"));
+    const datosOk = v("fFechaInicio") && v("fFechaFin");
+    const audioOk = !!($("fAudio")?._selectedId || v("fAudio")) && !!v("fCliente");       // el audio y su anunciante van juntos
     const horas = modal.querySelectorAll('.matrix-cell[data-state="on"]').length;
     $("pmDotDatos").className = `pm-dot ${datosOk ? "ok" : "falta"}`;
     $("pmDotAudio").className = `pm-dot ${audioOk ? "ok" : "falta"}`;
@@ -620,7 +610,7 @@
   if (error) new MutationObserver(() => {
     if (error.classList.contains("hidden") || !error.textContent) return;
     const t = error.textContent.toLowerCase();
-    if (/audio|cuña|versi/.test(t)) ir("audio");
+    if (/audio|cuña|versi|cliente/.test(t)) ir("audio");
     else if (/matriz|slot|horas|menciones por d/.test(t)) ir("horarios");
     else ir("datos");
   }).observe(error, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["class"] });

@@ -1451,89 +1451,25 @@
 .cs-zona { border: 2px dashed var(--p-border, #444); border-radius: 8px; padding: 10px; text-align: center; font-size: 12px; color: var(--p-text-lo, #888); }
 .cs-zona.encima { border-color: var(--p-accent, #ee9b00); color: var(--p-accent, #ee9b00); }
 .cs-estado:empty { display: none; }
-
-/* ═══ Paso «Audio y versiones»: columna izquierda ordenada (rehecha) ═══ */
-.modal-dashboard.pm-panes .pm-pane[data-pane="audio"].activo { grid-template-columns: 410px minmax(0, 1fr); }
-.pm-pane[data-pane="audio"] .au-layout { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; overflow-y: auto; min-width: 0; min-height: 0;
-  border-right: 1px solid var(--p-border-subtle, #2a2a2a); }
-.au-layout .au-tit { margin: 0; font-size: 20px; font-weight: 300; color: var(--p-text-lo, #999); }
-.au-layout .au-drop { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 14px; align-items: center;
-  border: 2px dashed var(--p-border, #444); border-radius: 10px; padding: 14px; transition: border-color .15s, background .15s; }
-.au-layout .au-drop.encima { border-color: var(--p-accent, #ee9b00); background: rgba(238, 155, 0, .08); }
-.au-layout .au-tapa { width: 76px; height: 76px; border-radius: 8px; background: var(--p-bg, #111); border: 1px solid var(--p-border, #444);
-  display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--p-accent, #ee9b00); font-size: 30px; }
-.au-layout .au-tapa img { width: 100%; height: 100%; object-fit: cover; }
-.au-layout .au-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.au-layout #fAudio { width: 100%; box-sizing: border-box; resize: none; border: 0; background: transparent; color: var(--p-text, #eee);
-  font: inherit; font-size: 15px; font-weight: 600; line-height: 1.3; padding: 0; margin: 0; outline: 0; cursor: pointer; overflow: hidden;
-  overflow-wrap: anywhere; }
-.au-layout #fAudio::placeholder { color: var(--p-text-lo, #888); font-weight: 400; }
-.pm-pane[data-pane="audio"] .au-layout .field-hint { display: block; word-break: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; }
-.au-layout .upload-progress { grid-column: 1 / -1; }
-.au-layout .au-acciones { display: flex; flex-direction: column; gap: 10px; }
-.au-layout .au-btn { display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box; min-height: 48px; padding: 0 16px;
-  background: var(--p-bg-card, #1d1814); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 8px;
-  font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
-.au-layout .au-btn i { font-style: normal; width: 24px; text-align: center; font-size: 17px; color: var(--p-accent, #ee9b00); flex: none; }
-.au-layout .au-btn span { flex: 1; min-width: 0; }
-.au-layout .au-btn:hover { border-color: var(--p-accent, #ee9b00); }
-.au-layout .au-btn--pri { background: var(--p-accent, #ee9b00); border-color: var(--p-accent, #ee9b00); color: #000; font-weight: 600; }
-.au-layout .au-btn--pri i { color: #000; }
-.au-layout .au-ayuda { margin: 0; font-size: 12px; color: var(--p-text-lo, #999); line-height: 1.5; }
-.au-layout .au-caratula { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--p-border-subtle, #2a2a2a); }
-.au-layout .au-caratula h6 { margin: 0; font-size: 13px; font-weight: 600; color: var(--p-text, #eee); }
-.au-layout .au-caratula-btns { display: flex; flex-wrap: wrap; gap: 8px; }
-.au-layout .au-mini { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 6px; cursor: pointer;
-  background: var(--p-bg-card, #1d1814); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); font: inherit; font-size: 13px; }
-.au-layout .au-mini:hover { border-color: var(--p-accent, #ee9b00); }
-.au-layout .au-mini:disabled, .au-layout .au-mini.au-off { opacity: .45; pointer-events: none; }
-.au-layout .cm-versiones { margin-top: 0; }
-@media (max-width: 900px) { .modal-dashboard.pm-panes .pm-pane[data-pane="audio"].activo { grid-template-columns: 1fr; overflow-y: auto; } }
-
-/* Refuerzo: los botones ocupan todo el ancho y el texto nunca se sale */
-.pm-pane[data-pane="audio"] .au-layout { grid-template-columns: none; }
-.pm-pane[data-pane="audio"] .au-layout > * { max-width: 100%; box-sizing: border-box; }
-.pm-pane[data-pane="audio"] .au-layout .au-acciones { width: 100%; align-self: stretch; }
-.pm-pane[data-pane="audio"] .au-layout .au-btn { width: 100%; max-width: 100%; height: auto; min-height: 48px; padding: 8px 16px; flex: none; white-space: normal; }
-.pm-pane[data-pane="audio"] .au-layout .au-btn > span { width: auto; flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; color: inherit; }
-.pm-pane[data-pane="audio"] .au-layout .au-btn > i { flex: none; }
-
-.au-layout .au-nombre { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--p-text, #eee); }
-.au-layout .au-nombre input { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 8px;
-  padding: 0 12px; height: 44px; font: inherit; font-size: 15px; font-weight: 400; width: 100%; box-sizing: border-box; color-scheme: dark; }
-.au-layout .au-nombre input:focus { outline: none; border-color: var(--p-accent, #ee9b00); }
-.au-layout .au-nombre small { font-weight: 400; font-size: 12px; color: var(--p-text-lo, #999); line-height: 1.4; }
-
-.au-layout .au-nombre select { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 8px;
-  padding: 0 12px; height: 44px; font: inherit; font-size: 15px; font-weight: 400; width: 100%; box-sizing: border-box; color-scheme: dark; }
 .cunas-voz { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444); border-radius: 6px; padding: 5px 6px;
   font: inherit; font-size: 12px; color-scheme: dark; max-width: 130px; }
 .cunas-voz--mujer { border-color: #ff8fc4; color: #ff8fc4; }
 .cunas-barra select { background: var(--p-bg, #111); color: inherit; border: 1px solid var(--p-border, #333); border-radius: 6px; padding: 8px 9px; font: inherit; color-scheme: dark; }
 
-.au-layout .au-vol { display: flex; align-items: center; gap: 10px; }
-.au-layout .au-vol input[type=range] { flex: 1; accent-color: var(--p-accent, #ee9b00); }
-.au-layout .au-vol b { min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
-.au-layout .au-meta { border: 1px solid var(--p-border, #444); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
-.au-layout .au-meta summary { cursor: pointer; font-weight: 600; }
-.au-layout .au-meta label { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; color: var(--p-text-lo, #999); font-size: 12px; }
-.au-layout .au-meta input, .au-layout .au-meta select { background: var(--p-bg, #111); color: var(--p-text, #eee); border: 1px solid var(--p-border, #444);
-  border-radius: 6px; padding: 0 10px; height: 38px; font: inherit; font-size: 14px; color-scheme: dark; width: 100%; box-sizing: border-box; }
-.au-layout .au-meta small { display: block; margin-top: 10px; color: var(--p-text-lo, #888); line-height: 1.4; }
-
-/* Zona grande de carga: spot nuevo sin audio */
-.au-vacio { display: flex; align-items: center; justify-content: center; padding: 28px; min-width: 0; min-height: 0; }
-.au-vacio[hidden] { display: none; }
-.au-vacio-tarj { width: min(560px, 100%); text-align: center; border: 2px dashed var(--p-border, #444); border-radius: 14px; padding: 36px 28px;
-  display: flex; flex-direction: column; align-items: center; gap: 12px; transition: border-color .15s, background .15s; }
-.au-vacio-tarj.encima { border-color: var(--p-accent, #ee9b00); background: rgba(238, 155, 0, .08); }
-.au-vacio-ico { font-size: 44px; line-height: 1; }
-.au-vacio-tarj h3 { margin: 0; font-size: 22px; font-weight: 600; }
-.au-vacio-tarj p { margin: 0; color: var(--p-text-lo, #999); line-height: 1.5; }
-.au-vacio-btns { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); margin: 8px 0 4px; }
-.au-vacio-btns .au-btn { display: flex; align-items: center; gap: 14px; min-height: 48px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--p-border, #444);
-  background: var(--p-bg-card, #1d1814); color: var(--p-text, #eee); font: inherit; font-size: 15px; cursor: pointer; text-align: left; }
-.au-vacio-btns .au-btn i { font-style: normal; width: 24px; text-align: center; font-size: 17px; color: var(--p-accent, #ee9b00); }
-.au-vacio-btns .au-btn--pri { background: var(--p-accent, #ee9b00); border-color: var(--p-accent, #ee9b00); color: #000; font-weight: 600; }
-.au-vacio-btns .au-btn--pri i { color: #000; }
-.au-vacio-tarj small { color: var(--p-text-lo, #888); line-height: 1.45; max-width: 420px; }
+/* ═══ Pestaña Audio = misma estructura que la ventana de «Nueva canción» ═══ */
+.modal-dashboard.pm-panes .pm-pane[data-pane="audio"].activo { display: block !important; overflow-y: auto; }
+.au-ec { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.au-ec .ec-zona { outline-offset: 2px; }
+.au-ec .ec-zona.encima { border-color: var(--gold-0, #e6a800); background: rgba(238, 155, 0, .08); }
+.au-ec-botones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.au-ec-pie { display: flex; justify-content: flex-end; }
+.au-ec .ec-aviso { color: var(--text-lo, #999); }
+.au-ec .ec-aviso:not(:empty) { margin: 8px 0 0; }
+.au-rubro-nuevo { display: flex; gap: 8px; align-items: center; }
+.au-rubro-nuevo input { flex: 1; min-width: 0; }
+.au-ec .ec-btn.ec-off { opacity: .45; pointer-events: none; }
+.au-ec .cm-ver-lista { margin: 0; }
+.au-ec .ec-meta label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-lo, #999); }
+@media (max-width: 900px) { .au-ec .ec-dos { grid-template-columns: 1fr; } .au-ec .ec-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pm-pane[data-pane="audio"] .au-ec .pm-onda { height: auto; min-height: 0; padding: 0; overflow: visible; }
+.au-ec .ec-ajustes label { align-items: center; }

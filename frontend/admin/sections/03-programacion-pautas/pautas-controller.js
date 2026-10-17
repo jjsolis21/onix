@@ -602,7 +602,7 @@
       img.src = `/api/v1/audios/${id}/caratula?t=${Date.now()}`;
     } else { img.hidden = true; img.removeAttribute('src'); if (vacio) vacio.hidden = false; }
     ['auCaratEtiqueta', 'auCaratQuitar'].forEach(b => { const el = $(b); if (el) el.disabled = !id; });
-    const lbl = $('auCaratArchivoLbl'); if (lbl) lbl.classList.toggle('au-off', !id);
+    const lbl = $('auCaratArchivoLbl'); if (lbl) lbl.classList.toggle('ec-off', !id);
     const inp = $('auCaratArchivo'); if (inp) inp.disabled = !id;
   }
 
@@ -673,6 +673,52 @@
     return diff;
   }
 
+  // ── Rubro: lista del catálogo (principales + los que agregue el operador) con «＋ Nuevo rubro…» ──
+  let _rubrosCat = [];
+  const _normRubro = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+
+  async function _cargarRubros(valor) {
+    try { _rubrosCat = (await fetch('/api/v1/comerciales/rubros').then(r => r.json())).rubros || []; } catch (_) { /* queda la lista anterior */ }
+    _pintarRubros(valor);
+  }
+
+  function _pintarRubros(valor) {
+    const sel = $('fRubro');
+    if (!sel) return;
+    const buscado = _normRubro(valor);
+    const cat = _rubrosCat.filter(r => !r.fuera), fuera = _rubrosCat.filter(r => r.fuera);
+    const coincide = _rubrosCat.find(r => _normRubro(r.nombre) === buscado);
+    const suelto = valor && !coincide ? valor : '';                       // rubro escrito a mano en un spot viejo
+    const opt = n => `<option value="${_esc(n)}">${_esc(n)}</option>`;
+    sel.innerHTML = '<option value="">— elige el rubro —</option>'
+      + cat.map(r => opt(r.nombre)).join('')
+      + ((fuera.length || suelto) ? `<optgroup label="Usados en spots, fuera del catálogo">${fuera.map(r => opt(r.nombre)).join('')}${suelto ? opt(suelto) : ''}</optgroup>` : '')
+      + '<option value="__nuevo__">＋ Nuevo rubro…</option>';
+    sel.value = coincide ? coincide.nombre : suelto;
+    _ocultarRubroNuevo();
+  }
+
+  function _ocultarRubroNuevo() { const f = $('fRubroNuevaFila'); if (f) f.hidden = true; }
+
+  async function _agregarRubroNuevo() {
+    const inp = $('fRubroNuevo'), msg = $('fRubroMsg');
+    const nombre = (inp?.value || '').trim();
+    if (!nombre) { inp?.focus(); return; }
+    try {
+      const r = await fetch('/api/v1/comerciales/rubros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 409) {                                              // ya existía: se elige ese
+        await _cargarRubros(nombre);
+        if (msg) msg.textContent = typeof j.detail === 'string' ? `${j.detail}: quedó elegido.` : 'Ese rubro ya existía: quedó elegido.';
+        return;
+      }
+      if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `Error ${r.status}`);
+      await _cargarRubros(j.nombre || nombre);
+      if (inp) inp.value = '';
+      if (msg) msg.textContent = `✓ Rubro «${j.nombre || nombre}» agregado a la lista y elegido.`;
+    } catch (err) { if (msg) msg.textContent = `⚠ ${err.message}`; }
+  }
+
   /** «Nombre del spot»: se propone el del archivo, salvo que el operador ya haya escrito el suyo. */
   function _proponerNombreSpot(titulo) {
     const el = $('fNombreSpot');
@@ -682,8 +728,13 @@
 
   function _pintarVersiones() {
     _pintarCaratula();
-    const _vacio = $('auVacio');
-    if (_vacio) _vacio.hidden = !!$('fAudio')?._selectedId;
+    const _elegido = !!$('fAudio')?._selectedId;
+    const _ondaVacia = $('auOndaVacia');
+    if (_ondaVacia) _ondaVacia.hidden = _elegido;
+    const _zona = $('auZonaTxt');
+    if (_zona) _zona.textContent = _elegido
+      ? `✓ ${$('fAudio')._selectedNombre || $('fAudio').value} — haz clic o arrastra otro archivo para reemplazarlo`
+      : 'Arrastra aquí el archivo del comercial o haz clic para elegirlo';
     const ol = $('cmVersiones');
     if (!ol) return;
     const f = $('fAudio');
@@ -1196,7 +1247,7 @@
       $('fFechaInicio').value = p.fecha_inicio;
       $('fFechaFin').value    = p.fecha_fin;
       $('fNotas').value       = p.notas;
-      $('fRubro').value       = p.rubro    || meta.rubro    || '';
+      _cargarRubros(p.rubro || meta.rubro || '');
       $('fContrato').value    = p.contrato || meta.contrato || '';
       $('fMenciones').value   = p.menciones ?? meta.menciones ?? 4;
       _val('fPrioridad', String(p.prioridad ?? 0));
@@ -1251,7 +1302,7 @@
       $('fFechaInicio').value      = _today();
       $('fFechaFin').value         = _offsetDate(30);
       $('fNotas').value            = '';
-      $('fRubro').value            = '';
+      _cargarRubros('');
       $('fContrato').value         = '';
       $('fMenciones').value        = '4';
       _val('fPrioridad', '0');
@@ -1274,7 +1325,7 @@
     $('fFechaInicio').min = _today();
 
     _showEl($('pautaModal'));
-    $('fCliente').focus();
+    if (!pautaId) $('auZona')?.focus();
   }
 
   function _closeModal() {
@@ -1332,7 +1383,7 @@
     const inicio   = $('fFechaInicio')?.value ?? '';
     const fin      = $('fFechaFin')?.value    ?? '';
     const notas    = ($('fNotas')?.value     ?? '').trim().toUpperCase();
-    const rubro    = ($('fRubro')?.value     ?? '').trim();
+    const rubro    = (($('fRubro')?.value ?? '') === '__nuevo__' ? '' : ($('fRubro')?.value ?? '')).trim();
     const contrato = ($('fContrato')?.value  ?? '').trim();
     const prioridad= parseInt($('fPrioridad')?.value ?? '0', 10) || 0;
     const posicion = parseInt($('fPosicion')?.value ?? '0', 10) || 0;
@@ -1473,7 +1524,7 @@
     if (!file) return;
     if (!global.CunasBiblioteca?.subir) { _showModalError('La biblioteca de cuñas no está disponible.'); return; }
     const wrap = $('uploadProgress'), bar = $('uploadProgressBar'), lbl = $('uploadProgressLabel');
-    const btns = ['btnSelectAudio', 'btnElegirBib', 'btnAddVersion'].map($);
+    const btns = ['btnElegirBib', 'btnAddVersion'].map($);
     btns.forEach(b => { if (b) b.disabled = true; });
     _clearModalError();
     if (wrap) { _showEl(wrap); bar.style.width = '0%'; lbl.textContent = `Subiendo ${file.name}…`; }
@@ -1590,15 +1641,21 @@
     _initMencionesUI();
 
     // ── Selector de audio ──
-    $('btnSelectAudio')?.addEventListener('click', _openFilePicker);
     $('btnElegirBib')?.addEventListener('click', _elegirCuna);
+    $('fRubro')?.addEventListener('change', e => {
+      const f = $('fRubroNuevaFila');
+      if (e.target.value === '__nuevo__') { if (f) f.hidden = false; $('fRubroNuevo')?.focus(); } else _ocultarRubroNuevo();
+    });
+    $('btnRubroAgregar')?.addEventListener('click', _agregarRubroNuevo);
+    $('btnRubroCancelar')?.addEventListener('click', () => { _ocultarRubroNuevo(); _pintarRubros(''); });
+    $('fRubroNuevo')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _agregarRubroNuevo(); } });
     $('fNombreSpot')?.addEventListener('input', e => { e.target.dataset.auto = '0'; });
     $('fGananciaSpot')?.addEventListener('input', e => { const g = parseFloat(e.target.value) || 0; $('fGananciaV').textContent = `${g > 0 ? '+' : ''}${g.toFixed(1)} dB`; });
     $('auCaratArchivo')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) _caratulaAccion('archivo', f); });
     $('auCaratEtiqueta')?.addEventListener('click', () => _caratulaAccion('etiqueta'));
     $('auCaratQuitar')?.addEventListener('click', () => _caratulaAccion('quitar'));
     // Soltar un archivo de audio sobre la zona del audio = subirlo
-    [$('auDrop'), $('auVacioDrop')].forEach(_drop => {
+    [$('auZona')].forEach(_drop => {
       if (!_drop) return;
       _drop.addEventListener('dragover', ev => { ev.preventDefault(); _drop.classList.add('encima'); });
       _drop.addEventListener('dragleave', () => _drop.classList.remove('encima'));
@@ -1608,13 +1665,12 @@
         if (f) _subirArchivo(f);
       });
     });
-    $('btnVacioSubir')?.addEventListener('click', _openFilePicker);
-    $('btnVacioBib')?.addEventListener('click', _elegirCuna);
     $('btnAuSiguiente')?.addEventListener('click', () => {
       if (!$('fAudio')?._selectedId) { _showModalError('Primero carga o elige el audio del comercial.'); return; }
       _clearModalError();
+      if (!($('fCliente')?.value || '').trim()) { _showModalError('Escribe el anunciante / cliente del comercial.'); $('fCliente')?.focus(); return; }
       document.querySelector('#pautaModal .pm-tab[data-pane="datos"]')?.click();
-      $('fCliente')?.focus();
+      $('fFechaInicio')?.focus();
     });
     $('fAudio')?.addEventListener('click', _elegirCuna);
     $('audioFileInput')?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; _subirArchivo(f); });

@@ -281,10 +281,17 @@
           uno tras otro (por ejemplo Restaurante y Cafetería): pueden ir en la misma tanda, pero separados por otra cuña.
           Si no hay forma de separarlos, se permiten: ninguna cuña se queda sin salir.</p>
         <div class="ccf-dos">
-          <div><div class="ccf-lista-cab"><b>Rubros en uso</b></div>
+          <div><div class="ccf-lista-cab"><b>Catálogo de rubros</b></div>
+            <p class="ccf-hint" style="margin:0 0 6px">Estos son los que aparecen al elegir el rubro de un spot. Clic en uno lo pasa al par.</p>
             <div class="ccf-tabla-wrap"><table class="ccf-tabla"><tbody>${d.rubros.length ? d.rubros.map(r =>
-              `<tr data-rubro="${esc(r.nombre)}" title="Clic para usarlo en el par"><td><b>${esc(r.nombre)}</b></td><td class="num">${r.spots} spot${r.spots !== 1 ? 's' : ''}</td></tr>`).join('')
-              : '<tr><td class="ccf-vacio">Los spots aún no tienen rubro</td></tr>'}</tbody></table></div></div>
+              `<tr data-rubro="${esc(r.nombre)}" title="Clic para usarlo en el par"><td><b>${esc(r.nombre)}</b>${r.fuera ? ' <small title="Lo usa algún spot pero no está en el catálogo">fuera del catálogo</small>' : ''}</td>
+                <td class="num">${r.spots} spot${r.spots !== 1 ? 's' : ''}</td>
+                <td style="text-align:right;white-space:nowrap">${r.fuera
+                  ? `<button class="ccf-btn ccf-btn--mini" data-adoptar="${esc(r.nombre)}">＋ Al catálogo</button>`
+                  : `<button class="ccf-btn ccf-btn--mini ccf-btn--peligro" data-quitar-rubro="${esc(r.nombre)}" title="Quitar del catálogo">✕</button>`}</td></tr>`).join('')
+              : '<tr><td class="ccf-vacio">Aún no hay rubros</td></tr>'}</tbody></table></div>
+            <div class="ccf-pie"><input id="ccfRbNuevo" maxlength="60" placeholder="Nuevo rubro…" style="max-width:260px"><button class="ccf-btn ccf-btn--pri" id="ccfRbNuevoAdd">＋ Agregar rubro</button>
+              <span class="ccf-msg" id="ccfRbMsg2"></span></div></div>
           <div><div class="ccf-lista-cab"><b>No deben sonar seguidos</b></div>
             <div class="ccf-form">
               <label>Rubro A<input id="ccfRbA" list="ccfRbLista" autocomplete="off"></label>
@@ -299,6 +306,18 @@
         </div>`;
       const msg = pag.querySelector('#ccfRbMsg');
       pag.onclick = async e => {
+        const ad = e.target.closest('[data-adoptar]'), qr = e.target.closest('[data-quitar-rubro]');
+        const m2 = pag.querySelector('#ccfRbMsg2');
+        if (ad || e.target.id === 'ccfRbNuevoAdd') {
+          const nombre = ad ? ad.dataset.adoptar : pag.querySelector('#ccfRbNuevo').value;
+          try { await api('/api/v1/comerciales/rubros', json('POST', { nombre })); rubros(); } catch (err) { msgEn(m2, err.message, false); }
+          return;
+        }
+        if (qr) {
+          try { await api(`/api/v1/comerciales/rubros/catalogo?nombre=${encodeURIComponent(qr.dataset.quitarRubro)}`, { method: 'DELETE' }); rubros(); }
+          catch (err) { msgEn(m2, err.message, false); }
+          return;
+        }
         const fila = e.target.closest('tr[data-rubro]');
         if (fila) { const A = pag.querySelector('#ccfRbA'), B = pag.querySelector('#ccfRbB'); (A.value ? B : A).value = fila.dataset.rubro; return; }
         const q = e.target.closest('[data-quitar-par]');

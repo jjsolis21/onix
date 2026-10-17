@@ -287,3 +287,29 @@ def test_separador_de_entrada_con_rotacion_entre_varios(client):
     c = _db()
     assert c.execute("SELECT activo FROM pautas WHERE contrato_id = 'SEP-2'").fetchone()[0] == 0
     c.close()
+
+
+def test_catalogo_de_rubros_principales_agregar_y_quitar(client):
+    r = client.get("/api/v1/comerciales/rubros").json()["rubros"]
+    nombres = {x["nombre"] for x in r}
+    assert {"Restaurantes", "Cafeterías y panaderías", "Bancos y finanzas", "Farmacias", "Automotriz"} <= nombres
+    assert all(x["fuera"] is False for x in r if x["nombre"] in nombres and x["nombre"] == "Restaurantes")
+    # uno nuevo, sin importar tildes ni mayúsculas para detectar repetidos
+    assert client.post("/api/v1/comerciales/rubros", json={"nombre": "  Gimnasios   y deporte "}).status_code == 201
+    assert client.post("/api/v1/comerciales/rubros", json={"nombre": "gimnasios y DEPORTE"}).status_code == 409
+    assert client.post("/api/v1/comerciales/rubros", json={"nombre": "farmacias"}).status_code == 409
+    assert client.post("/api/v1/comerciales/rubros", json={"nombre": "   "}).status_code == 422
+    # un spot con un rubro que no está en el catálogo aparece como «fuera» (y con su conteo)
+    c = _db()
+    a = _audio(c, "Cuña rubro raro", "library/rubro_raro.mp3")
+    _pauta(c, "RUBRO RARO", a, rubro="Taxidermia")
+    _pauta(c, "RUBRO NORMAL", _audio(c, "Cuña rubro norm", "library/rubro_norm.mp3"), rubro="RESTAURANTES")
+    c.commit(); c.close()
+    r = {x["nombre"]: x for x in client.get("/api/v1/comerciales/rubros").json()["rubros"]}
+    assert r["Taxidermia"]["fuera"] is True and r["Taxidermia"]["spots"] == 1
+    assert r["Restaurantes"]["spots"] >= 1 and r["Restaurantes"]["fuera"] is False      # 'RESTAURANTES' cuenta como Restaurantes
+    # quitar del catálogo: los spots conservan el texto (pasa a «fuera»)
+    assert client.delete("/api/v1/comerciales/rubros/catalogo", params={"nombre": "Gimnasios y deporte"}).status_code == 200
+    assert client.delete("/api/v1/comerciales/rubros/catalogo", params={"nombre": "No existe"}).status_code == 404
+    nombres = {x["nombre"] for x in client.get("/api/v1/comerciales/rubros").json()["rubros"]}
+    assert "Gimnasios y deporte" not in nombres

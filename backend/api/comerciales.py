@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS comerciales_clientes (
     id INTEGER PRIMARY KEY, nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
     contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
     notas TEXT NOT NULL DEFAULT '', creado_en TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS comerciales_rubros (nombre TEXT PRIMARY KEY COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS comerciales_conflictos_rubros (
     a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (a, b));
 CREATE TABLE IF NOT EXISTS comerciales_agencias (
@@ -38,6 +39,27 @@ CREATE TABLE IF NOT EXISTS comerciales_agencias (
     contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
     notas TEXT NOT NULL DEFAULT '', creado_en TEXT NOT NULL DEFAULT (datetime('now')));
 """
+
+
+# Rubros principales (la primera vez se cargan al catálogo; después el operador agrega y quita los suyos)
+RUBROS_BASE = [
+    "Alimentos y bebidas", "Restaurantes", "Cafeterías y panaderías", "Supermercados y abastos", "Licores y cervezas",
+    "Farmacias", "Salud y clínicas", "Belleza y cuidado personal", "Bancos y finanzas", "Seguros", "Telecomunicaciones",
+    "Tecnología y computación", "Automotriz", "Repuestos y talleres", "Motos", "Transporte y envíos",
+    "Construcción y ferretería", "Hogar y muebles", "Electrodomésticos", "Moda y ropa", "Calzado", "Educación",
+    "Inmobiliaria", "Turismo y hoteles", "Entretenimiento y eventos", "Medios y streaming", "Servicios profesionales",
+    "Política y gobierno", "Religión e iglesias", "Organizaciones sin fines de lucro", "Mascotas y veterinaria",
+    "Agro y campo", "Energía y combustibles", "Comercio en general",
+]
+
+
+def _sembrar_rubros(c) -> None:
+    """Una sola vez: el catálogo arranca con los rubros principales. Si el operador los borra, no vuelven."""
+    if c.execute("SELECT 1 FROM config WHERE clave = 'rubros_sembrados'").fetchone():
+        return
+    c.executemany("INSERT OR IGNORE INTO comerciales_rubros (nombre) VALUES (?)", [(r,) for r in RUBROS_BASE])
+    c.execute("INSERT INTO config (clave, valor) VALUES ('rubros_sembrados', '1')")
+    c.commit()
 
 
 def _conn() -> sqlite3.Connection:
@@ -519,15 +541,69 @@ class ConflictoIn(BaseModel):
     b: str = Field(..., min_length=1, max_length=60)
 
 
-@router.get("/api/v1/comerciales/rubros", summary="Rubros en uso y los pares que no deben sonar seguidos")
+def _rubros_unidos(c) -> list[dict]:
+    """Catálogo + rubros que ya usan los spots y no están en el catálogo (marcados «fuera»), con cuántos spots usa cada uno."""
+    from backend.audio.audio_engine import norm_rubro
+    _sembrar_rubros(c)
+    uso: dict[str, int] = {}
+    escritura: dict[str, str] = {}
+    for r in c.execute("SELECT TRIM(rubro), COUNT(*) FROM pautas WHERE activo = 1 AND TRIM(COALESCE(rubro, '')) != ''"
+                       " GROUP BY UPPER(TRIM(rubro))"):
+        k = norm_rubro(r[0])
+        uso[k] = uso.get(k, 0) + r[1]
+        escritura.setdefault(k, r[0])
+    salida, vistos = [], set()
+    for (nombre,) in c.execute("SELECT nombre FROM comerciales_rubros ORDER BY nombre COLLATE NOCASE"):
+        k = norm_rubro(nombre)
+        vistos.add(k)
+        salida.append({"nombre": nombre, "spots": uso.get(k, 0), "fuera": False})
+    for k, n in sorted(uso.items()):
+        if k not in vistos:
+            salida.append({"nombre": escritura[k], "spots": n, "fuera": True})
+    return salida
+
+
+@router.get("/api/v1/comerciales/rubros", summary="Catálogo de rubros y los pares que no deben sonar seguidos")
 def rubros():
     c = _conn()
     try:
-        usados = [{"nombre": r[0], "spots": r[1]} for r in c.execute(
-            "SELECT TRIM(rubro), COUNT(*) FROM pautas WHERE activo = 1 AND TRIM(COALESCE(rubro, '')) != ''"
-            " GROUP BY UPPER(TRIM(rubro)) ORDER BY UPPER(TRIM(rubro))")]
         pares = [{"a": r[0], "b": r[1]} for r in c.execute("SELECT a, b FROM comerciales_conflictos_rubros ORDER BY a, b")]
-        return {"rubros": usados, "conflictos": pares}
+        return {"rubros": _rubros_unidos(c), "conflictos": pares}
+    finally:
+        c.close()
+
+
+class RubroIn(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=60)
+
+
+@router.post("/api/v1/comerciales/rubros", status_code=201, summary="Agregar un rubro al catálogo")
+def agregar_rubro(b: RubroIn):
+    from backend.audio.audio_engine import norm_rubro
+    nombre = " ".join(b.nombre.split())
+    if not nombre:
+        raise HTTPException(status_code=422, detail="Escribe el nombre del rubro")
+    c = _conn()
+    try:
+        existentes = {norm_rubro(r["nombre"]): r["nombre"] for r in _rubros_unidos(c) if not r["fuera"]}
+        if norm_rubro(nombre) in existentes:
+            raise HTTPException(status_code=409, detail=f"Ya existe «{existentes[norm_rubro(nombre)]}»")
+        c.execute("INSERT INTO comerciales_rubros (nombre) VALUES (?)", (nombre,))
+        c.commit()
+        return {"nombre": nombre}
+    finally:
+        c.close()
+
+
+@router.delete("/api/v1/comerciales/rubros/catalogo", summary="Quitar un rubro del catálogo (los spots conservan su texto)")
+def quitar_rubro(nombre: str):
+    c = _conn()
+    try:
+        _sembrar_rubros(c)
+        if not c.execute("DELETE FROM comerciales_rubros WHERE nombre = ?", (nombre,)).rowcount:
+            raise HTTPException(status_code=404, detail="Ese rubro no está en el catálogo")
+        c.commit()
+        return {"ok": True}
     finally:
         c.close()
 
