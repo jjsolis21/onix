@@ -72,6 +72,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 - Tanda «al cierre» robusta: si la canción cruza la hora, la tanda (en cola) NO se descarta al cambiar la hora (gracia 5 min,
   `cierre_hasta`), sale al terminar la canción; el plan la mantiene marcada (`_cierres_hechos`, `_proxima_tanda` mira la hora anterior).
   Studio rotula «entra HH:MM → termina HH:MM». General › vista previa de las próximas tandas.
+- Cartuchera aparte: `audios.ambito = 'cartuchera'` (migración 41; lo de library/efectos pasa a ese ámbito). Lo cargado desde la
+  cartuchera NO sale en Identificadores, Biblioteca/Studio (`/api/v1/audios` lo excluye salvo `ids=` o `ambito=cartuchera`), conteos ni relojes.
+  Colores de la cartuchera: por defecto #31FF1F (Lime) + #1447E6, #E61876, #FFDF20, #4D179A; el texto del botón pasa a negro/blanco según el fondo.
 - Lista de spots: «☰ Columnas» (como la Biblioteca Musical): `data-col` en cada celda, estilo generado, preferencia en localStorage `cm_cols`.
   Paso «Audio y versiones» del spot: panel lateral (Elegir de la biblioteca / Subir archivo / Agregar versión), zona para soltar archivo,
   y el selector de cuñas con panel de filtros (anunciante, con/sin pauta) y subida directa. UI sin verificar a ojo (panel rechazó la página de prueba).

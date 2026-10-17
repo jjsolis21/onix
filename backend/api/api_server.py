@@ -1410,6 +1410,7 @@ def list_audios(
     # Búsqueda del Studio: sin tildes ni mayúsculas, todas las palabras, en título/artista/categorías
     q: Optional[str] = None,
     ids: Optional[str] = None,     # "3,17,42": esos audios exactos (para mostrar nombres ya guardados)
+    ambito: Optional[str] = None,  # 'cartuchera' = solo lo cargado desde la cartuchera; sin esto, esos no salen en las listas
     limit: int = Query(500, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     conn: sqlite3.Connection = Depends(get_db),
@@ -1433,6 +1434,11 @@ def list_audios(
         WHERE activo = 1
     """
     params = []
+    # Lo que se carga desde la cartuchera es SOLO de la cartuchera: no aparece en las demás listas
+    if ambito == "cartuchera":
+        query += " AND ambito = 'cartuchera'"
+    elif not ids:
+        query += " AND COALESCE(ambito, '') != 'cartuchera'"
 
     # categoria_1 (multi-valor, pautas-controller): tiene precedencia sobre cat1
     if categoria_1:
@@ -1544,7 +1550,8 @@ def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Opt
 
 @app.get("/api/v1/biblioteca/conteos", tags=["Audios"], summary="Cuántos audios hay de cada tipo")
 def conteos_biblioteca(conn: sqlite3.Connection = Depends(get_db)):
-    filas = conn.execute("SELECT tipo_audio, COUNT(*) AS n FROM audios WHERE activo = 1 GROUP BY tipo_audio")
+    filas = conn.execute("SELECT tipo_audio, COUNT(*) AS n FROM audios WHERE activo = 1"
+                         " AND COALESCE(ambito, '') != 'cartuchera' GROUP BY tipo_audio")
     return {r["tipo_audio"]: r["n"] for r in filas}
 
 
@@ -1553,7 +1560,7 @@ def filtros_biblioteca(tipo: str = "Musica", conn: sqlite3.Connection = Depends(
     t = _validate_tipo_audio(tipo)
     def distintos(col: str) -> list[str]:
         return [r[0] for r in conn.execute(
-            f"SELECT DISTINCT {col} FROM audios WHERE activo = 1 AND tipo_audio = ? "
+            f"SELECT DISTINCT {col} FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera' "
             f"AND COALESCE({col}, '') != '' ORDER BY {col}", (t,))]
     return {"cat1": distintos("subgenero"), "cat2": distintos("categoria"), "voz": distintos("genero_vocal")}
 

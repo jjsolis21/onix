@@ -478,3 +478,14 @@ def test_tanda_al_cierre_sin_inmediato_no_se_pierde_del_plan_si_la_cancion_cruza
     tandas = [i for i in items if i["tipo"] == "tanda"]
     assert len(tandas) == 1 and tandas[0]["cierre"] is True and tandas[0]["slot"].endswith("-10")
     assert tandas[0]["inicio"][11:16] == "11:00"                 # entra al terminar la canción que cruzó la hora
+
+
+def test_un_reloj_nunca_elige_lo_cargado_desde_la_cartuchera(base):
+    solo = audio(base, "EFECTO SOLO CARTUCHERA", tipo="Efecto", dur=5, ambito="cartuchera")
+    normal = audio(base, "EFECTO NORMAL", tipo="Efecto", dur=5)
+    for i in range(10):
+        audio(base, f"M{i}", dur=200)
+    rid = reloj(base, "Con efecto", [{"tipo": "Efecto"}, {"tipo": "Musica"}])
+    items = planear(base, minutos=20, tandas=())
+    ids = {i.get("audio_id") for i in items if i["tipo"] == "audio"}
+    assert normal in ids and solo not in ids

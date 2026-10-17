@@ -666,7 +666,7 @@ class Planner:
                                (fila["audio_id"],)).fetchone()
             return dict(row) if row else None
 
-        base = ["a.activo = 1", "a.tipo_audio = ?"]
+        base = ["a.activo = 1", "a.tipo_audio = ?", "COALESCE(a.ambito, '') != 'cartuchera'"]
         params: list = [tipo]
         if tipo == "Musica":
             base.append("a.id NOT IN (SELECT audio_id FROM pautas WHERE audio_id IS NOT NULL)")

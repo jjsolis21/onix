@@ -54,7 +54,7 @@ def _plano(texto: str) -> str:
 def listar(tipo: str = "Efecto", q: Optional[str] = None, categoria: Optional[str] = None,
            limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
            conn: sqlite3.Connection = Depends(get_db)):
-    sql = (" FROM audios WHERE activo = 1 AND tipo_audio = ?")
+    sql = (" FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera'")
     params: list = [_tipo(tipo)]
     for palabra in _plano(q or "").split():
         sql += " AND busq LIKE ? ESCAPE '\\'"
@@ -77,7 +77,7 @@ def categorias(conn: sqlite3.Connection = Depends(get_db)):
     out = {t: [] for t in TIPOS}
     for r in conn.execute(
             "SELECT c.id, c.tipo_audio, c.nombre, c.comentario, c.orden,"
-            " (SELECT COUNT(*) FROM audios a WHERE a.activo = 1 AND a.tipo_audio = c.tipo_audio"
+            " (SELECT COUNT(*) FROM audios a WHERE a.activo = 1 AND a.tipo_audio = c.tipo_audio AND COALESCE(a.ambito, '') != 'cartuchera'"
             "  AND UPPER(COALESCE(a.categoria_ident, '')) = UPPER(c.nombre)) AS usos"
             " FROM ident_categorias c ORDER BY c.tipo_audio, c.orden, c.id"):
         out.setdefault(r["tipo_audio"], []).append(dict(r))
@@ -148,7 +148,7 @@ def mover(cid: int, body: MoverIn, conn: sqlite3.Connection = Depends(get_db)):
 @router.delete("/api/v1/ident/categorias/{cid}", summary="Eliminar una categoría")
 def eliminar(cid: int, quitar: bool = False, conn: sqlite3.Connection = Depends(get_db)):
     c = _cat(conn, cid)
-    usos = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = ? AND UPPER(COALESCE(categoria_ident, '')) = UPPER(?)",
+    usos = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera' AND UPPER(COALESCE(categoria_ident, '')) = UPPER(?)",
                         (c["tipo_audio"], c["nombre"])).fetchone()[0]
     if usos and not quitar:
         raise HTTPException(status_code=409, detail=f"{usos} audio(s) usan «{c['nombre']}». Reasígnalos o elimina quitándola de ellos.")

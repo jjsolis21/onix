@@ -126,3 +126,46 @@ def test_los_routers_no_importan_api_server_por_otro_nombre():
               *(raiz / "locutor").glob("*.py")]:
         codigo = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines() if not l.strip().startswith("#"))
         assert "import api_server" not in codigo, f.name
+
+
+def test_lo_cargado_en_la_cartuchera_es_solo_de_la_cartuchera(client, paleta, tmp_path):
+    """No aparece en Identificadores, ni en la Biblioteca/Studio, ni en los conteos; el botón sí lo tiene."""
+    r = client.post(f"/api/v1/cartuchera/{paleta}/5/archivo", files={"file": ("Solo Cartuchera.wav", _wav_bytes(tmp_path), "audio/wav")})
+    assert r.status_code == 201, r.text
+    aid = r.json()["audio_id"] if "audio_id" in r.json() else _boton(client, paleta, 5)["audio_id"]
+
+    # Identificadores: ni en la tabla ni en el conteo de sus categorías
+    assert aid not in [x["id"] for x in client.get("/api/v1/ident/audios", params={"tipo": "Efecto", "limit": 500}).json()["data"]]
+    # Lista general (Biblioteca, Studio, playlists…): no sale
+    assert aid not in [x["id"] for x in client.get("/api/v1/audios", params={"tipo": "Efecto", "limit": 50000}).json()["data"]]
+    assert aid not in [x["id"] for x in client.get("/api/v1/audios", params={"sin_tipo": "Cuña", "limit": 50000}).json()["data"]]
+    # …salvo que se pida por su id o por su ámbito
+    assert aid in [x["id"] for x in client.get("/api/v1/audios", params={"ids": str(aid)}).json()["data"]]
+    assert aid in [x["id"] for x in client.get("/api/v1/audios", params={"ambito": "cartuchera", "limit": 50000}).json()["data"]]
+    # El botón sigue funcionando
+    assert _boton(client, paleta, 5)["audio_id"] == aid
+    # Un efecto de Identificadores (subido por la biblioteca) sí aparece en Identificadores
+    con = sqlite3.connect(__import__("backend.paths", fromlist=["DB_PATH"]).DB_PATH)
+    con.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, duracion) VALUES ('JINGLE NORMAL', 'EMISORA', 'library/EMISORA/jingle_normal.mp3', 'Efecto', 5)")
+    con.commit()
+    con.close()
+    assert "JINGLE NORMAL" in [x["titulo"] for x in client.get("/api/v1/ident/audios", params={"tipo": "Efecto", "limit": 500}).json()["data"]]
+
+
+def test_la_migracion_marca_como_cartuchera_lo_que_ya_estaba_en_library_efectos(tmp_path):
+    import sys
+    from init_db import initialize_database
+    db = tmp_path / "vieja.db"
+    initialize_database(str(db))
+    con = sqlite3.connect(db)
+    con.execute("DELETE FROM config WHERE clave = 'migracion_ambito_cartuchera'")
+    con.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, duracion) VALUES ('VIEJO CARTUCHERA', 'EFECTO', 'library/efectos/viejo.wav', 'Efecto', 3)")
+    con.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, duracion) VALUES ('JINGLE EMISORA', 'EMISORA', 'library/EMISORA/jingle.mp3', 'Efecto', 3)")
+    con.commit()
+    con.close()
+    initialize_database(str(db))
+    initialize_database(str(db))                                  # idempotente
+    con = sqlite3.connect(db)
+    got = dict(con.execute("SELECT titulo, ambito FROM audios WHERE titulo IN ('VIEJO CARTUCHERA', 'JINGLE EMISORA')").fetchall())
+    con.close()
+    assert got == {"VIEJO CARTUCHERA": "cartuchera", "JINGLE EMISORA": ""}

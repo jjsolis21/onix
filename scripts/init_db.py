@@ -871,6 +871,19 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_promos_separador', '1')")
     logger.info("  → secciones Promociones y Separador de entrada: OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 41 — Lo que se carga desde la cartuchera es SOLO de la cartuchera
+    #   audios.ambito: '' = biblioteca normal · 'cartuchera' = no aparece en Identificadores, Biblioteca, Studio ni relojes.
+    #   Los que ya estaban cargados desde la cartuchera (carpeta library/efectos) pasan a ser «cartuchera».
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    if "ambito" not in {r["name"] for r in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE audios ADD COLUMN ambito TEXT NOT NULL DEFAULT ''")
+    if not cursor.execute("SELECT 1 FROM config WHERE clave = 'migracion_ambito_cartuchera'").fetchone():
+        cursor.execute("UPDATE audios SET ambito = 'cartuchera' WHERE archivo_path LIKE 'library/efectos/%'")
+        cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_ambito_cartuchera', '1')")
+    logger.info("  → audios.ambito (cartuchera aparte): OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 

@@ -142,8 +142,8 @@ async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), et
     c = _conn()
     try:
         cur = c.execute(
-            "INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio)"
-            " VALUES (?, 'EFECTO', ?, ?, 'Efecto')", (titulo, dur, to_stored(dest)))
+            "INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio, ambito)"
+            " VALUES (?, 'EFECTO', ?, ?, 'Efecto', 'cartuchera')", (titulo, dur, to_stored(dest)))
         aid = cur.lastrowid
         c.execute(
             "INSERT INTO cartuchera (banco, slot, audio_id, etiqueta) VALUES (?, ?, ?, ?)"

@@ -1210,7 +1210,7 @@ const Derecha = (() => {
       const num = i + 1;
       const largo = s && (s.mark_out || s.mark_in) ? Math.max(0, (s.mark_out || s.duracion) - (s.mark_in || 0)) : (s ? s.duracion : 0);
       return s
-        ? `<button class="cart-btn" data-audio="${s.audio_id}" data-slot="${num}" data-n="${num}" style="background:${esc(s.color || CartEditor.COLOR_DEFECTO)}"
+        ? `<button class="cart-btn" data-audio="${s.audio_id}" data-slot="${num}" data-n="${num}" style="background:${esc(s.color || CartEditor.COLOR_DEFECTO)};color:${CartEditor.textoSobre(s.color || CartEditor.COLOR_DEFECTO)}"
              title="${esc(s.titulo)} — clic: sonar / otra vez: detener · clic derecho: editar">
              <i class="cart-num">${num}</i><span class="cart-n">${esc(s.etiqueta || s.titulo)}</span><small>${CartEditor.seg(largo)}</small></button>`
         : `<button class="cart-btn vacio-btn" data-n="${num}" title="Vacío — clic derecho para cargar un efecto, o arrastra una canción"><i class="cart-num">${num}</i><span class="cart-n">Vacío</span><small></small></button>`;

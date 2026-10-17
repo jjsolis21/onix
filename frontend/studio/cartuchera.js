@@ -14,10 +14,19 @@
  */
 const CartEditor = (() => {
   // Lista de colores de Soho (nombre → hex)
-  const COLORES = [["#4a4a4a", "Gray"], ["#5a0000", "Maroon"], ["#a31515", "Red"], ["#c4500a", "Orange"],
-    ["#9a7500", "Gold"], ["#1f6b2a", "Green"], ["#0f6b6b", "Teal"], ["#0050c8", "Blue"], ["#06065e", "Navy"],
-    ["#5b2a86", "Purple"], ["#a02c6d", "Pink"], ["#111111", "Black"]];
+  // El primero es el color por defecto de todo botón sin color propio
+  const COLORES = [["#31FF1F", "Lime"], ["#4a4a4a", "Gray"], ["#5a0000", "Maroon"], ["#a31515", "Red"], ["#c4500a", "Orange"],
+    ["#9a7500", "Gold"], ["#FFDF20", "Yellow"], ["#1f6b2a", "Green"], ["#0f6b6b", "Teal"], ["#0050c8", "Blue"], ["#1447E6", "Royal"],
+    ["#06065e", "Navy"], ["#5b2a86", "Purple"], ["#4D179A", "Violet"], ["#a02c6d", "Pink"], ["#E61876", "Magenta"], ["#111111", "Black"]];
   const DEFECTO = COLORES[0][0];
+  /** Texto legible sobre un fondo: negro sobre colores claros (lima, amarillo), blanco sobre los oscuros. */
+  const textoSobre = hex => {
+    const h = String(hex || "").replace("#", "");
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return "#fff";
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+      .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#000" : "#fff";
+  };
   const PASO = 0.1;                                   // lo que mueven << y >>
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const seg = x => `${(Math.max(0, +x || 0)).toFixed(1).padStart(4, "0")}s`;       // 9.7 → "09.7s"
@@ -178,6 +187,7 @@ const CartEditor = (() => {
     function pintar() {
       const largo = Math.max(0, (st.out || st.dur) - st.in);
       q("ceTile").style.background = st.color;
+      q("ceTile").style.color = textoSobre(st.color);
       q("ceTileT").textContent = st.titulo || "";
       q("ceTileD").textContent = st.dur ? seg(largo) : "";
       q("ceColor").value = COLORES.some(([h]) => h === st.color) ? st.color : DEFECTO;
@@ -327,5 +337,5 @@ const CartEditor = (() => {
     (st.audioId ? q("ceTitulo") : q("ceElegir")).focus();
   }
 
-  return { abrir, COLOR_DEFECTO: DEFECTO, seg };
+  return { abrir, COLOR_DEFECTO: DEFECTO, textoSobre, seg };
 })();
