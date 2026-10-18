@@ -11,7 +11,7 @@ import os
 import re
 import secrets
 import shutil
-import sqlite3
+from backend.database import DualError, DualIntegrityError, MariaDBConnection
 import time
 import unicodedata
 from contextlib import contextmanager
@@ -327,7 +327,7 @@ class ValorUpdateOrdenRequest(BaseModel):
 
 # ---- Helper interno ----
 
-def _get_all_valid_values(conn: sqlite3.Connection, nombre_interno: str) -> set[str]:
+def _get_all_valid_values(conn: MariaDBConnection, nombre_interno: str) -> set[str]:
     """Retorna el set de valores activos para una categoría dado su nombre_interno."""
     row = conn.execute(
         "SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
@@ -342,7 +342,7 @@ def _get_all_valid_values(conn: sqlite3.Connection, nombre_interno: str) -> set[
     return {r["valor"] for r in rows}
 
 
-def _valores_activos_por_categoria(conn: sqlite3.Connection) -> dict[str, dict[str, str]]:
+def _valores_activos_por_categoria(conn: MariaDBConnection) -> dict[str, dict[str, str]]:
     """Devuelve los mapeos {valor_upper: valor_oficial} activos para cada categoría."""
     rows = conn.execute("""
         SELECT cd.nombre_interno, cv.valor
@@ -369,7 +369,7 @@ def _sanitizar_cat(val: Optional[str], cat_map: dict[str, str]) -> Optional[str]
 
 
 def _validate_categoria_valor(
-    conn: sqlite3.Connection,
+    conn: MariaDBConnection,
     nombre_interno: str,
     valor: Optional[str],
     campo_api: str,
@@ -408,7 +408,7 @@ def _validate_categoria_valor(
     summary="Schema de categorías de Biblioteca",
     tags=["Config Biblioteca"],
 )
-def get_biblioteca_schema(conn: sqlite3.Connection = Depends(get_db)):
+def get_biblioteca_schema(conn: MariaDBConnection = Depends(get_db)):
     """
     Retorna el schema completo de categorías activas con sus valores.
     El Frontend usa este endpoint para poblar todos los <select> dinámicamente.
@@ -475,7 +475,7 @@ class ValorUpdateRequest(BaseModel):
 
 @app.put("/api/v1/config/biblioteca/valores/{valor_id}", tags=["Config Biblioteca"],
          summary="Renombrar, reordenar o colorear un valor de categoría")
-def update_categoria_valor(valor_id: int, body: ValorUpdateRequest, conn: sqlite3.Connection = Depends(get_db)):
+def update_categoria_valor(valor_id: int, body: ValorUpdateRequest, conn: MariaDBConnection = Depends(get_db)):
     """
     Renombrar también actualiza los audios que tenían el nombre viejo (si no,
     las canciones quedarían con una categoría que ya no existe).
@@ -512,7 +512,7 @@ class CategoriaUpdateRequest(BaseModel):
 
 @app.put("/api/v1/config/biblioteca/categorias/{nombre_interno}", tags=["Config Biblioteca"],
          summary="Renombrar una categoría (p. ej. 'Categoría 1' → 'Género')")
-def update_categoria(nombre_interno: str, body: CategoriaUpdateRequest, conn: sqlite3.Connection = Depends(get_db)):
+def update_categoria(nombre_interno: str, body: CategoriaUpdateRequest, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("UPDATE config_categorias_def SET etiqueta_visible = ? WHERE nombre_interno = ? AND activo = 1",
                         (body.etiqueta_visible.strip(), nombre_interno)).rowcount:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
@@ -528,7 +528,7 @@ def update_categoria(nombre_interno: str, body: CategoriaUpdateRequest, conn: sq
 )
 def add_categoria_valor(
     body: ValorCreateRequest,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Agrega una nueva opción a una categoría existente.
@@ -586,7 +586,7 @@ def add_categoria_valor(
             f"  → Valor '{body.valor}' añadido a '{body.nombre_interno}' "
             f"(id={nuevo_id}, orden={orden})"
         )
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         logger.warning(
             f"  → Conflicto: valor '{body.valor}' ya existe en '{body.nombre_interno}'"
         )
@@ -617,7 +617,7 @@ def add_categoria_valor(
 )
 def get_categoria_valor_uso(
     valor_id: int,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Retorna cuántas canciones activas tienen asignado este valor y las alternativas
@@ -689,7 +689,7 @@ def delete_categoria_valor(
     valor_id: int,
     accion: Optional[str] = "desasignar",
     reasignar_a_id: Optional[int] = None,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Elimina (soft-delete) un valor de categoría resolviendo los audios asignados:
@@ -961,7 +961,7 @@ async def upload_audio_file(
     file: UploadFile = File(...),
     tipo: Optional[str] = Form(None),
     subdir: Optional[str] = Form(None),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Recibe un archivo de audio, normaliza su nombre (sin tildes ni espacios).
@@ -1081,7 +1081,7 @@ def _normalize_media_paths() -> None:
                 try:
                     conn.execute("UPDATE audios SET archivo_path = ? WHERE id = ?", (nuevo, row["id"]))
                     logger.info(f"  → Ruta normalizada: audio id={row['id']} → {nuevo}")
-                except sqlite3.IntegrityError:
+                except DualIntegrityError:
                     logger.warning(f"  → Ruta duplicada, no se normaliza: audio id={row['id']}")
 
 
@@ -1142,7 +1142,7 @@ def _move_to_library(staging_path: str, titulo: str, artista: str) -> str:
     return str(dest)
 
 
-def _categoria_canonica(conn: sqlite3.Connection, nombre_interno: str, valor: Optional[str]) -> Optional[str]:
+def _categoria_canonica(conn: MariaDBConnection, nombre_interno: str, valor: Optional[str]) -> Optional[str]:
     """La escritura ya registrada ("Pop") en vez de otra ("POP"): una sola categoría, no dos."""
     if not valor or not str(valor).strip():
         return None
@@ -1154,7 +1154,7 @@ def _categoria_canonica(conn: sqlite3.Connection, nombre_interno: str, valor: Op
 
 
 def _validate_all_categorias(
-    conn: sqlite3.Connection,
+    conn: MariaDBConnection,
     cat1: Optional[str],
     cat2: Optional[str],
     cat3: Optional[str],
@@ -1201,7 +1201,7 @@ async def create_audio(
     fade_in:         Optional[float] = Form(None),
     fade_out:        Optional[float] = Form(None),
     file: UploadFile = File(...),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Registra un nuevo audio recibiendo directamente el UploadFile y FormData.
@@ -1306,7 +1306,7 @@ async def create_audio(
         ))
         nuevo_id = cursor.lastrowid
 
-    except sqlite3.IntegrityError as e:
+    except DualIntegrityError as e:
         logger.error(f"  → DB IntegrityError: {e}. Revirtiendo archivo...")
         if dest.exists():
             dest.unlink()
@@ -1366,7 +1366,7 @@ async def create_audio(
 async def update_audio(
     audio_id: int,
     body: AudioUpdateRequest,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Actualiza los metadatos de un audio existente.
@@ -1451,15 +1451,8 @@ async def update_audio(
            for k in ("cue_inicio", "cue_mezcla")):
         campos_update["marcas_auto"] = 0
 
-    campos_update["updated_at"] = "datetime('now')"
-
-    set_clause = ", ".join(
-        f"{k} = datetime('now')" if v == "datetime('now')" else f"{k} = ?"
-        for k, v in campos_update.items()
-    )
-    values = [
-        v for v in campos_update.values() if v != "datetime('now')"
-    ]
+    set_clause = ", ".join([f"{k} = ?" for k in campos_update] + ["updated_at = NOW()"])
+    values = list(campos_update.values())
     values.append(audio_id)
 
     conn.execute(
@@ -1506,7 +1499,7 @@ async def update_audio(
 async def update_audio_file(
     audio_id: int,
     file: UploadFile = File(...),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Reemplaza el archivo físico de audio de una pista existente.
@@ -1558,7 +1551,7 @@ async def update_audio_file(
     nuevo_path = to_stored(dest)
 
     conn.execute(
-        "UPDATE audios SET archivo_path = ?, duracion = ?, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE audios SET archivo_path = ?, duracion = ?, updated_at = NOW() WHERE id = ?",
         (nuevo_path, nueva_duracion or 0, audio_id)
     )
     conn.commit()
@@ -1604,7 +1597,7 @@ def list_audios(
     ambito: Optional[str] = None,  # 'cartuchera' = solo lo cargado desde la cartuchera; sin esto, esos no salen en las listas
     limit: int = Query(500, ge=1, le=50000),
     offset: int = Query(0, ge=0),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Lista audios con filtros opcionales por categoría.
@@ -1729,7 +1722,7 @@ _CAMPOS_LISTA = [
 
 @app.get("/api/v1/biblioteca/lista", tags=["Audios"], summary="Lista ligera y comprimida para la tabla del Admin")
 def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Optional[str] = None,
-                     conn: sqlite3.Connection = Depends(get_db)):
+                     conn: MariaDBConnection = Depends(get_db)):
     """
     Con ~20 000 audios la lista completa de /api/v1/audios pesa unos 15 MB y tarda ~2 s.
     Aquí van solo las columnas de la tabla, como filas sin nombres de campo repetidos
@@ -1774,14 +1767,14 @@ def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Opt
 
 
 @app.get("/api/v1/biblioteca/conteos", tags=["Audios"], summary="Cuántos audios hay de cada tipo")
-def conteos_biblioteca(conn: sqlite3.Connection = Depends(get_db)):
+def conteos_biblioteca(conn: MariaDBConnection = Depends(get_db)):
     filas = conn.execute("SELECT tipo_audio, COUNT(*) AS n FROM audios WHERE activo = 1"
                          " AND COALESCE(ambito, '') != 'cartuchera' AND tipo_audio != 'Locucion' GROUP BY tipo_audio")
     return {r["tipo_audio"]: r["n"] for r in filas}
 
 
 @app.get("/api/v1/biblioteca/filtros", tags=["Audios"], summary="Valores para los filtros (género, rotación, voz)")
-def filtros_biblioteca(tipo: str = "Musica", conn: sqlite3.Connection = Depends(get_db)):
+def filtros_biblioteca(tipo: str = "Musica", conn: MariaDBConnection = Depends(get_db)):
     t = _validate_tipo_audio(tipo)
     def distintos(col: str) -> list[str]:
         return [r[0] for r in conn.execute(
@@ -1791,7 +1784,7 @@ def filtros_biblioteca(tipo: str = "Musica", conn: sqlite3.Connection = Depends(
 
 
 @app.get("/api/v1/artistas", tags=["Audios"], summary="Artistas ya cargados (para autocompletar)")
-def listar_artistas(tipo: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+def listar_artistas(tipo: Optional[str] = None, conn: MariaDBConnection = Depends(get_db)):
     """Nombres distintos de artista (o anunciante, con tipo=Cuña), con cuántos audios tiene cada uno."""
     sql = "SELECT artista, COUNT(*) AS n FROM audios WHERE activo = 1 AND COALESCE(artista, '') != ''"
     params = []
@@ -1819,7 +1812,7 @@ _LOTE_COLUMNAS = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz
 
 @app.get("/api/v1/audios/{audio_id}/repeticion", tags=["Audios"],
          summary="¿Esta canción ya sonó dentro de su regla de repetición?")
-def estado_repeticion(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def estado_repeticion(audio_id: int, conn: MariaDBConnection = Depends(get_db)):
     """Para que el Studio avise en modo manual: `bloqueada` = sonó hace menos de `horas`."""
     r = conn.execute("SELECT titulo, repeticion_horas, ultima_reproduccion FROM audios WHERE id = ?",
                      (audio_id,)).fetchone()
@@ -1841,7 +1834,7 @@ def estado_repeticion(audio_id: int, conn: sqlite3.Connection = Depends(get_db))
 
 
 @app.post("/api/v1/biblioteca/lote", tags=["Audios"], summary="Edición masiva de la Biblioteca")
-def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_db)):
+def editar_lote(body: LoteAudiosRequest, conn: MariaDBConnection = Depends(get_db)):
     """
     Aplica los mismos cambios a muchas canciones (como "cambiar categoría a las
     seleccionadas" de Jazler). Aprobar exige que tengan género y rotación: las
@@ -1896,7 +1889,7 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
         valores.append(v)
     hechos = 0
     if sets:
-        hechos = conn.execute(f"UPDATE audios SET {', '.join(sets)}, updated_at = datetime('now')"
+        hechos = conn.execute(f"UPDATE audios SET {', '.join(sets)}, updated_at = NOW()"
                               f" WHERE id IN ({ph}) AND activo = 1", valores + ids).rowcount
     sin_clasificar = []
     if "aprobada" in c:
@@ -1942,7 +1935,7 @@ def editar_lote(body: LoteAudiosRequest, conn: sqlite3.Connection = Depends(get_
 )
 def delete_audio(
     audio_id: int,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     audio = conn.execute(
         "SELECT id, titulo, archivo_path FROM audios WHERE id = ? AND activo = 1",
@@ -1956,7 +1949,7 @@ def delete_audio(
         )
 
     conn.execute(
-        "UPDATE audios SET activo = 0, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE audios SET activo = 0, updated_at = NOW() WHERE id = ?",
         (audio_id,)
     )
     logger.info(f"Audio id={audio_id} ('{audio['titulo']}') marcado como inactivo")
@@ -1976,7 +1969,7 @@ def delete_audio(
 # ===========================================================================
 
 
-def _guardar_versiones(conn: sqlite3.Connection, pauta_id: int, body: PautaIn) -> None:
+def _guardar_versiones(conn: MariaDBConnection, pauta_id: int, body: PautaIn) -> None:
     """Versiones que rotan: la principal (audio_id) siempre va primera."""
     if body.versiones is None:
         return
@@ -1989,7 +1982,7 @@ def _guardar_versiones(conn: sqlite3.Connection, pauta_id: int, body: PautaIn) -
                          [(pauta_id, a, i) for i, a in enumerate(ids) if a in existentes])
 
 
-def _con_versiones(conn: sqlite3.Connection, pauta: dict) -> dict:
+def _con_versiones(conn: MariaDBConnection, pauta: dict) -> dict:
     """Agrega las versiones (con cuántas veces salió cada una)."""
     pauta["versiones"] = [dict(r) for r in conn.execute(
         """SELECT a.id, a.titulo, a.duracion,
@@ -2005,7 +1998,7 @@ class OrdenBloque(BaseModel):
 
 
 @app.put("/api/v1/pautas/orden", tags=["Pautas"], summary="Orden manual de las cuñas en el bloque")
-def ordenar_bloque(body: OrdenBloque, conn: sqlite3.Connection = Depends(get_db)):
+def ordenar_bloque(body: OrdenBloque, conn: MariaDBConnection = Depends(get_db)):
     """Guarda el orden armado por programación. Lista vacía = el sistema decide."""
     conn.execute("UPDATE pautas SET orden = NULL")
     conn.executemany("UPDATE pautas SET orden = ? WHERE id = ?",
@@ -2020,7 +2013,7 @@ def ordenar_bloque(body: OrdenBloque, conn: sqlite3.Connection = Depends(get_db)
     tags=["Pautas"],
 )
 def get_pautas_notificaciones(
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Retorna pautas vencidas (fecha_fin < hoy) y pautas que vencen pronto
@@ -2059,7 +2052,7 @@ def list_pautas(
     activo: Optional[int] = None,
     limit:  int = 200,
     offset: int = 0,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Devuelve la lista de pautas.
@@ -2097,7 +2090,7 @@ def list_pautas(
 )
 def create_pauta(
     body: PautaIn,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     """
     Crea una nueva pauta publicitaria.
@@ -2109,7 +2102,6 @@ def create_pauta(
     logger.info(f"POST /api/v1/pautas → cliente='{body.cliente}', audio_id={body.audio_id}")
 
     db_data = body.to_db_dict()
-    now     = "datetime('now')"
 
     try:
         cur = conn.execute(
@@ -2125,11 +2117,11 @@ def create_pauta(
                  :fecha_inicio, :fecha_fin, :notas,
                  :cue_intro, :cue_outro, :menciones_diarias, :rubro, :prioridad, :contrato_id,
                  :agencia, :posicion, :seccion, :hora_inicio_permitida, :hora_fin_permitida,
-                 1, datetime('now'), datetime('now'))
+                 1, NOW(), NOW())
             """,
             db_data,
         )
-    except sqlite3.IntegrityError as exc:
+    except DualIntegrityError as exc:
         logger.error(f"  → IntegrityError al crear pauta: {exc}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -2153,7 +2145,7 @@ def create_pauta(
 def update_pauta(
     pauta_id: int,
     body:     PautaIn,
-    conn:     sqlite3.Connection = Depends(get_db),
+    conn:     MariaDBConnection = Depends(get_db),
 ):
     """
     Actualiza todos los campos de una pauta existente.
@@ -2197,7 +2189,7 @@ def update_pauta(
             seccion      = :seccion,
             hora_inicio_permitida = :hora_inicio_permitida,
             hora_fin_permitida    = :hora_fin_permitida,
-            updated_at   = datetime('now')
+            updated_at   = NOW()
         WHERE id = :id
         """,
         {**db_data, "id": pauta_id},
@@ -2218,7 +2210,7 @@ def update_pauta(
 def delete_pauta(
     pauta_id: int,
     physical: bool = False,
-    conn:     sqlite3.Connection = Depends(get_db),
+    conn:     MariaDBConnection = Depends(get_db),
 ):
     """
     Elimina permanentemente una pauta de la base de datos.
@@ -2332,7 +2324,7 @@ def health_check():
 
 
 @app.get("/api/v1/nowplaying", tags=["Sistema"], summary="Qué texto se publica ahora (metadata al aire)")
-def now_playing(conn: sqlite3.Connection = Depends(get_db)):
+def now_playing(conn: MariaDBConnection = Depends(get_db)):
     """
     Aplica «Publicar metadata» de cada audio: si lo que suena actualiza, se publica; si no, se mantiene el texto
     del último audio que sí actualizó. Los consumidores (RDS, encoder, pantallas) leen este resultado.
@@ -2389,7 +2381,7 @@ def _opciones_boton(msg: dict) -> dict:
         with db_session() as conn:
             r = conn.execute("SELECT audio_id, mark_in, mark_out, volumen FROM cartuchera WHERE banco = ? AND slot = ?",
                              (str(banco), int(slot))).fetchone()
-    except (sqlite3.Error, TypeError, ValueError):
+    except (DualError, TypeError, ValueError):
         return {}
     if not r or r["audio_id"] != msg.get("audio_id"):
         return {"boton": f"{banco}/{slot}"}
@@ -2641,7 +2633,7 @@ def _check_slot(conn, banco: str, slot: int) -> None:
 
 
 @app.get("/api/v1/cartuchera", tags=["Cartuchera"], summary="Paletas y botones asignados")
-def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
+def get_cartuchera(conn: MariaDBConnection = Depends(get_db)):
     """Devuelve las paletas (en orden) y, por paleta, los botones que tienen audio asignado."""
     rows = conn.execute(
         """
@@ -2662,7 +2654,7 @@ def get_cartuchera(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.post("/api/v1/paletas", tags=["Cartuchera"], status_code=201, summary="Crear paleta")
-async def crear_paleta(body: PaletaIn, conn: sqlite3.Connection = Depends(get_db)):
+async def crear_paleta(body: PaletaIn, conn: MariaDBConnection = Depends(get_db)):
     nombre = (body.nombre or "").strip()
     if not nombre:
         raise HTTPException(status_code=422, detail="Escribe un nombre para la paleta")
@@ -2678,7 +2670,7 @@ async def crear_paleta(body: PaletaIn, conn: sqlite3.Connection = Depends(get_db
 
 
 @app.put("/api/v1/paletas/{clave}", tags=["Cartuchera"], summary="Renombrar o cambiar el nº de botones")
-async def editar_paleta(clave: str, body: PaletaIn, conn: sqlite3.Connection = Depends(get_db)):
+async def editar_paleta(clave: str, body: PaletaIn, conn: MariaDBConnection = Depends(get_db)):
     p = conn.execute("SELECT clave, nombre, slots FROM paletas WHERE clave = ?", (clave,)).fetchone()
     if not p:
         raise HTTPException(status_code=404, detail="Paleta no encontrada")
@@ -2694,7 +2686,7 @@ async def editar_paleta(clave: str, body: PaletaIn, conn: sqlite3.Connection = D
 
 
 @app.delete("/api/v1/paletas/{clave}", tags=["Cartuchera"], summary="Borrar paleta y sus botones")
-async def borrar_paleta(clave: str, conn: sqlite3.Connection = Depends(get_db)):
+async def borrar_paleta(clave: str, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("SELECT 1 FROM paletas WHERE clave = ?", (clave,)).fetchone():
         raise HTTPException(status_code=404, detail="Paleta no encontrada")
     if conn.execute("SELECT COUNT(*) FROM paletas").fetchone()[0] <= 1:
@@ -2709,7 +2701,7 @@ async def borrar_paleta(clave: str, conn: sqlite3.Connection = Depends(get_db)):
 @app.put("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Asignar audio a un botón")
 async def set_cartuchera_slot(
     banco: str, slot: int, body: CartucheraSlotIn,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     _check_slot(conn, banco, slot)
     audio = conn.execute(
@@ -2720,9 +2712,9 @@ async def set_cartuchera_slot(
     conn.execute(
         """
         INSERT INTO cartuchera (banco, slot, audio_id, etiqueta) VALUES (?, ?, ?, ?)
-        ON CONFLICT(banco, slot) DO UPDATE SET
-            audio_id = excluded.audio_id, etiqueta = excluded.etiqueta,
-            mark_in = NULL, mark_out = NULL, updated_at = datetime('now')
+        ON DUPLICATE KEY UPDATE
+            audio_id = VALUES(audio_id), etiqueta = VALUES(etiqueta),
+            mark_in = NULL, mark_out = NULL, updated_at = NOW()
         """,
         (banco, slot, body.audio_id, body.etiqueta.strip()),
     )
@@ -2732,7 +2724,7 @@ async def set_cartuchera_slot(
 
 
 @app.delete("/api/v1/cartuchera/{banco}/{slot}", tags=["Cartuchera"], summary="Vaciar un botón")
-async def clear_cartuchera_slot(banco: str, slot: int, conn: sqlite3.Connection = Depends(get_db)):
+async def clear_cartuchera_slot(banco: str, slot: int, conn: MariaDBConnection = Depends(get_db)):
     _check_slot(conn, banco, slot)
     conn.execute("DELETE FROM cartuchera WHERE banco = ? AND slot = ?", (banco, slot))
     conn.commit()
@@ -2804,7 +2796,7 @@ class MotorConfig(BaseModel):
         return ",".join(str(m) for m in sorted({int(x) for x in partes}))
 
 
-def _read_motor_config(conn: sqlite3.Connection) -> dict:
+def _read_motor_config(conn: MariaDBConnection) -> dict:
     valores = {r["clave"]: r["valor"] for r in conn.execute("SELECT clave, valor FROM config")}
     return {
         "modo":                valores.get("modo", "manual"),
@@ -2833,12 +2825,12 @@ def _read_motor_config(conn: sqlite3.Connection) -> dict:
 
 
 @app.get("/api/v1/config/motor", tags=["Config"], summary="Parámetros del motor de audio")
-def get_motor_config(conn: sqlite3.Connection = Depends(get_db)):
+def get_motor_config(conn: MariaDBConnection = Depends(get_db)):
     return _read_motor_config(conn)
 
 
 @app.put("/api/v1/config/motor", tags=["Config"], summary="Guardar parámetros del motor")
-def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(get_db)):
+def update_motor_config(body: MotorConfig, conn: MariaDBConnection = Depends(get_db)):
     """
     Guarda solo los campos enviados y los aplica al motor en caliente.
     El modo (manual/automático) se cambia con el comando set_mode, no aquí.
@@ -2851,7 +2843,7 @@ def update_motor_config(body: MotorConfig, conn: sqlite3.Connection = Depends(ge
             valor = "1" if valor else "0"
         conn.execute(
             "INSERT INTO config (clave, valor) VALUES (?, ?)"
-            " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+            " ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
             (clave, str(valor)),
         )
     conn.commit()
@@ -2871,7 +2863,7 @@ class GrillaTandas(BaseModel):
 
 
 @app.get("/api/v1/comerciales/tandas-grilla", tags=["Comerciales"], summary="Tandas por día y hora")
-def get_grilla_tandas(conn: sqlite3.Connection = Depends(get_db)):
+def get_grilla_tandas(conn: MariaDBConnection = Depends(get_db)):
     """Grilla {"dia-hora": {...}} (dia 0=Dom…6=Sab). Las horas que no aparecen usan los minutos generales."""
     from backend.audio.audio_engine import cargar_grilla
     fila = conn.execute("SELECT valor FROM config WHERE clave = 'tandas_grilla'").fetchone()
@@ -2881,7 +2873,7 @@ def get_grilla_tandas(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.put("/api/v1/comerciales/tandas-grilla", tags=["Comerciales"], summary="Guardar tandas por día y hora")
-def put_grilla_tandas(body: GrillaTandas, conn: sqlite3.Connection = Depends(get_db)):
+def put_grilla_tandas(body: GrillaTandas, conn: MariaDBConnection = Depends(get_db)):
     limpia = {}
     for clave, e in body.grilla.items():
         m = re.fullmatch(r"([0-6])-(\d{1,2})", clave)
@@ -2898,14 +2890,14 @@ def put_grilla_tandas(body: GrillaTandas, conn: sqlite3.Connection = Depends(get
                 d[k] = _minutos_texto(e.get(k), k)
         limpia[clave] = d
     conn.execute("INSERT INTO config (clave, valor) VALUES ('tandas_grilla', ?)"
-                 " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (json.dumps(limpia),))
+                 " ON DUPLICATE KEY UPDATE valor = VALUES(valor)", (json.dumps(limpia),))
     conn.commit()
     engine.reload_config()
     return get_grilla_tandas(conn)
 
 
 @app.get("/api/v1/audios/{audio_id}/stream", tags=["Audios"], summary="Preescucha del audio")
-def stream_audio(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def stream_audio(audio_id: int, conn: MariaDBConnection = Depends(get_db)):
     """Sirve el archivo de audio (con soporte de Range) para preescucha en el navegador."""
     row = conn.execute(
         "SELECT archivo_path FROM audios WHERE id = ? AND activo = 1", (audio_id,)
@@ -2929,7 +2921,7 @@ class SalidasIn(BaseModel):
     cartuchera: Optional[int] = Field(None, ge=-2, description="-2 = la misma tarjeta que el aire")
 
 
-def _read_salidas(conn: sqlite3.Connection) -> dict:
+def _read_salidas(conn: MariaDBConnection) -> dict:
     valores = {r["clave"]: r["valor"] for r in conn.execute(
         "SELECT clave, valor FROM config WHERE clave LIKE 'dispositivo_%'")}
     return {rol: int(float(valores.get(f"dispositivo_{rol}", -2 if rol == "cartuchera" else -1)))
@@ -2945,7 +2937,7 @@ def _listar_dispositivos() -> list:
 
 
 @app.get("/api/v1/audio/dispositivos", tags=["Config"], summary="Tarjetas de sonido y salidas")
-def get_dispositivos(conn: sqlite3.Connection = Depends(get_db)):
+def get_dispositivos(conn: MariaDBConnection = Depends(get_db)):
     """
     Tarjetas que ve el motor (índice 0 = sin sonido) y qué tarjeta usa cada
     salida: `aire` (lo que sale a la emisora) y `preescucha` (escucha interna).
@@ -2954,7 +2946,7 @@ def get_dispositivos(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.put("/api/v1/audio/salidas", tags=["Config"], summary="Asignar tarjetas a las salidas")
-def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
+def put_salidas(body: SalidasIn, conn: MariaDBConnection = Depends(get_db)):
     """
     Se aplica en caliente: la próxima pista (o preescucha) ya sale por la
     tarjeta nueva; lo que está sonando termina en la anterior.
@@ -2965,7 +2957,7 @@ def put_salidas(body: SalidasIn, conn: sqlite3.Connection = Depends(get_db)):
             raise HTTPException(status_code=422, detail=f"La tarjeta {idx} no existe en esta PC")
         conn.execute(
             "INSERT INTO config (clave, valor) VALUES (?, ?)"
-            " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+            " ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
             (f"dispositivo_{rol}", str(idx)),
         )
     conn.commit()
@@ -2985,7 +2977,7 @@ class SeccionIn(BaseModel):
 
 
 @app.get("/api/v1/tandas/secciones", tags=["Pautas"], summary="Secciones de la tanda")
-def get_secciones(conn: sqlite3.Connection = Depends(get_db)):
+def get_secciones(conn: MariaDBConnection = Depends(get_db)):
     """Orden dentro de la tanda. Cada pauta pertenece a una sección."""
     usos = dict(conn.execute("SELECT COALESCE(seccion, 3), COUNT(*) FROM pautas GROUP BY 1").fetchall())
     return [{"numero": r["numero"], "nombre": r["nombre"], "opcional": bool(r["opcional"]),
@@ -2994,7 +2986,7 @@ def get_secciones(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.put("/api/v1/tandas/secciones", tags=["Pautas"], summary="Guardar secciones de la tanda")
-def put_secciones(body: List[SeccionIn], conn: sqlite3.Connection = Depends(get_db)):
+def put_secciones(body: List[SeccionIn], conn: MariaDBConnection = Depends(get_db)):
     """
     Reemplaza la lista completa. Debe quedar al menos una sección comercial.
     Una pauta cuya sección se borra se trata como comercial (nunca se pierde).
@@ -3016,7 +3008,7 @@ def put_secciones(body: List[SeccionIn], conn: sqlite3.Connection = Depends(get_
 
 
 @app.get("/api/v1/normalizacion", tags=["Config"], summary="Estado de la normalización de volumen")
-def get_normalizacion(conn: sqlite3.Connection = Depends(get_db)):
+def get_normalizacion(conn: MariaDBConnection = Depends(get_db)):
     """Cuántos audios están medidos, pendientes o con error, y si hay ffmpeg."""
     cuenta = {"ok": 0, "error": 0, "pendiente": 0}
     for r in conn.execute(
@@ -3038,7 +3030,7 @@ def get_normalizacion(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.post("/api/v1/normalizacion/remedir", tags=["Config"], summary="Volver a medir audios")
-def remedir_normalizacion(solo_errores: bool = True, conn: sqlite3.Connection = Depends(get_db)):
+def remedir_normalizacion(solo_errores: bool = True, conn: MariaDBConnection = Depends(get_db)):
     """Marca como pendientes los audios con error (o todos) y despierta al medidor."""
     sql = "UPDATE audios SET loudness_estado = NULL WHERE activo = 1"
     if solo_errores:
@@ -3050,7 +3042,7 @@ def remedir_normalizacion(solo_errores: bool = True, conn: sqlite3.Connection = 
 
 
 @app.get("/api/v1/historial", tags=["Sistema"], summary="Historial de emisión")
-def get_historial(limit: int = 100, conn: sqlite3.Connection = Depends(get_db)):
+def get_historial(limit: int = 100, conn: MariaDBConnection = Depends(get_db)):
     """Últimos elementos que salieron al aire (música, pautas y efectos)."""
     rows = conn.execute(
         "SELECT * FROM historial_emision ORDER BY id DESC LIMIT ?", (max(1, min(limit, 1000)),)
@@ -3059,7 +3051,7 @@ def get_historial(limit: int = 100, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @app.get("/api/v1/stats", tags=["Sistema"])
-def get_stats(conn: sqlite3.Connection = Depends(get_db)):
+def get_stats(conn: MariaDBConnection = Depends(get_db)):
     """
     Retorna estadísticas generales de la Biblioteca Musical.
 

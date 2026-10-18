@@ -145,21 +145,25 @@ def _semilla_de_fabrica(existentes: set) -> dict:
     return semilla
 
 
+def _cerrar_conexiones_ajenas(c) -> None:
+    """KILL de todas las demás conexiones a esta base de pruebas (la propia no se toca)."""
+    for r in c.execute("SELECT id FROM information_schema.processlist WHERE db = DATABASE() AND id <> CONNECTION_ID()").fetchall():
+        try:
+            c.execute(f"KILL {int(list(r.values())[0] if hasattr(r, 'values') else r[0])}")
+        except Exception:
+            pass
+
+
 def resetear_base() -> None:
     """Deja `onix_test` como recién creada: sin datos de prueba y con las filas semilla (categorías, secciones, config…)."""
     from backend.database import get_connection
     c = get_connection()
     try:
-        # Una prueba anterior puede haber dejado una conexión con transacción abierta: el TRUNCATE esperaría ese bloqueo
-        # para siempre y el worker se cuelga. Se cierran las conexiones huérfanas de ESTA base de pruebas antes de limpiar.
-        c.execute("SET SESSION lock_wait_timeout = 30")
-        yo = c.execute("SELECT CONNECTION_ID()").fetchone()[0]
-        for (cid,) in [tuple(r.values()) if hasattr(r, "values") else r for r in c.execute(
-                "SELECT id FROM information_schema.processlist WHERE db = DATABASE() AND id <> CONNECTION_ID()").fetchall()]:
-            try:
-                c.execute(f"KILL {int(cid)}")
-            except Exception:
-                pass
+        # Una prueba anterior (o un hilo de fondo de su servidor: normalizador, Locutor, respaldos) puede tener una conexión con
+        # transacción abierta: el TRUNCATE esperaría ese bloqueo y la prueba fallaría. Se cierran las conexiones ajenas de ESTA
+        # base de pruebas antes de limpiar y, si aparece un bloqueo nuevo, se vuelve a intentar.
+        c.execute("SET SESSION lock_wait_timeout = 5")
+        _cerrar_conexiones_ajenas(c)
         if not _SEMILLA:                                   # las filas de fábrica salen de una base nueva creada por init_db
             _SEMILLA.update(_semilla_de_fabrica(set(_tablas(c))))
         c.execute("SET FOREIGN_KEY_CHECKS = 0")
@@ -169,7 +173,14 @@ def resetear_base() -> None:
             "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND auto_increment > 1").fetchall()}
         for t in _tablas(c):
             if t in avanzadas or t in _SEMILLA or c.execute(f"SELECT 1 FROM `{t}` LIMIT 1").fetchone() is not None:
-                c.execute(f"TRUNCATE TABLE `{t}`")                  # también reinicia los AUTO_INCREMENT
+                for intento in range(6):
+                    try:
+                        c.execute(f"TRUNCATE TABLE `{t}`")          # también reinicia los AUTO_INCREMENT
+                        break
+                    except Exception as exc:
+                        if intento == 5 or not any(str(k) in str(exc) for k in ("1205", "1213")):
+                            raise
+                        _cerrar_conexiones_ajenas(c)                 # apareció otra conexión con bloqueos: se cierra y se reintenta
         for t, filas in _SEMILLA.items():
             cols = list(filas[0].keys())
             c.executemany(f"INSERT INTO `{t}` ({', '.join('`' + k + '`' for k in cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
@@ -186,6 +197,14 @@ def _base_limpia_al_empezar():
     if os.environ["DB_BACKEND"] == "mariadb":
         from backend.migraciones_maria import migrar
         migrar()                                           # onix_test siempre con el esquema al día
+        resetear_base()
+    yield
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _base_limpia_por_archivo():
+    """Cada archivo de pruebas empieza con la base limpia: antes heredaba lo que dejó el archivo anterior del mismo worker."""
+    if os.environ["DB_BACKEND"] == "mariadb":
         resetear_base()
     yield
 

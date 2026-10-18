@@ -686,7 +686,9 @@ class Planner:
                     else:  # cruza medianoche (ej. 20 a 4)
                         en_hora = (base.hour >= h_ini or base.hour <= h_fin)
                 else:
-                    en_hora = self._hora_en_dayparting(base.hour, r["rubro"])
+                    # Sin matriz y sin rango de horas: la pauta no tiene horario, no suena (decisión del dueño).
+                    # Antes se le inventaba uno según el rubro; un cliente de una emisora comercial paga por un horario concreto.
+                    en_hora = False
 
             # ── 3. Pautas en Deuda: entran prioritariamente aunque la hora no coincida ──
             es_deuda = (pid in pautas_deuda_hoy)
