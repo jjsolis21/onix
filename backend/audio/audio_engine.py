@@ -1088,6 +1088,7 @@ class AudioEngine:
     TIP_SALIDA         = 0.3    # fundido del tip cuando lo interrumpe una cuña, una voz o el operador
     TIP_SUBIR_MS       = 600    # la música vuelve a pleno si el tip se corta de golpe
     TIP_DUCK           = 0.45   # la música bajo un tip queda al 45 % (≈ -7 dB, se oye el fondo); config tip_fondo_pct
+    TIP_XFADE          = 1.5    # en un puente el cambio de canción es corto: la siguiente se oye en la 2.ª mitad del tip (con 4 s de crossfade solo se oiría el tip)
     TIP_BAJAR_MS       = 250    # bajada rápida al entrar el tip (que no se pise su primera palabra)
     TIP_SUBE_ANTES     = 1.3    # la música empieza a subir este tiempo ANTES de que acabe el tip: llega a pleno justo al terminar
 
@@ -2344,6 +2345,8 @@ class AudioEngine:
                                                "titulo": track.get("titulo", "")})
         elif outgoing_active:
             fade_in, fade_out = self._fade_times(self._current_item, item)
+            if tip_cruza:
+                fade_in, fade_out = min(fade_in, self.TIP_XFADE), min(fade_out, self.TIP_XFADE)
             if self._corte_fade is not None:
                 fade_out = max(fade_out, self._corte_fade)   # corte inmediato: la canción sale con calma
             prev = self._current_track

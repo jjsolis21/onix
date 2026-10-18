@@ -354,3 +354,35 @@ def test_la_musica_baja_suave_bajo_el_tip_y_sube_antes_de_que_termine(engine, me
     engine._tick()
     assert not engine._tip["duck"] and vols[-1] == (canal, round(pleno, 3))
     assert engine._tip["estado"] == "sonando"                      # el tip aún suena
+
+
+def test_en_un_puente_el_cambio_de_cancion_es_corto_para_que_se_oiga_la_siguiente(engine, media):
+    """Con 4 s de crossfade la siguiente casi no se oía bajo el tip (parecía un tip suelto en los últimos segundos)."""
+    a = add_audio(engine, media, "A", seconds=40.0, cue_mezcla=36.5)
+    b = add_audio(engine, media, "B", seconds=40.0, cue_intro=10.0)
+    tip = add_audio(engine, media, "TIP 6", tipo="Tips", seconds=6.0)
+    ms = []
+    real = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda c, v, m: (ms.append((c, round(v, 2), m)), real(c, v, m))[1]
+    assert engine._crossfade_secs == 4.0
+    _plan(engine, _p_audio(tip, "Tips", tip_modo="puente"), _p_audio(b))
+    engine._start({"track": engine._fetch_track(a), "origen": "auto"})
+    _al(engine, 33.5)                                              # arranca el tip (mezcla 36.5 − 3)
+    _al(engine, 36.5)                                              # entra B con el tip encima
+    canal_b = engine._active_canal
+    assert engine._current_track["id"] == b
+    entradas = [m for c, v, m in ms if c == canal_b]
+    assert entradas and entradas[0] == int(engine.TIP_XFADE * 1000)   # B sube en 1,5 s, no en 4
+    assert (engine._tip["estado"] == "sonando")
+
+
+def test_sin_puente_el_crossfade_sigue_siendo_el_normal(engine, media):
+    a = add_audio(engine, media, "A", seconds=40.0, cue_mezcla=36.5)
+    b = add_audio(engine, media, "B", seconds=40.0)
+    ms = []
+    real = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda c, v, m: (ms.append((c, round(v, 2), m)), real(c, v, m))[1]
+    _plan(engine, _p_audio(b))
+    engine._start({"track": engine._fetch_track(a), "origen": "auto"})
+    _al(engine, 36.5)
+    assert any(m == 4000 for c, v, m in ms)                        # crossfade de 4 s intacto fuera de los puentes
