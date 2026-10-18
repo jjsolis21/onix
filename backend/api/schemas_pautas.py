@@ -200,7 +200,7 @@ class PautaOut(BaseModel):
     @classmethod
     def from_row(cls, row: Any) -> "PautaOut":
         """
-        Construye un PautaOut desde un sqlite3.Row.
+        Construye un PautaOut desde una fila de la base (CompatRow).
 
         Parsea automáticamente el campo `matriz` de string JSON → dict
         y aplica valores por defecto para campos que puedan ser NULL

@@ -9,7 +9,7 @@ Botones de la cartuchera como Soho: cargar un efecto desde cualquier archivo y e
 
 import re
 import shutil
-import sqlite3
+from backend.database import MariaDBConnection
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +36,7 @@ def _nombre(original: str) -> str:
     return re.sub(r"[^\w\-.]", "_", Path(original).name) or "audio"
 
 
-def _boton(c: sqlite3.Connection, banco: str, slot: int) -> None:
+def _boton(c: MariaDBConnection, banco: str, slot: int) -> None:
     r = c.execute("SELECT slots FROM paletas WHERE clave = ?", (banco,)).fetchone()
     if not r or not (1 <= slot <= r["slots"]):
         raise HTTPException(status_code=404, detail=f"Botón inexistente: {banco}/{slot}")
@@ -88,7 +88,7 @@ async def editar(banco: str, slot: int, b: BotonIn):
             raise HTTPException(status_code=422, detail=f"Las marcas deben estar dentro de los {dur:.1f} s del archivo")
         c.execute(
             "UPDATE cartuchera SET etiqueta = ?, color = ?, mark_in = ?, mark_out = ?, volumen = ?,"
-            " updated_at = datetime('now') WHERE banco = ? AND slot = ?",
+            " updated_at = NOW() WHERE banco = ? AND slot = ?",
             ((b.etiqueta if b.etiqueta is not None else fila["etiqueta"]).strip(),
              b.color if b.color is not None else fila["color"], mi, mo,
              b.volumen if b.volumen is not None else fila["volumen"], banco, slot))
@@ -146,8 +146,8 @@ async def cargar_archivo(banco: str, slot: int, file: UploadFile = File(...), et
         aid = cur.lastrowid
         c.execute(
             "INSERT INTO cartuchera (banco, slot, audio_id, etiqueta) VALUES (?, ?, ?, ?)"
-            " ON CONFLICT(banco, slot) DO UPDATE SET audio_id = excluded.audio_id, etiqueta = excluded.etiqueta,"
-            " mark_in = NULL, mark_out = NULL, updated_at = datetime('now')",
+            " ON DUPLICATE KEY UPDATE audio_id = VALUES(audio_id), etiqueta = VALUES(etiqueta),"
+            " mark_in = NULL, mark_out = NULL, updated_at = NOW()",
             (banco, slot, aid, (etiqueta or titulo).strip()[:40]))
         c.commit()
     finally:

@@ -13,7 +13,6 @@ los últimos 4 caracteres.
     POST   /api/v1/ia/claves/{id}/probar        → {ok, ms | error}
 """
 
-import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException

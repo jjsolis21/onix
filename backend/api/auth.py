@@ -35,7 +35,7 @@ import hmac
 import os
 import re
 import secrets
-import sqlite3
+from backend.database import DualIntegrityError
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -181,7 +181,7 @@ def login(body: LoginIn, request: Request, response: Response):
         conn.execute("DELETE FROM sesiones WHERE expira < ?", (datetime.now().isoformat(),))
         conn.execute("INSERT INTO sesiones (token_hash, usuario_id, expira, ip) VALUES (?, ?, ?, ?)",
                      (_hash_token(token), u["id"], expira, ip))
-        conn.execute("UPDATE usuarios SET ultimo_acceso = datetime('now', 'localtime') WHERE id = ?", (u["id"],))
+        conn.execute("UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = ?", (u["id"],))
         conn.commit()
     finally:
         conn.close()
@@ -256,7 +256,7 @@ def crear(body: UsuarioIn):
                 "INSERT INTO usuarios (usuario, nombre, rol, clave_hash, activo) VALUES (?, ?, ?, ?, ?)",
                 (body.usuario.lower(), body.nombre.strip(), body.rol, hash_clave(body.clave),
                  int(body.activo))).lastrowid
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail=f"Ya existe el usuario '{body.usuario}'")
         conn.commit()
         return _out(conn.execute("SELECT * FROM usuarios WHERE id = ?", (uid,)).fetchone())
@@ -273,7 +273,7 @@ def modificar(uid: int, body: UsuarioIn):
         try:
             conn.execute("UPDATE usuarios SET usuario = ?, nombre = ?, rol = ?, activo = ? WHERE id = ?",
                          (body.usuario.lower(), body.nombre.strip(), body.rol, int(body.activo), uid))
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail=f"Ya existe el usuario '{body.usuario}'")
         if body.clave:
             conn.execute("UPDATE usuarios SET clave_hash = ? WHERE id = ?", (hash_clave(body.clave), uid))

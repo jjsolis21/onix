@@ -20,7 +20,7 @@ Niveles: "critico" (el aire está o puede quedar mal ahora), "error", "aviso".
 
 import itertools
 import json
-import sqlite3
+from backend.database import DualError, DualOperationalError
 import threading
 import time
 from collections import deque
@@ -143,7 +143,7 @@ def _revisar_bd(conn) -> list:
     en_uso = {r[0] for r in conn.execute("SELECT DISTINCT reloj_id FROM reloj_grilla")}
     try:
         en_uso |= {r[0] for r in conn.execute("SELECT DISTINCT reloj_id FROM reloj_eventos WHERE activo = 1")}
-    except sqlite3.OperationalError:
+    except DualOperationalError:
         pass
     vacias = []
     for rel in conn.execute("SELECT id, nombre FROM relojes"):
@@ -186,7 +186,7 @@ def _revisar_bd(conn) -> list:
     try:
         pend = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = 'Musica'"
                             " AND aprobada = 0").fetchone()[0]
-    except sqlite3.OperationalError:
+    except DualOperationalError:
         pend = 0
     if pend:
         out.append(_p("bandeja", "aviso", f"{pend} canción(es) en la Bandeja de entrada",
@@ -240,7 +240,7 @@ def _revisar_pautas_hoy(conn) -> list:
     from backend.api.reportes import pautas_en_riesgo
     try:
         riesgo = pautas_en_riesgo(conn)
-    except sqlite3.Error:
+    except DualError:
         return []
     if not riesgo:
         return []

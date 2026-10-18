@@ -194,9 +194,9 @@ def configurar(body: RespaldoConfig):
                     prueba.unlink()
                 except OSError as exc:
                     raise HTTPException(status_code=422, detail=f"No se puede escribir en esa carpeta: {exc}")
-            conn.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('respaldo_carpeta', ?)", (carpeta,))
+            conn.execute("REPLACE INTO config (clave, valor) VALUES ('respaldo_carpeta', ?)", (carpeta,))
         if body.conservar is not None:
-            conn.execute("INSERT OR REPLACE INTO config (clave, valor) VALUES ('respaldo_conservar', ?)",
+            conn.execute("REPLACE INTO config (clave, valor) VALUES ('respaldo_conservar', ?)",
                          (str(body.conservar),))
         conn.commit()
     finally:

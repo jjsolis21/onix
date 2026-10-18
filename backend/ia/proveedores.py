@@ -12,7 +12,6 @@ Proveedores:
 
 import json
 import re
-import sqlite3
 import time
 import urllib.error
 import urllib.request

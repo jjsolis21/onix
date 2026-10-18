@@ -12,7 +12,7 @@ programa como cualquier audio (el motor reconoce el tipo 'Locucion' y hace el ta
     DELETE /api/v1/voicetrack/{id}            → a la Papelera
 """
 
-import sqlite3
+from backend.database import DualOperationalError
 import wave
 from datetime import datetime
 from typing import Optional
@@ -43,7 +43,7 @@ def _emisora(c) -> str:
     try:
         r = c.execute("SELECT valor FROM config WHERE clave = 'emisora_nombre'").fetchone()
         return (r[0] if r and r[0] else "") or "ÓNIX FM"
-    except sqlite3.OperationalError:
+    except DualOperationalError:
         return "ÓNIX FM"
 
 
@@ -108,7 +108,7 @@ def voces():
     c = _conn()
     try:
         claves = [dict(r) for r in c.execute("SELECT * FROM ia_claves WHERE activo = 1 ORDER BY orden, id")]
-    except sqlite3.OperationalError:
+    except DualOperationalError:
         claves = []
     finally:
         c.close()

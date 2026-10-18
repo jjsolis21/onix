@@ -25,7 +25,6 @@ REGLAS DE APLICACIÓN (audios.marcas_auto)
 
 import logging
 import math
-import sqlite3
 import subprocess
 from array import array
 from pathlib import Path
