@@ -79,8 +79,10 @@
   function normalizar(a) {
     const anio = parseInt(String(a.fecha_lanzamiento || '').slice(0, 4), 10);
     // Categorías agrupadas sin distinguir mayúsculas ("Pop" y "POP" son la misma)
+    // (género, rotación, subgénero y voz se muestran con la escritura de la lista; solo el origen va en mayúsculas)
     const may = v => (v === null || v === undefined || v === '') ? '' : String(v).toUpperCase();
-    const n = { ...a, cat1: may(a.cat1), cat2: may(a.cat2), cat3: may(a.cat3), voz: may(a.voz), origen: may(a.origen),
+    const tal = v => (v === null || v === undefined) ? '' : String(v);
+    const n = { ...a, cat1: tal(a.cat1), cat2: tal(a.cat2), cat3: tal(a.cat3), voz: tal(a.voz), origen: may(a.origen),
              anio: Number.isFinite(anio) ? anio : null,
              decada: Number.isFinite(anio) ? `${Math.floor(anio / 10) * 10}s` : null,
              veces: a.veces_reproducido || 0, ultima: a.ultima_reproduccion || '',
@@ -128,14 +130,14 @@
     const porTipo = contar('tipo_audio', false);
     // "Mostrar": vistas especiales
     const vistas = [['{"tipo":"todo"}', `Toda la biblioteca (${S.todos.length})`],
-      ['{"tipo":"bandeja"}', `📥 Bandeja de entrada (${pend})`],
+      ['{"tipo":"bandeja"}', `⏳ Por completar — no suenan (${pend})`],
       ...CALIDAD.map(([k, t]) => [JSON.stringify({ tipo: 'ids', clave: k }), `${t} (${S.calidad[k]?.size ?? 0})`]),
       ['{"tipo":"papelera"}', `🗑 Papelera (${S.papelera.length})`]];
     $('bvVista').innerHTML = vistas.map(([v, t]) => `<option value='${esc(v)}'>${esc(t)}</option>`).join('');
     $('bvVista').value = JSON.stringify(S.nodo);
     $('bvVista').classList.toggle('bv-vista-alerta', S.nodo.tipo !== 'todo');
     pintarFiltros();
-    $('bvResumen').textContent = `${porTipo.get('Musica') || 0} canciones · ${S.todos.length} audios` + (pend ? ` · ${pend} en la Bandeja` : '');
+    $('bvResumen').textContent = `${porTipo.get('Musica') || 0} canciones · ${S.todos.length} audios` + (pend ? ` · ⏳ ${pend} por completar (no suenan)` : '');
   }
 
   /** Desplegables combinables; cada opción dice cuántas quedan con los demás filtros puestos. */
@@ -197,6 +199,13 @@
     const v = a[k];
     return typeof v === 'string' ? v.toUpperCase() : (v ?? -Infinity);
   }
+  // Por qué una canción todavía no suena: lo que le falta
+  function faltantes(a) { return [!a.cat1 && 'género', !a.cat2 && 'rotación'].filter(Boolean); }
+  function motivoPendiente(a) {
+    const f = faltantes(a);
+    return f.length ? `Por completar: falta ${f.join(' y ')}. No suena en automático hasta completarla.`
+                    : 'Retenida: tiene género y rotación pero alguien la retuvo a propósito. Apruébala para que suene.';
+  }
   function filtrar() {
     const { k, dir } = S.orden;
     S.filtrados = (enPapelera() ? S.papelera : S.todos).filter(pasa).sort((x, y) => {
@@ -206,9 +215,16 @@
     const aviso = $('bvAviso');
     if (S.nodo.tipo === 'bandeja') {
       aviso.hidden = false;
+      const sinG = S.filtrados.filter(a => !a.cat1).length, sinR = S.filtrados.filter(a => !a.cat2).length;
+      const retenidas = S.filtrados.filter(a => a.cat1 && a.cat2).length;
+      const opciones = campo => (S.schema?.categorias || []).find(x => x.nombre_interno === campo)?.valores?.map(v => `<option>${esc(v.valor)}</option>`).join('') || '';
       aviso.innerHTML = S.filtrados.length
-        ? `📥 Estas canciones <b>no suenan en automático</b> hasta aprobarlas. Selecciónalas, asígnales género y rotación arriba y presiona <b>✓ Aprobar</b>.`
-        : '✓ La Bandeja está vacía: todo lo cargado está clasificado y aprobado.';
+        ? `⏳ <b>${S.filtrados.length} canciones por completar: no suenan en automático.</b> `
+          + `${sinG ? `${sinG} sin género. ` : ''}${sinR ? `${sinR} sin rotación. ` : ''}${retenidas ? `${retenidas} retenidas a propósito. ` : ''}`
+          + `<span class="bv-completar"> A las que les falte: Género <select id="bvCG"><option value="">—</option>${opciones('cat1')}</select> `
+          + `Rotación <select id="bvCR"><option value="">—</option>${opciones('cat2')}</select> `
+          + `<button class="bv-btn bv-btn--ok" id="bvCompletar" title="Pone ese género y esa rotación SOLO a las canciones que no lo tienen, y las deja listas para sonar">✓ Completar y aprobar</button></span>`
+        : '✓ No hay nada por completar: todo lo cargado está listo para sonar.';
     } else if (enPapelera()) {
       aviso.hidden = false;
       aviso.innerHTML = S.filtrados.length
@@ -274,7 +290,7 @@
       case 'ultima': return `<div class="bv-num" style="text-align:left">${esc((a.ultima || '').slice(0, 10))}</div>`;
       case 'estado': {
         const i = [];
-        if (a.tipo_audio === 'Musica' && !a.aprobada) i.push('<span title="En la Bandeja: no suena en automático">📥</span>');
+        if (a.tipo_audio === 'Musica' && !a.aprobada) i.push(`<span title="${esc(motivoPendiente(a))}">⏳</span>`);
         if (a.marcas_auto === 1) i.push('<span title="Marcas automáticas (inicio y mezcla)">✂</span>');
         else if (a.marcas_auto === 0) i.push('<span title="Marcas puestas a mano">✋</span>');
         else if (a.marcas_auto === -1) i.push('<span title="No se pudieron detectar las marcas">⚠</span>');
@@ -358,12 +374,37 @@
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { aviso(typeof d.detail === 'string' ? d.detail : `Error ${r.status}`, 'error'); return null; }
     if (d.sin_clasificar?.length) {
-      aviso(`${d.sin_clasificar.length} sin género o rotación: siguen en la Bandeja. ${mensaje ? '' : ''}`, 'error');
+      aviso(`${d.sin_clasificar.length} sin género o rotación: siguen por completar (no suenan). ${mensaje ? '' : ''}`, 'error');
       S.sel = new Set(d.sin_clasificar);           // quedan seleccionadas las que faltan
     } else if (mensaje) aviso(mensaje(ids.length), 'success');
     await cargar();
     if (typeof loadAudios === 'function') loadAudios();   // el editor usa la lista de admin-app
     return d;
+  }
+  // «Completar y aprobar»: pone el género y la rotación elegidos SOLO donde faltan; el servidor aprueba las que quedan completas
+  async function completarPendientes() {
+    const g = $('bvCG')?.value || '', r = $('bvCR')?.value || '';
+    if (!g && !r) return aviso('Elige un género y/o una rotación para las canciones que no lo tienen', 'error');
+    const pend = S.filtrados.filter(a => a.tipo_audio === 'Musica' && !a.aprobada);
+    const sinG = pend.filter(a => !a.cat1).map(a => a.id), sinR = pend.filter(a => !a.cat2).map(a => a.id);
+    const enviar = async (ids, cambios) => {
+      if (!ids.length) return { aprobadas_solas: 0 };
+      const resp = await fetch('/api/v1/biblioteca/lote', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ ids, cambios }) });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `Error ${resp.status}`);
+      return d;
+    };
+    try {
+      let listas = 0;
+      if (g) listas += (await enviar(sinG, { cat1: g })).aprobadas_solas || 0;
+      if (r) listas += (await enviar(sinR, { cat2: r })).aprobadas_solas || 0;
+      await cargar();
+      if (typeof loadAudios === 'function') loadAudios();
+      const quedan = S.todos.filter(a => a.tipo_audio === 'Musica' && !a.aprobada).length;
+      aviso(`✓ ${listas} canciones listas para sonar` + (quedan ? ` · ${quedan} siguen por completar` : ' · no queda nada por completar'),
+            quedan ? 'warning' : 'success');
+    } catch (e) { aviso(e.message, 'error'); }
   }
   function aviso(msg, tipo = 'info') {
     if (typeof showToast === 'function') showToast(msg, tipo); else console.info(msg);
@@ -579,7 +620,7 @@
     $('bvFicha').innerHTML = `
       <div class="bv-f-tit">${esc(f.titulo)}</div>
       <div class="bv-f-art">${esc(f.artista)}${f.album ? ` · <span style="color:var(--text-lo)">${esc(f.album)}</span>` : ''}</div>
-      ${f.tipo_audio === 'Musica' && !f.aprobada ? `<div class="bv-f-bandeja">📥 En la Bandeja: no suena en automático hasta aprobarla.</div>` : ''}
+      ${f.tipo_audio === 'Musica' && !f.aprobada ? `<div class="bv-f-bandeja">⏳ Por completar: no suena en automático hasta que tenga género y rotación y esté aprobada.</div>` : ''}
       <div class="bv-f-acc">
         <button class="bv-btn" data-f="play">${S.sonando === f.id ? ICO('stop2') + ' Parar' : ICO('play2') + ' Escuchar'}</button>
         <button class="bv-btn" data-f="editar">✎ Editar marcas y datos</button>
@@ -881,7 +922,8 @@
       lote({ cambios: { [s.dataset.campo]: valor } }, n => `✓ ${n} canción(es): ${s.title} = ${valor === null ? '(quitado)' : nombre}`);
     });
     $('bvAprobar').addEventListener('click', () => lote({ cambios: { aprobada: 1 } }, n => `✓ ${n} aprobada(s): ya pueden salir al aire`));
-    $('bvBandeja').addEventListener('click', () => lote({ cambios: { aprobada: 0 } }, n => `📥 ${n} devuelta(s) a la Bandeja`));
+    $('bvBandeja').addEventListener('click', () => lote({ cambios: { aprobada: 0 } }, n => `⏸ ${n} retenida(s): no suenan hasta aprobarlas`));
+    $('bvAviso').addEventListener('click', e => { if (e.target.closest('#bvCompletar')) completarPendientes(); });
     $('bvMarcas').addEventListener('click', () => lote({ accion: 'redetectar_marcas' }, n => `✂ ${n} se volverán a analizar en segundo plano`));
     $('bvDesactivar').addEventListener('click', eliminarSeleccion);
     $('bvRestaurar').addEventListener('click', () => papeleraAccion('restaurar'));

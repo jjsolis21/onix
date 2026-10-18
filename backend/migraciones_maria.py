@@ -11,6 +11,69 @@ import logging
 logger = logging.getLogger("onix.migraciones")
 
 
+import unicodedata
+
+# Columna de `audios` donde cada categoría guarda su valor
+_COLUMNA_DE_CATEGORIA = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal"}
+# Valores que el propio sistema necesita (las voces de las cuñas: Hombre, Mujer o Genérico)
+_VALORES_DE_SISTEMA = {"voz": ("Hombre", "Mujer", "Genérico")}
+
+
+def _clave_categoria(valor: str) -> str:
+    """Sin mayúsculas ni tildes: «Pop» = «POP», «Dúo» = «DUO»."""
+    base = unicodedata.normalize("NFKD", " ".join(str(valor).split()))
+    return "".join(ch for ch in base if not unicodedata.combining(ch)).casefold()
+
+
+def _unificar_categorias(c) -> int:
+    """
+    Un valor de la lista no puede estar dos veces solo por mayúsculas o tildes (Pop/POP, Balada/BALADA, Dúo/DUO).
+    Se queda UNA escritura —la que no está toda en mayúsculas, o la primera por orden— y las canciones que usaban la otra
+    pasan a ella. Devuelve cuántos valores repetidos se eliminaron. Idempotente.
+    """
+    eliminados = 0
+    for cat_id, nombre in [tuple(r) for r in c.execute("SELECT id, nombre_interno FROM config_categorias_def").fetchall()]:
+        columna = _COLUMNA_DE_CATEGORIA.get(nombre)
+        grupos: dict = {}
+        for fila in c.execute("SELECT id, valor, activo FROM config_categorias_valores WHERE cat_id = ? ORDER BY orden, id",
+                              (cat_id,)).fetchall():
+            grupos.setdefault(_clave_categoria(fila[1]), []).append(tuple(fila))
+        for miembros in grupos.values():
+            if len(miembros) < 2:
+                continue
+            # Se conserva la escritura normal («Pop») aunque estuviera inactiva; si todas están en mayúsculas, la primera por orden
+            elegido = next((m for m in miembros if m[1] != m[1].upper()), None) or next((m for m in miembros if m[2]), miembros[0])
+            for vid, valor, _activo in miembros:
+                if vid == elegido[0]:
+                    continue
+                if columna:
+                    c.execute(f"UPDATE audios SET `{columna}` = ? WHERE `{columna}` = ? COLLATE utf8mb4_bin", (elegido[1], valor))
+                c.execute("DELETE FROM config_categorias_valores WHERE id = ?", (vid,))
+                eliminados += 1
+            if any(m[2] for m in miembros):
+                c.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (elegido[0],))
+    return eliminados
+
+
+def _asegurar_valores_de_sistema(c) -> None:
+    for nombre, valores in _VALORES_DE_SISTEMA.items():
+        fila = c.execute("SELECT id FROM config_categorias_def WHERE nombre_interno = ?", (nombre,)).fetchone()
+        if not fila:
+            continue
+        cat_id = fila[0]
+        for valor in valores:
+            existente = c.execute("SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
+                                  (cat_id, valor)).fetchone()
+            if existente and existente[1]:
+                continue
+            if existente:
+                c.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (existente[0],))
+            else:
+                orden = c.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM config_categorias_valores WHERE cat_id = ?",
+                                  (cat_id,)).fetchone()[0]
+                c.execute("INSERT INTO config_categorias_valores (cat_id, valor, orden) VALUES (?, ?, ?)", (cat_id, valor, orden))
+
+
 def _columnas(c, tabla: str) -> set:
     return {r[0] for r in c.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?",
@@ -66,6 +129,23 @@ def migrar() -> None:
         """)
         if "idx_pauta_fecha" not in _indices(c, "pautas_deuda"):
             c.execute("CREATE INDEX idx_pauta_fecha ON pautas_deuda (pauta_id, fecha, recuperada)")
+        # 49 — Géneros y categorías: una sola escritura por valor (Pop/POP, Balada/BALADA, Dúo/DUO…) y solo los de la lista.
+        #      Se unifican los repetidos, se retira el valor de prueba «TEMP_TEST» si nadie lo usa, y la columna pasa a no distinguir
+        #      mayúsculas para que el UNIQUE (categoría, valor) impida volver a crear un repetido.
+        unificados = _unificar_categorias(c)
+        if unificados:
+            logger.info("  → %d valores de categoría repetidos unificados", unificados)
+        c.execute("DELETE v FROM config_categorias_valores v WHERE v.valor = 'TEMP_TEST'"
+                  " AND NOT EXISTS (SELECT 1 FROM audios a WHERE a.subgenero = 'TEMP_TEST' OR a.categoria = 'TEMP_TEST'"
+                  " OR a.cat3 = 'TEMP_TEST' OR a.genero_vocal = 'TEMP_TEST')")
+        coleccion = c.execute("SELECT collation_name, column_type, is_nullable FROM information_schema.columns"
+                              " WHERE table_schema = DATABASE() AND table_name = 'config_categorias_valores' AND column_name = 'valor'").fetchone()
+        if coleccion and coleccion[0] != "utf8mb4_unicode_ci":
+            c.execute(f"ALTER TABLE config_categorias_valores MODIFY `valor` {coleccion[1]} CHARACTER SET utf8mb4"
+                      f" COLLATE utf8mb4_unicode_ci {'NULL' if coleccion[2] == 'YES' else 'NOT NULL'}")
+        _asegurar_valores_de_sistema(c)
+        c.commit()
+
         # 48 — Nombres sin distinguir mayúsculas: en SQLite eran COLLATE NOCASE y en MariaDB quedaron «utf8mb4_bin»
         #      (distingue «Navidad» de «NAVIDAD»), así que el UNIQUE dejaba pasar duplicados.
         for tabla, columna in (("comerciales_agencias", "nombre"), ("comerciales_clientes", "nombre"),

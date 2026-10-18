@@ -119,6 +119,18 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     `julianday`/`rowid`, `datetime('now', ?)` del Locutor, `%` y `ESCAPE '\\'` en el adaptador. Todo nuevo esquema va en
     `backend/migraciones_maria.py` (corre al arrancar la API), NO en `scripts/init_db.py` (solo migra el SQLite histórico).
     Conexiones ahora en READ COMMITTED (antes REPEATABLE READ: lecturas viejas entre PCs).
+11. **Aprobación de canciones (HECHO 2026-10-18):** la Bandeja pasó a llamarse «⏳ Por completar — no suenan (n)». Una canción que llega con
+    género y rotación suena sola; una que falta se completa y se aprueba sola cuando una edición (individual o por lote) le pone lo que faltaba
+    (una completa que alguien retuvo a propósito NO se aprueba sola). El aviso de carga dice qué pasó («lista para sonar» o «falta género…, no suena»).
+    La vista «Por completar» explica cuántas faltan de qué y tiene «✓ Completar y aprobar» (pone género/rotación solo a las que no lo tienen).
+    Botón «A la Bandeja» → «⏸ Retener». Sigue pendiente: que el diálogo de carga por lote pida género y rotación antes de subir.
+12. **Géneros y categorías solo de la lista (HECHO 2026-10-18):** la causa eran duplicados en la propia lista (Pop/POP, Balada/BALADA, Salsa/SALSA,
+    Hombre/HOMBRE…) y que la validación nunca rechazaba un valor. Ahora: crear un valor repetido (sin distinguir mayúsculas ni tildes) da 409; poner un
+    género que no está en la lista da 422 (en edición y lote); una carga cuyo género de las etiquetas no está en la lista lo deja vacío con aviso;
+    la columna no distingue mayúsculas (el UNIQUE lo impide); la pantalla ya no pasa los géneros a mayúsculas. Migración 49 aplicada en `onix_db`
+    (respaldo previo `onix-2026-10-18_1446.sql.gz`): Balada 24, Pop 23, Salsa 27, Hombre 51 + Mujer 17 + Grupo 7 + Dúo 1; voces de sistema
+    Hombre/Mujer/Genérico aseguradas. DECISIÓN DEL DUEÑO pendiente sobre valores que quedan en la lista y no son repetidos: `DANCE`, `URBANO`,
+    `COMERCIAL` (género interno de las cuñas), voz `MALE` y `FT`, y una canción con género `GEN_ALPHA` que no está en la lista.
 8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — PENDIENTE:** se programa en el reloj; también en la
    biblioteca de Studio para modo manual. Sobre intro: al inicio del intro o al final del intro (intro 20 s, tip 7 s ⇒ empieza a los 13 s).
    Puente: el tip se reparte entre las dos canciones (tip 8 s ⇒ 4 s en la canción que sale y 4 s en la que entra).

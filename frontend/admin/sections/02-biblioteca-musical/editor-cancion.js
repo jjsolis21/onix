@@ -125,7 +125,7 @@
       <header class="ec-cab">
         <span class="ec-tapa-mini" id="ecTapaMini">${E.id ? `<img src="/api/v1/audios/${E.id}/caratula?t=${Date.now()}" onerror="this.remove()" alt="">` : ''}♪</span>
         <div class="ec-cab-tit"><b id="ecCabTit">${nueva ? 'Nueva canción' : `${esc(f.artista)} — ${esc(f.titulo)}`}</b>
-          <small>${nueva ? 'Elige el archivo: los datos se leen de sus etiquetas' : (f.tipo_audio === 'Musica' && !f.aprobada ? '📥 En la Bandeja de entrada' : `#${E.id}`)}</small></div>
+          <small>${nueva ? 'Elige el archivo: los datos se leen de sus etiquetas' : (f.tipo_audio === 'Musica' && !f.aprobada ? '⏳ Por completar: no suena en automático' : `#${E.id}`)}</small></div>
         <button class="ec-x" data-acc="cerrar" title="Cerrar (Esc)">✕</button>
       </header>
       <div class="ec-cuerpo">
@@ -709,6 +709,7 @@
       }
       const r = await fetch(`/api/v1/audios/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
       if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(typeof x.detail === 'string' ? x.detail : (x.detail?.mensaje || `Error ${r.status}`)); }
+      const resp = await r.json().catch(() => ({}));
       if (['Efecto', 'Sweeper', 'Tips'].includes(d.tipo_audio)) {
         await fetch('/api/v1/ident/audios', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                                               body: JSON.stringify({ ids: [id], categoria: catIdent || null }) });
@@ -716,7 +717,12 @@
       if (aprobar) await fetch('/api/v1/biblioteca/lote', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ ids: [id], cambios: { aprobada: 1 } }) });
       E.sucio = false;
-      toast(E.id ? `✓ Guardada: ${d.titulo}` : `✓ Cargada: ${d.titulo}${d.tipo_audio === 'Musica' ? ' (queda en la Bandeja hasta aprobarla)' : ''}`, 'success');
+      // Lo que de verdad pasó: con género y rotación la canción suena sola; si falta algo, se dice qué y que NO suena todavía
+      const lista = !!resp?.data?.aprobada_sola || !!aprobar;
+      const faltan = d.tipo_audio === 'Musica' ? [!cuerpo.cat1 && 'género', !cuerpo.cat2 && 'rotación'].filter(Boolean) : [];
+      if (E.id) toast(lista ? `✓ Guardada: ${d.titulo} — ya está lista para sonar` : `✓ Guardada: ${d.titulo}`, 'success');
+      else if (d.tipo_audio !== 'Musica' || lista || !faltan.length) toast(`✓ Cargada: ${d.titulo}${d.tipo_audio === 'Musica' ? ' — lista para sonar' : ''}`, 'success');
+      else toast(`Cargada: ${d.titulo}. ⚠ Falta ${faltan.join(' y ')}: queda POR COMPLETAR y no suena en automático hasta completarla.`, 'warning');
       const cb = E.onGuardar;
       cerrar(true);
       cb?.(id);

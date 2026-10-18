@@ -20,6 +20,8 @@ def subir(client, tmp_path, titulo, tipo="Musica", cat2=None, seconds=3.0):
     wav = make_wav(tmp_path / f"{titulo}.wav", seconds=seconds)
     data = {"titulo": titulo, "artista": f"ART {titulo}", "tipo_audio": tipo}
     if cat2:
+        # La lista manda: el valor se crea antes (como haría un usuario); 409 si ya existe
+        client.post("/api/v1/config/biblioteca/valores", json={"nombre_interno": "cat2", "valor": cat2})
         data["cat2"] = cat2
     with open(wav, "rb") as fh:
         r = client.post("/api/v1/audios", data=data, files={"file": (wav.name, fh, "audio/wav")})

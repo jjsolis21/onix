@@ -369,30 +369,47 @@ def _validate_categoria_valor(
     campo_api: str,
 ) -> None:
     """
-    Valida que el valor pertenezca o se ajuste al catálogo activo.
-    No auto-registra valores no creados por el usuario en config_categorias_valores.
+    El valor tiene que estar en la lista de la categoría (creada por el usuario). El sistema NO inventa géneros ni categorías:
+    uno que no esté (o que se haya borrado) se rechaza con un mensaje claro.
     """
     if not valor or not valor.strip():
         return
 
     cat_def = conn.execute(
-        "SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
+        "SELECT id, etiqueta_visible FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
         (nombre_interno,)
     ).fetchone()
 
     if not cat_def:
         return
 
-    cat_id = cat_def["id"]
-    # Si existe inactivo, se reactiva
-    existing = conn.execute(
-        "SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
-        (cat_id, valor.strip())
+    existe = conn.execute(
+        "SELECT 1 FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?) AND activo = 1",
+        (cat_def["id"], valor.strip())
     ).fetchone()
+    if not existe:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"«{valor.strip()}» no está en la lista de {cat_def['etiqueta_visible']}. Elige uno de la lista "
+                   f"o créalo antes en Configuración › Biblioteca.")
 
-    if existing and not existing["activo"]:
-        conn.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (existing["id"],))
-        logger.info(f"Reactivado valor '{valor}' en categoría '{nombre_interno}'.")
+
+def _asegurar_valor_sistema(conn: MariaDBConnection, nombre_interno: str, valor: str) -> None:
+    """Valor que el propio sistema necesita (p. ej. el género «COMERCIAL» de las cuñas): lo crea o reactiva si falta."""
+    cat_def = conn.execute("SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
+                           (nombre_interno,)).fetchone()
+    if not cat_def:
+        return
+    fila = conn.execute("SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
+                        (cat_def["id"], valor)).fetchone()
+    if fila and fila["activo"]:
+        return
+    if fila:
+        conn.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (fila["id"],))
+        return
+    orden = conn.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM config_categorias_valores WHERE cat_id = ?",
+                         (cat_def["id"],)).fetchone()[0]
+    conn.execute("INSERT INTO config_categorias_valores (cat_id, valor, orden) VALUES (?, ?, ?)", (cat_def["id"], valor, orden))
 
 
 # ---- Endpoints de Configuración ----
@@ -561,10 +578,20 @@ def add_categoria_valor(
     else:
         orden = body.orden
 
+    # «Pop» y «POP» (o «Dúo» y «DUO») son el MISMO valor: no se crea uno repetido distinto solo en mayúsculas o tildes
+    valor_nuevo = " ".join(body.valor.split())
+    body.valor = valor_nuevo
+    repetido = conn.execute(
+        "SELECT valor, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
+        (cat["id"], valor_nuevo)).fetchone()
+    if repetido and repetido["activo"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya existe «{repetido['valor']}» en {cat['etiqueta_visible']}: no se crea otro igual")
     # Un valor borrado antes (soft-delete) se reactiva en vez de chocar con él
     borrado = conn.execute(
-        "SELECT id FROM config_categorias_valores WHERE cat_id = ? AND valor = ? AND activo = 0",
-        (cat["id"], body.valor)).fetchone()
+        "SELECT id FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?) AND activo = 0",
+        (cat["id"], valor_nuevo)).fetchone()
     try:
         if borrado:
             conn.execute("UPDATE config_categorias_valores SET activo = 1, orden = ? WHERE id = ?",
@@ -1028,7 +1055,7 @@ async def upload_audio_file(
     audio_id = None
     if tipo == "pauta":
         titulo = Path(file.filename).stem.strip().upper() or dest.stem.upper()
-        _validate_categoria_valor(conn, "cat1", "COMERCIAL", "cat1 (Género)")
+        _asegurar_valor_sistema(conn, "cat1", "COMERCIAL")
         cursor = conn.execute(
             "INSERT INTO audios (titulo, artista, duracion, archivo_path, subgenero, tipo_audio)"
             " VALUES (?, 'PUBLICIDAD', ?, ?, 'COMERCIAL', 'Cuña')",
@@ -1147,6 +1174,20 @@ def _categoria_canonica(conn: MariaDBConnection, nombre_interno: str, valor: Opt
     return fila[0] if fila else str(valor).strip()
 
 
+def _categoria_de_la_lista(conn: MariaDBConnection, nombre_interno: str, valor: Optional[str],
+                           etiqueta: str, avisos: list) -> Optional[str]:
+    """El valor con su escritura oficial si está en la lista; si no, None y un aviso (nunca se inventa uno)."""
+    canon = _categoria_canonica(conn, nombre_interno, valor)
+    if not canon:
+        return None
+    try:
+        _validate_categoria_valor(conn, nombre_interno, canon, etiqueta)
+    except HTTPException:
+        avisos.append(f"{etiqueta.capitalize()} «{canon}» no está en la lista: la canción queda sin {etiqueta}.")
+        return None
+    return canon
+
+
 def _validate_all_categorias(
     conn: MariaDBConnection,
     cat1: Optional[str],
@@ -1209,11 +1250,13 @@ async def create_audio(
     titulo  = titulo.upper()
     artista = artista.upper()
     if album: album = album.upper()
-    # Categorías con la escritura ya registrada ("Pop", no "POP")
-    cat1 = _categoria_canonica(conn, "cat1", cat1)
-    cat2 = _categoria_canonica(conn, "cat2", cat2)
-    cat3 = _categoria_canonica(conn, "cat3", cat3)
-    voz  = _categoria_canonica(conn, "voz", voz)
+    # Solo valores de la lista, con su escritura oficial ("Pop", no "POP"). Lo que venga de las etiquetas del archivo y no esté
+    # en la lista se descarta con un aviso: el sistema no inventa géneros (la canción queda «Por completar»).
+    avisos: list[str] = []
+    cat1 = _categoria_de_la_lista(conn, "cat1", cat1, "género", avisos)
+    cat2 = _categoria_de_la_lista(conn, "cat2", cat2, "rotación", avisos)
+    cat3 = _categoria_de_la_lista(conn, "cat3", cat3, "subgénero", avisos)
+    voz  = _categoria_de_la_lista(conn, "voz", voz, "voz", avisos)
 
     # PASO 1: Validación dinámica de categorías
     _validate_all_categorias(conn, cat1, cat2, cat3, voz)
@@ -1324,6 +1367,10 @@ async def create_audio(
 
     return {
         "mensaje": "Audio creado exitosamente",
+        # ¿Suena en automático ya? Si falta género o rotación queda «Por completar» y aquí se dice por qué
+        "lista_para_sonar": bool(tipo_audio != "Musica" or (cat1 and cat2)),
+        "faltan": [] if tipo_audio != "Musica" else ([] if cat1 else ["género"]) + ([] if cat2 else ["rotación"]),
+        "avisos": avisos,
         "data": {
             "id": nuevo_id,
             "titulo": titulo,
@@ -1390,8 +1437,9 @@ async def update_audio(
     cat3_final = body.cat3 if body.cat3 is not None else audio["cat3"]
     voz_final  = body.voz  if body.voz  is not None else audio["genero_vocal"]
 
-    # Validar solo si el campo viene en el payload o ya tenía valor
-    _validate_all_categorias(conn, cat1_final, cat2_final, cat3_final, voz_final)
+    # Solo se validan los campos que vienen en la petición: una canción antigua con un valor que hoy no está en la lista
+    # sigue pudiendo editar su título; pero NO se puede poner un género que no exista.
+    _validate_all_categorias(conn, body.cat1, body.cat2, body.cat3, body.voz)
     logger.info("  → Validación de categorías: PASS")
 
     # Construir SET dinámico con los campos enviados
@@ -1453,6 +1501,14 @@ async def update_audio(
         f"UPDATE audios SET {set_clause} WHERE id = ?",
         values
     )
+    aprobada_sola = False
+    if (audio["tipo_audio"] == "Musica" and not audio["aprobada"]
+            and (not (audio["subgenero"] or "").strip() or not (audio["categoria"] or "").strip())
+            and (cat1_final or "").strip() and (cat2_final or "").strip()):
+        # La edición completó el género y la rotación que faltaban: ya está lista, sin otro paso de aprobación.
+        # (Una canción completa que alguien devolvió a propósito a la Bandeja no se vuelve a aprobar sola.)
+        conn.execute("UPDATE audios SET aprobada = 1 WHERE id = ?", (audio_id,))
+        aprobada_sola = True
 
     logger.info(
         f"  → Audio id={audio_id} actualizado. Campos: {list(campos_update.keys())}"
@@ -1473,6 +1529,7 @@ async def update_audio(
         "data": {
             "id": audio_id,
             "campos_actualizados": list(campos_update.keys()),
+            "aprobada_sola": aprobada_sola,
             "cat1": cat1_final,
             "cat2": cat2_final,
             "cat3": cat3_final,
@@ -1881,10 +1938,23 @@ def editar_lote(body: LoteAudiosRequest, conn: MariaDBConnection = Depends(get_d
             v = ",".join(map(str, dias)) if dias and len(dias) < 7 else None   # los 7 = sin restricción
         sets.append(f"{col} = ?")
         valores.append(v)
+    # Cuáles estaban sin género o sin rotación ANTES del cambio (solo a esas las completa y aprueba sola esta edición)
+    incompletas_antes: list[int] = []
+    if ("cat1" in c or "cat2" in c) and "aprobada" not in c:
+        incompletas_antes = [r[0] for r in conn.execute(
+            f"SELECT id FROM audios WHERE id IN ({ph}) AND activo = 1 AND tipo_audio = 'Musica' AND COALESCE(aprobada, 0) = 0"
+            " AND (COALESCE(subgenero, '') = '' OR COALESCE(categoria, '') = '')", ids)]
     hechos = 0
     if sets:
         hechos = conn.execute(f"UPDATE audios SET {', '.join(sets)}, updated_at = NOW()"
                               f" WHERE id IN ({ph}) AND activo = 1", valores + ids).rowcount
+    aprobadas_solas = 0
+    if incompletas_antes:
+        # Las que el cambio deja con género y rotación pasan a «lista para sonar» solas
+        aprobadas_solas = conn.execute(
+            f"UPDATE audios SET aprobada = 1 WHERE id IN ({','.join('?' * len(incompletas_antes))})"
+            " AND COALESCE(subgenero, '') <> '' AND COALESCE(categoria, '') <> ''", incompletas_antes).rowcount
+        hechos = max(hechos, aprobadas_solas)
     sin_clasificar = []
     if "aprobada" in c:
         if c["aprobada"]:
@@ -1917,7 +1987,7 @@ def editar_lote(body: LoteAudiosRequest, conn: MariaDBConnection = Depends(get_d
             engine.plan_regenerar()          # el automático ya ve los cambios
         except Exception:
             pass
-    return {"actualizados": hechos, "sin_clasificar": sin_clasificar}
+    return {"actualizados": hechos, "sin_clasificar": sin_clasificar, "aprobadas_solas": aprobadas_solas}
 
 
 # ---- DELETE (soft) /api/v1/audios/{audio_id} ----
