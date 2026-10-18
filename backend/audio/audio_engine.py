@@ -1086,7 +1086,10 @@ class AudioEngine:
     VOZ_FIN            = 0.2    # la siguiente entra este tiempo antes del final de la voz
     TIP_CORTE          = 0.8    # fundido del tip que no cabe en el intro: termina justo donde entra la voz
     TIP_SALIDA         = 0.3    # fundido del tip cuando lo interrumpe una cuña, una voz o el operador
-    TIP_SUBIR_MS       = 600    # la música vuelve a pleno al terminar el tip
+    TIP_SUBIR_MS       = 600    # la música vuelve a pleno si el tip se corta de golpe
+    TIP_DUCK           = 0.45   # la música bajo un tip queda al 45 % (≈ -7 dB, se oye el fondo); config tip_fondo_pct
+    TIP_BAJAR_MS       = 250    # bajada rápida al entrar el tip (que no se pise su primera palabra)
+    TIP_SUBE_ANTES     = 1.3    # la música empieza a subir este tiempo ANTES de que acabe el tip: llega a pleno justo al terminar
 
     def __init__(self, db_path: Path = None, respaldo_dir: Path = None):
         self.bus = EventBus()
@@ -1122,6 +1125,7 @@ class AudioEngine:
         self._norm_lufs        = -16.0
         self._duck_until       = 0.0
         self._voz_duck         = self.VOZ_DUCK   # volumen de la música bajo una locución (0–1)
+        self._tip_duck         = self.TIP_DUCK   # volumen de la música bajo un tip (0–1)
         self._efx: dict[int, dict] = {}        # canal de cartuchera → {boton, audio_id, titulo, fin, hasta}
         # Tips sobre la música (ver calcular_tip): uno a la vez, en CANAL_TIP
         self._tip:      Optional[dict] = None  # programado o sonando sobre la canción `item`
@@ -1264,6 +1268,7 @@ class AudioEngine:
             self._ducking_vol = 10 ** (float(self._cfg("ducking_db", "-12")) / 20)
             # Música bajo la voz del locutor / voice track, en % (Admin › Motor de audio)
             self._voz_duck = max(0.0, min(float(self._cfg("voz_fondo_pct", str(int(self.VOZ_DUCK * 100)))), 100.0)) / 100
+            self._tip_duck = max(0.0, min(float(self._cfg("tip_fondo_pct", str(int(self.TIP_DUCK * 100)))), 100.0)) / 100
             self._fade_corte = max(0.2, min(float(self._cfg("fade_corte_seg", str(self.FADE_CORTE)) or self.FADE_CORTE), 15.0))
             self._fade_curva = parse_curva_fade(self._cfg("fade_corte_curva", ""))
             fijar_regla_voces(self._cfg("regla_voces_mujer", "1") not in ("0", "false", ""))
@@ -2605,7 +2610,7 @@ class AudioEngine:
             return
         t["estado"], t["duck"] = "sonando", True
         if self._current_track:
-            self._audio.slide_volume(self._active_canal, self._target_volume(), self.VOZ_BAJAR_MS)
+            self._audio.slide_volume(self._active_canal, self._target_volume(), self.TIP_BAJAR_MS)
         self._log_emision(t["track"], {"origen": t["origen"]}, tipo="tips")
         self.bus.emit("tip_al_aire", self._tip_info(t))
 
@@ -2679,6 +2684,13 @@ class AudioEngine:
             return
         if t["limite"] is not None and self._audio.get_position_sec(t["canal"]) >= t["limite"] - self.TIP_CORTE:
             self._tip_salir(self.TIP_CORTE)                     # nunca tapa la entrada del cantante
+            return
+        resta = self._audio.get_duration_sec(CANAL_TIP) - self._audio.get_position_sec(CANAL_TIP)
+        if t["duck"] and resta <= self.TIP_SUBE_ANTES:
+            # La música sube mientras el tip termina (como suelta un operador el fader): a pleno cuando calla
+            t["duck"] = False
+            if self._current_track:
+                self._audio.slide_volume(self._active_canal, self._target_volume(), int(max(resta, 0.3) * 1000))
 
     def _tip_antes_de_arrancar(self, item: dict) -> bool:
         """
@@ -2875,7 +2887,7 @@ class AudioEngine:
         track = track if track is not None else self._current_track
         duck  = self._ducking_vol if self._effect_ducking else 1.0
         if self._tip and self._tip.get("duck"):
-            duck *= self._voz_duck               # bajo un tip la música queda como bajo una voz
+            duck *= self._tip_duck               # bajo un tip la música baja menos que bajo una voz
         return self._master_volume * duck * self._gain_of(track)
 
     # ── Cartuchera ────────────────────────────────────────────────────────────

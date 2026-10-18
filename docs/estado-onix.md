@@ -149,7 +149,7 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
      Con modo, la fila no ocupa tiempo: de intro va sobre la canción siguiente; de puente, entre la anterior y la siguiente.
    - Studio (manual): en Separadores, filtro fijo «💡 Tips: …» junto a Tipo; con un modo elegido, «💡 COLOCAR» / doble clic en un Tips lo monta;
      aviso ámbar con qué tip entra, cómo y a qué segundo, y botón QUITAR TIP. Comando `tip` / `tip_quitar` (WS, API y motor remoto).
-   - Motor: canal propio (9), entra a pleno; la música baja como bajo una voz (`voz_fondo_pct`) y vuelve a pleno al terminar.
+   - Motor: canal propio (9), entra a pleno; la música baja al 45 % (≈ −7 dB, `tip_fondo_pct` en Admin › Motor de audio; las voces siguen en `voz_fondo_pct`) en 250 ms y empieza a subir ~1,3 s ANTES de que el tip termine, para estar a pleno justo al callar.
      Final del intro = intro − duración (20 − 7 ⇒ 13 s). Puente = cruza el cambio: arranca (mezcla − mitad del tip) y sigue encima de la siguiente (tip 6 ⇒ 3 s antes y 3 s después de que entre la siguiente; con crossfade, «a 3 s del final» ya sería tarde). El tip NO es una fila «siguiente»: en el programa y la cola va como insignia 💡 sobre la canción que pisa (intro → la que entra, puente → la que sale). Si el puente no puede salir (nada después), el Studio avisa. Sin intro ⇒ al inicio.
      Tip más largo que el intro ⇒ fundido de 0,8 s que termina justo en la voz (en el puente, también la voz de la canción que entra).
    - Casos: el puente no se monta si lo que sigue es tanda, voz o nada; una cuña, voz, salto o stop cortan el tip con fundido corto;

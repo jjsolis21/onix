@@ -75,8 +75,8 @@ def test_final_del_intro_en_el_motor_baja_la_musica_y_no_pisa_la_voz(engine, med
     assert engine._tip["estado"] == "espera" and not engine._audio.is_active(CANAL_TIP)
     _al(engine, 13.0)
     assert engine._tip["estado"] == "sonando" and engine._audio.is_active(CANAL_TIP)
-    pleno = engine._target_volume(engine._current_track) / engine._voz_duck
-    assert (canal, round(pleno * engine._voz_duck, 3)) in vols     # la música bajó como bajo una voz
+    pleno = engine._target_volume(engine._current_track) / engine._tip_duck
+    assert (canal, round(pleno * engine._tip_duck, 3)) in vols     # la música bajó al nivel del tip (no tanto como bajo una voz)
 
     _al(engine, 20.0 - engine.TIP_CORTE)                           # llega la voz: el tip se despide
     assert engine._tip["saliendo"] and (CANAL_TIP, 0.0) in vols
@@ -332,3 +332,25 @@ def test_puente_que_aun_no_sonaba_no_sale_si_el_operador_salta(engine, media):
     _al(engine, 20.0)
     engine.skip(); engine._drain_commands()
     assert engine._current_track["id"] == b and engine._tip is None
+
+
+def test_la_musica_baja_suave_bajo_el_tip_y_sube_antes_de_que_termine(engine, media):
+    """Queja del operador: bajaba mucho y subía tarde. Ahora: -7 dB y la subida empieza ~1,3 s antes del final del tip."""
+    assert engine._tip_duck == 0.45 > engine._voz_duck             # más suave que bajo una voz
+    tema = add_audio(engine, media, "TEMA", seconds=60.0, cue_mezcla=55.0)
+    tip = add_audio(engine, media, "TIP 7", tipo="Tips", seconds=7.0)
+    engine._mode = "manual"
+    vols = _volumenes(engine)
+    _tip_manual(engine, tip, "intro_inicio")
+    engine._start({"track": engine._fetch_track(tema), "origen": "manual"})
+    canal = engine._active_canal
+    pleno = engine._master_volume * engine._gain_of(engine._current_track)
+    assert (canal, round(pleno * 0.45, 3)) in vols and engine._tip["duck"]
+    antes = len(vols)
+    engine._audio.set_position_sec(CANAL_TIP, 4.0)                 # aún falta mucho: sigue abajo
+    engine._tick()
+    assert engine._tip["duck"] and len(vols) == antes
+    engine._audio.set_position_sec(CANAL_TIP, 5.9)                 # quedan 1,1 s: empieza a subir mientras el tip termina
+    engine._tick()
+    assert not engine._tip["duck"] and vols[-1] == (canal, round(pleno, 3))
+    assert engine._tip["estado"] == "sonando"                      # el tip aún suena
