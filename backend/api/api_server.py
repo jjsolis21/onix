@@ -267,6 +267,23 @@ async def control_de_acceso(request: Request, call_next):
     return await call_next(request)
 
 
+_EXT_PANTALLA = (".js", ".css", ".html", ".json", ".svg", ".map")
+
+
+@app.middleware("http")
+async def pantalla_siempre_al_dia(request: Request, call_next):
+    """
+    Los archivos de la pantalla (JS, CSS, HTML) se revalidan en cada carga: sin esto el navegador usaba una copia guardada del
+    JavaScript viejo (`?v=16`) y los cambios no se veían hasta forzar la recarga en cada PC. Con `no-cache` el navegador pregunta
+    al servidor y, si el archivo no cambió, recibe un «304 sin cambios» casi gratis; si cambió, toma el nuevo.
+    """
+    respuesta = await call_next(request)
+    ruta = request.url.path
+    if request.method in ("GET", "HEAD") and (ruta.endswith(_EXT_PANTALLA) or ruta in ("/", "/studio", "/admin", "/admin/", "/login")):
+        respuesta.headers["Cache-Control"] = "no-cache"
+    return respuesta
+
+
 # Montar la carpeta de biblioteca interactiva para streaming.
 # StaticFiles exige que el directorio exista al importar el módulo.
 LIBRARY_DIR.mkdir(parents=True, exist_ok=True)

@@ -407,7 +407,8 @@
     const a = cache.get(id);
     audio.src = `/api/v1/audios/${id}/stream`; sonando = id;
     $("idfPlayTxt").innerHTML = a ? `${esc(a.titulo)}<span>${esc(a.artista)}</span>` : "";
-    audio.play().catch(() => msg("No se pudo reproducir el archivo", false));
+    // Cambiar de canción antes de que cargue la anterior cancela su play() (AbortError): no es un error, el archivo está bien
+    audio.play().catch(err => { if (err?.name !== "AbortError") msg("No se pudo reproducir el archivo", false); });
   }
   $("idfPlay").addEventListener("click", () => {
     if (elegido && sonando !== elegido) { escuchar(elegido); return; }     // toca la fila elegida
@@ -472,7 +473,7 @@
     if (window.EditorCancion) return Promise.resolve();
     return new Promise((ok, mal) => {
       const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "sections/02-biblioteca-musical/editor-cancion.css?v=7"; document.head.appendChild(css);
-      const js = document.createElement("script"); js.src = "sections/02-biblioteca-musical/editor-cancion.js?v=15"; js.onload = ok; js.onerror = () => mal(new Error("No se pudo cargar el editor"));
+      const js = document.createElement("script"); js.src = "sections/02-biblioteca-musical/editor-cancion.js?v=18"; js.onload = ok; js.onerror = () => mal(new Error("No se pudo cargar el editor"));
       document.head.appendChild(js);
     });
   }

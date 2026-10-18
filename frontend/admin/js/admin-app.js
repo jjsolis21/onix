@@ -82,7 +82,7 @@ const render = () => {
       <td class="jz-cell-cod">${t.codigoAuto || '—'}</td>
       <td class="jz-cell-title">${(t.title || '').toUpperCase()}</td>
       <td class="jz-cell-art">${(t.artist || '').toUpperCase()}</td>
-      <td class="jz-cell-sc" style="${cat1Color ? `color:${cat1Color};font-weight:bold` : ''}">${(t.soundCode || '').toUpperCase() || '—'}</td>
+      <td class="jz-cell-sc" style="${cat1Color ? `color:${cat1Color};font-weight:bold` : ''}">${t.soundCode || '—'}</td>
       <td class="jz-cell-pop">${t.popularity || '—'}</td>
       <td>${voxBadge(t.voz)}</td>
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--jz-text3);text-align:right">${t.bpm || '—'}</td>
@@ -1156,7 +1156,7 @@ const CategoriesModule = (function () {
     close() { document.getElementById('cat-overlay')?.classList.remove('active'); },
     select(key) { activeKey = key; selectedIdx = -1; renderSidebar(); renderItems(); updateHeader(); },
     async add() {
-      const label = document.getElementById('cat-new-name')?.value.trim().toUpperCase();
+      const label = document.getElementById('cat-new-name')?.value.trim().replace(/\s+/g, ' ');     // tal como se escribe: Pop, pop o POP
       if (!label || !SERVIDOR[activeKey]) return;
       if (categories[activeKey].items.some(i => i.label.toUpperCase() === label)) { showToast('Ya existe', 'error'); return; }
       try {
@@ -1168,7 +1168,7 @@ const CategoriesModule = (function () {
       } catch (e) { showToast(e.message, 'error'); }
     },
     openEdit() { if (selectedIdx < 0) { showToast('Selecciona un ítem para editar', 'info'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; document.getElementById('cat-add-form')?.classList.remove('visible'); const nameEl = document.getElementById('cat-edit-name'), colorEl = document.getElementById('cat-edit-color'); if (nameEl) nameEl.value = item.label; if (colorEl) colorEl.value = item.color || '#8e44ad'; document.getElementById('cat-edit-form')?.classList.add('visible'); if (nameEl) nameEl.focus(); },
-    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().toUpperCase(); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } const color = document.getElementById('cat-edit-color')?.value || item.color;
+    confirmEdit() { if (selectedIdx < 0) return; const newLabel = document.getElementById('cat-edit-name')?.value.trim().replace(/\s+/g, ' '); if (!newLabel) { showToast('El nombre no puede estar vacío', 'error'); return; } const item = categories[activeKey].items[selectedIdx]; if (!item) return; const isDuplicate = categories[activeKey].items.some((it, i) => i !== selectedIdx && it.label === newLabel); if (isDuplicate) { showToast('Ya existe un ítem con ese nombre', 'error'); return; } const color = document.getElementById('cat-edit-color')?.value || item.color;
       api(`/api/v1/config/biblioteca/valores/${item.id}`, 'PUT', { valor: newLabel, color })
         .then(async r => {
           document.getElementById('cat-edit-form')?.classList.remove('visible');

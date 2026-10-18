@@ -137,6 +137,13 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     la lista de géneros de la Biblioteca Musical. REGLA: géneros, rotaciones y subgéneros son solo los que el usuario crea; una instalación nueva no
     trae ninguno de adorno (solo las voces). En `onix_db` se retiraron los sin uso (géneros: Clásica, Cumbia, Electrónica, Jazz, Ranchera, Reggaetón,
     Rock, Romántica, Tropical; rotación: Desconocido; subgéneros: Acústico, Cover, En Vivo, Remix). Respaldo previo: `onix-2026-10-18_1500.sql.gz`.
+13. **Categoría «Propiedades» (PENDIENTE DE DECISIÓN del dueño):** en Configuración › Categorías existe «Propiedades» pero está VACÍA y sin
+    conexión (no tiene respaldo en el servidor ni en la base): hoy es un cuadro de adorno copiado de Jazler SoHo. O se construye de verdad
+    (etiquetas libres por canción —p. ej. Navideña, Explícita, Local— que los relojes y playlists puedan filtrar) o se quita.
+14. **Pantalla siempre al día (HECHO 2026-10-18):** el navegador guardaba copias del JavaScript viejo (`?v=16`) y los cambios no se veían sin
+    forzar la recarga. El servidor ahora manda `Cache-Control: no-cache` a JS/CSS/HTML (revalida; 304 si no cambió) y se subieron los `?v=`.
+    Reproductor de la Biblioteca: el «No se pudo reproducir» intermitente era un AbortError del navegador al cambiar de canción rápido (no un
+    fallo del archivo); ahora se ignora y los fallos reales (archivo borrado o movido) dicen la causa.
 8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — PENDIENTE:** se programa en el reloj; también en la
    biblioteca de Studio para modo manual. Sobre intro: al inicio del intro o al final del intro (intro 20 s, tip 7 s ⇒ empieza a los 13 s).
    Puente: el tip se reparte entre las dos canciones (tip 8 s ⇒ 4 s en la canción que sale y 4 s en la que entra).

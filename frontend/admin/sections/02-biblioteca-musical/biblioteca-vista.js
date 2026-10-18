@@ -517,7 +517,16 @@
     audio.addEventListener('play', icono);
     audio.addEventListener('pause', icono);
     audio.addEventListener('ended', () => parar());
+    // Fallos REALES del archivo. El código 1 («abortado») es solo el cambio de canción: no es un error.
+    audio.addEventListener('error', () => {
+      const c = audio.error?.code;
+      if (!c || c === 1) return;
+      aviso(c === 4 ? 'No se encuentra o no se puede leer el archivo de esta canción (¿se borró o se movió de carpeta?)'
+                    : 'La reproducción falló: revisa la conexión con el servidor', 'error');
+      S.sonando = null; pintarFilas();
+    });
   }
+  let peticionPlay = 0;
   function cargarEnReproductor(id) {
     const a = S.todos.find(x => x.id === id);
     audio.src = `/api/v1/audios/${id}/stream`;
@@ -554,7 +563,13 @@
     if (!audio) crearAudio();
     if (S.sonando === id) { pausar(); return; }
     if (cargadoId !== id) cargarEnReproductor(id);
-    audio.play().catch(() => aviso('No se pudo reproducir el archivo', 'error'));
+    const peticion = ++peticionPlay;                        // la última canción pedida es la que manda
+    audio.play().catch(err => {
+      // Cambiar de canción antes de que cargue la anterior cancela su play(): el navegador lo avisa como AbortError. Eso NO es
+      // un error (el archivo está bien). NotSupportedError ya lo explica el aviso del evento «error» del reproductor.
+      if (err?.name === 'AbortError' || err?.name === 'NotSupportedError' || peticion !== peticionPlay) return;
+      aviso(err?.name === 'NotAllowedError' ? 'El navegador bloqueó la reproducción: pulsa Play otra vez' : 'No se pudo reproducir el archivo', 'error');
+    });
     S.sonando = id;
     pintarFilas();
   }
