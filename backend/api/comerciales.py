@@ -11,7 +11,7 @@ Apoyo de la sección Comerciales (como «Config. de comerciales» y «Chequeo de
 """
 
 import json
-import sqlite3
+from backend.database import DualIntegrityError
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -26,7 +26,6 @@ replanificar = None        # api_server lo conecta: el motor rehace su plan (eng
 
 TIPOS = {"clientes": ("comerciales_clientes", "cliente"), "agencias": ("comerciales_agencias", "agencia")}
 
-from backend.esquema_extra import ESQUEMA_COMERCIALES as _ESQUEMA  # noqa: E402
 
 
 # Rubros principales (la primera vez se cargan al catálogo; después el operador agrega y quita los suyos)
@@ -45,7 +44,7 @@ def _sembrar_rubros(c) -> None:
     """Una sola vez: el catálogo arranca con los rubros principales. Si el operador los borra, no vuelven."""
     if c.execute("SELECT 1 FROM config WHERE clave = 'rubros_sembrados'").fetchone():
         return
-    c.executemany("INSERT OR IGNORE INTO comerciales_rubros (nombre) VALUES (?)", [(r,) for r in RUBROS_BASE])
+    c.executemany("INSERT IGNORE INTO comerciales_rubros (nombre) VALUES (?)", [(r,) for r in RUBROS_BASE])
     c.execute("INSERT INTO config (clave, valor) VALUES ('rubros_sembrados', '1')")
     c.commit()
 
@@ -103,7 +102,7 @@ def crear(tipo: str, b: EntradaIn):
         try:
             cur = c.execute(f"INSERT INTO {tabla} (nombre, contacto, telefono, email, notas) VALUES (?, ?, ?, ?, ?)",
                             (d["nombre"], d["contacto"], d["telefono"], d["email"], d["notas"]))
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail=f"Ya existe «{d['nombre']}»")
         c.commit()
         return {"id": cur.lastrowid, "nombre": d["nombre"]}
@@ -123,12 +122,12 @@ def editar(tipo: str, rid: int, b: EntradaIn):
         try:
             c.execute(f"UPDATE {tabla} SET nombre = ?, contacto = ?, telefono = ?, email = ?, notas = ? WHERE id = ?",
                       (d["nombre"], d["contacto"], d["telefono"], d["email"], d["notas"], rid))
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail=f"Ya existe «{d['nombre']}»")
         renombrados = 0
         if antes["nombre"].upper() != d["nombre"]:
             renombrados = c.execute(
-                f"UPDATE pautas SET {col} = ?, updated_at = datetime('now') WHERE UPPER({col}) = UPPER(?)",
+                f"UPDATE pautas SET {col} = ?, updated_at = NOW() WHERE UPPER({col}) = UPPER(?)",
                 (d["nombre"], antes["nombre"])).rowcount
         c.commit()
         return {"ok": True, "spots_actualizados": renombrados}
@@ -158,7 +157,7 @@ def importar(tipo: str):
             f"SELECT DISTINCT UPPER(TRIM({col})) FROM pautas WHERE COALESCE(TRIM({col}), '') != ''")]
         n = 0
         for nombre in nombres:
-            n += c.execute(f"INSERT OR IGNORE INTO {tabla} (nombre) VALUES (?)", (nombre,)).rowcount
+            n += c.execute(f"INSERT IGNORE INTO {tabla} (nombre) VALUES (?)", (nombre,)).rowcount
         c.commit()
         return {"agregados": n, "total": len(nombres)}
     finally:
@@ -181,7 +180,7 @@ def chequeo():
     hoy = date.today().isoformat()
     c = _conn()
     try:
-        hay_versiones = c.execute("SELECT 1 FROM sqlite_master WHERE name = 'pauta_audios'").fetchone() is not None
+        hay_versiones = c.execute("SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pauta_audios'").fetchone() is not None
         problemas = []
 
         def poner(p, nivel, codigo, texto):
@@ -432,7 +431,7 @@ def cunas_activas():
         for r in c.execute(
                 "SELECT id, titulo, archivo_path, duracion FROM audios WHERE activo = 1"
                 " AND (tipo_audio = 'Cu\u00f1a' OR UPPER(COALESCE(archivo_path, '')) LIKE '%COMERCIALES%')"
-                " ORDER BY titulo COLLATE NOCASE"):
+                " ORDER BY titulo"):
             sp = spots.get(r["id"])
             out.append({"audio_id": r["id"], "spot": r["titulo"] or "", "cliente": sp["cliente"] if sp else "",
                         "rubro": sp["rubro"] if sp else "", "con_spot": sp is not None,
@@ -488,10 +487,10 @@ def _guardar_bloque(c, b: BloqueIn, evento_id: Optional[int] = None) -> dict:
             if not e:
                 raise HTTPException(status_code=404, detail="No existe ese bloque")
             rid = e["reloj_id"]
-            c.execute("UPDATE relojes SET nombre = ?, comentario = ?, updated_at = datetime('now') WHERE id = ?",
+            c.execute("UPDATE relojes SET nombre = ?, comentario = ?, updated_at = NOW() WHERE id = ?",
                       (PREFIJO + nombre, ajustes, rid))
             c.execute("DELETE FROM reloj_filas WHERE reloj_id = ?", (rid,))
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe un bloque llamado «{nombre}»")
     for i, f in enumerate(filas):
         c.execute("INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
@@ -567,7 +566,7 @@ def _rubros_unidos(c) -> list[dict]:
         uso[k] = uso.get(k, 0) + r[1]
         escritura.setdefault(k, r[0])
     salida, vistos = [], set()
-    for (nombre,) in c.execute("SELECT nombre FROM comerciales_rubros ORDER BY nombre COLLATE NOCASE"):
+    for (nombre,) in c.execute("SELECT nombre FROM comerciales_rubros ORDER BY nombre"):
         k = norm_rubro(nombre)
         vistos.add(k)
         salida.append({"nombre": nombre, "spots": uso.get(k, 0), "fuera": False})
@@ -634,7 +633,7 @@ def agregar_conflicto(b: ConflictoIn):
     try:
         try:
             c.execute("INSERT INTO comerciales_conflictos_rubros (a, b) VALUES (?, ?)", (x, y))
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail=f"{x} y {y} ya están marcados")
         c.commit()
     finally:
@@ -701,11 +700,11 @@ def separadores():
         comerciales_con_separador = [
             {"numero": r["numero"], "nombre": r["nombre"]} for r in c.execute(
                 "SELECT t.numero, t.nombre FROM tanda_secciones t WHERE t.comercial = 1 AND EXISTS"
-                " (SELECT 1 FROM pautas p WHERE p.contrato_id = 'SEP-' || t.numero)")]
+                " (SELECT 1 FROM pautas p WHERE p.contrato_id = CONCAT('SEP-', t.numero))")]
         disponibles = [{"id": r["id"], "titulo": r["titulo"], "tipo": r["tipo_audio"], "duracion": round(float(r["duracion"] or 0))}
                        for r in c.execute(
                            f"SELECT id, titulo, tipo_audio, duracion FROM audios WHERE activo = 1 AND tipo_audio IN"
-                           f" ({','.join('?' * len(TIPOS_SEPARADOR))}) ORDER BY tipo_audio, titulo COLLATE NOCASE", TIPOS_SEPARADOR)]
+                           f" ({','.join('?' * len(TIPOS_SEPARADOR))}) ORDER BY tipo_audio, titulo", TIPOS_SEPARADOR)]
         return {"secciones": secciones, "disponibles": disponibles, "advertencias": comerciales_con_separador}
     finally:
         c.close()
@@ -732,7 +731,7 @@ def guardar_separador(numero: int, b: SeparadorIn):
             c.execute("UPDATE tanda_secciones SET opcional = 0 WHERE numero = ?", (numero,))
         if not ids:
             if pa:
-                c.execute("UPDATE pautas SET activo = 0, updated_at = datetime('now') WHERE id = ?", (pa["id"],))
+                c.execute("UPDATE pautas SET activo = 0, updated_at = NOW() WHERE id = ?", (pa["id"],))
             c.commit()
         else:
             matriz = json.dumps({f"{d}-{h}": True for d in range(7) for h in range(24)})
@@ -740,7 +739,7 @@ def guardar_separador(numero: int, b: SeparadorIn):
             if pa:
                 pid = pa["id"]
                 c.execute("UPDATE pautas SET audio_id = ?, audio_nombre = ?, cliente = ?, activo = 1, seccion = ?,"
-                          " updated_at = datetime('now') WHERE id = ?", (ids[0], ok[ids[0]]["titulo"], nombre, numero, pid))
+                          " updated_at = NOW() WHERE id = ?", (ids[0], ok[ids[0]]["titulo"], nombre, numero, pid))
             else:
                 pid = c.execute(
                     "INSERT INTO pautas (cliente, audio_id, audio_nombre, matriz, activo, contrato_id, seccion, notas)"

@@ -318,6 +318,17 @@ def test_restricciones_por_cancion(base):
     assert "SOLO NOCHE" in noche and "MAÑANERA" not in noche
 
 
+def test_restriccion_por_dia_suena_su_dia_y_no_los_demas(base):
+    """Antes `',' || restr_dias || ','` (en MariaDB `||` es «O», no concatenar): la canción nunca sonaba, ni su día."""
+    from datetime import datetime as dt
+    for i in range(8):
+        audio(base, f"SAB {i}", artista=f"S{i}", restr_dias="6")                 # 6 = sábado
+    sabado = [i["titulo"] for i in planear(base, desde=dt(2026, 10, 17, 10, 0), minutos=60, tandas=()) if i["tipo"] == "audio"]
+    assert sabado and all(t.startswith("SAB") for t in sabado)
+    lunes = [i["titulo"] for i in planear(base, desde=dt(2026, 10, 12, 10, 0), minutos=60, tandas=()) if i["tipo"] == "audio"]
+    assert not any(t.startswith("SAB") for t in lunes)
+
+
 def test_maximo_por_dia(base):
     cfg(base, separacion_cancion_dias=0, ventana_artista_min=0)
     audio(base, "TOPE 2", artista="T", max_por_dia=2)

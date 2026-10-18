@@ -807,7 +807,7 @@ class Planner:
                         " (a.restr_desde < a.restr_hasta AND ? >= a.restr_desde AND ? < a.restr_hasta) OR"
                         " (a.restr_desde > a.restr_hasta AND (? >= a.restr_desde OR ? < a.restr_hasta)))")
             params += [hora, hora, hora, hora]
-            base.append("(COALESCE(a.restr_dias, '') = '' OR instr(',' || a.restr_dias || ',', ?) > 0)")
+            base.append("(COALESCE(a.restr_dias, '') = '' OR INSTR(CONCAT(',', a.restr_dias, ','), ?) > 0)")
             params.append(f",{dia},")
             # Tiempo de repetición propio de la canción (Jazler): N horas sin repetir
             if self._repeticion:

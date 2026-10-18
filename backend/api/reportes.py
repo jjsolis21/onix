@@ -23,14 +23,13 @@ CUMPLIMIENTO DE UNA PAUTA
 import csv
 import io
 import json
-import sqlite3
+from backend.database import DualError, MariaDBConnection
 from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from backend.paths import DB_PATH
 
 router = APIRouter(tags=["Estadísticas"])
 
@@ -92,7 +91,7 @@ def _parse_fecha(valor: Optional[str], defecto: date) -> date:
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/api/v1/stats/filtros-categorias", summary="Categorías disponibles para filtros en estadísticas")
-def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
+def filtros_categorias(conn: MariaDBConnection = Depends(get_db)):
     """Devuelve las categorías de música, identificadores y pautas presentes en el sistema.
     SOLO incluye valores que existen en la biblioteca real (audios con archivos),
     nunca categorías vacías de la tabla de configuración.
@@ -107,7 +106,7 @@ def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
             "SELECT DISTINCT subgenero FROM audios"
             " WHERE tipo_audio = 'Musica'"
             "   AND subgenero IS NOT NULL AND TRIM(subgenero) != ''"
-            " ORDER BY subgenero COLLATE NOCASE"
+            " ORDER BY subgenero"
         ).fetchall() if r[0]
     ]
 
@@ -117,7 +116,7 @@ def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
             "SELECT DISTINCT categoria FROM audios"
             " WHERE tipo_audio = 'Musica'"
             "   AND categoria IS NOT NULL AND TRIM(categoria) != ''"
-            " ORDER BY categoria COLLATE NOCASE"
+            " ORDER BY categoria"
         ).fetchall() if r[0]
     ]
 
@@ -141,7 +140,7 @@ def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
             "SELECT DISTINCT categoria_ident FROM audios"
             " WHERE tipo_audio IN ('Efecto','Sweeper','Tips')"
             "   AND categoria_ident IS NOT NULL AND TRIM(categoria_ident) != ''"
-            " ORDER BY categoria_ident COLLATE NOCASE"
+            " ORDER BY categoria_ident"
         ).fetchall() if r[0]
     ]
 
@@ -155,7 +154,7 @@ def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
                 " SELECT DISTINCT artista FROM audios"
                 " WHERE tipo_audio = 'Cuña'"
                 "   AND artista IS NOT NULL AND TRIM(artista) != ''"
-                " ORDER BY 1 COLLATE NOCASE"
+                " ORDER BY 1"
             ).fetchall() if r[0]
         ]
     except Exception:
@@ -189,7 +188,7 @@ def top40(period: str = "week", limit: int = 40, tipo: str = "musica",
           genero: Optional[str] = None, rotacion: Optional[str] = None,
           desde: Optional[str] = None, hasta: Optional[str] = None,
           formato: str = "json",
-          conn: sqlite3.Connection = Depends(get_db)):
+          conn: MariaDBConnection = Depends(get_db)):
     """
     Más emitidos del período.
     tipo: musica (por defecto) · ident · pauta · todo.
@@ -388,7 +387,7 @@ def top40(period: str = "week", limit: int = 40, tipo: str = "musica",
 
 
 @router.get("/api/v1/stats/top40/forgotten", summary="Música que no suena hace tiempo")
-def olvidados(dias: int = 30, limit: int = 100, conn: sqlite3.Connection = Depends(get_db)):
+def olvidados(dias: int = 30, limit: int = 100, conn: MariaDBConnection = Depends(get_db)):
     """Música activa sin emitirse en `dias` días (o nunca emitida)."""
     rows = conn.execute(
         """
@@ -411,7 +410,7 @@ def olvidados(dias: int = 30, limit: int = 100, conn: sqlite3.Connection = Depen
 
 
 @router.get("/api/v1/stats/detalle/{audio_id}", summary="Ficha de auditoría de un audio")
-def detalle(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def detalle(audio_id: int, conn: MariaDBConnection = Depends(get_db)):
     a = conn.execute("SELECT * FROM audios WHERE id = ?", (audio_id,)).fetchone()
     if not a:
         raise HTTPException(status_code=404, detail=f"Audio id={audio_id} no encontrado")
@@ -424,7 +423,7 @@ def detalle(audio_id: int, conn: sqlite3.Connection = Depends(get_db)):
     ).fetchone()[0]
     ult_30 = conn.execute(
         "SELECT COUNT(*) FROM historial_emision WHERE audio_id = ?"
-        " AND iniciado_en >= datetime('now', 'localtime', '-30 days')", (audio_id,)
+        " AND iniciado_en >= DATE_SUB(NOW(), INTERVAL 30 DAY)", (audio_id,)
     ).fetchone()[0]
 
     cumplimiento = None
@@ -462,7 +461,7 @@ def historial_buscar(
     origen: Optional[str] = Query(None, description="auto | manual | cola | pauta | respaldo"),
     q: Optional[str] = None, pauta_id: Optional[int] = None,
     limit: int = 200, offset: int = 0, formato: str = "json",
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: MariaDBConnection = Depends(get_db),
 ):
     hoy = date.today()
     d_desde = _parse_fecha(desde, hoy - timedelta(days=6))
@@ -560,7 +559,7 @@ def _cumplimiento_pauta(conn, p, desde: date, hasta: date, ahora: datetime = Non
 @router.get("/api/v1/reportes/pautas", summary="Cumplimiento de pautas por cliente")
 def reporte_pautas(desde: Optional[str] = None, hasta: Optional[str] = None,
                    cliente: Optional[str] = None, formato: str = "json",
-                   conn: sqlite3.Connection = Depends(get_db)):
+                   conn: MariaDBConnection = Depends(get_db)):
     hoy = date.today()
     d_desde = _parse_fecha(desde, hoy.replace(day=1))
     d_hasta = _parse_fecha(hasta, hoy)
@@ -584,7 +583,7 @@ def reporte_pautas(desde: Optional[str] = None, hasta: Optional[str] = None,
 
 @router.get("/api/v1/reportes/pautas/{pauta_id}", summary="Detalle diario de una pauta")
 def reporte_pauta(pauta_id: int, desde: Optional[str] = None, hasta: Optional[str] = None,
-                  formato: str = "json", conn: sqlite3.Connection = Depends(get_db)):
+                  formato: str = "json", conn: MariaDBConnection = Depends(get_db)):
     p = conn.execute("SELECT * FROM pautas WHERE id = ?", (pauta_id,)).fetchone()
     if not p:
         raise HTTPException(status_code=404, detail=f"Pauta id={pauta_id} no encontrada")
@@ -618,7 +617,7 @@ def _e(v) -> str:
 
 @router.get("/api/v1/reportes/certificado", summary="Certificado de emisión imprimible por cliente")
 def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = None,
-                hasta: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+                hasta: Optional[str] = None, conn: MariaDBConnection = Depends(get_db)):
     """
     Página lista para imprimir o guardar como PDF: por cada spot del cliente,
     contratadas vs emitidas y la lista de cada salida REAL al aire (fecha y
@@ -637,7 +636,7 @@ def certificado(cliente: str = Query(..., min_length=1), desde: Optional[str] = 
     try:
         emisora = conn.execute("SELECT valor FROM config WHERE clave = 'emisora_nombre'").fetchone()
         emisora = emisora[0] if emisora and emisora[0] else "ÓNIX FM"
-    except sqlite3.Error:
+    except DualError:
         emisora = "ÓNIX FM"
 
     bloques, tot_prog, tot_emit = [], 0, 0
@@ -797,7 +796,7 @@ def pautas_en_riesgo(conn, ahora: datetime = None) -> list[dict]:
 
 
 @router.get("/api/v1/pautas-riesgo", summary="Cuñas de hoy que no alcanzan a salir")
-def riesgo(conn: sqlite3.Connection = Depends(get_db)):
+def riesgo(conn: MariaDBConnection = Depends(get_db)):
     return {"data": pautas_en_riesgo(conn)}
 
 
@@ -806,14 +805,14 @@ def riesgo(conn: sqlite3.Connection = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/api/v1/stats/analisis", summary="Música por hora, artistas y cumplimiento de pautas")
-def analisis(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
+def analisis(period: str = "week", conn: MariaDBConnection = Depends(get_db)):
     dias = PERIODOS.get(period)
     if dias is None:
         raise HTTPException(status_code=422, detail="period debe ser day, week o month")
     desde = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
     horas = [0] * 24
     for h, n in conn.execute(
-            "SELECT CAST(substr(iniciado_en, 12, 2) AS INTEGER), COUNT(*) FROM historial_emision"
+            "SELECT CAST(SUBSTR(iniciado_en, 12, 2) AS SIGNED), COUNT(*) FROM historial_emision"
             " WHERE iniciado_en >= ? AND tipo = 'musica' GROUP BY 1", (desde,)):
         if h is not None and 0 <= h < 24:
             horas[h] = n
@@ -871,7 +870,7 @@ def _peso_planeado(conn) -> dict[str, float]:
 
 
 @router.get("/api/v1/stats/rotacion", summary="Rotación real frente a la planeada por los relojes")
-def rotacion(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
+def rotacion(period: str = "week", conn: MariaDBConnection = Depends(get_db)):
     dias = PERIODOS.get(period)
     if dias is None:
         raise HTTPException(status_code=422, detail="period debe ser day, week o month")
@@ -901,7 +900,7 @@ def rotacion(period: str = "week", conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/api/v1/stats/quemadas", summary="Canciones que suenan mucho más que su rotación")
-def quemadas(dias: int = 7, factor: float = 2.0, minimo: int = 5, conn: sqlite3.Connection = Depends(get_db)):
+def quemadas(dias: int = 7, factor: float = 2.0, minimo: int = 5, conn: MariaDBConnection = Depends(get_db)):
     """
     Quemada = sonó al menos `minimo` veces en `dias` días y más de `factor`
     veces el promedio de su rotación en ese lapso.
@@ -933,7 +932,7 @@ def quemadas(dias: int = 7, factor: float = 2.0, minimo: int = 5, conn: sqlite3.
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/api/v1/stats/dia", summary="Lo que salió al aire en un día, hora por hora")
-def dia_al_aire(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+def dia_al_aire(fecha: Optional[str] = None, conn: MariaDBConnection = Depends(get_db)):
     d = _parse_fecha(fecha, date.today())
     ini, fin = d.isoformat(), (d + timedelta(days=1)).isoformat()
     filas = conn.execute(
@@ -971,7 +970,7 @@ def dia_al_aire(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(
 
 @router.get("/api/v1/stats/exportar", summary="Libro de Excel con las estadísticas")
 def exportar_excel(period: str = "week", fecha: Optional[str] = None,
-                   conn: sqlite3.Connection = Depends(get_db)):
+                   conn: MariaDBConnection = Depends(get_db)):
     """
     Una hoja por vista: Top, Olvido, Rotación, Quemadas, Artistas, Música por
     hora, Cumplimiento por cliente y el reloj del día elegido.

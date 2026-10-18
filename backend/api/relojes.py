@@ -24,7 +24,7 @@ Cada cambio en relojes o grilla pide al motor que vuelva a planificar.
 """
 
 import json
-import sqlite3
+from backend.database import DualIntegrityError, MariaDBConnection
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -151,12 +151,12 @@ def _guardar_filas(conn, reloj_id: int, filas: list[FilaIn]):
 
 # La grilla va antes que /relojes/{reloj_id}: si no, "grilla" se leería como un id.
 @router.get("/api/v1/relojes/grilla", summary="Grilla semanal de relojes")
-def grilla(conn: sqlite3.Connection = Depends(get_db)):
+def grilla(conn: MariaDBConnection = Depends(get_db)):
     return [dict(g) for g in conn.execute("SELECT dia, hora, reloj_id FROM reloj_grilla")]
 
 
 @router.put("/api/v1/relojes/grilla", summary="Asignar reloj a horas de la grilla")
-def asignar_grilla(body: GrillaIn, conn: sqlite3.Connection = Depends(get_db)):
+def asignar_grilla(body: GrillaIn, conn: MariaDBConnection = Depends(get_db)):
     if body.reloj_id is not None and not conn.execute(
             "SELECT 1 FROM relojes WHERE id = ?", (body.reloj_id,)).fetchone():
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
@@ -167,7 +167,7 @@ def asignar_grilla(body: GrillaIn, conn: sqlite3.Connection = Depends(get_db)):
         if body.reloj_id is None:
             conn.execute("DELETE FROM reloj_grilla WHERE dia = ? AND hora = ?", (dia, hora))
         else:
-            conn.execute("INSERT OR REPLACE INTO reloj_grilla (dia, hora, reloj_id) VALUES (?, ?, ?)",
+            conn.execute("REPLACE INTO reloj_grilla (dia, hora, reloj_id) VALUES (?, ?, ?)",
                          (dia, hora, body.reloj_id))
     conn.commit()
     _replanificar()
@@ -184,18 +184,18 @@ class DiaIn(BaseModel):
 
 
 @router.get("/api/v1/relojes/dias", summary="Días específicos: excepciones a la grilla semanal")
-def dias_especificos(fecha: Optional[str] = None, conn: sqlite3.Connection = Depends(get_db)):
+def dias_especificos(fecha: Optional[str] = None, conn: MariaDBConnection = Depends(get_db)):
     """Sin fecha: las fechas futuras (y de ayer) con excepciones. Con fecha: sus horas."""
     if fecha:
         return [dict(r) for r in conn.execute(
             "SELECT fecha, hora, reloj_id FROM reloj_dias WHERE fecha = ? ORDER BY hora", (fecha,))]
     return [{"fecha": r[0], "horas": r[1]} for r in conn.execute(
-        "SELECT fecha, COUNT(*) FROM reloj_dias WHERE fecha >= date('now', 'localtime', '-1 day')"
+        "SELECT fecha, COUNT(*) FROM reloj_dias WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
         " GROUP BY fecha ORDER BY fecha")]
 
 
 @router.put("/api/v1/relojes/dias", summary="Asignar horas de un día específico")
-def asignar_dia(body: DiaIn, conn: sqlite3.Connection = Depends(get_db)):
+def asignar_dia(body: DiaIn, conn: MariaDBConnection = Depends(get_db)):
     if body.accion == "reloj" and (body.reloj_id is None or not conn.execute(
             "SELECT 1 FROM relojes WHERE id = ?", (body.reloj_id,)).fetchone()):
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
@@ -205,7 +205,7 @@ def asignar_dia(body: DiaIn, conn: sqlite3.Connection = Depends(get_db)):
         if body.accion == "semana":
             conn.execute("DELETE FROM reloj_dias WHERE fecha = ? AND hora = ?", (body.fecha, h))
         else:
-            conn.execute("INSERT OR REPLACE INTO reloj_dias (fecha, hora, reloj_id) VALUES (?, ?, ?)",
+            conn.execute("REPLACE INTO reloj_dias (fecha, hora, reloj_id) VALUES (?, ?, ?)",
                          (body.fecha, h, body.reloj_id if body.accion == "reloj" else None))
     conn.commit()
     _replanificar()
@@ -222,9 +222,9 @@ class VistaIn(BaseModel):
 def _tanda_media_seg(conn) -> float:
     """Cuánto ocupan las tandas en una hora (promedio de los últimos 7 días con cuñas)."""
     row = conn.execute(
-        "SELECT SUM(a.duracion), COUNT(DISTINCT substr(h.iniciado_en, 1, 13)) FROM historial_emision h"
+        "SELECT SUM(a.duracion), COUNT(DISTINCT SUBSTR(h.iniciado_en, 1, 13)) FROM historial_emision h"
         " JOIN audios a ON a.id = h.audio_id WHERE h.pauta_id IS NOT NULL"
-        " AND h.iniciado_en >= datetime('now', 'localtime', '-7 days')").fetchone()
+        " AND h.iniciado_en >= DATE_SUB(NOW(), INTERVAL 7 DAY)").fetchone()
     return round((row[0] or 0) / row[1]) if row and row[1] else 0.0
 
 
@@ -292,7 +292,7 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
 
 
 @router.post("/api/v1/relojes/vista-previa", summary="Cómo queda la hora con estas filas (sin guardar)")
-def vista_previa(body: VistaIn, conn: sqlite3.Connection = Depends(get_db)):
+def vista_previa(body: VistaIn, conn: MariaDBConnection = Depends(get_db)):
     v = _vista_filas(conn, [f.model_dump() for f in body.filas])
     v["respaldo_candidatos"] = _contar(conn, {"tipo_audio": "Musica", "filtros": body.respaldo})[0] \
         if body.respaldo else None
@@ -326,12 +326,12 @@ def _validar_evento(conn, body: EventoIn):
 
 
 @router.get("/api/v1/relojes/eventos", summary="Eventos a hora fija")
-def eventos(conn: sqlite3.Connection = Depends(get_db)):
+def eventos(conn: MariaDBConnection = Depends(get_db)):
     return [_evento_out(r) for r in conn.execute(_SQL_EVENTOS + " ORDER BY e.hora, e.nombre")]
 
 
 @router.post("/api/v1/relojes/eventos", status_code=201, summary="Crear evento a hora fija")
-def crear_evento(body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
+def crear_evento(body: EventoIn, conn: MariaDBConnection = Depends(get_db)):
     eid = conn.execute(
         "INSERT INTO reloj_eventos (nombre, reloj_id, hora, dias, fecha_inicio, fecha_fin, inmediato, activo, hasta)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", _validar_evento(conn, body)).lastrowid
@@ -341,7 +341,7 @@ def crear_evento(body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.put("/api/v1/relojes/eventos/{evento_id}", summary="Guardar evento a hora fija")
-def guardar_evento(evento_id: int, body: EventoIn, conn: sqlite3.Connection = Depends(get_db)):
+def guardar_evento(evento_id: int, body: EventoIn, conn: MariaDBConnection = Depends(get_db)):
     valores = _validar_evento(conn, body)
     if not conn.execute(
             "UPDATE reloj_eventos SET nombre = ?, reloj_id = ?, hora = ?, dias = ?, fecha_inicio = ?,"
@@ -353,7 +353,7 @@ def guardar_evento(evento_id: int, body: EventoIn, conn: sqlite3.Connection = De
 
 
 @router.delete("/api/v1/relojes/eventos/{evento_id}", status_code=204, summary="Borrar evento")
-def borrar_evento(evento_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def borrar_evento(evento_id: int, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("DELETE FROM reloj_eventos WHERE id = ?", (evento_id,)).rowcount:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
     conn.commit()
@@ -361,19 +361,19 @@ def borrar_evento(evento_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/api/v1/relojes", summary="Relojes con sus filas")
-def listar(conn: sqlite3.Connection = Depends(get_db)):
+def listar(conn: MariaDBConnection = Depends(get_db)):
     return [_reloj_out(conn, r) for r in conn.execute("SELECT * FROM relojes ORDER BY nombre")]
 
 
 @router.post("/api/v1/relojes", status_code=201, summary="Crear reloj")
-def crear(body: RelojIn, conn: sqlite3.Connection = Depends(get_db)):
+def crear(body: RelojIn, conn: MariaDBConnection = Depends(get_db)):
     try:
         rid = conn.execute(
             "INSERT INTO relojes (nombre, color, comentario, compensacion, respaldo) VALUES (?, ?, ?, ?, ?)",
             (body.nombre.strip(), body.color, body.comentario,
              json.dumps(_limpiar_filtros(body.compensacion)),
              json.dumps(_limpiar_filtros(body.respaldo)))).lastrowid
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe un reloj llamado '{body.nombre}'")
     _guardar_filas(conn, rid, body.filas)
     conn.commit()
@@ -382,17 +382,17 @@ def crear(body: RelojIn, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.put("/api/v1/relojes/{reloj_id}", summary="Guardar reloj")
-def guardar(reloj_id: int, body: RelojIn, conn: sqlite3.Connection = Depends(get_db)):
+def guardar(reloj_id: int, body: RelojIn, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("SELECT 1 FROM relojes WHERE id = ?", (reloj_id,)).fetchone():
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
     try:
         conn.execute(
             "UPDATE relojes SET nombre = ?, color = ?, comentario = ?, compensacion = ?, respaldo = ?,"
-            " updated_at = datetime('now') WHERE id = ?",
+            " updated_at = NOW() WHERE id = ?",
             (body.nombre.strip(), body.color, body.comentario,
              json.dumps(_limpiar_filtros(body.compensacion)),
              json.dumps(_limpiar_filtros(body.respaldo)), reloj_id))
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe un reloj llamado '{body.nombre}'")
     _guardar_filas(conn, reloj_id, body.filas)
     conn.commit()
@@ -401,7 +401,7 @@ def guardar(reloj_id: int, body: RelojIn, conn: sqlite3.Connection = Depends(get
 
 
 @router.delete("/api/v1/relojes/{reloj_id}", status_code=204, summary="Borrar reloj")
-def borrar(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def borrar(reloj_id: int, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("DELETE FROM relojes WHERE id = ?", (reloj_id,)).rowcount:
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
     conn.commit()
@@ -409,7 +409,7 @@ def borrar(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/api/v1/relojes/{reloj_id}/duplicar", status_code=201, summary="Duplicar reloj")
-def duplicar(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def duplicar(reloj_id: int, conn: MariaDBConnection = Depends(get_db)):
     r = conn.execute("SELECT * FROM relojes WHERE id = ?", (reloj_id,)).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail="Reloj no encontrado")
@@ -428,7 +428,7 @@ def duplicar(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/api/v1/relojes/{reloj_id}/vista", summary="Vista previa de un reloj")
-def vista(reloj_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def vista(reloj_id: int, conn: MariaDBConnection = Depends(get_db)):
     """
     Por fila: cuántos audios cumplen sus filtros y su duración media. Una fila
     con 0 audios se salta al planificar (avisar al programador).
