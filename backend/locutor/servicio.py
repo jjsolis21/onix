@@ -400,7 +400,7 @@ def ciclo(engine, db_path: Any = None, ahora: Optional[datetime] = None,
                 continue
             ocupado = c.execute(
                 "SELECT 1 FROM locutor_intervenciones WHERE anterior_id = ? AND estado IN"
-                " ('borrador','aprobada','lista','al_aire','fallo') AND creado_en >= datetime('now', '-3 hours')"
+                " ('borrador','aprobada','lista','al_aire','fallo') AND creado_en >= DATE_SUB(NOW(), INTERVAL 3 HOUR)"
                 " LIMIT 1", (a["audio_id"],)).fetchone()
             if ocupado:
                 continue

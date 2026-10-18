@@ -6,11 +6,12 @@ anterior (turnos, voces, patrocinios, fuentes de noticias, reglas) sin tocar cla
 """
 
 import json
-import sqlite3
+import sqlite3                      # SOLO para leer el archivo SQLite del Locutor anterior (AzuraCast); la base de ONIX es MariaDB
 from datetime import timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Optional
 
+from backend.database import DualOperationalError, MariaDBConnection
 from backend.paths import DB_PATH
 
 TIPOS = ("corta", "contenido", "hora_clima", "patrocinio", "identificacion", "noticia", "apertura", "complacencia")
@@ -50,7 +51,7 @@ def conectar(db_path: Any = None):
 
 # ── Configuración (clave → JSON) ────────────────────────────────────────────
 
-def leer(c: sqlite3.Connection, clave: str, defecto: Any = None) -> Any:
+def leer(c: MariaDBConnection, clave: str, defecto: Any = None) -> Any:
     r = c.execute("SELECT valor FROM locutor_config WHERE clave = ?", (clave,)).fetchone()
     if not r:
         return defecto
@@ -60,19 +61,19 @@ def leer(c: sqlite3.Connection, clave: str, defecto: Any = None) -> Any:
         return defecto
 
 
-def guardar(c: sqlite3.Connection, clave: str, valor: Any) -> None:
+def guardar(c: MariaDBConnection, clave: str, valor: Any) -> None:
     c.execute("INSERT INTO locutor_config (clave, valor) VALUES (?, ?)"
-              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+              " ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
               (clave, json.dumps(valor, ensure_ascii=False)))
 
 
-def persona(c: sqlite3.Connection) -> dict:
+def persona(c: MariaDBConnection) -> dict:
     p = {"nombre": "Locutor", "personalidad": "", "muletillas": [], "prohibidos": [], "voz": "", "pronunciacion": {}}
     p.update(leer(c, "persona", {}) or {})
     return p
 
 
-def reglas(c: sqlite3.Connection) -> dict:
+def reglas(c: MariaDBConnection) -> dict:
     r = {"tipos_permitidos": [], "franjas": [], "salidas": {}, "noticias_cada_min": 60, "noticias_vetos": [],
          "noticias_max_horas": 18, "patron": [], "cada_canciones": 2, "intervenciones_por_hora": 4,
          "datos_curiosos": True,     # presentar con un dato verificado del artista o la canción cuando lo haya
@@ -81,25 +82,25 @@ def reglas(c: sqlite3.Connection) -> dict:
     return r
 
 
-def aprobacion(c: sqlite3.Connection) -> dict:
+def aprobacion(c: MariaDBConnection) -> dict:
     a = dict(APROBACION_DEFECTO)
     a.update({k: v for k, v in (leer(c, "aprobacion", {}) or {}).items() if k in TIPOS and v in ("auto", "manual")})
     return a
 
 
-def emisora(c: sqlite3.Connection) -> dict:
+def emisora(c: MariaDBConnection) -> dict:
     e = {"nombre": "", "ciudad": "", "genero": "", "zona_horaria": "America/Caracas"}
     e.update(leer(c, "emisora", {}) or {})
     if not e["nombre"]:
         try:
             r = c.execute("SELECT valor FROM config WHERE clave = 'emisora_nombre'").fetchone()
             e["nombre"] = (r[0] if r and r[0] else "") or "ÓNIX FM"
-        except sqlite3.OperationalError:
+        except DualOperationalError:
             e["nombre"] = "ÓNIX FM"
     return e
 
 
-def persona_al_aire(c: sqlite3.Connection, hhmm: str) -> dict:
+def persona_al_aire(c: MariaDBConnection, hhmm: str) -> dict:
     """El locutor del turno de esa hora; sin turno que la cubra, la persona por defecto."""
     base = persona(c)
     for t in c.execute("SELECT * FROM locutor_turnos ORDER BY desde, id"):
@@ -112,7 +113,7 @@ def persona_al_aire(c: sqlite3.Connection, hhmm: str) -> dict:
 
 # ── Intervenciones ──────────────────────────────────────────────────────────
 
-def crear_intervencion(c: sqlite3.Connection, tipo: str, *, estado: str = "borrador", modo: str = "auto",
+def crear_intervencion(c: MariaDBConnection, tipo: str, *, estado: str = "borrador", modo: str = "auto",
                        persona_nombre: str = "", voz: str = "", texto: Optional[str] = None,
                        anterior_id: Optional[int] = None, siguiente_id: Optional[int] = None,
                        origen_id: Optional[int] = None, error: Optional[str] = None) -> int:
@@ -128,13 +129,13 @@ def crear_intervencion(c: sqlite3.Connection, tipo: str, *, estado: str = "borra
     return cur.lastrowid
 
 
-def cambiar_estado(c: sqlite3.Connection, iid: int, estado: str, **campos: Any) -> None:
+def cambiar_estado(c: MariaDBConnection, iid: int, estado: str, **campos: Any) -> None:
     if estado not in ESTADOS:
         raise ValueError(f"Estado desconocido: {estado}")
     permitidos = {"texto", "audio_id", "duracion_seg", "proveedor_voz", "bytes_tts", "error", "motivo", "al_aire_en"}
     extra = {k: v for k, v in campos.items() if k in permitidos}
     sets = ", ".join(f"{k} = ?" for k in extra)
-    c.execute(f"UPDATE locutor_intervenciones SET estado = ?, decidido_en = datetime('now')"
+    c.execute(f"UPDATE locutor_intervenciones SET estado = ?, decidido_en = NOW()"
               f"{', ' + sets if sets else ''} WHERE id = ?", [estado, *extra.values(), iid])
     c.commit()
 
@@ -144,7 +145,7 @@ def cambiar_estado(c: sqlite3.Connection, iid: int, estado: str, **campos: Any) 
 _TABLAS_PROPIAS = ("locutor_turnos", "locutor_patrocinios", "locutor_fuentes")
 
 
-def importar_de_azuracast(c: sqlite3.Connection, origen: Any, slug: str = "solisfm",
+def importar_de_azuracast(c: MariaDBConnection, origen: Any, slug: str = "solisfm",
                           reemplazar: bool = False) -> dict:
     """
     Copia la configuración del Locutor IA anterior (su `locutor.db`) a este sistema.
@@ -221,7 +222,7 @@ def importar_de_azuracast(c: sqlite3.Connection, origen: Any, slug: str = "solis
                        pa["frecuencia"], pa["activo"]))
             n_pat += 1
         for f in o.execute("SELECT * FROM fuentes_noticias WHERE cliente_id = ?", (cid,)):
-            c.execute("INSERT OR IGNORE INTO locutor_fuentes (nombre, url, cierre, activo) VALUES (?, ?, ?, ?)",
+            c.execute("INSERT IGNORE INTO locutor_fuentes (nombre, url, cierre, activo) VALUES (?, ?, ?, ?)",
                       (f["nombre"], f["url"], f["cierre"] if "cierre" in cols_fue else "", f["activo"]))
             n_fue += 1
         c.commit()

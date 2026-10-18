@@ -10,7 +10,7 @@ o escribirlo a mano. Si la fuente no da una coincidencia clara no se guarda nada
 
 import json
 import re
-import sqlite3
+from backend.database import MariaDBConnection
 import unicodedata
 import urllib.parse
 import urllib.request
@@ -100,12 +100,12 @@ def buscar_anio(artista: str, titulo: str, get: Optional[Callable] = None) -> Op
 
 # ── Caché en la base ────────────────────────────────────────────────────────
 
-def guardar(c: sqlite3.Connection, ambito: str, clave: str, etiqueta: str, dato: str, fuente: str,
+def guardar(c: MariaDBConnection, ambito: str, clave: str, etiqueta: str, dato: str, fuente: str,
             estado: str = "ok") -> None:
     c.execute(
         "INSERT INTO locutor_datos (ambito, clave, etiqueta, dato, fuente, estado) VALUES (?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(ambito, clave) DO UPDATE SET etiqueta = excluded.etiqueta, dato = excluded.dato,"
-        " fuente = excluded.fuente, estado = excluded.estado, revisado_en = datetime('now')",
+        " ON DUPLICATE KEY UPDATE etiqueta = VALUES(etiqueta), dato = VALUES(dato),"
+        " fuente = VALUES(fuente), estado = VALUES(estado), revisado_en = NOW()",
         (ambito, clave, etiqueta, dato, fuente, estado))
     c.commit()
 
@@ -117,7 +117,7 @@ def _vigente(fila) -> bool:
     return fila["estado"] != "sin_datos" or bool(fila["reciente"])
 
 
-def datos_para(c: sqlite3.Connection, artista: str, titulo: str, anio_biblioteca: Optional[str] = None,
+def datos_para(c: MariaDBConnection, artista: str, titulo: str, anio_biblioteca: Optional[str] = None,
                buscar: bool = True, get: Optional[Callable] = None) -> list:
     """
     Frases verificadas sobre esa canción y su artista (0, 1 o 2). Busca en internet solo lo que aún no está
@@ -126,7 +126,7 @@ def datos_para(c: sqlite3.Connection, artista: str, titulo: str, anio_biblioteca
     out = []
     a_clave = norm(artista_principal(artista))
     c_clave = f"{a_clave}|{norm(_PAREN.sub('', titulo or ''))}"
-    reciente = f"(revisado_en >= datetime('now', '-{REINTENTAR_DIAS} days')) AS reciente"
+    reciente = f"(revisado_en >= DATE_SUB(NOW(), INTERVAL {REINTENTAR_DIAS} DAY)) AS reciente"
 
     def leer(ambito, clave):
         return c.execute(f"SELECT *, {reciente} FROM locutor_datos WHERE ambito = ? AND clave = ?",

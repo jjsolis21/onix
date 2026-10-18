@@ -16,7 +16,7 @@ API del Locutor IA: configuración, aprobación de lo que va a decir y estado de
     POST   /api/v1/locutor/importar                     {origen, reemplazar?} (copia antes la base)
 """
 
-import sqlite3
+import sqlite3                      # SOLO para atrapar errores al leer el archivo SQLite del Locutor anterior (importar)
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.locutor import almacen, datos as datos_mod, moderacion, noticias, servicio as svc
+from backend.database import DualError, DualIntegrityError, DualOperationalError, MariaDBConnection
 from backend.paths import DB_PATH, RESPALDOS_BD_DIR
 
 router = APIRouter(tags=["Locutor IA"])
@@ -32,7 +33,7 @@ engine: Any = None                      # lo asigna api_server
 servicio: Optional[svc.Servicio] = None
 
 
-def _c() -> sqlite3.Connection:
+def _c() -> MariaDBConnection:
     return almacen.conectar(DB_PATH)
 
 
@@ -47,10 +48,10 @@ def estado():
     c = _c()
     try:
         cuenta = {r[0]: r[1] for r in c.execute(
-            "SELECT estado, COUNT(*) FROM locutor_intervenciones WHERE creado_en >= datetime('now','-1 day')"
+            "SELECT estado, COUNT(*) FROM locutor_intervenciones WHERE creado_en >= DATE_SUB(NOW(), INTERVAL 1 DAY)"
             " GROUP BY estado")}
         claves = c.execute("SELECT COUNT(*) FROM ia_claves WHERE activo = 1").fetchone()[0] \
-            if c.execute("SELECT 1 FROM sqlite_master WHERE name = 'ia_claves'").fetchone() else 0
+            if c.execute("SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'ia_claves'").fetchone() else 0
         return {"activo": bool(almacen.leer(c, "activo", False)), "ultimas_24h": cuenta,
                 "por_aprobar": c.execute(
                     "SELECT COUNT(*) FROM locutor_intervenciones WHERE estado = 'borrador'").fetchone()[0],
@@ -145,7 +146,7 @@ def voces():
     try:
         try:
             claves = [dict(r) for r in c.execute("SELECT * FROM ia_claves WHERE activo = 1 ORDER BY orden, id")]
-        except sqlite3.OperationalError:
+        except DualOperationalError:
             claves = []
         activos = {k["proveedor"] for k in claves}
         out, vistas = [], set()
@@ -286,7 +287,7 @@ def crear_fuente(b: FuenteIn):
         try:
             cur = c.execute("INSERT INTO locutor_fuentes (nombre, url, cierre) VALUES (?,?,?)",
                             (b.nombre, b.url.strip(), b.cierre))
-        except sqlite3.IntegrityError:
+        except DualIntegrityError:
             raise HTTPException(status_code=409, detail="Esa fuente ya está registrada")
         c.commit()
         return {"id": cur.lastrowid}
@@ -354,7 +355,7 @@ def poner_dato(b: DatoIn):
 def descartar_dato(rid: int):
     c = _c()
     try:
-        if not c.execute("UPDATE locutor_datos SET estado = 'descartado', revisado_en = datetime('now') WHERE id = ?",
+        if not c.execute("UPDATE locutor_datos SET estado = 'descartado', revisado_en = NOW() WHERE id = ?",
                          (rid,)).rowcount:
             raise HTTPException(status_code=404, detail="No existe")
         c.commit()
@@ -482,7 +483,7 @@ def aprobar(iid: int, b: AprobarIn = AprobarIn()):
             raise HTTPException(status_code=409, detail=f"Está en «{r['estado']}»: no se puede aprobar")
         texto = " ".join((b.texto or r["texto"]).split())
         c.execute("UPDATE locutor_intervenciones SET texto = ?, estado = 'aprobada', modo = 'manual',"
-                  " decidido_en = datetime('now'), error = NULL WHERE id = ?", (texto, iid))
+                  " decidido_en = NOW(), error = NULL WHERE id = ?", (texto, iid))
         c.commit()
         res = svc.locutar(c, iid)
         if res["estado"] != "lista":
@@ -536,7 +537,7 @@ def importar(b: ImportarIn):
     try:
         try:
             r = almacen.importar_de_azuracast(c, origen, b.slug, b.reemplazar)
-        except (ValueError, sqlite3.Error) as e:
+        except (ValueError, sqlite3.Error, DualError) as e:      # sqlite3.Error: el archivo de origen (AzuraCast) era SQLite
             raise HTTPException(status_code=422, detail=str(e))
         return {**r, "copia_previa": str(copia)}
     finally:

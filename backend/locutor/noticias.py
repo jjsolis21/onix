@@ -7,7 +7,7 @@ resumir y nunca instrucciones. Solo biblioteca estándar.
 
 import html
 import re
-import sqlite3
+from backend.database import MariaDBConnection
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -116,32 +116,32 @@ def vetada(entrada: dict, vetos: list) -> bool:
     return any(v.strip().lower() in texto for v in (*VETOS_FIJOS, *vetos) if v.strip())
 
 
-def actualizar(c: sqlite3.Connection, vetos: Optional[list] = None, forzar: bool = False,
+def actualizar(c: MariaDBConnection, vetos: Optional[list] = None, forzar: bool = False,
                leer: Callable = leer_fuente) -> int:
     """Revisa las fuentes a las que ya les toca. Devuelve cuántas noticias nuevas entraron."""
     nuevas = 0
-    filtro = "" if forzar else (f" AND (revisada_en IS NULL OR revisada_en < datetime('now', '-{REVISAR_CADA_MIN} minutes'))")
+    filtro = "" if forzar else (f" AND (revisada_en IS NULL OR revisada_en < DATE_SUB(NOW(), INTERVAL {REVISAR_CADA_MIN} MINUTE))")
     for f in c.execute(f"SELECT * FROM locutor_fuentes WHERE activo = 1{filtro}").fetchall():
         try:
             entradas = leer(f["url"])
         except ErrorFuente as e:
-            c.execute("UPDATE locutor_fuentes SET revisada_en = datetime('now'), error = ? WHERE id = ?",
+            c.execute("UPDATE locutor_fuentes SET revisada_en = NOW(), error = ? WHERE id = ?",
                       (str(e)[:300], f["id"]))
             continue
         for e in entradas:
             estado = "descartada" if vetada(e, vetos or []) else "nueva"
             cur = c.execute(
-                "INSERT OR IGNORE INTO locutor_noticias (fuente_id, guid, titulo, resumen, enlace, publicada_en, estado)"
+                "INSERT IGNORE INTO locutor_noticias (fuente_id, guid, titulo, resumen, enlace, publicada_en, estado)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (f["id"], e["guid"], e["titulo"], e["resumen"], e["enlace"], e["publicada_en"], estado))
             if cur.rowcount and estado == "nueva":
                 nuevas += 1
-        c.execute("UPDATE locutor_fuentes SET revisada_en = datetime('now'), error = NULL WHERE id = ?", (f["id"],))
+        c.execute("UPDATE locutor_fuentes SET revisada_en = NOW(), error = NULL WHERE id = ?", (f["id"],))
     c.commit()
     return nuevas
 
 
-def siguiente(c: sqlite3.Connection, max_horas: int = 18) -> Optional[sqlite3.Row]:
+def siguiente(c: MariaDBConnection, max_horas: int = 18) -> Optional[dict]:
     """La noticia nueva que toca: primero la que el dueño priorizó, luego la más reciente aún vigente."""
     return c.execute(
         "SELECT n.*, f.nombre AS fuente, f.cierre AS cierre FROM locutor_noticias n"
@@ -152,7 +152,7 @@ def siguiente(c: sqlite3.Connection, max_horas: int = 18) -> Optional[sqlite3.Ro
         (max_horas,)).fetchone()
 
 
-def titulares_leidos(c: sqlite3.Connection, horas: int = 24) -> list:
+def titulares_leidos(c: MariaDBConnection, horas: int = 24) -> list:
     return [r[0] for r in c.execute(
         "SELECT titulo FROM locutor_noticias WHERE estado = 'leida'"
         " AND TIMESTAMPDIFF(SECOND, creado_en, NOW()) / 3600.0 <= ?", (horas,))]
