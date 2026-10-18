@@ -1,0 +1,530 @@
+{
+ "config_categorias_def": [
+  {
+   "id": 1,
+   "nombre_interno": "cat1",
+   "etiqueta_visible": "Género",
+   "orden": 1,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "updated_at": "2026-10-18 18:24:26"
+  },
+  {
+   "id": 2,
+   "nombre_interno": "cat2",
+   "etiqueta_visible": "Rotación",
+   "orden": 2,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "updated_at": "2026-10-18 18:24:26"
+  },
+  {
+   "id": 3,
+   "nombre_interno": "cat3",
+   "etiqueta_visible": "Subgénero",
+   "orden": 3,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "updated_at": "2026-10-18 18:24:26"
+  },
+  {
+   "id": 4,
+   "nombre_interno": "voz",
+   "etiqueta_visible": "Voz/Tipo",
+   "orden": 4,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "updated_at": "2026-10-18 18:24:26"
+  }
+ ],
+ "config_categorias_valores": [
+  {
+   "id": 1,
+   "cat_id": 1,
+   "valor": "Romántica",
+   "orden": 1,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 2,
+   "cat_id": 1,
+   "valor": "Pop",
+   "orden": 2,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 3,
+   "cat_id": 1,
+   "valor": "Rock",
+   "orden": 3,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 4,
+   "cat_id": 1,
+   "valor": "Balada",
+   "orden": 4,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 5,
+   "cat_id": 1,
+   "valor": "Cumbia",
+   "orden": 5,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 6,
+   "cat_id": 1,
+   "valor": "Tropical",
+   "orden": 6,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 7,
+   "cat_id": 1,
+   "valor": "Ranchera",
+   "orden": 7,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 8,
+   "cat_id": 1,
+   "valor": "Electrónica",
+   "orden": 8,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 9,
+   "cat_id": 1,
+   "valor": "Reggaetón",
+   "orden": 9,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 10,
+   "cat_id": 1,
+   "valor": "Salsa",
+   "orden": 10,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 11,
+   "cat_id": 1,
+   "valor": "Merengue",
+   "orden": 11,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 12,
+   "cat_id": 1,
+   "valor": "Bachata",
+   "orden": 12,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 13,
+   "cat_id": 1,
+   "valor": "Jazz",
+   "orden": 13,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 14,
+   "cat_id": 1,
+   "valor": "Clásica",
+   "orden": 14,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 15,
+   "cat_id": 2,
+   "valor": "Nuevo",
+   "orden": 1,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 16,
+   "cat_id": 2,
+   "valor": "Reciente",
+   "orden": 2,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 17,
+   "cat_id": 2,
+   "valor": "Éxito",
+   "orden": 3,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 18,
+   "cat_id": 2,
+   "valor": "Recurrente",
+   "orden": 4,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 19,
+   "cat_id": 2,
+   "valor": "Clásico",
+   "orden": 5,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 20,
+   "cat_id": 2,
+   "valor": "Desconocido",
+   "orden": 6,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 21,
+   "cat_id": 3,
+   "valor": "Acústico",
+   "orden": 1,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 22,
+   "cat_id": 3,
+   "valor": "En Vivo",
+   "orden": 2,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 23,
+   "cat_id": 3,
+   "valor": "Remix",
+   "orden": 3,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 24,
+   "cat_id": 3,
+   "valor": "Original",
+   "orden": 4,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 25,
+   "cat_id": 3,
+   "valor": "Cover",
+   "orden": 5,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 26,
+   "cat_id": 4,
+   "valor": "Hombre",
+   "orden": 1,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 27,
+   "cat_id": 4,
+   "valor": "Mujer",
+   "orden": 2,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 28,
+   "cat_id": 4,
+   "valor": "Dúo",
+   "orden": 3,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 29,
+   "cat_id": 4,
+   "valor": "Grupo",
+   "orden": 4,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  },
+  {
+   "id": 30,
+   "cat_id": 4,
+   "valor": "Instrumental",
+   "orden": 5,
+   "activo": 1,
+   "created_at": "2026-10-18 18:24:26",
+   "color": null
+  }
+ ],
+ "config": [
+  {
+   "clave": "modo",
+   "valor": "manual"
+  },
+  {
+   "clave": "crossfade_seg",
+   "valor": "4"
+  },
+  {
+   "clave": "ventana_artista_min",
+   "valor": "60"
+  },
+  {
+   "clave": "max_mismo_genero",
+   "valor": "2"
+  },
+  {
+   "clave": "ducking_db",
+   "valor": "-12"
+  },
+  {
+   "clave": "voz_fondo_pct",
+   "valor": "20"
+  },
+  {
+   "clave": "tandas_minutos",
+   "valor": "15,45"
+  },
+  {
+   "clave": "normalizacion_activa",
+   "valor": "1"
+  },
+  {
+   "clave": "normalizacion_lufs",
+   "valor": "-16"
+  },
+  {
+   "clave": "dispositivo_aire",
+   "valor": "-1"
+  },
+  {
+   "clave": "dispositivo_preescucha",
+   "valor": "-1"
+  },
+  {
+   "clave": "dispositivo_cartuchera",
+   "valor": "-2"
+  },
+  {
+   "clave": "horas_planificadas",
+   "valor": "2"
+  },
+  {
+   "clave": "aleatoriedad",
+   "valor": "3"
+  },
+  {
+   "clave": "tolerancia_tanda_seg",
+   "valor": "90"
+  },
+  {
+   "clave": "separacion_cancion_dias",
+   "valor": "1"
+  },
+  {
+   "clave": "separacion_cancion_ventana_min",
+   "valor": "60"
+  },
+  {
+   "clave": "tandas_inmediatas",
+   "valor": ""
+  },
+  {
+   "clave": "tanda_max_seg",
+   "valor": "240"
+  },
+  {
+   "clave": "silencio_seg",
+   "valor": "10"
+  },
+  {
+   "clave": "marcas_auto",
+   "valor": "1"
+  },
+  {
+   "clave": "migracion_promos_separador",
+   "valor": "1"
+  },
+  {
+   "clave": "migracion_ambito_cartuchera",
+   "valor": "1"
+  },
+  {
+   "clave": "migracion_epoca_audios",
+   "valor": "1"
+  }
+ ],
+ "tanda_secciones": [
+  {
+   "numero": 0,
+   "nombre": "Promociones",
+   "opcional": 0,
+   "comercial": 0
+  },
+  {
+   "numero": 1,
+   "nombre": "Identificación",
+   "opcional": 0,
+   "comercial": 0
+  },
+  {
+   "numero": 2,
+   "nombre": "Separador de entrada",
+   "opcional": 0,
+   "comercial": 0
+  },
+  {
+   "numero": 3,
+   "nombre": "Comerciales",
+   "opcional": 0,
+   "comercial": 1
+  },
+  {
+   "numero": 4,
+   "nombre": "Cortina de salida",
+   "opcional": 1,
+   "comercial": 0
+  }
+ ],
+ "paletas": [
+  {
+   "clave": "jingles",
+   "nombre": "Jingles",
+   "slots": 9,
+   "orden": 0,
+   "created_at": "2026-10-18 18:24:26"
+  },
+  {
+   "clave": "efectos",
+   "nombre": "Efectos",
+   "slots": 9,
+   "orden": 1,
+   "created_at": "2026-10-18 18:24:26"
+  },
+  {
+   "clave": "voces",
+   "nombre": "Voces",
+   "slots": 9,
+   "orden": 2,
+   "created_at": "2026-10-18 18:24:26"
+  },
+  {
+   "clave": "publicidad",
+   "nombre": "Publicidad",
+   "slots": 9,
+   "orden": 3,
+   "created_at": "2026-10-18 18:24:26"
+  },
+  {
+   "clave": "especiales",
+   "nombre": "Especiales",
+   "slots": 9,
+   "orden": 4,
+   "created_at": "2026-10-18 18:24:26"
+  }
+ ],
+ "ident_categorias": [
+  {
+   "id": 1,
+   "tipo_audio": "Efecto",
+   "nombre": "ID de emisora",
+   "comentario": "",
+   "orden": 0
+  },
+  {
+   "id": 2,
+   "tipo_audio": "Efecto",
+   "nombre": "Jingle musical",
+   "comentario": "",
+   "orden": 1
+  },
+  {
+   "id": 3,
+   "tipo_audio": "Efecto",
+   "nombre": "Jingle de humor",
+   "comentario": "",
+   "orden": 2
+  },
+  {
+   "id": 4,
+   "tipo_audio": "Efecto",
+   "nombre": "Stinger",
+   "comentario": "",
+   "orden": 3
+  },
+  {
+   "id": 5,
+   "tipo_audio": "Sweeper",
+   "nombre": "Entrada de programa",
+   "comentario": "",
+   "orden": 0
+  },
+  {
+   "id": 6,
+   "tipo_audio": "Sweeper",
+   "nombre": "Salida de programa",
+   "comentario": "",
+   "orden": 1
+  },
+  {
+   "id": 7,
+   "tipo_audio": "Tips",
+   "nombre": "Tip genérico",
+   "comentario": "",
+   "orden": 0
+  }
+ ]
+}

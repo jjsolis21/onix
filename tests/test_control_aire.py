@@ -57,6 +57,23 @@ def test_tomar_el_control_y_la_otra_pc_queda_avisada(client):
         assert api_server._control["ws"] is not None
 
 
+def test_si_la_conexion_se_corta_de_golpe_el_control_tambien_queda_libre(client):
+    """Una PC que se cae (cable, apagado) no debe dejar el aire bloqueado para las demás."""
+    import time
+    from backend.api import api_server
+    api_server._control.update(ws=None, usuario="")
+    with pytest.raises(RuntimeError):
+        with client.websocket_connect("/ws") as a:
+            a.send_text(json.dumps({"cmd": "stop"}))
+            assert api_server._control["ws"] is not None
+            raise RuntimeError("se cayó la red")            # sale sin cierre limpio del websocket
+    for _ in range(60):
+        if api_server._control["ws"] is None:
+            break
+        time.sleep(0.05)
+    assert api_server._control["ws"] is None
+
+
 def test_al_cerrar_la_pc_el_control_queda_libre(client):
     from backend.api import api_server
     api_server._control.update(ws=None, usuario="")

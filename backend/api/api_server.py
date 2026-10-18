@@ -40,12 +40,6 @@ if str(root_path) not in sys.path:
 # Rutas compartidas con el motor (misma BD, misma carpeta de medios)
 from backend.paths import DB_PATH as _DB_PATH, MEDIA_ROOT, resolve_media, to_stored, normalize_stored
 
-try:
-    from init_db import initialize_database
-except ImportError:
-    # Si falla, intentamos importación relativa
-    from scripts.init_db import initialize_database
-
 # Schemas para el módulo Pautas (Sección 03)
 # Archivo: backend/api/schemas_pautas.py
 try:
@@ -156,9 +150,9 @@ def _ws_message(event: str, data: dict = None, module: str = "api") -> str:
 async def lifespan(app: FastAPI):
     # ── STARTUP ──────────────────────────────────────────────────────────
     logger.info("Iniciando Ónix FM API v2.0...")
-    initialize_database(DB_PATH)
-    from backend.migraciones_maria import migrar as _migrar_maria
-    _migrar_maria()           # esquema nuevo en MariaDB (la base real)
+    from backend.esquema_maria import asegurar_esquema
+    if asegurar_esquema():    # base vacía (instalación nueva): crea las tablas; luego aplica las migraciones pendientes
+        logger.info("Base de datos nueva: esquema creado")
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     MUSICA_DIR.mkdir(parents=True, exist_ok=True)
@@ -3323,14 +3317,18 @@ async def websocket_endpoint(ws: WebSocket):
             await _manager.broadcast(raw)
 
     except WebSocketDisconnect:
-        # Desconexión limpia iniciada por el cliente (cierre normal)
-        if _control["ws"] is ws:
-            _control.update(ws=None, usuario="")          # al cerrar su Studio, el control queda libre
-            await _manager.broadcast(_ws_message("control_aire", {"usuario": ""}))
-        _manager.disconnect(ws)
+        pass                                              # desconexión normal del cliente
     except Exception as exc:
-        # Error inesperado — logueamos y limpiamos la conexión
+        # Error inesperado (red caída, PC apagada…) — logueamos
         logger.error(f"[WS] Error inesperado: {exc}")
+    finally:
+        # Por cualquier vía que se cierre la conexión, esa PC suelta el control del aire: si no, ninguna otra podría operar
+        if _control["ws"] is ws:
+            _control.update(ws=None, usuario="")
+            try:
+                await _manager.broadcast(_ws_message("control_aire", {"usuario": ""}))
+            except Exception:
+                pass
         _manager.disconnect(ws)
 
 # ===========================================================================
