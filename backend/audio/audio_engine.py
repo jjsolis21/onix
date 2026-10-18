@@ -2164,8 +2164,41 @@ class AudioEngine:
                     pass
             it["hora"] = t.strftime("%H:%M:%S")
             t += timedelta(seconds=it["duracion"])
+        items = self._pegar_tips(items, cola)
         return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
                 "items": items, "fin": t.strftime("%H:%M:%S")}
+
+    def _pegar_tips(self, items: list[dict], cola: list[dict]) -> list[dict]:
+        """
+        Como en SoHo, un Tips de intro o de puente NO es «la canción siguiente»: va encima de la canción a la que
+        pisa. En la vista del programa su fila desaparece y la canción lleva `tip` (título y modo):
+        de intro → la canción que viene después; de puente → la canción de antes (la que sale).
+        """
+        def info(t):
+            return {"titulo": t.get("titulo", ""), "modo": t["tip_modo"], "audio_id": t.get("audio_id")}
+        out: list[dict] = []
+        esperando: list[dict] = []          # tips de intro que esperan a la canción que viene
+        if self._tip_pend:
+            esperando.append({"titulo": self._tip_pend["track"].get("titulo", ""), "tip_modo": self._tip_pend["modo"],
+                              "audio_id": self._tip_pend["track"].get("id")})
+        for q in cola:
+            if esperando and (q.get("tipo_audio") or TIPO_MUSICA) == TIPO_MUSICA:
+                q["tip"] = info(esperando.pop(0))
+        for it in items:
+            if it.get("tip_modo"):
+                if it["tip_modo"] == "puente":
+                    previo = next((x for x in reversed(out) if x.get("tipo") == "audio"), None)
+                    if previo is not None:
+                        previo["tip"] = info(it)
+                    elif cola:
+                        cola[-1]["tip"] = info(it)
+                else:
+                    esperando.append(it)
+                continue
+            if esperando and it.get("tipo") == "audio" and it.get("tipo_audio") == TIPO_MUSICA:
+                it["tip"] = info(esperando.pop(0))
+            out.append(it)
+        return out
 
     def seek(self, segundos: float):
         """
@@ -2525,9 +2558,7 @@ class AudioEngine:
         item = self._current_item
         cue_in = self._cue_range(item)[0]
         mezcla = self._mix_point if self._mix_point != float("inf") else (self._duration or cue_in)
-        fin = self._hard_end if self._hard_end != float("inf") else (self._duration or mezcla)
-        disparo, limite = calcular_tip(modo, dur, cue_in, self._intro_de(self._current_track),
-                                       fin if modo == "puente" else mezcla)
+        disparo, limite = calcular_tip(modo, dur, cue_in, self._intro_de(self._current_track), mezcla)
         if limite is None and modo != "puente":
             limite = mezcla if mezcla > cue_in else None    # tip más largo que la canción: se va antes de la siguiente
         self._tip = {"track": tip_track, "modo": modo, "origen": origen, "plan_uid": plan_uid,
@@ -2551,7 +2582,7 @@ class AudioEngine:
             return False
         with self._programa_lock:
             for it in self._programa:
-                if saltar_uid is not None and it.get("uid") == saltar_uid:
+                if (saltar_uid is not None and it.get("uid") == saltar_uid) or it.get("tip_modo"):
                     continue
                 return it.get("tipo") == "audio" and it.get("tipo_audio") == TIPO_MUSICA
         return False
@@ -2628,9 +2659,12 @@ class AudioEngine:
             pos = self._audio.get_position_sec(t["canal"])
             if t["limite"] is not None and pos >= t["limite"] - self.TIP_CORTE:
                 self._tip_cancelar("ya_paso_el_intro")         # p. ej. el operador adelantó la canción
+                self._emit_error(t["track"].get("id"), "tip_no_sale", f"El tip «{t['track'].get('titulo', '')}» no salió: ya pasó el intro")
             elif pos >= t["disparo"]:
                 if t["modo"] == "puente" and not self._proximo_es_musica(t["plan_uid"]):
                     self._tip_cancelar("no_sigue_una_cancion")
+                    self._emit_error(t["track"].get("id"), "tip_no_sale",
+                                     f"El puente «{t['track'].get('titulo', '')}» no salió: después no viene una canción (agrégala a la cola)")
                 else:
                     self._tip_disparar()
             return

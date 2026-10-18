@@ -21,6 +21,8 @@ const fmt = s => {
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 // Tips sobre la música (como Jazler SoHo)
 const TIP_MODO_NOMBRE = { intro_inicio: "inicio del intro", intro_final: "final del intro", puente: "puente" };
+// Insignia del tip que se monta encima de una canción (no es una fila: pisa a esa canción)
+const insigniaTip = t => !t ? "" : `<div class="deck-tip" title="Este tip suena ENCIMA de la canción, no es la siguiente">💡 TIP ${TIP_MODO_NOMBRE[t.modo] ?? t.modo}: ${esc(t.titulo)}</div>`;
 const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips", Locucion: "Voz" };
 
 function toast(msg, tipo = "info", ms = 5000) {
@@ -481,7 +483,7 @@ const Decks = (() => {
       html += cola.map((q, i) => `<div class="deck cola${q.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${q.uid}" data-zona="cola" data-tipo="${q.tipo_audio === "Locucion" ? "Locucion" : "Cola"}">
         <span class="deck-hora">${esc(q.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div>
-          ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}</div>
+          ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}${insigniaTip(q.tip)}</div>
         <span class="deck-dur">${q.tipo_audio === "Locucion" ? "🎙 VOZ" : "COLA"}</span></div>`).join("");
     }
     let reloj;
@@ -518,7 +520,7 @@ const Decks = (() => {
           title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda o el evento salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
         <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(it.titulo)}</div>
-          <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div></div>
+          <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div>${insigniaTip(it.tip)}</div>
         <span class="deck-dur">${fmt(it.duracion_total)}<br><span class="deck-marcas">${marcas}</span></span>
       </div>`;
     });

@@ -1,6 +1,6 @@
 """
 Tips sobre la música (estilo Jazler SoHo): al inicio del intro, al final del intro (termina cuando entra la voz)
-o de puente (arranca cuando a la canción le queda la mitad del tip y sigue sobre la siguiente). Motor en mock: se mueve la posición a mano.
+o de puente (cruza el cambio de canción: mitad del tip antes de que entre la siguiente y mitad encima de ella). Motor en mock: se mueve la posición a mano.
 """
 
 from backend.audio.audio_engine import CANAL_TIP
@@ -21,7 +21,7 @@ def test_inicio_del_intro_suena_desde_el_segundo_cero():
     assert calcular_tip("intro_inicio", 7, 2.5, 20, 180) == (2.5, 20)      # desde el cue de inicio
 
 
-def test_puente_tip_de_6_entra_cuando_a_la_cancion_le_quedan_3_segundos():
+def test_puente_tip_de_6_entra_3_segundos_antes_de_que_entre_la_siguiente():
     assert calcular_tip("puente", 6, 0, 20, 180) == (177, None)
     assert calcular_tip("puente", 8, 0, 20, 180) == (176, None)
 
@@ -191,9 +191,9 @@ def test_puente_largo_empieza_antes_de_la_mezcla_y_sigue_sobre_la_siguiente(engi
     tip_item = _p_audio(tip, "Tips", tip_modo="puente")
     _plan(engine, tip_item, _p_audio(b))
     engine._start({"track": engine._fetch_track(a), "origen": "auto"})
-    assert engine._tip["modo"] == "puente" and abs(engine._tip["disparo"] - 48.0) < 0.01   # 60 − 24/2
+    assert engine._tip["modo"] == "puente" and abs(engine._tip["disparo"] - 38.0) < 0.01   # mezcla 50 − 24/2 = 38
 
-    _al(engine, 48.0)                                              # a la canción le quedan 12 s
+    _al(engine, 38.0)                                              # 12 s antes de que entre B
     assert engine._tip["estado"] == "sonando"
     assert all(i["uid"] != tip_item["uid"] for i in engine._programa)   # sale del programa al sonar
     _al(engine, 50.0)                                              # mezcla: entra B y el tip sigue encima
@@ -213,7 +213,7 @@ def test_puente_no_se_monta_si_lo_que_sigue_no_es_una_cancion(engine, media):
     tip = add_audio(engine, media, "TIP 24", tipo="Tips", seconds=24.0)
     _plan(engine, _p_audio(tip, "Tips", tip_modo="puente"), _p_audio(voz, "Locucion"))
     engine._start({"track": engine._fetch_track(a), "origen": "auto"})
-    _al(engine, 48.0)
+    _al(engine, 38.0)
     assert engine._tip is None and not engine._audio.is_active(CANAL_TIP)
     _al(engine, 50.0)
     assert engine._current_track["id"] == voz                      # la fila del tip se descarta sin sonar sola
@@ -238,9 +238,9 @@ def test_puente_manual_sobre_la_cancion_que_suena(engine, media):
     engine._mode = "manual"
     engine._start({"track": engine._fetch_track(a), "origen": "manual"})
     _tip_manual(engine, tip, "puente")
-    assert abs(engine._tip["disparo"] - 48.0) < 0.01
+    assert abs(engine._tip["disparo"] - 38.0) < 0.01
     engine.queue_track(b); engine._drain_commands()
-    _al(engine, 48.0)
+    _al(engine, 38.0)
     assert engine._tip["estado"] == "sonando"
 
 
@@ -249,9 +249,12 @@ def test_puente_manual_sin_cancion_siguiente_no_sale(engine, media):
     tip = add_audio(engine, media, "TIP 24", tipo="Tips", seconds=24.0)
     engine._mode = "manual"
     engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    errores = []
+    engine.bus.subscribe("playback_error", lambda e, d: errores.append(d))
     _tip_manual(engine, tip, "puente")
-    _al(engine, 48.0)
+    _al(engine, 38.0)
     assert engine._tip is None
+    assert errores and "no salió" in errores[-1]["msg"]            # se le avisa al operador, no falla en silencio
 
 
 def test_tip_programar_rechaza_un_modo_desconocido(engine, media):
@@ -277,23 +280,47 @@ def test_fila_de_tips_con_modo_no_ocupa_tiempo_en_el_plan(tmp_db):
     assert items[1]["inicio"] == items[2]["inicio"]               # la canción siguiente no se corre
 
 
-def test_puente_de_6_segundos_entra_a_3_del_final_aunque_la_siguiente_ya_entro(engine, media):
-    """Ejemplo del dueño: tip de 6 s en puente ⇒ suena cuando a la canción le quedan 3 s (aunque la mezcla fue antes)."""
-    a = add_audio(engine, media, "A", seconds=60.0, cue_mezcla=50.0)
-    b = add_audio(engine, media, "B", seconds=60.0, cue_intro=10.0)
+def test_puente_de_6_segundos_cruza_el_cambio_con_crossfade(engine, media):
+    """Caso real: con crossfade, a los 3 s del final la siguiente ya entró. El tip tiene que empezar ANTES de la mezcla."""
+    a = add_audio(engine, media, "A", seconds=24.0)                # mezcla = 24 − 4 de crossfade = 20
+    b = add_audio(engine, media, "B", seconds=24.0, cue_intro=10.0)
     tip = add_audio(engine, media, "TIP 6", tipo="Tips", seconds=6.0)
     _plan(engine, _p_audio(tip, "Tips", tip_modo="puente"), _p_audio(b))
     engine._start({"track": engine._fetch_track(a), "origen": "auto"})
-    assert abs(engine._tip["disparo"] - 57.0) < 0.01               # 60 − 6/2
-    _al(engine, 50.0)                                              # mezcla: entra B, A sigue en su fundido
-    assert engine._current_track["id"] == b
-    t = engine._tip
-    assert t and t["estado"] == "espera" and t["item"]["track"]["id"] == b
-    assert 6.5 < t["disparo_en"] - __import__("time").monotonic() <= 7.0   # faltan 7 s para que a A le queden 3
-    t["disparo_en"] = 0
-    engine._tick()
-    assert engine._tip["estado"] == "sonando" and engine._audio.is_active(CANAL_TIP)
+    assert abs(engine._mix_point - 20.0) < 0.01 and abs(engine._tip["disparo"] - 17.0) < 0.01
+    _al(engine, 16.9)
+    assert engine._tip["estado"] == "espera"
+    _al(engine, 17.0)                                              # 3 s antes de que entre B
+    assert engine._tip["estado"] == "sonando" and engine._current_track["id"] == a
+    _al(engine, 20.0)                                              # entra B y el tip sigue encima (3 s sobre B)
+    assert engine._current_track["id"] == b and engine._tip["estado"] == "sonando"
     assert engine._tip["limite"] == 10.0                           # no pisa la voz de B
+
+
+def test_el_tip_no_es_la_cancion_siguiente_en_la_vista_del_programa(engine, media):
+    """Como SoHo: el tip va encima de la canción que pisa; en el programa no ocupa una fila."""
+    a = add_audio(engine, media, "A", seconds=60.0)
+    b = add_audio(engine, media, "B", seconds=60.0)
+    c = add_audio(engine, media, "C", seconds=60.0)
+    tip = add_audio(engine, media, "TIP", tipo="Tips", seconds=6.0)
+    d = add_audio(engine, media, "D", seconds=60.0)
+    _plan(engine, _p_audio(b, titulo="B"), _p_audio(tip, "Tips", tip_modo="puente", titulo="TIP"), _p_audio(c, titulo="C"),
+          _p_audio(tip, "Tips", tip_modo="intro_final", titulo="TIP"), _p_audio(d, titulo="D"))
+    engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    filas = engine.programa()["items"]
+    assert [i["titulo"] for i in filas] == ["B", "C", "D"]         # sin filas de tip
+    assert filas[0]["tip"]["modo"] == "puente"                     # el puente pisa a B (la que sale)
+    assert "tip" not in filas[1] and filas[2]["tip"]["modo"] == "intro_final"   # el de intro pisa a D (la que entra)
+
+
+def test_tip_pendiente_se_ve_sobre_la_primera_cancion_de_la_cola(engine, media):
+    a = add_audio(engine, media, "A", seconds=60.0)
+    b = add_audio(engine, media, "B", seconds=60.0)
+    tip = add_audio(engine, media, "TIP", tipo="Tips", seconds=6.0)
+    engine._mode = "manual"
+    engine.queue_track(a); engine.queue_track(b); _tip_manual(engine, tip, "intro_inicio")
+    cola = engine.programa()["cola"]
+    assert cola[0]["tip"]["modo"] == "intro_inicio" and "tip" not in cola[1]
 
 
 def test_puente_que_aun_no_sonaba_no_sale_si_el_operador_salta(engine, media):

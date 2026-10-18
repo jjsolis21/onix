@@ -198,6 +198,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 #libTipModo { color: var(--ambar-vivo); border-color: var(--ambar); }
 #libTipModo.on { background: rgba(238, 155, 0, .16); font-weight: 600; }
 .lib-acc select.tip { font-size: .66rem; max-width: 92px; background: transparent; color: var(--ambar-vivo); border: 1px solid var(--ambar); border-radius: 3px; }
+.deck-tip { color: var(--ambar-vivo); font-size: .7rem; margin-top: 2px; }
 .aviso-cyan { background: rgba(72, 202, 228, .10); color: var(--cyan); border-bottom: 1px solid var(--cyan); }
 .aviso-cyan button { color: var(--cyan); border: 1px solid var(--cyan); }
 
