@@ -49,10 +49,11 @@ def test_no_se_puede_crear_un_valor_repetido_solo_por_mayusculas_o_tildes(client
     assert client.post("/api/v1/config/biblioteca/valores", json={"nombre_interno": "cat1", "valor": "vallenato"}).status_code == 409
 
 
-def test_las_voces_de_sistema_estan_en_la_lista(client):
+def test_las_voces_oficiales_estan_en_la_lista(client):
     voces = {v["valor"] for cat in client.get("/api/v1/config/biblioteca/schema").json()["categorias"]
              if cat["nombre_interno"] == "voz" for v in cat["valores"]}
-    assert {"Hombre", "Mujer", "Genérico"} <= voces
+    assert {"Hombre", "Mujer", "Dúo", "Grupo", "FT", "Genérico"} <= voces
+    assert "MALE" not in voces and "Instrumental" not in voces                # MALE es «Hombre»; Instrumental ya no se usa
 
 
 # ── El sistema no inventa géneros ─────────────────────────────────────────────────────────────

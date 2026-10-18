@@ -15,8 +15,10 @@ import unicodedata
 
 # Columna de `audios` donde cada categoría guarda su valor
 _COLUMNA_DE_CATEGORIA = {"cat1": "subgenero", "cat2": "categoria", "cat3": "cat3", "voz": "genero_vocal"}
-# Valores que el propio sistema necesita (las voces de las cuñas: Hombre, Mujer o Genérico)
-_VALORES_DE_SISTEMA = {"voz": ("Hombre", "Mujer", "Genérico")}
+# Las voces oficiales: Hombre, Mujer, Dúo, Grupo y FT (para la música) y Genérico (para las cuñas)
+_VALORES_DE_SISTEMA = {"voz": ("Hombre", "Mujer", "Dúo", "Grupo", "FT", "Genérico")}
+# Valores que ya no son oficiales (MALE es «Hombre»; Instrumental no se usa): se retiran de la lista SOLO si ninguna canción los usa
+_RETIRAR_SI_SIN_USO = {"voz": ("MALE", "Instrumental")}
 
 
 def _clave_categoria(valor: str) -> str:
@@ -53,6 +55,15 @@ def _unificar_categorias(c) -> int:
             if any(m[2] for m in miembros):
                 c.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (elegido[0],))
     return eliminados
+
+
+def _retirar_valores_sin_uso(c) -> None:
+    for nombre, valores in _RETIRAR_SI_SIN_USO.items():
+        columna = _COLUMNA_DE_CATEGORIA[nombre]
+        for valor in valores:
+            c.execute(f"DELETE v FROM config_categorias_valores v JOIN config_categorias_def d ON d.id = v.cat_id"
+                      f" WHERE d.nombre_interno = ? AND UPPER(v.valor) = UPPER(?)"
+                      f" AND NOT EXISTS (SELECT 1 FROM audios a WHERE UPPER(a.`{columna}`) = UPPER(?))", (nombre, valor, valor))
 
 
 def _asegurar_valores_de_sistema(c) -> None:
@@ -143,6 +154,7 @@ def migrar() -> None:
         if coleccion and coleccion[0] != "utf8mb4_unicode_ci":
             c.execute(f"ALTER TABLE config_categorias_valores MODIFY `valor` {coleccion[1]} CHARACTER SET utf8mb4"
                       f" COLLATE utf8mb4_unicode_ci {'NULL' if coleccion[2] == 'YES' else 'NOT NULL'}")
+        _retirar_valores_sin_uso(c)
         _asegurar_valores_de_sistema(c)
         c.commit()
 
