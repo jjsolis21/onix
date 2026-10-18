@@ -336,7 +336,9 @@ class Planner:
 
             # Próximo hito a hora fija (tanda o evento): a él apuntan la
             # compensación y el corte de la canción si es inmediato
-            hitos = [(tanda["hora"], inmediata or bool(tanda.get("cierre")))] if tanda else []
+            # Solo una tanda «inmediata» corta la canción. Una «al cierre» sin inmediata espera a que la canción termine
+            # (puede pasarse unos segundos de su minuto): cortar música la decide el operador marcando «inmediata».
+            hitos = [(tanda["hora"], inmediata)] if tanda else []
             if evento:
                 hitos.append((evento["hora"], evento["inmediato"]))
             hito_hora, hito_inm = min(hitos, key=lambda h: h[0]) if hitos else (None, False)
