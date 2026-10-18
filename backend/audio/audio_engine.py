@@ -59,7 +59,6 @@ import platform
 import queue
 import random
 import re
-import sqlite3
 import threading
 import time
 import unicodedata
@@ -141,7 +140,6 @@ def tandas_de_hora(grilla: dict, dia: int, hora: int, minutos: list[int],
     return m, lista("inmediatas", inmediatas), lista("cierre", cierre)
 
 
-from backend.esquema_extra import ESQUEMA_AJUSTES as _ESQUEMA_AJUSTES  # noqa: E402
 
 
 def leer_ajustes(conn, fecha: str, hora: int) -> tuple[dict[int, list[int]], set[int]]:
@@ -149,10 +147,6 @@ def leer_ajustes(conn, fecha: str, hora: int) -> tuple[dict[int, list[int]], set
     Ajustes a mano del operador (Admin › Comerciales › Tandas del día) para una
     hora de un día: {minuto: [pauta_id en orden]} y las cuñas quitadas ese día.
     """
-    try:
-        conn.executescript(_ESQUEMA_AJUSTES)
-    except Exception:
-        pass                                    # ya existen (o el motor de la base no admite el script): se intenta leer igual
     bloques: dict[int, list[int]] = {}
     quitadas: set[int] = set()
     # Los ajustes son un extra del operador: si la base no los puede leer, las tandas salen con el reparto automático.
@@ -3235,7 +3229,7 @@ class AudioEngine:
                 )
                 conn.execute(
                     "UPDATE audios SET"
-                    " ultima_reproduccion = datetime('now','localtime'),"
+                    " ultima_reproduccion = NOW(),"
                     " veces_reproducido = COALESCE(veces_reproducido,0) + 1"
                     " WHERE id = ?",
                     (track["id"],),
@@ -3303,7 +3297,7 @@ class AudioEngine:
             try:
                 conn.execute(
                     "INSERT INTO config (clave, valor) VALUES (?, ?)"
-                    " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                    " ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
                     (clave, valor),
                 )
                 conn.commit()

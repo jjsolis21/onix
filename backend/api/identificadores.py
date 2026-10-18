@@ -14,14 +14,13 @@ los relojes pueden filtrar por ella (filtro "ident").
     PUT    /api/v1/ident/audios                                      → {ids, categoria}: asigna (o quita con null)
 """
 
-import sqlite3
+from backend.database import MariaDBConnection
 import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.paths import DB_PATH
 
 router = APIRouter(tags=["Identificadores"])
 
@@ -46,7 +45,7 @@ def _plano(texto: str) -> str:
 @router.get("/api/v1/ident/audios", summary="Tabla de identificadores")
 def listar(tipo: str = "Efecto", q: Optional[str] = None, categoria: Optional[str] = None,
            limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
-           conn: sqlite3.Connection = Depends(get_db)):
+           conn: MariaDBConnection = Depends(get_db)):
     sql = (" FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera'")
     params: list = [_tipo(tipo)]
     for palabra in _plano(q or "").split():
@@ -60,13 +59,13 @@ def listar(tipo: str = "Efecto", q: Optional[str] = None, categoria: Optional[st
     total = conn.execute("SELECT COUNT(*)" + sql, params).fetchone()[0]
     filas = conn.execute(
         "SELECT id, titulo, artista, duracion, cue_intro, intro, categoria_ident, tipo_audio,"
-        " veces_reproducido, ultima_reproduccion" + sql + " ORDER BY artista COLLATE NOCASE, titulo COLLATE NOCASE LIMIT ? OFFSET ?",
+        " veces_reproducido, ultima_reproduccion" + sql + " ORDER BY artista, titulo LIMIT ? OFFSET ?",
         params + [limit, offset]).fetchall()
     return {"total": total, "data": [dict(f) for f in filas]}
 
 
 @router.get("/api/v1/ident/categorias", summary="Categorías por tipo")
-def categorias(conn: sqlite3.Connection = Depends(get_db)):
+def categorias(conn: MariaDBConnection = Depends(get_db)):
     out = {t: [] for t in TIPOS}
     for r in conn.execute(
             "SELECT c.id, c.tipo_audio, c.nombre, c.comentario, c.orden,"
@@ -84,11 +83,11 @@ class CategoriaIn(BaseModel):
 
 
 @router.post("/api/v1/ident/categorias", status_code=201, summary="Agregar categoría")
-def agregar(body: CategoriaIn, conn: sqlite3.Connection = Depends(get_db)):
+def agregar(body: CategoriaIn, conn: MariaDBConnection = Depends(get_db)):
     tipo, nombre = _tipo(body.tipo_audio or ""), (body.nombre or "").strip()
     if not nombre:
         raise HTTPException(status_code=422, detail="Escribe un nombre para la categoría")
-    if conn.execute("SELECT 1 FROM ident_categorias WHERE tipo_audio = ? AND nombre = ? COLLATE NOCASE", (tipo, nombre)).fetchone():
+    if conn.execute("SELECT 1 FROM ident_categorias WHERE tipo_audio = ? AND nombre = ?", (tipo, nombre)).fetchone():
         raise HTTPException(status_code=409, detail=f"Ya existe «{nombre}» en este tipo")
     orden = conn.execute("SELECT COALESCE(MAX(orden), -1) + 1 FROM ident_categorias WHERE tipo_audio = ?", (tipo,)).fetchone()[0]
     cur = conn.execute("INSERT INTO ident_categorias (tipo_audio, nombre, comentario, orden) VALUES (?, ?, ?, ?)",
@@ -104,10 +103,10 @@ def _cat(conn, cid: int):
 
 
 @router.put("/api/v1/ident/categorias/{cid}", summary="Renombrar o comentar una categoría")
-def editar(cid: int, body: CategoriaIn, conn: sqlite3.Connection = Depends(get_db)):
+def editar(cid: int, body: CategoriaIn, conn: MariaDBConnection = Depends(get_db)):
     c = _cat(conn, cid)
     nombre = (body.nombre if body.nombre is not None else c["nombre"]).strip()
-    if conn.execute("SELECT 1 FROM ident_categorias WHERE tipo_audio = ? AND nombre = ? COLLATE NOCASE AND id != ?",
+    if conn.execute("SELECT 1 FROM ident_categorias WHERE tipo_audio = ? AND nombre = ? AND id != ?",
                     (c["tipo_audio"], nombre, cid)).fetchone():
         raise HTTPException(status_code=409, detail=f"Ya existe «{nombre}» en este tipo")
     comentario = (body.comentario if body.comentario is not None else c["comentario"]).strip()
@@ -115,7 +114,7 @@ def editar(cid: int, body: CategoriaIn, conn: sqlite3.Connection = Depends(get_d
     if nombre != c["nombre"]:     # los audios (y los filtros de los relojes se leen por nombre) siguen el cambio
         conn.execute("UPDATE audios SET categoria_ident = ? WHERE tipo_audio = ? AND UPPER(COALESCE(categoria_ident, '')) = UPPER(?)",
                      (nombre, c["tipo_audio"], c["nombre"]))
-        conn.execute("UPDATE reloj_filas SET filtros = json_set(filtros, '$.ident', UPPER(?)) "
+        conn.execute("UPDATE reloj_filas SET filtros = JSON_SET(filtros, '$.ident', UPPER(?)) "
                      "WHERE tipo_audio = ? AND UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(filtros, '$.ident')), '')) = UPPER(?)",
                      (nombre, c["tipo_audio"], c["nombre"]))
     return {"id": cid, "nombre": nombre, "comentario": comentario}
@@ -126,7 +125,7 @@ class MoverIn(BaseModel):
 
 
 @router.post("/api/v1/ident/categorias/{cid}/mover", summary="Subir o bajar una categoría")
-def mover(cid: int, body: MoverIn, conn: sqlite3.Connection = Depends(get_db)):
+def mover(cid: int, body: MoverIn, conn: MariaDBConnection = Depends(get_db)):
     c = _cat(conn, cid)
     lista = [r["id"] for r in conn.execute("SELECT id FROM ident_categorias WHERE tipo_audio = ? ORDER BY orden, id", (c["tipo_audio"],))]
     i = lista.index(cid)
@@ -139,7 +138,7 @@ def mover(cid: int, body: MoverIn, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.delete("/api/v1/ident/categorias/{cid}", summary="Eliminar una categoría")
-def eliminar(cid: int, quitar: bool = False, conn: sqlite3.Connection = Depends(get_db)):
+def eliminar(cid: int, quitar: bool = False, conn: MariaDBConnection = Depends(get_db)):
     c = _cat(conn, cid)
     usos = conn.execute("SELECT COUNT(*) FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera' AND UPPER(COALESCE(categoria_ident, '')) = UPPER(?)",
                         (c["tipo_audio"], c["nombre"])).fetchone()[0]
@@ -157,7 +156,7 @@ class AsignarIn(BaseModel):
 
 
 @router.put("/api/v1/ident/audios", summary="Asignar categoría a varios audios")
-def asignar(body: AsignarIn, conn: sqlite3.Connection = Depends(get_db)):
+def asignar(body: AsignarIn, conn: MariaDBConnection = Depends(get_db)):
     ids = sorted(set(body.ids))
     ph = ",".join("?" * len(ids))
     filas = conn.execute(f"SELECT id, tipo_audio FROM audios WHERE id IN ({ph}) AND activo = 1", ids).fetchall()
@@ -166,10 +165,10 @@ def asignar(body: AsignarIn, conn: sqlite3.Connection = Depends(get_db)):
     nombre = (body.categoria or "").strip() or None
     if nombre:
         for tipo in {f["tipo_audio"] for f in filas}:
-            r = conn.execute("SELECT nombre FROM ident_categorias WHERE tipo_audio = ? AND nombre = ? COLLATE NOCASE", (tipo, nombre)).fetchone()
+            r = conn.execute("SELECT nombre FROM ident_categorias WHERE tipo_audio = ? AND nombre = ?", (tipo, nombre)).fetchone()
             if not r:
                 raise HTTPException(status_code=422, detail=f"«{nombre}» no es una categoría de {tipo}")
             nombre = r["nombre"]                                   # la escritura canónica
-    n = conn.execute(f"UPDATE audios SET categoria_ident = ?, updated_at = datetime('now') WHERE id IN ({ph}) AND activo = 1",
+    n = conn.execute(f"UPDATE audios SET categoria_ident = ?, updated_at = NOW() WHERE id IN ({ph}) AND activo = 1",
                      [nombre] + ids).rowcount
     return {"actualizados": n, "categoria": nombre}
