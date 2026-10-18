@@ -30,7 +30,6 @@ mayúsculas, signos ni lo que va entre paréntesis: "(Remix)", "(feat. X)").
 import io
 import json
 import re
-import sqlite3
 import unicodedata
 from typing import Optional
 
@@ -155,7 +154,7 @@ def ficha(audio_id: int):
         # Historial de emisión
         total = conn.execute("SELECT COUNT(*) FROM historial_emision WHERE audio_id = ?", (audio_id,)).fetchone()[0]
         ult30 = conn.execute("SELECT COUNT(*) FROM historial_emision WHERE audio_id = ?"
-                             " AND iniciado_en >= datetime('now', 'localtime', '-30 days')", (audio_id,)).fetchone()[0]
+                             " AND iniciado_en >= DATE_SUB(NOW(), INTERVAL 30 DAY)", (audio_id,)).fetchone()[0]
         ultimas = [r[0] for r in conn.execute(
             "SELECT iniciado_en FROM historial_emision WHERE audio_id = ? ORDER BY id DESC LIMIT 8", (audio_id,))]
         # Análisis de difusión (como Jazler): días × horas de las últimas 5 semanas
@@ -163,8 +162,8 @@ def ficha(audio_id: int):
         hoy = date.today()
         matriz = {}
         for (d, h, n) in conn.execute(
-                "SELECT substr(iniciado_en, 1, 10), CAST(strftime('%H', iniciado_en) AS INTEGER), COUNT(*)"
-                " FROM historial_emision WHERE audio_id = ? AND iniciado_en >= date('now', 'localtime', '-34 days')"
+                "SELECT SUBSTR(iniciado_en, 1, 10), HOUR(iniciado_en), COUNT(*)"
+                " FROM historial_emision WHERE audio_id = ? AND iniciado_en >= DATE_SUB(CURDATE(), INTERVAL 34 DAY)"
                 " GROUP BY 1, 2", (audio_id,)):
             if d and h is not None:
                 matriz.setdefault(d, [0] * 24)[int(h)] = n
@@ -174,8 +173,8 @@ def ficha(audio_id: int):
         primera = conn.execute("SELECT MIN(iniciado_en) FROM historial_emision WHERE audio_id = ?", (audio_id,)).fetchone()[0]
         por_hora = [0] * 24
         for (h, n) in conn.execute(
-                "SELECT CAST(strftime('%H', iniciado_en) AS INTEGER), COUNT(*) FROM historial_emision"
-                " WHERE audio_id = ? AND iniciado_en >= datetime('now', 'localtime', '-30 days') GROUP BY 1",
+                "SELECT HOUR(iniciado_en), COUNT(*) FROM historial_emision"
+                " WHERE audio_id = ? AND iniciado_en >= DATE_SUB(NOW(), INTERVAL 30 DAY) GROUP BY 1",
                 (audio_id,)):
             if h is not None:
                 por_hora[int(h)] = n
@@ -299,7 +298,7 @@ def restaurar(body: IdsIn):
     conn = _conn()
     try:
         ph = ",".join("?" * len(body.ids))
-        n = conn.execute(f"UPDATE audios SET activo = 1, updated_at = datetime('now') WHERE id IN ({ph})"
+        n = conn.execute(f"UPDATE audios SET activo = 1, updated_at = NOW() WHERE id IN ({ph})"
                          " AND activo = 0", body.ids).rowcount
         conn.commit()
         return {"restaurados": n}
@@ -344,7 +343,6 @@ def borrar_definitivo(body: IdsIn):
     (si está dentro de la carpeta de medios). No se borra lo que use una pauta.
     """
     conn = _conn()
-    conn.execute("PRAGMA foreign_keys = ON")
     try:
         ph = ",".join("?" * len(body.ids))
         filas = conn.execute(f"SELECT id, titulo, archivo_path FROM audios WHERE id IN ({ph}) AND activo = 0",
@@ -402,7 +400,7 @@ def calidad():
                    (r["loudness_lufs"] is not None and not -24 <= r["loudness_lufs"] <= -7)]
         semana = {r[0]: r[1] for r in conn.execute(
             "SELECT audio_id, COUNT(*) FROM historial_emision WHERE audio_id IS NOT NULL"
-            " AND iniciado_en >= datetime('now', 'localtime', '-7 days') GROUP BY audio_id")}
+            " AND iniciado_en >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY audio_id")}
         ids_musica = {r["id"] for r in musica}
         cuentas = [semana.get(i, 0) for i in ids_musica]
         quemadas = []
@@ -414,8 +412,8 @@ def calidad():
                               key=lambda i: -semana.get(i, 0))
         ult30 = {r[0] for r in conn.execute(
             "SELECT DISTINCT audio_id FROM historial_emision WHERE audio_id IS NOT NULL"
-            " AND iniciado_en >= datetime('now', 'localtime', '-30 days')")}
-        limite_30d = str(conn.execute("SELECT datetime('now', '-30 days')").fetchone()[0])[:19]
+            " AND iniciado_en >= DATE_SUB(NOW(), INTERVAL 30 DAY)")}
+        limite_30d = str(conn.execute("SELECT DATE_SUB(NOW(), INTERVAL 30 DAY)").fetchone()[0])[:19]
         olvidadas = [r["id"] for r in musica if r["aprobada"] and r["id"] not in ult30
                      and str(r["created_at"] or "")[:19] < limite_30d]
         restringidas = [r["id"] for r in musica if r["restr_dias"] or r["max_por_dia"]
@@ -538,7 +536,7 @@ def acoustid_guardar(body: ClaveAcoustIn):
     conn = _conn()
     try:
         conn.execute("INSERT INTO config (clave, valor) VALUES ('acoustid_clave', ?) "
-                     "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (clave,))
+                     "ON DUPLICATE KEY UPDATE valor = VALUES(valor)", (clave,))
         conn.commit()
     finally:
         conn.close()
@@ -570,7 +568,7 @@ def analisis_config_guardar(body: AnalisisConfIn):
     try:
         for clave, v in (("analisis_itunes", body.itunes), ("analisis_deezer", body.deezer)):
             if v is not None:
-                conn.execute("INSERT INTO config (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                conn.execute("INSERT INTO config (clave, valor) VALUES (?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
                              (clave, "1" if v else "0"))
         conn.commit()
     finally:
@@ -680,7 +678,7 @@ def anios_aplicar(body: AniosAplicarIn):
         for it in body.items:
             ep = calcular_epoca(it.anio)
             n += c.execute(
-                "UPDATE audios SET fecha_lanzamiento = ?, epoca = ?, updated_at = datetime('now') WHERE id = ? AND activo = 1"
+                "UPDATE audios SET fecha_lanzamiento = ?, epoca = ?, updated_at = NOW() WHERE id = ? AND activo = 1"
                 " AND COALESCE(TRIM(fecha_lanzamiento), '') = ''", (str(it.anio), ep, it.id)).rowcount
         c.commit()
         return {"guardados": n, "omitidos": len(body.items) - n}

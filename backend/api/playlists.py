@@ -25,7 +25,7 @@ siguen saliendo a su hora (tienen prioridad sobre la cola).
 """
 
 import re
-import sqlite3
+from backend.database import DualIntegrityError, MariaDBConnection
 import unicodedata
 from datetime import datetime
 from pathlib import PureWindowsPath
@@ -91,7 +91,7 @@ _SQL_LISTA = """
 
 
 @router.get("/api/v1/playlists", summary="Playlists")
-def listar(q: str = "", conn: sqlite3.Connection = Depends(get_db)):
+def listar(q: str = "", conn: MariaDBConnection = Depends(get_db)):
     where, params = "WHERE p.activo = 1", []
     if q.strip():
         where += " AND UPPER(p.nombre) LIKE ?"
@@ -115,7 +115,7 @@ def _insertar(conn, nombre: str, descripcion: str, reloj_id, horas, programada: 
             "INSERT INTO playlists (nombre, descripcion, reloj_id, horas, programada, inmediato, autor)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (nombre.strip(), descripcion, reloj_id, horas, programada, int(inmediato), autor)).lastrowid
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe una playlist llamada '{nombre}'")
 
 
@@ -133,7 +133,7 @@ def _guardar_items(conn, pid: int, items: list):
 
 
 @router.post("/api/v1/playlists", status_code=201, summary="Crear playlist a mano")
-def crear(body: PlaylistIn, request: Request, conn: sqlite3.Connection = Depends(get_db)):
+def crear(body: PlaylistIn, request: Request, conn: MariaDBConnection = Depends(get_db)):
     pid = _insertar(conn, body.nombre, "Armada a mano", None, None, body.programada, body.inmediato, _autor(request))
     _guardar_items(conn, pid, body.items)
     conn.commit()
@@ -143,7 +143,7 @@ def crear(body: PlaylistIn, request: Request, conn: sqlite3.Connection = Depends
 
 
 @router.post("/api/v1/playlists/generar", status_code=201, summary="Auto Playlist desde un reloj o la grilla")
-def generar(body: GenerarIn, request: Request, conn: sqlite3.Connection = Depends(get_db)):
+def generar(body: GenerarIn, request: Request, conn: MariaDBConnection = Depends(get_db)):
     from backend.audio.planner import Planner
     if body.reloj_id is not None and not conn.execute(
             "SELECT 1 FROM relojes WHERE id = ?", (body.reloj_id,)).fetchone():
@@ -165,13 +165,13 @@ def generar(body: GenerarIn, request: Request, conn: sqlite3.Connection = Depend
 
 
 @router.put("/api/v1/playlists/{playlist_id}", summary="Guardar playlist")
-def guardar(playlist_id: int, body: PlaylistIn, conn: sqlite3.Connection = Depends(get_db)):
+def guardar(playlist_id: int, body: PlaylistIn, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("SELECT 1 FROM playlists WHERE id = ?", (playlist_id,)).fetchone():
         raise HTTPException(status_code=404, detail="Playlist no encontrada")
     try:
         conn.execute("UPDATE playlists SET nombre = ?, programada = ?, inmediato = ? WHERE id = ?",
                      (body.nombre.strip(), body.programada, int(body.inmediato), playlist_id))
-    except sqlite3.IntegrityError:
+    except DualIntegrityError:
         raise HTTPException(status_code=409, detail=f"Ya existe una playlist llamada '{body.nombre}'")
     _guardar_items(conn, playlist_id, body.items)
     conn.commit()
@@ -180,7 +180,7 @@ def guardar(playlist_id: int, body: PlaylistIn, conn: sqlite3.Connection = Depen
 
 
 @router.get("/api/v1/playlists/{playlist_id}", summary="Playlist con sus audios")
-def detalle(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def detalle(playlist_id: int, conn: MariaDBConnection = Depends(get_db)):
     p = conn.execute(f"{_SQL_LISTA} WHERE p.id = ? GROUP BY p.id", (playlist_id,)).fetchone()
     if not p:
         raise HTTPException(status_code=404, detail="Playlist no encontrada")
@@ -193,7 +193,7 @@ def detalle(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.delete("/api/v1/playlists/{playlist_id}", status_code=204, summary="Borrar playlist")
-def borrar(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
+def borrar(playlist_id: int, conn: MariaDBConnection = Depends(get_db)):
     if not conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,)).rowcount:
         raise HTTPException(status_code=404, detail="Playlist no encontrada")
     conn.execute("DELETE FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
@@ -202,7 +202,7 @@ def borrar(playlist_id: int, conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/api/v1/playlists/{playlist_id}/lanzar", summary="Lanzar la playlist a la cola del Studio")
-def lanzar(playlist_id: int, body: LanzarIn = LanzarIn(), conn: sqlite3.Connection = Depends(get_db)):
+def lanzar(playlist_id: int, body: LanzarIn = LanzarIn(), conn: MariaDBConnection = Depends(get_db)):
     if engine is None:
         raise HTTPException(status_code=503, detail="Motor no disponible")
     filas = conn.execute(
@@ -286,7 +286,7 @@ def emparejar(conn, entradas: list[dict]) -> tuple[list[int], list[str]]:
 
 @router.post("/api/v1/playlists/importar", status_code=201, summary="Importar una playlist M3U/PLS/TXT")
 async def importar(request: Request, archivo: UploadFile = File(...), nombre: str = Form(""),
-                   conn: sqlite3.Connection = Depends(get_db)):
+                   conn: MariaDBConnection = Depends(get_db)):
     crudo = await archivo.read()
     if len(crudo) > 5_000_000:
         raise HTTPException(status_code=413, detail="El archivo es demasiado grande (máx. 5 MB)")
