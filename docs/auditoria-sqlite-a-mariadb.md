@@ -61,3 +61,23 @@ error solo en un caso concreto. Por eso se reemplazan en el código y se elimina
 ## Lo que NO se hace
 - No se cambia el esquema de producción en esta auditoría.
 - No se borra ningún dato.
+
+## Estado al 2026-10-18 (fases 2 y 3 hechas)
+
+- **Backend:** sin SQL de SQLite. `sqlite3` solo queda donde se lee el archivo del Locutor anterior (AzuraCast):
+  `backend/locutor/almacen.py` y `backend/api/locutor.py` (comentado en cada import).
+- **`backend/database.py`:** la capa de traducción se redujo a lo que necesita el controlador: marcadores `?` y `:nombre`,
+  y el escapado de `%` dentro de textos cuando hay parámetros. Un `datetime('now')`, `INSERT OR IGNORE` o `PRAGMA` ahora da
+  error de sintaxis de MariaDB en la prueba, en vez de traducirse en silencio. Se quitó el modo SQLite (`DB_BACKEND`,
+  `ONIX_TEST_DB`), `executescript` y la herencia de excepciones de `sqlite3`.
+- **Bugs reales hallados por el camino:** `||` como concatenación (restricción por día de las canciones y separador de sección),
+  `datetime('now','-N minutes')` que perdía el desplazamiento (noticias del Locutor), colaciones que distinguían mayúsculas,
+  ids sin AUTO_INCREMENT, triggers de búsqueda ausentes, `duracion` entera, respaldo que copiaba el SQLite viejo.
+- **Pruebas:** 349 pasan, 3 corridas seguidas idénticas (~95 s con 4 workers).
+
+## Pendiente (fase 4)
+- `scripts/init_db.py` sigue siendo SQLite (histórico) y se ejecuta al arrancar sobre el archivo viejo; una instalación nueva no
+  tiene todavía un creador de esquema para MariaDB (hoy depende de `scripts/migrar_a_mariadb.py`).
+- `scripts/migrar_epocas.py` y `scripts/diag_categorias.py`: solo SQLite, obsoletos.
+- `Planner(DB_PATH)` / `AudioEngine(db_path)`: pasan una ruta que MariaDB ignora; quitar el parámetro.
+- `backend/esquema_extra.py`: DDL de SQLite que solo usa `init_db.py`; MariaDB lo recibe por `migraciones_maria.py`.

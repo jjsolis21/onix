@@ -38,7 +38,7 @@ def reloj(path, nombre, filas, horas=((1, 10),), compensacion=None):
                      " VALUES (?, ?, ?, ?, ?)",
                      (rid, i, f.get("tipo", "Musica"), json.dumps(f.get("filtros", {})), f.get("audio_id")))
     for dia, hora in horas:
-        conn.execute("INSERT OR REPLACE INTO reloj_grilla VALUES (?, ?, ?)", (dia, hora, rid))
+        conn.execute("REPLACE INTO reloj_grilla VALUES (?, ?, ?)", (dia, hora, rid))
     conn.commit()
     conn.close()
     return rid
@@ -47,7 +47,7 @@ def reloj(path, nombre, filas, horas=((1, 10),), compensacion=None):
 def cfg(path, **valores):
     conn = db(path)
     for k, v in valores.items():
-        conn.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", (k, str(v)))
+        conn.execute("REPLACE INTO config VALUES (?, ?)", (k, str(v)))
     conn.commit()
     conn.close()
 

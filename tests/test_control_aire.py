@@ -63,4 +63,9 @@ def test_al_cerrar_la_pc_el_control_queda_libre(client):
     with client.websocket_connect("/ws") as a:
         a.send_text(json.dumps({"cmd": "stop"}))
         assert api_server._control["ws"] is not None
+    import time
+    for _ in range(60):                                     # el servidor lo suelta en su propio hilo, un instante después
+        if api_server._control["ws"] is None:
+            break
+        time.sleep(0.05)
     assert api_server._control["ws"] is None                # se soltó al cerrar

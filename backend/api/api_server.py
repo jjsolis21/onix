@@ -1663,7 +1663,7 @@ def list_audios(
         params.extend(lista_ids)
     # Búsqueda del Studio sobre audios.busq (indexada por triggers): cada palabra debe aparecer
     for palabra in (_sin_acentos(q).split() if q else []):
-        query += " AND busq LIKE ? ESCAPE '\\'"
+        query += " AND busq LIKE ? ESCAPE '\\\\'"          # en MariaDB la barra invertida se escribe doble
         params.append("%" + palabra.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
 
     # Contar total

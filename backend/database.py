@@ -5,14 +5,13 @@ Proporciona:
   1. Motor SQLAlchemy (`engine`), `SessionLocal`, y `Base`.
   2. Dependencia FastAPI estándar (`get_db`) que entrega conexión MariaDB compatible.
   3. Capa de compatibilidad `get_connection()` y `db_session()` que conecta a MariaDB
-     traduciendo transparentemente placeholders `?` a `%s`, compatibilidad con DictRow/IndexRow
-     y soporte para transacciones y excepciones duales (pymysql + sqlite3).
+     adaptando solo los marcadores (`?` y `:nombre`) al controlador, con acceso a las filas por nombre o por
+     índice y soporte para transacciones. El SQL se escribe en el dialecto de MariaDB; aquí no se traduce nada.
 """
 
 import os
 import re
 import logging
-import sqlite3
 from contextlib import contextmanager
 from typing import Generator, Any, Optional, List, Dict
 
@@ -28,18 +27,18 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 logger = logging.getLogger("onix.database")
 
 # ---------------------------------------------------------------------------
-# Excepciones duales (Heredan de pymysql.err y sqlite3 para máxima compatibilidad)
+# Excepciones de la base (heredan de pymysql.err)
 # ---------------------------------------------------------------------------
-class DualError(pymysql.err.Error, sqlite3.Error):
+class DualError(pymysql.err.Error):
     pass
 
-class DualDatabaseError(pymysql.err.DatabaseError, sqlite3.DatabaseError, DualError):
+class DualDatabaseError(pymysql.err.DatabaseError, DualError):
     pass
 
-class DualOperationalError(pymysql.err.OperationalError, sqlite3.OperationalError, DualDatabaseError):
+class DualOperationalError(pymysql.err.OperationalError, DualDatabaseError):
     pass
 
-class DualIntegrityError(pymysql.err.IntegrityError, sqlite3.IntegrityError, DualDatabaseError):
+class DualIntegrityError(pymysql.err.IntegrityError, DualDatabaseError):
     pass
 
 IntegrityError = DualIntegrityError
@@ -65,8 +64,6 @@ def cargar_env() -> None:
 
 cargar_env()
 
-# mariadb = producción (por defecto). sqlite = SOLO las pruebas automáticas (una base temporal por prueba).
-DB_BACKEND  = os.getenv("DB_BACKEND", "mariadb").lower()
 DB_USER     = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_HOST     = os.getenv("DB_HOST", "localhost")
@@ -95,16 +92,16 @@ Base = declarative_base()
 # Row Adapter: Compatible tanto con dict (row['col']) como tupla (row[0])
 # ---------------------------------------------------------------------------
 class CompatRow(dict):
-    """Permite acceso por nombre ('titulo') y por índice (0), igual que sqlite3.Row."""
+    """Permite acceso por nombre ('titulo') y por índice (0), como las filas del código antiguo."""
     def __getitem__(self, key):
         if isinstance(key, int):
             return list(self.values())[key]
-        if isinstance(key, slice):                    # fila[1:] devuelve una tupla, como sqlite3.Row
+        if isinstance(key, slice):                    # fila[1:] devuelve una tupla
             return tuple(self.values())[key]
         return super().__getitem__(key)
 
     def __iter__(self):
-        """Al iterar o hacer list(row), entrega los valores en orden, igual que sqlite3.Row."""
+        """Al iterar o hacer list(row), entrega los valores en orden."""
         return iter(self.values())
 
 
@@ -128,64 +125,25 @@ class MariaDBCursor:
         return self._cur.description
 
     def _adapt_sql(self, sql: str, con_args: bool = False) -> str:
+        """
+        Solo adapta los MARCADORES al controlador de MariaDB (PyMySQL): `?` y `:nombre` pasan a `%s` y `%(nombre)s`.
+        El SQL debe estar escrito en el dialecto de MariaDB; aquí ya no se traduce nada de SQLite (un `datetime('now')`
+        o un `INSERT OR IGNORE` dan error de sintaxis en vez de traducirse en silencio).
+        """
         s = sql.strip()
-        # Manejar PRAGMAs comunes de SQLite
-        if re.match(r"^PRAGMA\s+foreign_keys", s, re.IGNORECASE):
-            return "SET foreign_key_checks = 1"
-        if re.match(r"^PRAGMA\s+journal_mode", s, re.IGNORECASE):
-            return "SELECT 1"
-        if re.match(r"^PRAGMA\s+table_info\((.*)\)", s, re.IGNORECASE):
-            m = re.match(r"^PRAGMA\s+table_info\((.*)\)", s, re.IGNORECASE)
-            tbl = m.group(1).strip("`'\" ")
-            return f"DESCRIBE `{tbl}`"
 
-        # Adaptaciones de sintaxis SQLite -> MariaDB
-        s = re.sub(r"\bINSERT\s+OR\s+IGNORE\b", "INSERT IGNORE", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bINSERT\s+OR\s+REPLACE\s+INTO\b", "REPLACE INTO", s, flags=re.IGNORECASE)
-        # SQLite ON CONFLICT(col) DO UPDATE SET col2 = excluded.col2 -> ON DUPLICATE KEY UPDATE col2 = VALUES(col2)
-        s = re.sub(r"\bON\s+CONFLICT\s*\([^)]*\)\s*DO\s+UPDATE\s+SET\b", "ON DUPLICATE KEY UPDATE", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bexcluded\.(\w+)", r"VALUES(\1)", s, flags=re.IGNORECASE)
-
-        # Reemplazar funciones SQLite comunes: datetime('now', ...) -> MariaDB
-        s = re.sub(r"datetime\s*\(\s*['\"]now['\"]\s*(?:,\s*['\"][^'\"]+['\"])?\s*,\s*['\"]-(\d+)\s+days?['\"]\s*\)", r"DATE_SUB(NOW(), INTERVAL \1 DAY)", s, flags=re.IGNORECASE)
-        s = re.sub(r"date\s*\(\s*['\"]now['\"]\s*(?:,\s*['\"][^'\"]+['\"])?\s*,\s*['\"]-(\d+)\s+days?['\"]\s*\)", r"DATE_SUB(CURDATE(), INTERVAL \1 DAY)", s, flags=re.IGNORECASE)
-        s = re.sub(r"datetime\s*\(\s*['\"]now['\"]\s*(?:,\s*['\"][^'\"]+['\"])?\s*,\s*['\"]-(\d+)\s+hours?['\"]\s*\)", r"DATE_SUB(NOW(), INTERVAL \1 HOUR)", s, flags=re.IGNORECASE)
-        s = re.sub(r"datetime\s*\(\s*['\"]now['\"]\s*(?:,\s*['\"][^'\"]+['\"])?\s*,\s*['\"]\+(\d+)\s+days?['\"]\s*\)", r"DATE_ADD(NOW(), INTERVAL \1 DAY)", s, flags=re.IGNORECASE)
-        s = re.sub(r"date\s*\(\s*['\"]now['\"]\s*(?:,\s*['\"][^'\"]+['\"])?\s*,\s*['\"]\+(\d+)\s+days?['\"]\s*\)", r"DATE_ADD(CURDATE(), INTERVAL \1 DAY)", s, flags=re.IGNORECASE)
-        s = re.sub(r"datetime\s*\(\s*['\"]now['\"][^)]*\)", "NOW()", s, flags=re.IGNORECASE)
-        s = re.sub(r"date\s*\(\s*['\"]now['\"][^)]*\)", "CURDATE()", s, flags=re.IGNORECASE)
-        s = re.sub(r"CAST\s*\(\s*strftime\s*\(\s*['\"]%H['\"]\s*,\s*([^)]+)\s*\)\s*AS\s+INTEGER\s*\)", r"HOUR(\1)", s, flags=re.IGNORECASE)
-        s = re.sub(r"strftime\s*\(\s*['\"]%H['\"]\s*,\s*([^)]+)\s*\)", r"LPAD(HOUR(\1), 2, '0')", s, flags=re.IGNORECASE)
-        s = re.sub(r"strftime\s*\(\s*['\"]%Y-%m-%d['\"]\s*,\s*([^)]+)\s*\)", r"DATE(\1)", s, flags=re.IGNORECASE)
-
-        # SQLite «COLLATE NOCASE»: en MariaDB la colación utf8mb4_unicode_ci ya compara sin distinguir mayúsculas
-        s = re.sub(r"\s+COLLATE\s+NOCASE\b", "", s, flags=re.IGNORECASE)
-
-        # SQLite sqlite_master -> information_schema.tables
-        if "sqlite_master" in s.lower():
-            s = re.sub(r"\bsqlite_master\b", "information_schema.tables", s, flags=re.IGNORECASE)
-            s = re.sub(r"\bname\b", "table_name", s, flags=re.IGNORECASE)
-
-        # LIKE ... ESCAPE '\' (SQLite): en MariaDB la barra invertida escapa la comilla, hay que duplicarla
-        s = re.sub(r"ESCAPE\s+'\\'", "ESCAPE '\\\\\\\\'", s, flags=re.IGNORECASE)
+        def _fuera(texto: str, fn) -> str:
+            """Aplica `fn` solo FUERA de las cadenas entre comillas ('10:ab' o '¿qué?' no son parámetros)."""
+            partes = re.split(r"('(?:[^']|'')*')", texto)
+            return "".join(p if i % 2 else fn(p) for i, p in enumerate(partes))
 
         # Con parámetros, PyMySQL formatea el SQL con «%»: los % literales de las cadenas ('%texto%') se duplican
         if con_args:
             s = re.sub(r"'(?:[^']|'')*'", lambda m: m.group(0).replace("%", "%%"), s)
-
-        # Reemplazar placeholders con nombre estilo SQLite :param por %(param)s si la consulta los usa
-        # (solo FUERA de las cadenas entre comillas: un texto como '10:ab' o '¿qué?' no es un parámetro)
-        def _fuera(texto: str, fn) -> str:
-            partes = re.split(r"('(?:[^']|'')*')", texto)
-            return "".join(p if i % 2 else fn(p) for i, p in enumerate(partes))
-
         s = _fuera(s, lambda t: re.sub(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)", r"%(\1)s", t))
-
-        # Reemplazar placeholders ? por %s si la consulta no usa %(nombre)s ni %s
         if "?" in s and "%s" not in s and "%(" not in s:
             s = _fuera(s, lambda t: t.replace("?", "%s"))
         return s
-
 
     def _map_exception(self, exc: Exception):
         if isinstance(exc, pymysql.err.IntegrityError):
@@ -265,16 +223,6 @@ class MariaDBConnection:
         cur.executemany(sql, seq)
         return cur
 
-    def executescript(self, script: str) -> None:
-        """Permite ejecutar múltiples sentencias separadas por punto y coma."""
-        statements = [stmt.strip() for stmt in script.split(";") if stmt.strip()]
-        cur = self.cursor()
-        for stmt in statements:
-            try:
-                cur.execute(stmt)
-            except Exception:
-                pass  # Tolerar CREATE TABLE IF NOT EXISTS u otras sentencias de setup
-
     def commit(self):
 
         self._conn.commit()
@@ -315,26 +263,8 @@ def get_raw_mariadb_connection() -> MariaDBConnection:
     return MariaDBConnection(raw)
 
 
-def _conexion_sqlite(db_path: Any = None):
-    """Modo SOLO PARA PRUEBAS (DB_BACKEND=sqlite): una base SQLite temporal, como antes de MariaDB."""
-    if DB_BACKEND != "sqlite":
-        raise RuntimeError("El modo SQLite solo existe para las pruebas (DB_BACKEND=sqlite)")
-    ruta = str(db_path or os.environ.get("RADIO_DB_PATH") or "")
-    if not ruta:
-        raise RuntimeError("DB_BACKEND=sqlite necesita RADIO_DB_PATH")
-    c = sqlite3.connect(ruta, check_same_thread=False, timeout=30)
-    c.row_factory = sqlite3.Row
-    c.execute("PRAGMA foreign_keys = ON")
-    c.execute("PRAGMA journal_mode = WAL")
-    return c
-
-
-def get_connection(db_path: Any = None):
-    """
-    Conexión a la base de ONIX: MariaDB (producción). `db_path` solo se usa en el modo de pruebas (SQLite).
-    """
-    if DB_BACKEND == "sqlite":
-        return _conexion_sqlite(db_path)
+def get_connection(db_path: Any = None) -> MariaDBConnection:
+    """Conexión a la base de ONIX (MariaDB). `db_path` se acepta por compatibilidad con código antiguo y se ignora."""
     return get_raw_mariadb_connection()
 
 

@@ -42,10 +42,8 @@ def _reconstruir_con_autoincrement(c, tabla: str, tipo: str) -> None:
 
 
 def migrar() -> None:
-    """Aplica los pasos pendientes. No hace nada si la base no es MariaDB."""
-    from backend.database import DB_BACKEND, get_connection
-    if DB_BACKEND != "mariadb":
-        return
+    """Aplica los pasos pendientes (idempotente)."""
+    from backend.database import get_connection
     c = get_connection()
     try:
         # 44 — Dayparting por spot (franja horaria permitida) y «deuda» de pautas no emitidas

@@ -49,7 +49,7 @@ def listar(tipo: str = "Efecto", q: Optional[str] = None, categoria: Optional[st
     sql = (" FROM audios WHERE activo = 1 AND tipo_audio = ? AND COALESCE(ambito, '') != 'cartuchera'")
     params: list = [_tipo(tipo)]
     for palabra in _plano(q or "").split():
-        sql += " AND busq LIKE ? ESCAPE '\\'"
+        sql += " AND busq LIKE ? ESCAPE '\\\\'"            # en MariaDB la barra invertida se escribe doble
         params.append("%" + palabra.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
     if categoria == "__sin":
         sql += " AND COALESCE(categoria_ident, '') = ''"

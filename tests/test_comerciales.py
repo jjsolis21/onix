@@ -122,9 +122,9 @@ def test_tandas_del_dia_muestra_cada_bloque(client):
     a = _audio(c, "Cuña día", "library/dia.mp3")
     _pauta(c, "CLIENTE DIA", a, rubro="Bancos", matriz={"1-10": True})
     c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '15,45')"
-              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+              " ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
     c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_grilla', ?)"
-              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (json.dumps({"1-11": {"off": True}}),))
+              " ON DUPLICATE KEY UPDATE valor = VALUES(valor)", (json.dumps({"1-11": {"off": True}}),))
     c.commit(); c.close()
     r = client.get("/api/v1/comerciales/tandas-dia", params={"fecha": "2026-10-12"}).json()   # lunes
     assert len(r["horas"]) == 24
@@ -141,7 +141,7 @@ def test_ajuste_a_mano_de_las_tandas(client):
     p1 = _pauta(c, "AJ UNO", a, rubro="Autos", matriz={"2-9": True})
     p2 = _pauta(c, "AJ DOS", a, rubro="Ropa", matriz={"2-9": True})
     c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '15,45')"
-              " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+              " ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
     c.commit(); c.close()
     fecha = "2026-10-13"                                       # martes
     r = client.put("/api/v1/comerciales/tandas-dia/ajuste",
@@ -219,7 +219,7 @@ def test_voz_de_la_cuna_chequeo_y_tandas_del_dia(client):
     _pauta(c, "VOZ F DOS", a_m2, rubro="VozB", matriz={"4-8": True})
     _pauta(c, "VOZ H", a_h, rubro="VozC", matriz={"4-8": True})
     _pauta(c, "VOZ SIN", a_s, rubro="VozD", matriz={})
-    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
     c.execute("DELETE FROM config WHERE clave = 'tandas_grilla'")
     c.commit(); c.close()
     assert client.put("/api/v1/config/motor", json={"regla_voces_mujer": True}).json()["regla_voces_mujer"] is True
@@ -238,7 +238,7 @@ def test_rubros_incompatibles_api_y_tandas_del_dia(client):
     for (aid, rub), nom in zip(ids, ("RB REST", "RB CAFE", "RB BANCA")):
         c.execute("UPDATE audios SET genero_vocal = 'Hombre' WHERE id = ?", (aid,))
         _pauta(c, nom, aid, rubro=rub, matriz={"5-9": True})
-    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+    c.execute("INSERT INTO config (clave, valor) VALUES ('tandas_minutos', '30') ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
     c.execute("DELETE FROM config WHERE clave = 'tandas_grilla'")
     c.commit(); c.close()
     lista = client.get("/api/v1/comerciales/rubros").json()

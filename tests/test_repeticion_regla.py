@@ -45,11 +45,11 @@ def test_estado_para_el_aviso_en_manual(client, tmp_path):
     assert st["bloqueada"] is False                        # sin regla ni reproducción
     client.put(f"/api/v1/audios/{a}", json={"repeticion_horas": 5})
     conn = get_connection(DB_PATH)
-    conn.execute("UPDATE audios SET ultima_reproduccion = datetime('now','localtime','-1 hours') WHERE id = ?", (a,))
+    conn.execute("UPDATE audios SET ultima_reproduccion = DATE_SUB(NOW(), INTERVAL 1 HOUR) WHERE id = ?", (a,))
     conn.commit()
     st = client.get(f"/api/v1/audios/{a}/repeticion").json()
     assert st["bloqueada"] is True and 230 <= st["faltan_min"] <= 241 and st["disponible"]
-    conn.execute("UPDATE audios SET ultima_reproduccion = datetime('now','localtime','-6 hours') WHERE id = ?", (a,))
+    conn.execute("UPDATE audios SET ultima_reproduccion = DATE_SUB(NOW(), INTERVAL 6 HOUR) WHERE id = ?", (a,))
     conn.commit()
     assert client.get(f"/api/v1/audios/{a}/repeticion").json()["bloqueada"] is False
     conn.close()

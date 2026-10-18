@@ -303,8 +303,8 @@ def test_automatico_no_espera_al_operador(engine, media):
 def test_preescucha_sale_por_su_tarjeta(engine, media):
     from backend.audio.audio_engine import CANAL_CUE
     conn = db(engine)
-    conn.execute("INSERT OR REPLACE INTO config VALUES ('dispositivo_aire', '1')")
-    conn.execute("INSERT OR REPLACE INTO config VALUES ('dispositivo_preescucha', '2')")
+    conn.execute("REPLACE INTO config VALUES ('dispositivo_aire', '1')")
+    conn.execute("REPLACE INTO config VALUES ('dispositivo_preescucha', '2')")
     conn.commit()
     conn.close()
     engine.reload_config()
@@ -742,7 +742,7 @@ def _config(engine, **kv):
     conn = db(engine)
     for k, v in kv.items():
         conn.execute("INSERT INTO config (clave, valor) VALUES (?, ?)"
-                     " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor", (k, v))
+                     " ON DUPLICATE KEY UPDATE valor = VALUES(valor)", (k, v))
     conn.commit()
     conn.close()
     engine._load_config()
@@ -1060,7 +1060,7 @@ def test_la_musica_bajo_la_voz_queda_al_20_por_ciento_y_es_configurable(engine, 
 
     conn = db(engine)
     conn.execute("INSERT INTO config (clave, valor) VALUES ('voz_fondo_pct', '35')"
-                 " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor")
+                 " ON DUPLICATE KEY UPDATE valor = VALUES(valor)")
     conn.commit(); conn.close()
     engine._load_config()
     engine._mode = "manual"

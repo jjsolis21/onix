@@ -14,10 +14,9 @@ if str(ROOT_DIR) not in sys.path:
 
 import pytest
 
-from backend.database import DB_BACKEND, DB_NAME, engine, get_connection, db_session
+from backend.database import DB_NAME, engine, get_connection, db_session
 
-# Solo en el modo MariaDB (ONIX_TEST_DB=mariadb) y siempre contra la base de PRUEBAS, nunca la real
-pytestmark = pytest.mark.skipif(DB_BACKEND != "mariadb", reason="prueba de MariaDB: corre con ONIX_TEST_DB=mariadb")
+# Siempre contra la base de PRUEBAS, nunca la real
 
 
 def test_mariadb_connection_sqlalchemy():

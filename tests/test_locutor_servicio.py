@@ -155,7 +155,7 @@ def test_noticia_pide_aprobacion_y_no_gasta_voz_hasta_aprobar(db, ia, monkeypatc
     c = almacen.conectar(ruta)
     c.execute("INSERT INTO locutor_fuentes (nombre, url, cierre) VALUES ('Primicia', 'https://x.test/feed', '')")
     c.execute("INSERT INTO locutor_noticias (fuente_id, guid, titulo, resumen, publicada_en) VALUES"
-              " (1, 'g1', 'Inauguran nuevo puente', 'El puente une dos municipios', datetime('now'))")
+              " (1, 'g1', 'Inauguran nuevo puente', 'El puente une dos municipios', NOW())")
     c.commit(); c.close()
     motor = MotorFalso(_programa(ids))
     # el texto de la IA debe respetar los datos permitidos
@@ -327,7 +327,7 @@ def test_si_el_tipo_del_patron_falla_el_hueco_no_se_pierde(db, ia, monkeypatch):
     _config(ruta, patron=["noticia", "corta"])
     c = almacen.conectar(ruta)
     c.execute("INSERT INTO locutor_fuentes (nombre, url) VALUES ('P', 'https://x.test/f')")
-    c.execute("INSERT INTO locutor_noticias (fuente_id, guid, titulo, publicada_en) VALUES (1, 'g', 'Abren el puente', datetime('now'))")
+    c.execute("INSERT INTO locutor_noticias (fuente_id, guid, titulo, publicada_en) VALUES (1, 'g', 'Abren el puente', NOW())")
     c.commit(); c.close()
 
     def sin_ia(*a, **k):

@@ -27,10 +27,7 @@ os.environ["ONIX_AUDIO_BACKEND"] = "mock"
 
 # ── Base de datos de las pruebas ────────────────────────────────────────────────────────────────────────────
 # NUNCA la base real (onix_db). Por defecto las pruebas usan la base de PRUEBAS de MariaDB (`onix_test`, el mismo motor que
-# producción). ONIX_TEST_DB=sqlite usa una SQLite temporal (solo para quien no tenga MariaDB: parte del código ya usa SQL de
-# MariaDB y algunas pruebas fallarán en ese modo).
-_MODO_DB = os.environ.get("ONIX_TEST_DB", "mariadb").lower()
-os.environ["DB_BACKEND"] = "sqlite" if _MODO_DB == "sqlite" else "mariadb"
+# producción).
 # Con pytest-xdist cada worker usa SU base (onix_test_gw0, onix_test_gw1…) para no pisarse.
 _WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
 os.environ["DB_NAME"] = "onix_test" + (f"_{_WORKER}" if _WORKER else "")   # aunque el .env diga onix_db, las pruebas jamás la usan
@@ -194,28 +191,21 @@ def resetear_base() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def _base_limpia_al_empezar():
     """Cada corrida parte de `onix_test` sin restos de la anterior (las pruebas de la API comparten esa base)."""
-    if os.environ["DB_BACKEND"] == "mariadb":
-        from backend.migraciones_maria import migrar
-        migrar()                                           # onix_test siempre con el esquema al día
-        resetear_base()
+    from backend.migraciones_maria import migrar
+    migrar()                                               # la base de pruebas siempre con el esquema al día
+    resetear_base()
     yield
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _base_limpia_por_archivo():
     """Cada archivo de pruebas empieza con la base limpia: antes heredaba lo que dejó el archivo anterior del mismo worker."""
-    if os.environ["DB_BACKEND"] == "mariadb":
-        resetear_base()
+    resetear_base()
     yield
 
 
 @pytest.fixture
 def tmp_db(tmp_path):
-    """Base de datos limpia para esta prueba. MariaDB: se reinicia `onix_test`. SQLite: un archivo nuevo."""
-    if os.environ["DB_BACKEND"] == "mariadb":
-        resetear_base()
-        return tmp_path / "radio.db"                       # la ruta ya no se usa (queda por compatibilidad con las pruebas)
-    from init_db import initialize_database
-    db = tmp_path / "radio.db"
-    initialize_database(str(db))
-    return db
+    """Base de datos limpia para esta prueba: se reinicia la base de pruebas de MariaDB."""
+    resetear_base()
+    return tmp_path / "radio.db"                           # la ruta ya no se usa (queda por compatibilidad con las pruebas)
