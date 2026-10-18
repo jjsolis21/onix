@@ -137,9 +137,9 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     la lista de géneros de la Biblioteca Musical. REGLA: géneros, rotaciones y subgéneros son solo los que el usuario crea; una instalación nueva no
     trae ninguno de adorno (solo las voces). En `onix_db` se retiraron los sin uso (géneros: Clásica, Cumbia, Electrónica, Jazz, Ranchera, Reggaetón,
     Rock, Romántica, Tropical; rotación: Desconocido; subgéneros: Acústico, Cover, En Vivo, Remix). Respaldo previo: `onix-2026-10-18_1500.sql.gz`.
-13. **Categoría «Propiedades» (PENDIENTE DE DECISIÓN del dueño):** en Configuración › Categorías existe «Propiedades» pero está VACÍA y sin
-    conexión (no tiene respaldo en el servidor ni en la base): hoy es un cuadro de adorno copiado de Jazler SoHo. O se construye de verdad
-    (etiquetas libres por canción —p. ej. Navideña, Explícita, Local— que los relojes y playlists puedan filtrar) o se quita.
+13. **Categoría «Propiedades» (DECISIÓN DEL DUEÑO: SE MANTIENE):** existe en Configuración › Categorías pero hoy está vacía y sin conexión (sin respaldo
+    en el servidor ni en la base). Se queda. Pendiente construirla de verdad: etiquetas libres por canción (el dueño da el ejemplo «MAE»; confirmar su
+    significado) que los relojes, playlists y reglas puedan filtrar, creadas solo por el usuario (misma regla que géneros y rotaciones).
 14. **Pantalla siempre al día (HECHO 2026-10-18):** el navegador guardaba copias del JavaScript viejo (`?v=16`) y los cambios no se veían sin
     forzar la recarga. El servidor ahora manda `Cache-Control: no-cache` a JS/CSS/HTML (revalida; 304 si no cambió) y se subieron los `?v=`.
     Reproductor de la Biblioteca: el «No se pudo reproducir» intermitente era un AbortError del navegador al cambiar de canción rápido (no un
