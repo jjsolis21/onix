@@ -655,23 +655,27 @@
       const a = _previa.audio = new Audio();
       a.addEventListener('timeupdate', () => {
         $('cmPreviaT').textContent = `${_mmss(a.currentTime)} / ${_mmss(a.duration)}`;
+        try { if (_previa.onda && _previa.onda.getDuration()) _previa.onda.setTime(a.currentTime); } catch (_) { }
       });
       const icono = () => { $('cmPlay').innerHTML = ICO(a.paused ? 'play2' : 'pause2'); };
       a.addEventListener('play', icono);
       a.addEventListener('pause', icono);
       a.addEventListener('ended', icono);
     }
+    try { _previa.onda?.destroy(); } catch (_) { }
+    _previa.onda = null;
     _previa.audio.src = `/api/v1/audios/${p.audio_id}/stream`;
     $('cmPreviaTit').textContent = `${p.cliente} — ${p.audio_nombre}`;
     ['cmPlay', 'cmStop', 'cmAtras', 'cmAdelante'].forEach(id => { $(id).disabled = false; });
-    // Onda del spot (clic = ir a ese punto), sobre el mismo audio
-    try { _previa.onda?.destroy(); } catch (_) { }
+    // Onda del spot (clic = ir a ese punto). No comparte el <audio>: WaveSurfer le cambiaba la fuente
+    // en plena reproducción y a veces el spot quedaba mudo. Solo dibuja y mueve el reproductor.
     _previa.onda = typeof WaveSurfer !== 'undefined' ? WaveSurfer.create({
-      container: $('cmOnda'), media: _previa.audio, height: 46, normalize: true,
+      container: $('cmOnda'), url: `/api/v1/audios/${p.audio_id}/stream`, height: 46, normalize: true,
       waveColor: '#5d6675', progressColor: '#f5b301', cursorColor: '#fff', cursorWidth: 2,
       barWidth: 2, barGap: 1, dragToSeek: true,
     }) : null;
-    if ($('cmAutoPlay')?.checked) _previa.audio.play().catch(() => {});
+    _previa.onda?.on('interaction', t => { if (Number.isFinite(t)) _previa.audio.currentTime = t; });
+    if ($('cmAutoPlay')?.checked) _previa.audio.play().catch(e => { if (e.name !== 'AbortError') console.warn('[Previa]', e); });
   }
 
   // ── Reporte por cliente ──

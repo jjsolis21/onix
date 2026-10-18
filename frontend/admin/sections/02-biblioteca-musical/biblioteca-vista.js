@@ -382,6 +382,7 @@
       $('bvpPos').textContent = mmss(audio.currentTime);
       $('bvpDur').textContent = `/ ${mmss(d)}`;
       $('bvpResta').textContent = d ? `−${mmss(d - audio.currentTime)}` : '';
+      try { if (ondaP && ondaP.getDuration()) ondaP.setTime(audio.currentTime); } catch (_) { }
     });
     const icono = () => {
       $('bvPlay').innerHTML = `<img class="ico" src="/static/studio/icons/${audio.paused ? 'play2' : 'pause2'}.svg" alt="">`;
@@ -390,9 +391,20 @@
     audio.addEventListener('play', icono);
     audio.addEventListener('pause', icono);
     audio.addEventListener('ended', () => parar());
+    // Nada falla en silencio: archivo dañado, borrado o en un formato que este navegador no lee
+    audio.addEventListener('error', () => {
+      if (!cargadoId || !audio.getAttribute('src')) return;
+      const a = S.todos.find(x => x.id === cargadoId);
+      const ext = (a?.archivo_path || '').split('.').pop().toUpperCase();
+      const motivo = { 2: 'se cortó la descarga', 3: 'el archivo está dañado', 4: `este navegador no lee el formato ${ext || ''} o el archivo no está` }[audio.error?.code] || 'error desconocido';
+      aviso(`No suena «${a?.titulo || cargadoId}»: ${motivo}`, 'error');
+      S.sonando = null; pintarFilas();
+    });
   }
   function cargarEnReproductor(id) {
     const a = S.todos.find(x => x.id === id);
+    try { ondaP?.destroy(); } catch (_) { }
+    ondaP = null;
     audio.src = `/api/v1/audios/${id}/stream`;
     cargadoId = id;
     $('bvPlayTxt').textContent = a ? a.titulo : '';
@@ -404,12 +416,16 @@
       img.onload = () => { tapa.innerHTML = ''; tapa.appendChild(img); };
       img.src = `/api/v1/audios/${id}/caratula`;
     }
-    try { ondaP?.destroy(); } catch (_) { }
     $('bvpOnda').innerHTML = '';
     if (typeof WaveSurfer !== 'undefined') {
-      ondaP = WaveSurfer.create({ container: $('bvpOnda'), media: audio, height: 38, normalize: true,
+      // La onda NO comparte el <audio> del reproductor: WaveSurfer, al terminar de bajar el archivo,
+      // le cambiaba la fuente por una copia interna en plena reproducción y, según quién llegara
+      // primero, la canción quedaba en silencio (una sí, otra no, sin error). Ahora solo dibuja:
+      // el progreso se le copia del reproductor y un clic en la onda mueve el reproductor.
+      ondaP = WaveSurfer.create({ container: $('bvpOnda'), url: `/api/v1/audios/${id}/stream`, height: 38, normalize: true,
         waveColor: '#4a5160', progressColor: '#f5b301', cursorColor: '#fff', cursorWidth: 2,
         barWidth: 2, barGap: 1, dragToSeek: true });
+      ondaP.on('interaction', t => { if (audio && Number.isFinite(t)) audio.currentTime = t; });
       ondaP.on('ready', () => {
         const d = ondaP.getDuration() || 1;
         [[a?.cue_intro, '#48cae4', 'Intro'], [a?.cue_mezcla, '#f5b301', 'Mezcla']].forEach(([t, c, n]) => {
@@ -427,7 +443,7 @@
     if (!audio) crearAudio();
     if (S.sonando === id) { pausar(); return; }
     if (cargadoId !== id) cargarEnReproductor(id);
-    audio.play().catch(() => aviso('No se pudo reproducir el archivo', 'error'));
+    audio.play().catch(e => { if (e.name !== 'AbortError' && e.name !== 'NotSupportedError') aviso(`No se pudo reproducir: ${e.message}`, 'error'); });
     S.sonando = id;
     pintarFilas();
   }
