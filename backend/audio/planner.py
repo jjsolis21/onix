@@ -41,7 +41,6 @@ import itertools
 import json
 import logging
 import random
-import sqlite3
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -52,6 +51,7 @@ FILTRO_COLUMNA = {
     "cat1": "subgenero", "cat2": "categoria", "cat3": "cat3",
     "voz": "genero_vocal", "origen": "origen",
     "ident": "categoria_ident",      # categoría de jingles / sweepers / tips (Admin › Identificadores)
+    "epoca": "epoca",                # Época / década (Actual, 2010s, 2000s, 90s, 80s, 70s, Oldies)
 }
 TIPOS_RELOJ = ("Musica", "Efecto", "Sweeper", "Tips", "Programa")
 
@@ -87,11 +87,12 @@ def _item(tipo: str, inicio: datetime, duracion: float, **kw) -> dict:
 class Planner:
     def __init__(self, db_path):
         self.db_path = str(db_path)
+        self.cfg = {}
+        self.relojes = {}
 
     def _conn(self):
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.row_factory = sqlite3.Row
-        return conn
+        from backend.database import get_connection
+        return get_connection()
 
     # ── Carga de relojes y configuración ────────────────────────────────────
 
@@ -128,14 +129,14 @@ class Planner:
         try:
             self.dias_especificos = {(d["fecha"], d["hora"]): d["reloj_id"] for d in conn.execute(
                 "SELECT fecha, hora, reloj_id FROM reloj_dias")}
-        except sqlite3.OperationalError:       # BD sin la migración 26
+        except Exception:       # BD sin la migración 26
             self.dias_especificos = {}
         # Restricciones por canción (si la BD no las tiene aún, no se aplican)
         try:
             self._con_tope = {r[0]: r[1] for r in conn.execute(
                 "SELECT id, max_por_dia FROM audios WHERE activo = 1 AND max_por_dia > 0")}
             self._tiene_restricciones = True
-        except sqlite3.OperationalError:
+        except Exception:
             self._con_tope, self._tiene_restricciones = {}, False
         self._emitidas_dia = {}
         self._repeticion, self._repeticion_ult = {}, {}
@@ -148,22 +149,22 @@ class Planner:
                 except ValueError:
                     ult = None
                 self._repeticion_ult[r[0]] = (r[1], ult)
-        except sqlite3.OperationalError:
+        except Exception:
             pass
         try:
             conn.execute("SELECT 1 FROM pauta_audios LIMIT 1")
             self._tiene_versiones = True
-        except sqlite3.OperationalError:
+        except Exception:
             self._tiene_versiones = False
         try:
             conn.execute("SELECT prioridad FROM audios LIMIT 1")
             self._tiene_prioridad = True
-        except sqlite3.OperationalError:
+        except Exception:
             self._tiene_prioridad = False
         try:
             self.eventos = [dict(e) for e in conn.execute(
                 "SELECT * FROM reloj_eventos WHERE activo = 1 ORDER BY hora, id")]
-        except sqlite3.OperationalError:       # BD sin la migración 16
+        except Exception:       # BD sin la migración 16
             self.eventos = []
         # Playlists programadas: entran a su fecha y hora como un evento cuyas
         # filas son sus audios, en orden (una sola vez)
@@ -177,7 +178,7 @@ class Planner:
                     " WHERE i.playlist_id = ? ORDER BY i.posicion", (p["id"],))]
                 if filas:
                     self.playlists_prog.append({**dict(p), "filas": filas})
-        except sqlite3.OperationalError:       # BD sin la migración 30
+        except Exception:       # BD sin la migración 30
             pass
 
     def generar_lista(self, reloj_id: Optional[int], horas: float, inicio: Optional[datetime] = None) -> list[dict]:
@@ -236,6 +237,13 @@ class Planner:
             conn.close()
 
     def _icfg(self, clave: str, defecto: float) -> float:
+        if not self.cfg:
+            try:
+                conn = self._conn()
+                self._cargar(conn)
+                conn.close()
+            except Exception:
+                pass
         try:
             return float(self.cfg.get(clave, defecto))
         except (TypeError, ValueError):
@@ -328,7 +336,7 @@ class Planner:
 
             # Próximo hito a hora fija (tanda o evento): a él apuntan la
             # compensación y el corte de la canción si es inmediato
-            hitos = [(tanda["hora"], inmediata)] if tanda else []
+            hitos = [(tanda["hora"], inmediata or bool(tanda.get("cierre")))] if tanda else []
             if evento:
                 hitos.append((evento["hora"], evento["inmediato"]))
             hito_hora, hito_inm = min(hitos, key=lambda h: h[0]) if hitos else (None, False)
@@ -558,19 +566,41 @@ class Planner:
         lista = self.lista_tanda(conn, base, minuto, minutos)
         return len(lista), float(sum(p["dur"] for p in lista))
 
-    def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int]) -> list[dict]:
+    @staticmethod
+    def _hora_en_dayparting(hora: int, rubro_str: str) -> bool:
+        """
+        Determina si la hora dada corresponde al bloque horario recomendado para el rubro
+        (Gastronomía, Entretenimiento, Comercio general/Oficina).
+        """
+        r = str(rubro_str or "").strip().upper()
+        # Gastronomía (Restaurantes, Abastos, Cafés, Comida): 6:00-9:00 AM y 11:00 AM-2:00 PM (14:00)
+        if any(w in r for w in ("RESTAURAN", "GASTRONOM", "ABASTO", "CAFE", "COMIDA", "PANADERIA", "ALIMENT")):
+            return (6 <= hora <= 9) or (11 <= hora <= 14)
+        # Entretenimiento (Licorerías, Discotecas, Bares, Fiestas): 6:00 PM (18:00) - 2:00 AM
+        if any(w in r for w in ("DISCO", "LICOR", "BAR", "FIESTA", "ENTRETENIMIENTO", "NOCHE", "EVENTO")):
+            return (hora >= 18) or (hora <= 2)
+        # Comercio general (Ferreterías, Farmacias, Tiendas, Servicios): 8:00 AM - 6:00 PM (18:00)
+        return 8 <= hora <= 18
+
+    def lista_tanda(self, conn, base: datetime, minuto: int, minutos: list[int], simular: bool = False) -> list[dict]:
         """Las cuñas de la tanda, en el orden en que saldrán (misma cuenta que el motor)."""
         from backend.audio.audio_engine import (aplicar_ajustes, fijar_conflictos_rubros, fijar_regla_voces,
                                                 leer_ajustes, leer_conflictos_rubros, planificar_tandas, version_rotada)
         fijar_conflictos_rubros(leer_conflictos_rubros(conn))
         fila_voz = conn.execute("SELECT valor FROM config WHERE clave = 'regla_voces_mujer'").fetchone()
         fijar_regla_voces((fila_voz[0] if fila_voz else "1") not in ("0", "false", ""))
+
+        # Espaciado mínimo configurable entre menciones de la misma cuña (defecto 2 horas)
+        fila_esp = conn.execute("SELECT valor FROM config WHERE clave = 'spacing_menciones_horas'").fetchone()
+        min_spacing_horas = float(fila_esp[0]) if fila_esp and fila_esp[0] else 2.0
+
         key = f"{(base.weekday() + 1) % 7}-{base.hour}"
         dia = base.date().isoformat()
+        slot_actual = base.strftime("%Y-%m-%d-%H")
+
         secciones = {r[0]: (bool(r[1]), bool(r[2])) for r in conn.execute(
             "SELECT numero, opcional, comercial FROM tanda_secciones")}
-        # Versiones que rotan: la duración es la de la versión que toca ahora
-        # (la misma cuenta que usa el motor), no siempre la de la principal
+
         voz_de = {r[0]: r[1] for r in conn.execute(
             "SELECT id, genero_vocal FROM audios WHERE id IN (SELECT audio_id FROM pauta_audios)")}
         versiones: dict[int, list[tuple[int, float]]] = {}
@@ -581,43 +611,133 @@ class Planner:
         salidas = dict(conn.execute(
             "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL GROUP BY pauta_id"
         ).fetchall()) if versiones else {}
-        # Las que ya cumplieron sus menciones de hoy no van en la tanda
+
         ajustes, quitadas = leer_ajustes(conn, dia, base.hour)
+
+        # Menciones emitidas hoy
         hoy = dict(conn.execute(
             "SELECT pauta_id, COUNT(*) FROM historial_emision WHERE pauta_id IS NOT NULL"
             " AND slot LIKE ? GROUP BY pauta_id", (dia + "-%",)).fetchall())
+
+        # Última emisión de cada pauta hoy (para la regla de Spacing Temporal)
+        ultimas_salidas = {}
+        for r_h in conn.execute(
+            "SELECT pauta_id, MAX(iniciado_en) AS ult FROM historial_emision"
+            " WHERE pauta_id IS NOT NULL AND slot LIKE ? GROUP BY pauta_id", (dia + "-%",)):
+            try:
+                ultimas_salidas[r_h[0]] = datetime.fromisoformat(str(r_h[1]))
+            except Exception:
+                pass
+
+        # Pautas en deuda hoy no recuperadas (Prioridad Máxima de Recuperación Comercial)
+        pautas_deuda_hoy = set()
+        try:
+            for r_d in conn.execute(
+                "SELECT DISTINCT pauta_id FROM pautas_deuda WHERE fecha = ? AND recuperada = 0", (dia,)):
+                pautas_deuda_hoy.add(r_d[0])
+        except Exception:
+            pass
+
         pautas, fijas = [], []
         for r in conn.execute(
             """
             SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion,
-                   p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo, a.genero_vocal AS voz FROM pautas p
+                   p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo,
+                   a.genero_vocal AS voz, p.hora_inicio_permitida, p.hora_fin_permitida,
+                   COALESCE(p.prioridad, 0) AS prioridad
+            FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
               AND (COALESCE(p.fecha_inicio,'') = '' OR p.fecha_inicio <= ?)
               AND (COALESCE(p.fecha_fin,'')    = '' OR p.fecha_fin    >= ?)
             ORDER BY COALESCE(p.prioridad, 0) DESC, p.id ASC
             """, (dia, dia)):
-            try:
-                matriz = json.loads(r["matriz"] or "{}")
-            except ValueError:
+
+            pid = r["id"]
+            if pid in quitadas:
                 continue
-            if isinstance(matriz, dict) and matriz.get(key):
-                if r["id"] in quitadas:
-                    continue
-                if r["menciones_diarias"] and hoy.get(r["id"], 0) >= r["menciones_diarias"]:
-                    continue
-                opcional, comercial = secciones.get(r["seccion"], (False, True))
-                dur = r["duracion"] or 30
-                voz = r["voz"]
-                if r["id"] in versiones:
-                    ids = [v[0] for v in versiones[r["id"]]]
-                    toca = version_rotada(ids, salidas.get(r["id"], 0))
-                    dur = dict(versiones[r["id"]]).get(toca, dur)
-                    voz = voz_de.get(toca, voz)
-                p = {"pauta_id": r["id"], "rubro": r["rubro"], "dur": dur, "opcional": opcional,
-                     "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
-                     "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial, "voz": voz}
-                (pautas if comercial else fijas).append(p)
+
+            # ── 1. Tope de Menciones Diarias ─────────────────────────────────
+            menciones_max = r["menciones_diarias"]
+            if menciones_max and hoy.get(pid, 0) >= menciones_max:
+                continue
+
+            # ── 2. Asignación por Horario (Matriz explícita o Dayparting) ─────
+            matriz_raw = r["matriz"] or "{}"
+            try:
+                matriz = json.loads(matriz_raw) if isinstance(matriz_raw, str) else (matriz_raw or {})
+            except ValueError:
+                matriz = {}
+
+            tiene_matriz = bool(isinstance(matriz, dict) and any(k for k in matriz.keys() if not k.startswith("__")))
+            en_hora = False
+            matriz_asignada_exp = False
+
+            if tiene_matriz:
+                en_hora = bool(matriz.get(key))
+                matriz_asignada_exp = en_hora
+            else:
+                # Si no tiene matriz manual, aplicar Dayparting automático o rango permitido
+                h_ini = r["hora_inicio_permitida"]
+                h_fin = r["hora_fin_permitida"]
+                if h_ini is not None and h_fin is not None:
+                    if h_ini <= h_fin:
+                        en_hora = (h_ini <= base.hour <= h_fin)
+                    else:  # cruza medianoche (ej. 20 a 4)
+                        en_hora = (base.hour >= h_ini or base.hour <= h_fin)
+                else:
+                    en_hora = self._hora_en_dayparting(base.hour, r["rubro"])
+
+            # ── 3. Pautas en Deuda: entran prioritariamente aunque la hora no coincida ──
+            es_deuda = (pid in pautas_deuda_hoy)
+            if not en_hora and not es_deuda:
+                continue
+
+            # ── 4. Distribución Inteligente de Menciones Diarias (Spacing) ─────
+            # Reglas profesionales:
+            # a) Si está asignada en la matriz explícita (contrato horario específico): NUNCA se bloquea.
+            # b) Si es una pauta en deuda: NUNCA se bloquea por espaciado (recuperación prioritaria).
+            # c) En simulación / vista previa: NUNCA se bloquea para ver la oferta completa.
+            # d) Para pautas auto-asignadas: el espaciado es dinámico = (ventana_horas / menciones_max) * 0.75.
+            #    Ejemplo: 10 menciones en 12h -> spacing ~54min (permite salir cada hora sin atascarse).
+            if not simular and not matriz_asignada_exp and not es_deuda:
+                ult_dt = ultimas_salidas.get(pid)
+                if ult_dt:
+                    h_ini = r["hora_inicio_permitida"]
+                    h_fin = r["hora_fin_permitida"]
+                    if h_ini is not None and h_fin is not None:
+                        vent_h = (h_fin - h_ini) if h_fin >= h_ini else (24 - h_ini + h_fin)
+                    else:
+                        vent_h = 16  # Ventana diurna habitual (ej. 6:00 a 22:00)
+
+                    if menciones_max and menciones_max > 0:
+                        spacing_seg = max(1800, (vent_h * 3600.0 / menciones_max) * 0.75)
+                    else:
+                        spacing_seg = min_spacing_horas * 3600.0
+
+                    if (base - ult_dt).total_seconds() < (spacing_seg - 300):
+                        continue
+
+            opcional, comercial = secciones.get(r["seccion"], (False, True))
+            dur = r["duracion"] or 30
+            voz = r["voz"]
+            if pid in versiones:
+                ids = [v[0] for v in versiones[pid]]
+                toca = version_rotada(ids, salidas.get(pid, 0))
+                dur = dict(versiones[pid]).get(toca, dur)
+                voz = voz_de.get(toca, voz)
+
+            # Si es deuda, subimos su prioridad efectiva para que el despachador la coloque arriba
+            prioridad_efectiva = (r["prioridad"] or 0) + (10 if es_deuda else 0)
+
+            p = {
+                "pauta_id": pid, "rubro": r["rubro"], "dur": dur, "opcional": opcional,
+                "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
+                "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial,
+                "voz": voz, "prioridad": prioridad_efectiva, "es_deuda": es_deuda,
+            }
+            (pautas if comercial else fijas).append(p)
+
         plan = planificar_tandas(pautas, sorted(minutos)) if pautas else {}
         if ajustes and plan:
             por_id = {p["pauta_id"]: p for p in pautas}
@@ -628,6 +748,7 @@ class Planner:
         lista += [f for f in fijas if lista or not f["opcional"]]
         return sorted(lista, key=lambda p: p["seccion"] or 0)
 
+
     # ── Selección ───────────────────────────────────────────────────────────
 
     def _where_filtros(self, filtros: dict) -> tuple[list[str], list]:
@@ -635,6 +756,8 @@ class Planner:
         for clave, col in FILTRO_COLUMNA.items():
             valor = filtros.get(clave)
             if valor not in (None, ""):
+                if clave == "epoca" and str(valor).strip().upper() in ("TODAS", "TODOS", "ALL"):
+                    continue
                 clauses.append(f"UPPER(COALESCE(a.{col}, '')) = UPPER(?)")
                 params.append(str(valor))
         if filtros.get("energia_min") not in (None, ""):
@@ -756,11 +879,11 @@ class Planner:
                 reglas.append(("a.id != ?", [ultimo]))
 
         n = max(1, int(self._icfg("aleatoriedad", 3)))
-        orden = "a.ultima_reproduccion ASC NULLS FIRST, a.id ASC"
+        orden = "a.ultima_reproduccion ASC, a.id ASC"
         if self._tiene_prioridad:
             # Prioridad (1 Alta · 2 Normal · 3 Baja): una alta cuenta como si
             # hubiera sonado 12 h antes (sale antes); una baja, 12 h después.
-            orden = ("julianday(COALESCE(a.ultima_reproduccion, '1970-01-01'))"
+            orden = ("(UNIX_TIMESTAMP(COALESCE(a.ultima_reproduccion, '1970-01-01 00:00:00')) / 86400.0)"
                      " + (COALESCE(a.prioridad, 2) - 2) * 0.5 ASC, a.id ASC")
         # Cascada: se sueltan las reglas de la última a la primera; la primera
         # (no repetir dentro del plan) es la que más se sostiene.
@@ -820,3 +943,406 @@ class Planner:
         return (self._elegir(conn, fila, t, previos, en_plan, excluir, dur_objetivo=(lo, hi))
                 or (self._elegir(conn, {**fila, "filtros": {}}, t, previos, en_plan, excluir,
                                  dur_objetivo=(lo, hi)) if filtros else None))
+
+    def obtener_compensacion_brecha(
+        self,
+        brecha: float,
+        t_inicio: datetime,
+        previos: list,
+        en_plan: set,
+        excluir: set,
+        tol: float = 90.0,
+        crossfade: float = 4.0,
+    ) -> list[dict]:
+        """
+        Selecciona uno o más audios de la biblioteca para cubrir una brecha de tiempo
+        producida por la eliminación manual de pistas o un salto, evitando el desfase
+        de la tanda comercial próxima.
+        """
+        conn = self._conn()
+        try:
+            self._cargar(conn)
+            reloj = self.reloj_de(t_inicio)
+            items_comp = []
+            restante = float(brecha)
+            t_act = t_inicio
+
+            # Iterar mientras la brecha amerite canciones (>= 120s)
+            while restante >= 120.0 and len(items_comp) < 4:
+                audio = self._compensar(conn, reloj, restante, tol, crossfade, t_act, previos, en_plan, excluir)
+                if not audio and restante > 260.0:
+                    audio = self._elegir(conn, {"tipo_audio": "Musica", "filtros": {}, "audio_id": None},
+                                         t_act, previos, en_plan, excluir, dur_objetivo=(180, 260))
+                if not audio:
+                    audio = self._elegir(conn, {"tipo_audio": "Musica", "filtros": {}, "audio_id": None},
+                                         t_act, previos, en_plan, excluir)
+                if not audio:
+                    break
+
+                dur = duracion_efectiva(audio, crossfade)
+                it = _item(
+                    "audio", t_act, dur,
+                    audio_id=audio["id"], titulo=audio["titulo"], artista=audio["artista"],
+                    tipo_audio=audio["tipo_audio"], genero_vocal=audio.get("genero_vocal"),
+                    duracion_total=audio.get("duracion") or 0,
+                    reloj_id=reloj["id"] if reloj else None,
+                    reloj="Compensación", color="#e67e22", fila=None,
+                    compensacion=True, cortada=False, nota="Ajuste por tanda"
+                )
+                items_comp.append(it)
+                en_plan.add(audio["id"])
+                previos.append({"audio_id": audio["id"], "artista": audio["artista"],
+                                "genero_vocal": audio.get("genero_vocal"),
+                                "tipo_audio": audio["tipo_audio"], "ts": t_act.isoformat(), "plan": True})
+                t_act += timedelta(seconds=dur)
+                restante -= dur
+
+                if abs(restante) <= tol:
+                    break
+
+            # Si queda un remanente menor (ej. 45 a 119s), buscar Sweeper o separador
+            if restante >= 45.0 and len(items_comp) < 5:
+                fila_corta = {"tipo_audio": "Sweeper", "filtros": {}, "audio_id": None}
+                audio_corto = self._elegir(conn, fila_corta, t_act, previos, en_plan, excluir,
+                                           dur_objetivo=(max(10, int(restante - 30)), int(restante + 30)))
+                if not audio_corto:
+                    fila_corta = {"tipo_audio": "Tips", "filtros": {}, "audio_id": None}
+                    audio_corto = self._elegir(conn, fila_corta, t_act, previos, en_plan, excluir)
+
+                if audio_corto:
+                    dur_c = duracion_efectiva(audio_corto, crossfade)
+                    it_c = _item(
+                        "audio", t_act, dur_c,
+                        audio_id=audio_corto["id"], titulo=audio_corto["titulo"], artista=audio_corto["artista"],
+                        tipo_audio=audio_corto["tipo_audio"], genero_vocal=audio_corto.get("genero_vocal"),
+                        duracion_total=audio_corto.get("duracion") or 0,
+                        reloj_id=None, reloj="Separador", color="#f39c12", fila=None,
+                        compensacion=True, cortada=False, nota="Ajuste fino"
+                    )
+                    items_comp.append(it_c)
+
+            return items_comp
+        finally:
+            conn.close()
+
+    # ── Re-planificación Dinámica ─────────────────────────────────────────────
+
+    def recalcular_cola_dinamica(
+        self,
+        plan_actual: list[dict],
+        historial: list[dict],
+        tandas_minutos: list[int],
+        tiempo_restante_actual: float,
+        excluir: set = frozenset(),
+        tandas_emitidas: set = frozenset(),
+        eventos_emitidos: set = frozenset(),
+    ) -> list[dict]:
+        """
+        Re-planificación dinámica: recalcula el programa desde el instante en
+        que termina lo que suena ahora, preservando las horas exactas de las
+        tandas comerciales.
+
+        Cuándo se llama:
+          · El operador elimina o mueve una pista en el Studio.
+          · El motor detecta aire muerto y salta una canción.
+          · Un archivo corrupto se excluye y el motor avanza.
+
+        Args:
+            plan_actual:          Ítems pendientes DESPUÉS de lo que suena ahora
+                                  (la deque _programa del motor, como lista de dicts).
+            historial:            Últimos audios ya emitidos (para respetar ventanas
+                                  de artista, separación de canciones, etc.).
+            tandas_minutos:       Lista de minutos de la hora donde caen las tandas
+                                  ([15, 45], etc.).
+            tiempo_restante_actual: Segundos que le quedan a la canción que suena
+                                  ahora. El recálculo empieza al finalizar esa canción.
+            excluir:              IDs de audios que el motor ya marcó como fallidos.
+            tandas_emitidas:      Set de (slot, minuto) de tandas ya al aire o en
+                                  el plan que no hay que duplicar.
+            eventos_emitidos:     Claves de eventos a hora fija ya emitidos.
+
+        Returns:
+            Lista de ítems nuevos (misma estructura que _extender) que reemplaza
+            al plan_actual. El motor debe vaciar su _programa y cargar estos.
+        """
+        conn = self._conn()
+        try:
+            self._cargar(conn)
+
+            crossfade = self._icfg("crossfade_seg", 4)
+            horas_plan = self._icfg("horas_planificadas", 2)
+
+            # ── Punto de partida: cuando termina lo que suena ahora ──────────
+            ahora = datetime.now()
+            desde = ahora + timedelta(seconds=max(0.0, tiempo_restante_actual))
+
+            # Límite: no calcular más allá de horas_planificadas
+            hasta = ahora + timedelta(hours=horas_plan)
+            hasta = max(hasta, desde + timedelta(minutes=5))  # mínimo 5 min útiles
+
+            # Solo excluimos las tandas que YA fueron emitidas al aire
+            tandas_conocidas = set(tandas_emitidas)
+
+            # ── Analizar cuánto tiempo hay hasta la próxima tanda ───────────
+            from backend.audio.audio_engine import parse_minutos
+            inm_str = (self.cfg.get("tandas_inmediatas") or "").strip()
+            inmediatas = set(parse_minutos(inm_str)) if inm_str else set()
+
+            proxima_tanda = self._proxima_tanda(conn, desde, tandas_minutos, tandas_conocidas, inmediatas)
+            tiempo_hasta_tanda = (
+                (proxima_tanda["hora"] - desde).total_seconds()
+                if proxima_tanda else None
+            )
+
+            log.info(
+                "[Planner] Recalculando cola: desde=%s hasta=%s | "
+                "próxima tanda en %.0fs | ítems en plan actual=%d",
+                desde.strftime("%H:%M:%S"),
+                hasta.strftime("%H:%M:%S"),
+                tiempo_hasta_tanda if tiempo_hasta_tanda is not None else -1,
+                len(plan_actual),
+            )
+
+            # ── Construir historial enriquecido con el plan actual ───────────
+            # Los ítems de audio del plan actual cuentan como "recientes" para
+            # las reglas (ventana de artista, no repetir, etc.)
+            previos_del_plan = [
+                {
+                    "audio_id": p.get("audio_id"),
+                    "artista":  p.get("artista"),
+                    "genero_vocal": p.get("genero_vocal"),
+                    "tipo_audio": p.get("tipo_audio"),
+                    "ts": p.get("inicio", ahora.isoformat()),
+                    "plan": True,
+                }
+                for p in plan_actual
+                if p.get("tipo") == "audio"
+            ]
+            historial_extendido = list(historial) + previos_del_plan
+
+            # ── Generar el nuevo tramo de programa ───────────────────────────
+            # Pasamos plan=[] porque ya convertimos los previos en historial;
+            # así _extender calcula desde "desde" con plena libertad.
+            nuevos = self._extender(
+                conn,
+                plan=[],                      # plan vacío: el recálculo parte limpio
+                desde=desde,
+                hasta=hasta,
+                historial=historial_extendido,
+                tandas_minutos=tandas_minutos,
+                excluir=set(excluir),
+                tandas_emitidas=tandas_conocidas,
+                ultimo=None,
+                eventos_emitidos=set(eventos_emitidos),
+            )
+
+            # ── Compensación de hueco si sobró tiempo ─────────────────────────
+            # Si eliminaron una canción larga y hay un hueco antes de la próxima
+            # tanda, _extender ya lo rellena automáticamente. Pero si el tiempo
+            # disponible hasta la tanda es < crossfade, no hay nada que meter:
+            # el motor simplemente encadenará las pistas normalmente.
+            if not nuevos:
+                log.warning(
+                    "[Planner] Recálculo no encontró audios para el tramo %s → %s. "
+                    "El motor usará el respaldo.",
+                    desde.strftime("%H:%M:%S"), hasta.strftime("%H:%M:%S")
+                )
+
+            log.info(
+                "[Planner] Recalculo completado: %d ítems nuevos (audios=%d, tandas=%d)",
+                len(nuevos),
+                sum(1 for i in nuevos if i.get("tipo") == "audio"),
+                sum(1 for i in nuevos if i.get("tipo") == "tanda"),
+            )
+            return nuevos
+
+        except Exception as exc:
+            log.error("[Planner] Error en recalcular_cola_dinamica: %s", exc, exc_info=True)
+            return []
+        finally:
+            conn.close()
+
+    # ── Simulación de Tandas Comerciales (Preview para el Admin) ──────────────
+
+    def simular_tanda(
+        self,
+        hora: int,
+        fecha: str,
+        minuto: Optional[int] = None,
+        rubro_filtro: Optional[str] = None,
+    ) -> dict:
+        """
+        Simula la tanda o bloque comercial planificado para una fecha y hora dadas,
+        sin emitir nada ni alterar el estado del motor ni de la base de datos.
+
+        Args:
+            hora:         Hora en formato 0-23.
+            fecha:        Fecha en formato 'YYYY-MM-DD'.
+            minuto:       Minuto específico (ej. 15 o 45). Si es None, simula todas
+                          las tandas de esa hora y las agrupa.
+            rubro_filtro: Opcional: filtrar solo cuñas de un rubro específico.
+
+        Returns:
+            Dict con:
+              - fecha, hora, minutos_configurados
+              - tandas: lista de tandas con sus cuñas ordenadas, duración y choques
+              - resumen: total_cunas, duracion_total_segundos, duracion_total_formato,
+                         hay_hueco (si excede tanda_max_seg o si la tanda está vacía),
+                         excede_maximo, total_deudas
+        """
+        conn = self._conn()
+        try:
+            self._cargar(conn)
+            from backend.audio.audio_engine import (
+                cargar_grilla, parse_minutos, tandas_de_hora, inicio_tanda,
+                rubros_chocan, es_voz_mujer, _rubro
+            )
+
+            dt_base = datetime.fromisoformat(f"{fecha}T{hora:02d}:00:00")
+            dia_semana = (dt_base.weekday() + 1) % 7
+
+            grilla = cargar_grilla(self.cfg.get("tandas_grilla", ""))
+            inm_base = parse_minutos(self.cfg.get("tandas_inmediatas", ""))
+            cie_base = parse_minutos(self.cfg.get("tandas_cierre", ""))
+            min_base = parse_minutos(self.cfg.get("tandas_minutos", "15,45")) or [15, 45]
+
+            minutos_h, inm_h, cie_h = tandas_de_hora(
+                grilla, dia_semana, hora, min_base, inm_base, cie_base
+            )
+            cierre_set = set(cie_h)
+            inm_set = set(inm_h)
+
+            tanda_max_seg = int(self.cfg.get("tanda_max_seg", 240) or 240)
+
+            # Si el operador pidió un minuto específico, o simulamos todos los de la hora
+            minutos_a_simular = [minuto] if (minuto is not None and minuto in minutos_h) else (minutos_h or [15, 45])
+
+            tandas_resultado = []
+            gran_total_cunas = 0
+            gran_total_segundos = 0.0
+            gran_total_deudas = 0
+            hay_alerta_global = False
+
+            for m in minutos_a_simular:
+                cunas_raw = self.lista_tanda(conn, dt_base, m, minutos_h, simular=True)
+
+                if rubro_filtro and rubro_filtro.strip():
+                    cunas_raw = [c for c in cunas_raw if str(c.get("rubro") or "").strip().upper() == rubro_filtro.strip().upper()]
+
+                cierre = m in cierre_set
+                dur_tanda = sum(float(c.get("dur") or 30) for c in cunas_raw)
+                seg_arranque = inicio_tanda(m, dur_tanda, cierre)
+                t_arranque = dt_base + timedelta(seconds=seg_arranque)
+
+                # Calcular horas estimadas para cada cuña e inspeccionar choques
+                t_cursor = t_arranque
+                cunas_procesadas = []
+                choques_detectados = []
+
+                for idx, c in enumerate(cunas_raw):
+                    dur_c = float(c.get("dur") or 30)
+                    h_est = t_cursor.strftime("%H:%M:%S")
+
+                    # Validar si choca con la anterior
+                    choque = False
+                    motivo_choque = ""
+                    if idx > 0:
+                        ant = cunas_raw[idx - 1]
+                        if rubros_chocan(_rubro(ant), _rubro(c)):
+                            choque = True
+                            motivo_choque = f"Conflicto de Rubro con anterior ({ant.get('rubro')})"
+                        elif es_voz_mujer(ant.get("voz")) and es_voz_mujer(c.get("voz")):
+                            choque = True
+                            motivo_choque = "Doble voz femenina consecutiva"
+
+                    if choque:
+                        choques_detectados.append({
+                            "posicion": idx + 1,
+                            "spot": c.get("spot"),
+                            "motivo": motivo_choque
+                        })
+
+                    if c.get("es_deuda"):
+                        gran_total_deudas += 1
+
+                    cunas_procesadas.append({
+                        "orden": idx + 1,
+                        "pauta_id": c.get("pauta_id"),
+                        "cliente": c.get("cliente", ""),
+                        "titulo": c.get("spot", ""),
+                        "rubro": c.get("rubro", "") or "GENERAL",
+                        "duracion": round(dur_c, 1),
+                        "duracion_formato": f"{int(dur_c // 60)}:{int(dur_c % 60):02d}",
+                        "voz": c.get("voz") or "Hombre",
+                        "hora_estimada": h_est,
+                        "seccion": c.get("seccion", 3),
+                        "es_deuda": bool(c.get("es_deuda")),
+                        "posicion_fija": c.get("posicion", 0),
+                        "choque": choque,
+                        "motivo_choque": motivo_choque,
+                    })
+
+                    t_cursor += timedelta(seconds=dur_c)
+
+                excede = dur_tanda > tanda_max_seg
+                if excede or choques_detectados:
+                    hay_alerta_global = True
+
+                gran_total_cunas += len(cunas_procesadas)
+                gran_total_segundos += dur_tanda
+
+                min_dur = int(dur_tanda // 60)
+                sec_dur = int(dur_tanda % 60)
+
+                tandas_resultado.append({
+                    "minuto": m,
+                    "etiqueta": f"Tanda :{m:02d}",
+                    "hora_inicio_estimada": t_arranque.strftime("%H:%M:%S"),
+                    "cierre": cierre,
+                    "inmediata": m in inm_set,
+                    "duracion_total_segundos": round(dur_tanda, 1),
+                    "duracion_total_formato": f"{min_dur}:{sec_dur:02d}",
+                    "excede_tiempo": excede,
+                    "tiempo_maximo_permitido": tanda_max_seg,
+                    "total_cunas": len(cunas_procesadas),
+                    "choques": choques_detectados,
+                    "cunas": cunas_procesadas,
+                })
+
+            total_min = int(gran_total_segundos // 60)
+            total_sec = int(gran_total_segundos % 60)
+
+            return {
+                "ok": True,
+                "fecha": fecha,
+                "hora": hora,
+                "minutos_configurados": minutos_h,
+                "tandas": tandas_resultado,
+                "resumen": {
+                    "total_tandas": len(tandas_resultado),
+                    "total_cunas": gran_total_cunas,
+                    "duracion_total_segundos": round(gran_total_segundos, 1),
+                    "duracion_total_formato": f"{total_min}:{total_sec:02d}",
+                    "hay_hueco": (gran_total_cunas == 0 or gran_total_segundos > (tanda_max_seg * len(tandas_resultado))),
+                    "excede_maximo": any(t["excede_tiempo"] for t in tandas_resultado),
+                    "total_deudas": gran_total_deudas,
+                    "alertas": hay_alerta_global,
+                }
+            }
+
+        except Exception as exc:
+            log.error("[Planner] Error en simular_tanda: %s", exc, exc_info=True)
+            return {
+                "ok": False,
+                "error": str(exc),
+                "fecha": fecha,
+                "hora": hora,
+                "tandas": [],
+                "resumen": {
+                    "total_tandas": 0, "total_cunas": 0,
+                    "duracion_total_segundos": 0.0, "duracion_total_formato": "0:00",
+                    "hay_hueco": True, "excede_maximo": False, "total_deudas": 0, "alertas": True
+                }
+            }
+        finally:
+            conn.close()

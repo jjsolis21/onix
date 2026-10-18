@@ -2,6 +2,7 @@
 
 import io
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -145,7 +146,7 @@ def test_editor_guarda_outro_prioridad_y_caratula(client, tmp_path):
 def _aprobada(audio_id):
     import sqlite3
     from backend.paths import DB_PATH
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     try:
         return c.execute("SELECT aprobada FROM audios WHERE id = ?", (audio_id,)).fetchone()[0]
     finally:
@@ -180,7 +181,7 @@ def test_anios_que_faltan_buscar_y_aplicar_sin_pisar(client, monkeypatch):
     from backend.audio import metadatos
     from backend.locutor import datos
     from backend.paths import DB_PATH
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     ids = {}
     for titulo, artista, fecha in (("Me Rehúso", "Danny Ocean", None), ("Tema Raro", "Grupo Raro", ""),
                                    ("Con Año", "Alguien", "2001"), ("Solo Itunes", "Otro Artista", None)):
@@ -205,7 +206,7 @@ def test_anios_que_faltan_buscar_y_aplicar_sin_pisar(client, monkeypatch):
     a = client.post("/api/v1/biblioteca/anios/aplicar", json={"items": [
         {"id": ids["Me Rehúso"], "anio": 2017}, {"id": ids["Con Año"], "anio": 1999}]}).json()
     assert a == {"guardados": 1, "omitidos": 1}
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     assert c.execute("SELECT fecha_lanzamiento FROM audios WHERE id = ?", (ids["Con Año"],)).fetchone()[0] == "2001"
     assert c.execute("SELECT fecha_lanzamiento FROM audios WHERE id = ?", (ids["Me Rehúso"],)).fetchone()[0] == "2017"
     c.execute("DELETE FROM audios WHERE artista IN ('Danny Ocean', 'Grupo Raro', 'Alguien', 'Otro Artista')")

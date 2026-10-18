@@ -33,7 +33,7 @@ SEED_VALORES = {
         "Salsa", "Merengue", "Bachata", "Jazz", "Clásica",
     ],
     "cat2": [
-        "Nuevo", "Reciente", "Éxito", "Clásico", "Desconocido",
+        "Nuevo", "Reciente", "Éxito", "Recurrente", "Clásico", "Desconocido",
     ],
     "cat3": [
         "Acústico", "En Vivo", "Remix", "Original", "Cover",
@@ -884,6 +884,73 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_ambito_cartuchera', '1')")
     logger.info("  → audios.ambito (cartuchera aparte): OK")
 
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 42 — Época / Década musical (Actual, 2010s, 2000s, 90s, 80s, 70s, Oldies)
+    #   audios.epoca: calculada a partir del año de lanzamiento (fecha_lanzamiento).
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(audios)")
+    cols_audios = {r["name"] for r in cursor.fetchall()}
+    if "epoca" not in cols_audios:
+        cursor.execute("ALTER TABLE audios ADD COLUMN epoca TEXT DEFAULT NULL")
+        logger.info("  → Columna audios.epoca agregada.")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audios_epoca ON audios (epoca)")
+
+    if not cursor.execute("SELECT 1 FROM config WHERE clave = 'migracion_epoca_audios'").fetchone():
+        try:
+            from backend.api.utils_musica import calcular_epoca
+        except ImportError:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from backend.api.utils_musica import calcular_epoca
+
+        rows = cursor.execute("SELECT id, fecha_lanzamiento FROM audios WHERE fecha_lanzamiento IS NOT NULL AND TRIM(fecha_lanzamiento) != ''").fetchall()
+        for r in rows:
+            ep = calcular_epoca(r["fecha_lanzamiento"])
+            if ep:
+                cursor.execute("UPDATE audios SET epoca = ? WHERE id = ?", (ep, r["id"]))
+        cursor.execute("INSERT INTO config (clave, valor) VALUES ('migracion_epoca_audios', '1')")
+        logger.info(f"  → Época recalculada para {len(rows)} audios existentes: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 44 — Dayparting por spot y «deuda» de pautas
+    #   pautas.hora_inicio_permitida / hora_fin_permitida (0–23): el spot solo sale dentro de esa franja.
+    #   pautas_deuda: spots que no salieron en su hora; el planificador los recupera en la siguiente tanda.
+    #   (Estas estructuras ya existían en la base MariaDB de producción; aquí quedan para toda instalación nueva.)
+    # ------------------------------------------------------------------
+    cursor.execute("PRAGMA table_info(pautas)")
+    _cols_pautas = {r["name"] for r in cursor.fetchall()}
+    for _col in ("hora_inicio_permitida", "hora_fin_permitida"):
+        if _col not in _cols_pautas:
+            cursor.execute(f"ALTER TABLE pautas ADD COLUMN {_col} INTEGER DEFAULT NULL")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pautas_deuda (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            pauta_id      INTEGER NOT NULL,
+            slot_original TEXT    NOT NULL,
+            fecha         TEXT    NOT NULL,
+            motivo        TEXT    DEFAULT 'no_emitida',
+            recuperada    INTEGER DEFAULT 0,
+            recuperada_en TEXT    DEFAULT NULL,
+            created_at    TEXT    DEFAULT (datetime('now'))
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pauta_fecha ON pautas_deuda (pauta_id, fecha, recuperada)")
+    logger.info("  → pautas.hora_*_permitida y pautas_deuda: OK")
+
+    # ------------------------------------------------------------------
+    # MIGRACIÓN 43 — Tablas de Comerciales (clientes, agencias, rubros), ajustes de tandas y Locutor IA
+    #   Antes cada módulo las creaba «al vuelo»; con MariaDB ya no, así que una instalación nueva las crea aquí.
+    # ------------------------------------------------------------------
+    try:
+        from backend.esquema_extra import ESQUEMA_AJUSTES, ESQUEMA_COMERCIALES, ESQUEMA_LOCUTOR
+    except ImportError:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from backend.esquema_extra import ESQUEMA_AJUSTES, ESQUEMA_COMERCIALES, ESQUEMA_LOCUTOR
+    for _ddl in (ESQUEMA_COMERCIALES, ESQUEMA_AJUSTES, ESQUEMA_LOCUTOR):
+        conn.executescript(_ddl)
+    logger.info("  → tablas de Comerciales, ajustes de tandas y Locutor IA: OK")
+
     conn.commit()
     logger.info("MIGRACIÓN: Todas las migraciones completadas exitosamente.")
 
@@ -922,6 +989,7 @@ def _create_base_schema(conn: sqlite3.Connection) -> None:
             outro           REAL    DEFAULT NULL,
             hook            REAL    DEFAULT NULL,
             fecha_lanzamiento TEXT  DEFAULT NULL,
+            epoca           TEXT    DEFAULT NULL,
             activo          INTEGER NOT NULL DEFAULT 1,
             created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
             updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))

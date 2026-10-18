@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import time
 
+from backend.database import get_connection
 import pytest
 
 from backend.audio.audio_engine import AudioEngine
@@ -51,7 +52,7 @@ def cliente(servidor):
 
 
 def add_audio(db, path, titulo="TEMA"):
-    conn = sqlite3.connect(db)
+    conn = get_connection(db)
     cur = conn.execute(
         "INSERT INTO audios (titulo, artista, archivo_path) VALUES (?, 'ARTISTA', ?)",
         (titulo, str(path)),

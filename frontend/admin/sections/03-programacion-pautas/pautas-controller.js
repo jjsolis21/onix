@@ -1253,10 +1253,13 @@
       _val('fPrioridad', String(p.prioridad ?? 0));
       _val('fPosicion',  String(p.posicion ?? 0));
       _val('fAgencia',   p.agencia || '');
+      _val('fHoraInicio', p.hora_inicio_permitida !== null && p.hora_inicio_permitida !== undefined ? String(p.hora_inicio_permitida) : '');
+      _val('fHoraFin',    p.hora_fin_permitida !== null && p.hora_fin_permitida !== undefined ? String(p.hora_fin_permitida) : '');
       _versiones = (p.versiones || []).filter(v => v.id !== p.audio_id);
       _pintarVersiones();
       _cargarSecciones(p.seccion ?? 3);
       $('btnSaveText').textContent = 'Actualizar Pauta';
+
 
       _buildMatrix(p.matriz);
       // Pautas viejas (sin modo guardado) se abren en manual con lo que tenían
@@ -1308,9 +1311,12 @@
       _val('fPrioridad', '0');
       _val('fPosicion',  '0');
       _val('fAgencia',   '');
+      _val('fHoraInicio', '');
+      _val('fHoraFin',    '');
       _versiones = [];
       _pintarVersiones();
       _cargarSecciones(3);
+
       $('btnSaveText').textContent = 'Guardar Pauta';
 
       _buildMatrix({});
@@ -1469,6 +1475,8 @@
       prioridad,
       agencia,
       posicion,
+      hora_inicio_permitida: $('fHoraInicio')?.value !== "" ? parseInt($('fHoraInicio').value, 10) : null,
+      hora_fin_permitida:    $('fHoraFin')?.value !== "" ? parseInt($('fHoraFin').value, 10) : null,
       versiones: _versiones.map(v => v.id),
       menciones_diarias: menciones,
       seccion,
@@ -1477,6 +1485,7 @@
       cue_outro:         cues.outro  ?? 0,
       matriz:            matrizConMeta,
     };
+
 
     _clearModalError();
     _setSaving(true);
@@ -1795,6 +1804,142 @@
       const q = new URLSearchParams({ cliente: $('repCliente').value, desde: $('repDesde').value, hasta: $('repHasta').value });
       window.open(`/api/v1/reportes/certificado?${q}`, '_blank');
     });
+
+    // ── Vista Previa de Bloques Comerciales (Preview) ──
+    function _abrirPreviewTandas() {
+      const modal = $('previewTandaModal');
+      if (!modal) return;
+      const fFecha = $('prevFecha');
+      const fHora  = $('prevHora');
+      if (fFecha && !fFecha.value) {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        fFecha.value = `${y}-${m}-${day}`;
+      }
+      if (fHora && !fHora.options.length) {
+        fHora.innerHTML = Array.from({ length: 24 }, (_, i) =>
+          `<option value="${i}">${String(i).padStart(2, '0')}:00 hrs</option>`
+        ).join('');
+        const actualH = new Date().getHours();
+        fHora.value = String(actualH);
+      }
+      _showEl(modal);
+      _consultarPreviewTanda();
+    }
+
+    async function _consultarPreviewTanda() {
+      const fecha = $('prevFecha')?.value;
+      const hora  = $('prevHora')?.value ?? 0;
+      const minuto = $('prevMinuto')?.value ?? '';
+      const tbody = $('prevTbodyCunas');
+      const alertaBox = $('prevAlertaBox');
+      const alertaTitulo = $('prevAlertaTitulo');
+      const alertaDetalle = $('prevAlertaDetalle');
+
+      if (!fecha) {
+        alert('Por favor selecciona una fecha válida.');
+        return;
+      }
+
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 25px; color: #888;">Consultando planificación...</td></tr>';
+      }
+      if (alertaBox) _hideEl(alertaBox);
+
+      try {
+        const q = new URLSearchParams({ fecha, hora: String(hora) });
+        if (minuto !== '') q.append('minuto', String(minuto));
+
+        const res = await fetch(`/api/v1/pautas/preview_tanda?${q}`);
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        // Actualizar resumen
+        if ($('prevTotalCunas'))    $('prevTotalCunas').textContent = data.resumen.total_cunas;
+        if ($('prevTotalDuracion')) $('prevTotalDuracion').textContent = data.resumen.duracion_total_formato;
+        if ($('prevTotalDeudas'))   $('prevTotalDeudas').textContent = data.resumen.total_deudas;
+
+        // Validar alertas
+        let alertasTxt = [];
+        if (data.resumen.excede_maximo) {
+          alertasTxt.push('⚠️ Alerta: Una o más tandas exceden el tiempo máximo configurado.');
+        }
+        for (const t of (data.tandas || [])) {
+          for (const ch of (t.choques || [])) {
+            alertasTxt.push(`⚠️ ${t.etiqueta}: Posición ${ch.posicion} "${ch.spot}" tiene ${ch.motivo}.`);
+          }
+        }
+
+        if (alertasTxt.length && alertaBox) {
+          alertaTitulo.textContent = `Advertencias detectadas (${alertasTxt.length})`;
+          alertaDetalle.innerHTML = alertasTxt.map(a => `<div>${a}</div>`).join('');
+          _showEl(alertaBox);
+        } else if (alertaBox) {
+          _hideEl(alertaBox);
+        }
+
+        // Renderizar tabla
+        if (!tbody) return;
+        const tandas = data.tandas || [];
+        const todasCunas = [];
+        for (const t of tandas) {
+          for (const c of t.cunas) {
+            todasCunas.push({ ...c, tandaEtiqueta: t.etiqueta });
+          }
+        }
+
+        if (!todasCunas.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 25px; color: #888;">No hay cuñas comerciales planificadas para este horario.</td></tr>';
+          return;
+        }
+
+        // Colores de rubro para badges visuales
+        const coloresRubro = {
+          'FARMACIA': '#10b981', 'RESTAURANT': '#f59e0b', 'GASTRONOMIA': '#f59e0b',
+          'FERRETERIA': '#3b82f6', 'TECNOLOGIA': '#8b5cf6', 'STREAMING': '#ec4899',
+          'REPUESTOS AUTOMOTRIZ': '#6366f1', 'FIESTA CELEBRACION': '#ef4444', 'GENERAL': '#64748b'
+        };
+
+        tbody.innerHTML = todasCunas.map(c => {
+          const vozIcon = (c.voz && String(c.voz).toUpperCase().startsWith('M')) ? '👩 Mujer' : '👨 Hombre';
+          const rColor = coloresRubro[c.rubro.toUpperCase()] || '#6b7280';
+          const bgFila = c.es_deuda ? 'background: rgba(234, 179, 8, 0.12);' : (c.choque ? 'background: rgba(239, 68, 68, 0.1);' : '');
+          const deudaBadge = c.es_deuda ? '<span style="background: #eab308; color: #000; font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">RECUPERACIÓN</span>' : '';
+          const pinBadge = c.posicion_fija === 1 ? ' <small style="color:#60a5fa;">[📌 Primero]</small>' : (c.posicion_fija === 2 ? ' <small style="color:#60a5fa;">[📌 Último]</small>' : '');
+
+          return `
+            <tr style="${bgFila} border-bottom: 1px solid rgba(255,255,255,0.06);">
+              <td style="padding: 9px 10px; font-weight: bold; color: #aaa;">${c.orden}</td>
+              <td style="padding: 9px 10px; font-family: monospace; color: #38bdf8;">${c.hora_estimada}</td>
+              <td style="padding: 9px 10px;"><b>${_esc(c.cliente)}</b> ${deudaBadge} ${pinBadge}</td>
+              <td style="padding: 9px 10px; color: #e2e8f0;">${_esc(c.titulo)}</td>
+              <td style="padding: 9px 10px;">
+                <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: ${rColor}22; color: ${rColor}; border: 1px solid ${rColor}55;">
+                  ${_esc(c.rubro)}
+                </span>
+              </td>
+              <td style="padding: 9px 10px; text-align: center; font-size: 12px; color: #cbd5e1;">${vozIcon}</td>
+              <td style="padding: 9px 10px; text-align: right; font-family: monospace; font-weight: 600;">${c.duracion_formato}</td>
+            </tr>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error('[Preview] Error al consultar preview tanda:', err);
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 25px; color: #ef4444;">Error al consultar: ${err.message}</td></tr>`;
+        }
+      }
+    }
+
+    $('btnPreviewTandas')?.addEventListener('click', _abrirPreviewTandas);
+    $('btnConsultarPreview')?.addEventListener('click', _consultarPreviewTanda);
+    $('prevCerrar')?.addEventListener('click', () => _hideEl($('previewTandaModal')));
+    $('prevBtnCerrarPie')?.addEventListener('click', () => _hideEl($('previewTandaModal')));
+    $('previewTandaModal')?.addEventListener('click', e => { if (e.target.id === 'previewTandaModal') _hideEl($('previewTandaModal')); });
+
     $('cmAtras')?.addEventListener('click', () => _saltar(-5));
     $('cmAdelante')?.addEventListener('click', () => _saltar(5));
     // Teclado en la lista (si no se está escribiendo): Espacio, ← →

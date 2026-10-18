@@ -115,9 +115,11 @@
       <button class="cm-reiniciar cm-reporte" id="btnReporte" type="button">🖨 Reporte por cliente</button>
       <button class="cm-reiniciar" id="btnBloques" type="button" title="Arma una lista de cuñas y prográmala a una hora, como evento de Relojes">🧩 Bloques publicitarios</button>
       <button class="cm-reiniciar" id="btnTandasDia" type="button" title="Qué sale en cada tanda de cada hora, en orden">📋 Tandas del día</button>
+      <button class="cm-reiniciar" id="btnPreviewTandas" type="button" title="Simular y previsualizar qué cuñas saldrán en cada hora y tanda">👁 Vista Previa de Tandas</button>
       <button class="cm-reiniciar" id="btnCfgComerciales" type="button" title="Tandas, prioridades, clientes y agencias">⚙ Config. de comerciales</button>
       <button class="cm-reiniciar" id="btnChequeo" type="button" title="Spots con el audio perdido, sin horarios, vencidos o sin rubro">🩺 Chequeo de integridad</button>
       <p class="cm-cuenta" id="cmCuenta">—</p>
+
     </aside>
 
     <div class="cm-centro">
@@ -213,6 +215,89 @@
     <button class="btn-primary" id="repAbrir" type="button">Abrir certificado</button>
   </div>
 </div>
+
+<!-- Modal: Vista Previa de Tandas Comerciales (Simulación sin alterar aire) -->
+<div class="modal-overlay hidden" id="previewTandaModal" role="dialog" aria-modal="true" aria-labelledby="prevTitulo">
+  <div class="cm-rep" style="max-width: 860px; width: 95%;">
+    <div class="cm-rep-cab">
+      <h3 id="prevTitulo">👁 Vista Previa de Bloques Comerciales</h3>
+      <button class="modal-close" id="prevCerrar" type="button" aria-label="Cerrar">✕</button>
+    </div>
+    
+    <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 15px;">
+      <label class="cm-f" style="margin: 0; min-width: 150px;">
+        Fecha
+        <input type="date" id="prevFecha">
+      </label>
+      <label class="cm-f" style="margin: 0; min-width: 140px;">
+        Hora
+        <select id="prevHora">
+          <!-- 00:00 a 23:00 poblado por JS -->
+        </select>
+      </label>
+      <label class="cm-f" style="margin: 0; min-width: 140px;">
+        Minuto Tanda
+        <select id="prevMinuto">
+          <option value="">Todas las tandas</option>
+          <option value="0">Tanda :00</option>
+          <option value="15">Tanda :15</option>
+          <option value="30">Tanda :30</option>
+          <option value="45">Tanda :45</option>
+        </select>
+      </label>
+      <button class="btn-primary" id="btnConsultarPreview" type="button" style="height: 38px; display: inline-flex; align-items: center; gap: 6px;">
+        <span>🔍</span> Consultar Tanda
+      </button>
+    </div>
+
+    <!-- Contenedor de Alerta / Advertencia en rojo -->
+    <div id="prevAlertaBox" class="hidden" style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 8px; padding: 12px 14px; margin-bottom: 15px; color: #f87171; font-size: 13px;">
+      <div style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
+        <span>⚠️</span> <span id="prevAlertaTitulo">Advertencia en la tanda</span>
+      </div>
+      <div id="prevAlertaDetalle" style="margin-top: 4px; font-weight: normal; color: #fca5a5;"></div>
+    </div>
+
+    <!-- Resumen general -->
+    <div id="prevResumenBar" style="display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.04); padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
+      <span>Total cuñas: <b id="prevTotalCunas">0</b></span>
+      <span>•</span>
+      <span>Duración estimada: <b id="prevTotalDuracion">0:00</b></span>
+      <span>•</span>
+      <span>En Deuda / Recuperadas: <b id="prevTotalDeudas">0</b></span>
+    </div>
+
+    <!-- Tabla con las cuñas ordenadas -->
+    <div style="max-height: 400px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;">
+      <table class="cm-tabla" style="width: 100%; border-collapse: collapse; font-size: 13px;" id="prevTablaCunas">
+        <thead>
+          <tr style="background: rgba(255,255,255,0.06); text-align: left;">
+            <th style="padding: 8px 10px; width: 45px;">#</th>
+            <th style="padding: 8px 10px; width: 85px;">Hora Est.</th>
+            <th style="padding: 8px 10px;">Cliente</th>
+            <th style="padding: 8px 10px;">Título del Spot</th>
+            <th style="padding: 8px 10px; width: 130px;">Rubro</th>
+            <th style="padding: 8px 10px; width: 75px; text-align: center;">Voz</th>
+            <th style="padding: 8px 10px; width: 70px; text-align: right;">Duración</th>
+          </tr>
+        </thead>
+        <tbody id="prevTbodyCunas">
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 25px; color: #888;">
+              Elige fecha y hora y haz clic en "Consultar Tanda" para ver la simulación.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+      <small style="color: #888;">* La simulación aplica Dayparting, Spacing temporal y prioridad de Pautas en Deuda sin alterar el aire.</small>
+      <button class="modal-close-btn" id="prevBtnCerrarPie" type="button" style="padding: 6px 14px; background: transparent; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #ccc; cursor: pointer;">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- ══════════════════════════════════════════════════════════
      MODAL PRINCIPAL — EDITOR DE PAUTAS PRO (Dashboard v3.1)
@@ -321,6 +406,38 @@
               <span class="field-hint">Para jingles de apertura o cierre de tanda</span>
             </div>
           </div>
+
+          <!-- Dayparting: Franja horaria permitida (opcional si no usa matriz manual) -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="fHoraInicio">Hora permitida desde</label>
+              <select id="fHoraInicio">
+                <option value="">Auto (según Rubro)</option>
+                <option value="0">00:00 (12 AM)</option>
+                <option value="6">06:00 (6 AM - Mañana)</option>
+                <option value="8">08:00 (8 AM - Comercio)</option>
+                <option value="11">11:00 (11 AM - Mediodía)</option>
+                <option value="14">14:00 (2 PM - Tarde)</option>
+                <option value="18">18:00 (6 PM - Noche)</option>
+                <option value="20">20:00 (8 PM - Noche)</option>
+              </select>
+              <span class="field-hint">Inicio de emisión permitida</span>
+            </div>
+            <div class="form-group">
+              <label for="fHoraFin">Hora permitida hasta</label>
+              <select id="fHoraFin">
+                <option value="">Auto (según Rubro)</option>
+                <option value="9">09:00 (9 AM - Desayuno)</option>
+                <option value="14">14:00 (2 PM - Almuerzo)</option>
+                <option value="18">18:00 (6 PM - Oficina)</option>
+                <option value="22">22:00 (10 PM - Noche)</option>
+                <option value="2">02:00 (2 AM - Madrugada)</option>
+                <option value="23">23:00 (11 PM - Cierre)</option>
+              </select>
+              <span class="field-hint">Fin de emisión permitida</span>
+            </div>
+          </div>
+
 
           <!-- Notas -->
           <div class="form-group">

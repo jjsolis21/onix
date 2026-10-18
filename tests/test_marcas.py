@@ -6,6 +6,7 @@ import sqlite3
 import struct
 import wave
 
+from backend.database import get_connection
 import pytest
 
 from backend.audio import marcas
@@ -56,7 +57,7 @@ def test_detecta_inicio_y_mezcla_en_un_fade(tmp_path):
 def test_procesa_la_musica_y_respeta_las_marcas_a_mano(tmp_db, tmp_path):
     a = cancion(tmp_path / "a.wav")
     b, c = shutil.copy(a, tmp_path / "b.wav"), shutil.copy(a, tmp_path / "c.wav")
-    conn = sqlite3.connect(tmp_db)
+    conn = get_connection(tmp_db)
     auto = conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio) VALUES"
                         " ('AUTO', 'X', ?, 'Musica')", (str(a),)).lastrowid
     mano = conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, cue_mezcla) VALUES"
@@ -82,7 +83,7 @@ def test_mover_la_mezcla_a_mano_la_protege(tmp_path):
             aid = c.post("/api/v1/audios", data={"titulo": "MARCAS", "artista": "Y"},
                          files={"file": ("x.wav", fh, "audio/wav")}).json()["data"]["id"]
         from backend.paths import DB_PATH
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_connection(DB_PATH)
         conn.execute("UPDATE audios SET cue_mezcla = 2.5, marcas_auto = 1 WHERE id = ?", (aid,))
         conn.commit()
         c.put(f"/api/v1/audios/{aid}", json={"titulo": "MARCAS", "cue_mezcla": 2.5})   # igual: sigue auto

@@ -46,7 +46,7 @@ METHODS = {
     "status", "play_track", "play_next", "queue_track", "clear_queue", "skip",
     "stop_playback", "fire_effect", "set_mode", "reload_config",
     "lanzar_tanda", "cue_play", "cue_stop", "list_devices",
-    "programa", "plan_quitar", "plan_mover", "plan_regenerar",
+    "programa", "plan_quitar", "plan_mover", "plan_regenerar", "plan_recalcular",
     "plan_insertar", "detener_al_terminar", "seek", "pausar",
     "cola_mover", "cola_quitar", "plan_a_cola",
 }
@@ -207,12 +207,20 @@ class EngineServer:
 
 
 def main():
-    from init_db import initialize_database
     from backend.audio.audio_engine import engine
-    from backend.paths import DB_PATH
+    from backend.database import engine as db_engine
+    from sqlalchemy import text
 
-    initialize_database(str(DB_PATH))     # el motor puede arrancar antes que la API
+    # Validar conexión a MariaDB mediante SQLAlchemy
+    try:
+        with db_engine.connect() as db_conn:
+            db_conn.execute(text("SELECT 1"))
+        log.info("[Servicio] Conexión a MariaDB verificada exitosamente con SQLAlchemy.")
+    except Exception as exc:
+        log.warning(f"[Servicio] Alerta al conectar con MariaDB: {exc}")
+
     engine.start()
+
     server = EngineServer(engine)
     try:
         server.start()

@@ -152,11 +152,12 @@ class NormalizadorWorker:
         """Mide los pendientes (todos, o hasta `limite`). Devuelve cuántos procesó."""
         if not self.ffmpeg:
             return 0
+        from backend.database import get_connection
         hechos = 0
         while True:
             if self._thread and not self._running:   # apagando
                 break
-            conn = sqlite3.connect(self.db_path, timeout=10)
+            conn = get_connection()
             try:
                 row = conn.execute(
                     "SELECT id, archivo_path FROM audios"
@@ -169,7 +170,7 @@ class NormalizadorWorker:
             audio_id, archivo = row
             path = self.resolve(archivo)
             res = medir(path, self.ffmpeg) if path.is_file() else None
-            conn = sqlite3.connect(self.db_path, timeout=10)
+            conn = get_connection()
             try:
                 conn.execute(
                     "UPDATE audios SET loudness_lufs = ?, pico_db = ?, loudness_estado = ?"

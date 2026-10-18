@@ -5,6 +5,7 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,7 +21,7 @@ def client():
 
 
 def db():
-    conn = sqlite3.connect(os.environ["RADIO_DB_PATH"])
+    conn = get_connection(os.environ["RADIO_DB_PATH"])
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -195,7 +196,7 @@ def test_pautas_en_riesgo_cuando_no_alcanzan_las_horas(tmp_db):
     import json, sqlite3
     from datetime import datetime
     from backend.api.reportes import pautas_en_riesgo
-    conn = sqlite3.connect(tmp_db)
+    conn = get_connection(tmp_db)
     conn.row_factory = sqlite3.Row
     aid = conn.execute("INSERT INTO audios (titulo, artista, archivo_path) VALUES ('c','a','c.wav')").lastrowid
     # Lunes 12/10/2026: marcada a las 8, 12 y 18, 3 por día
@@ -219,7 +220,7 @@ def test_analisis_por_hora_y_artistas(client):
     import sqlite3
     from datetime import datetime
     from backend.paths import DB_PATH
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     hora = datetime.now().replace(minute=1, second=0).strftime("%Y-%m-%d %H:%M:%S")
     for _ in range(3):
         conn.execute("INSERT INTO historial_emision (titulo, artista, tipo, iniciado_en) VALUES ('t', 'SOLIS', 'musica', ?)", (hora,))
@@ -243,7 +244,7 @@ def test_rotacion_y_quemadas(client):
     import sqlite3
     from datetime import datetime
     from backend.paths import DB_PATH
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     ids = [conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, categoria, aprobada)"
                         " VALUES (?, 'X', ?, 'Musica', 'ROTQ', 1)", (f"q{i}", f"q{i}.mp3")).lastrowid for i in range(5)]
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -262,7 +263,7 @@ def test_rotacion_y_quemadas(client):
 def test_dia_al_aire_por_hora(client):
     import sqlite3
     from backend.paths import DB_PATH
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     conn.execute("INSERT INTO historial_emision (titulo, artista, tipo, iniciado_en) VALUES ('Uno', 'A', 'musica', '2026-03-03 15:05:00')")
     conn.execute("INSERT INTO historial_emision (titulo, tipo, pauta_id, iniciado_en) VALUES ('Cuña', 'pauta', 999, '2026-03-03 15:50:00')")
     conn.commit()
@@ -306,7 +307,7 @@ def test_certificado_dice_que_version_salio(client, tmp_path):
     r = client.post("/api/v1/pautas", json={"cliente": "tienda versiones", "audio_id": a, "versiones": [b],
                                              "audio_nombre": "Ver A", "matriz": {"1-10": True}})
     pid = r.json()["id"]
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     hoy = datetime.now().strftime("%Y-%m-%d")
     for aid, hora in ((a, "09:00:00"), (b, "10:00:00"), (b, "11:00:00")):
         conn.execute("INSERT INTO historial_emision (audio_id, titulo, tipo, pauta_id, iniciado_en) VALUES (?, 'x', 'pauta', ?, ?)",
@@ -315,3 +316,61 @@ def test_certificado_dice_que_version_salio(client, tmp_path):
     conn.close()
     html = client.get("/api/v1/reportes/certificado", params={"cliente": "TIENDA VERSIONES", "desde": hoy, "hasta": hoy}).text
     assert "Versión" in html and "09:00<sup>A</sup>" in html and "10:00<sup>B</sup>" in html
+
+
+def test_filtros_categorias_y_top40_avanzado(client):
+    conn = db()
+    # Insertar audio identificador y música con categoría.
+    # NOTA sobre el esquema real de la DB:
+    #   a.subgenero → Género musical (SALSA, MERENGUE, POP…)
+    #   a.categoria → Rotación       (Clásico, Reciente, Éxito…)
+    jingle = conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, categoria_ident)"
+                          " VALUES ('JINGLE SOLIS', 'ONIX', 'jingle.mp3', 'Efecto', 'ID de emisora')").lastrowid
+    sweeper = conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, categoria_ident)"
+                           " VALUES ('SWEEPER INTRO', 'ONIX', 'sweep.mp3', 'Sweeper', 'Entrada de programa')").lastrowid
+    # subgenero = género musical (Salsa), categoria = rotación (Exito)
+    salsa = conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, subgenero, categoria)"
+                         " VALUES ('SALSA TOP', 'GRUPO NICHE', 'salsa.mp3', 'Musica', 'Salsa', 'Exito')").lastrowid
+    conn.commit()
+    conn.close()
+    ahora = datetime.now()
+    emitir(jingle, ahora, tipo="efecto", titulo="JINGLE SOLIS")
+    emitir(sweeper, ahora - timedelta(minutes=5), tipo="sweeper", titulo="SWEEPER INTRO")
+    emitir(salsa, ahora - timedelta(minutes=10), tipo="musica", titulo="SALSA TOP")
+
+    # 1. Endpoint filtros-categorias
+    fc = client.get("/api/v1/stats/filtros-categorias").json()
+    assert "musica" in fc and "ident" in fc and "pauta" in fc
+    # "Salsa" debe aparecer en GÉNEROS (a.subgenero)
+    assert any("Salsa" in g for g in fc["musica"]["generos"]), \
+        f"Salsa no encontrado en géneros: {fc['musica']['generos']}"
+    # "Exito" debe aparecer en ROTACIONES (a.categoria) — comparar sin distinción de mayúsculas
+    assert any("exito" in r.lower() for r in fc["musica"]["rotaciones"]), \
+        f"Exito no encontrado en rotaciones: {fc['musica']['rotaciones']}"
+    assert any("ID de emisora" in c for c in fc["ident"]["categorias"])
+
+    # 2. Top identificadores
+    top_ident = client.get("/api/v1/stats/top40", params={"period": "day", "tipo": "ident"}).json()
+    ids_ident = [x["id"] for x in top_ident]
+    assert jingle in ids_ident and sweeper in ids_ident and salsa not in ids_ident
+
+    # 3. Top identificadores filtrado por subtipo Efecto
+    top_efecto = client.get("/api/v1/stats/top40", params={"period": "day", "tipo": "ident", "subtipo": "Efecto"}).json()
+    ids_efecto = [x["id"] for x in top_efecto]
+    assert jingle in ids_efecto and sweeper not in ids_efecto
+
+    # 4. Top música filtrado por género (busca por subgenero='Salsa')
+    top_salsa = client.get("/api/v1/stats/top40", params={"period": "day", "tipo": "musica", "categoria": "genero:Salsa"}).json()
+    ids_salsa = [x["id"] for x in top_salsa]
+    assert salsa in ids_salsa and jingle not in ids_salsa
+
+    # 5. Top música filtrado por rotación (busca por categoria='Exito')
+    top_exito = client.get("/api/v1/stats/top40", params={"period": "day", "tipo": "musica", "categoria": "rotacion:Exito"}).json()
+    ids_exito = [x["id"] for x in top_exito]
+    assert salsa in ids_exito
+
+    # 6. Exportar CSV
+    csv_resp = client.get("/api/v1/stats/top40", params={"period": "day", "tipo": "ident", "formato": "csv"})
+    assert csv_resp.status_code == 200
+    assert "JINGLE SOLIS" in csv_resp.text
+

@@ -1,6 +1,6 @@
-"""Respaldo automático de la base de datos."""
+"""Respaldo automático de la base de datos (MariaDB, volcado .sql.gz)."""
 
-import sqlite3
+import gzip
 from pathlib import Path
 
 import pytest
@@ -19,12 +19,21 @@ def test_respaldar_ahora_crea_una_copia_valida(client):
     assert r.status_code == 201, r.text
     info = client.get("/api/v1/respaldos").json()
     copia = Path(info["carpeta"]) / r.json()["archivo"]
+    assert copia.name.endswith(".sql.gz")
     assert info["copias"][0]["archivo"] == copia.name
-    conn = sqlite3.connect(copia)
-    assert conn.execute("SELECT COUNT(*) FROM config").fetchone()[0] > 0      # trae los datos
-    conn.close()
+    texto = gzip.open(copia, "rt", encoding="utf-8").read()
+    assert "CREATE TABLE `config`" in texto and "INSERT INTO `config`" in texto          # trae esquema y datos
+    assert "-- ONIX-FIN" in texto                                                        # y el cierre
     d = client.get(f"/api/v1/respaldos/{copia.name}")
-    assert d.status_code == 200 and d.content[:15] == b"SQLite format 3"
+    assert d.status_code == 200 and d.content[:2] == b"\x1f\x8b"                         # gzip
+
+
+def test_el_respaldo_incluye_los_triggers_y_no_las_tablas_auxiliares(client):
+    nombre = client.post("/api/v1/respaldos").json()["archivo"]
+    carpeta = Path(client.get("/api/v1/respaldos").json()["carpeta"])
+    texto = gzip.open(carpeta / nombre, "rt", encoding="utf-8").read()
+    assert "trg_audios_busq_ins" in texto            # sin el trigger la búsqueda de la biblioteca dejaría de funcionar
+    assert "_viejo_aid" not in texto and "_respaldo_aid" not in texto
 
 
 def test_conserva_solo_las_mas_nuevas(client):
@@ -40,7 +49,7 @@ def test_carpeta_propia_y_validaciones(client, tmp_path):
     r = client.put("/api/v1/respaldos/config", json={"carpeta": str(destino)})
     assert r.status_code == 200 and Path(r.json()["carpeta"]) == destino and r.json()["personalizada"]
     assert client.post("/api/v1/respaldos").status_code == 201
-    assert any(destino.glob("onix-*.db"))
+    assert any(destino.glob("onix-*.sql.gz"))
     assert client.put("/api/v1/respaldos/config", json={"carpeta": "relativa/no"}).status_code == 422
     client.put("/api/v1/respaldos/config", json={"carpeta": ""})              # vuelve a la de ONIX
 
@@ -48,6 +57,7 @@ def test_carpeta_propia_y_validaciones(client, tmp_path):
 def test_nombres_raros_no_se_descargan(client):
     assert client.get("/api/v1/respaldos/..%2Fapi.db").status_code == 404
     assert client.get("/api/v1/respaldos/api.db").status_code == 404
+    assert client.get("/api/v1/respaldos/onix-2026-01-01_0000.sql.gz").status_code == 404      # no existe
 
 
 def test_respaldo_automatico_solo_si_el_ultimo_es_viejo(client):

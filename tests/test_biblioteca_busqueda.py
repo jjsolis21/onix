@@ -1,5 +1,6 @@
 """Búsqueda y conteos de la biblioteca para el Studio (decenas de miles de archivos)."""
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -44,7 +45,7 @@ def test_busq_se_mantiene_sola_al_editar_y_aguanta_comodines(client, tmp_path):
     import sqlite3
     from backend.paths import DB_PATH
     aid = subir(client, tmp_path, "Nombre Original")
-    con = sqlite3.connect(DB_PATH)
+    con = get_connection(DB_PATH)
     con.execute("UPDATE audios SET titulo = 'Corazón 100% Ñoño', artista = 'Otro' WHERE id = ?", (aid,))
     con.commit(); con.close()
     def hallar(texto):

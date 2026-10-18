@@ -28,14 +28,7 @@ router = APIRouter(tags=["Identificadores"])
 TIPOS = ("Efecto", "Sweeper", "Tips")          # Efecto = Jingles
 
 
-def get_db():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+from backend.database import get_db
 
 
 def _tipo(valor: str) -> str:
@@ -123,7 +116,7 @@ def editar(cid: int, body: CategoriaIn, conn: sqlite3.Connection = Depends(get_d
         conn.execute("UPDATE audios SET categoria_ident = ? WHERE tipo_audio = ? AND UPPER(COALESCE(categoria_ident, '')) = UPPER(?)",
                      (nombre, c["tipo_audio"], c["nombre"]))
         conn.execute("UPDATE reloj_filas SET filtros = json_set(filtros, '$.ident', UPPER(?)) "
-                     "WHERE tipo_audio = ? AND UPPER(COALESCE(json_extract(filtros, '$.ident'), '')) = UPPER(?)",
+                     "WHERE tipo_audio = ? AND UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(filtros, '$.ident')), '')) = UPPER(?)",
                      (nombre, c["tipo_audio"], c["nombre"]))
     return {"id": cid, "nombre": nombre, "comentario": comentario}
 

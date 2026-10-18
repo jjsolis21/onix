@@ -707,3 +707,13 @@ kbd {
 .cart-pag button.act { background: var(--ambar); color: var(--bg-0); border-color: var(--ambar); font-weight: 600; }
 .cart-pag small { flex-basis: 100%; text-align: center; color: var(--txt-lo); font-size: 10px; letter-spacing: .04em; }
 
+
+/* Cuñas de una tanda desplegada en el plan */
+.deck .tg { cursor: pointer; display: inline-block; width: 16px; color: var(--ambar); }
+.tanda-cunas { margin: -2px 0 6px 18px; padding: 4px 8px; border-left: 2px solid var(--rojo); background: rgba(174, 32, 18, .12); }
+.tc { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 8px; align-items: baseline; font-size: 13px; padding: 2px 0; color: var(--txt-mid); }
+.tc-n { font-family: var(--f-data); color: var(--ambar); }
+.tc-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt-hi); }
+.tc-t i { color: var(--txt-lo); font-style: normal; margin-left: 4px; }
+.tc-d { font-family: var(--f-data); font-size: 12px; text-align: right; }
+.tc-vacio { font-size: 12px; color: var(--txt-lo); }

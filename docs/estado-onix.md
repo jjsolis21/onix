@@ -110,5 +110,17 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 4. Página de salud y prueba de 72 h seguidas (lo último antes de publicar).
 5. Voice tracking de días futuros: hoy el programa vive en memoria unas horas; hace falta guardar la programación diaria.
 6. Opcionales: análisis por lote en segundo plano; icono propio para Identificadores.
+7. **Chequeo de integridad de los archivos (PENDIENTE, lo pidió el dueño):** revisar los audios y decir cuál está
+   corrupto, dañado, no suena o se borró. Debe notificar cada caso (no solo contar). Pendiente de diseñar y construir.
+9. **RESPALDOS (PRIORIDAD ALTA):** `backend/api/respaldos.py` copia con `sqlite3.connect(DB_PATH)` el archivo SQLite VIEJO, no MariaDB.
+   El respaldo diario hoy no protege los datos reales. Hace falta respaldar `onix_db` (volcado en Python o `mysqldump`) y
+   su restauración (`scripts/restaurar_respaldo.py`, `backend/api/locutor.py:528` exportación). Hasta entonces: respaldo manual de MariaDB.
+10. Migración SQLite→MariaDB, lo que faltaba (corregido 2026-10-18): ids sin AUTO_INCREMENT, triggers de `audios.busq`,
+    `julianday`/`rowid`, `datetime('now', ?)` del Locutor, `%` y `ESCAPE '\\'` en el adaptador. Todo nuevo esquema va en
+    `backend/migraciones_maria.py` (corre al arrancar la API), NO en `scripts/init_db.py` (solo migra el SQLite histórico).
+    Conexiones ahora en READ COMMITTED (antes REPEATABLE READ: lecturas viejas entre PCs).
+8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — PENDIENTE:** se programa en el reloj; también en la
+   biblioteca de Studio para modo manual. Sobre intro: al inicio del intro o al final del intro (intro 20 s, tip 7 s ⇒ empieza a los 13 s).
+   Puente: el tip se reparte entre las dos canciones (tip 8 s ⇒ 4 s en la canción que sale y 4 s en la que entra).
 
 Estimación honesta para publicar: ~60–65 %. Lo que falta es lo que decide si aguanta 24/7 (prueba de 72 h, encoder, salud).

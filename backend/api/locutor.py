@@ -524,13 +524,14 @@ def importar(b: ImportarIn):
     if not origen.is_file():
         raise HTTPException(status_code=404, detail=f"No existe el archivo {origen}")
     RESPALDOS_BD_DIR.mkdir(parents=True, exist_ok=True)
-    copia = RESPALDOS_BD_DIR / f"radio_core.antes-locutor-{datetime.now():%Y%m%d-%H%M%S}.db"
-    src, dst = sqlite3.connect(DB_PATH), sqlite3.connect(copia)
+    # Copia de seguridad de la base real (MariaDB) antes de reemplazar nada
+    from backend.respaldo_maria import verificar, volcar
+    copia = RESPALDOS_BD_DIR / f"antes-locutor-{datetime.now():%Y%m%d-%H%M%S}.sql.gz"
     try:
-        src.backup(dst)
-    finally:
-        dst.close()
-        src.close()
+        volcar(copia)
+        verificar(copia)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"No se pudo hacer la copia previa; no se importó nada: {exc}")
     c = _c()
     try:
         try:

@@ -161,8 +161,8 @@ def generar_texto(prompt: str, sistema: str = "", db_path: str = DB_PATH) -> dic
     Devuelve {"texto", "clave_id", "proveedor", "intentos": [{"id","nombre","error"}]} con la primera
     clave que responda. Las que fallaron hace poco se saltan, salvo que no quede otra.
     """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    from backend.database import get_connection
+    conn = get_connection()
     try:
         claves = [dict(r) for r in conn.execute(
             "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor NOT IN ('fish') ORDER BY orden, id")]
@@ -276,8 +276,8 @@ def generar_voz(texto: str, voz: str = "", estilo: str = "", db_path: str = DB_P
     Texto → WAV con la primera clave con voz que responda (Gemini u OpenAI), en el orden de la sección IA.
     Devuelve {"wav": bytes, "proveedor", "clave_id", "intentos"}. Sin ninguna: IAError.
     """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    from backend.database import get_connection
+    conn = get_connection()
     try:
         claves = [dict(r) for r in conn.execute(
             "SELECT * FROM ia_claves WHERE activo = 1 AND proveedor IN ('gemini', 'openai', 'fish') ORDER BY orden, id")]

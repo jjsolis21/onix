@@ -1,0 +1,506 @@
+/* ==========================================================================
+   ÓNIX FM — ESTILO PRO MODERNO 2026 (UI & NOTIFICACIONES ULTRA-CLEAN)
+   ========================================================================== */
+
+/* ── CONTENEDOR FLOTANTE DE NOTIFICACIONES TOAST ────────────────────────── */
+.jz-toasts {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  z-index: 100000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  pointer-events: none !important;
+  max-width: 440px !important;
+  width: calc(100vw - 48px) !important;
+}
+
+/* ── TARJETA TOAST PRO 2026 ────────────────────────────────────────────── */
+.onix-toast-2026 {
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  background: rgba(14, 20, 32, 0.90) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7),
+              0 0 1px 1px rgba(255, 255, 255, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  padding: 14px 18px 16px 18px !important;
+  display: grid !important;
+  grid-template-columns: auto 1fr auto !important;
+  align-items: flex-start !important;
+  gap: 14px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  color: #f1f5f9 !important;
+  animation: onix-toast-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  transition: transform 0.25s ease, opacity 0.25s ease !important;
+}
+
+.onix-toast-2026.onix-toast--closing {
+  transform: translateX(110%) scale(0.95) !important;
+  opacity: 0 !important;
+}
+
+@keyframes onix-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Tipos y variantes de color */
+.onix-toast--success {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 24px rgba(16, 185, 129, 0.22) !important;
+}
+.onix-toast--success .onix-toast__icon {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+.onix-toast--success .onix-toast__progress {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  box-shadow: 0 0 8px #10b981;
+}
+
+.onix-toast--error {
+  border-color: rgba(239, 68, 68, 0.45) !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 24px rgba(239, 68, 68, 0.25) !important;
+}
+.onix-toast--error .onix-toast__icon {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.onix-toast--error .onix-toast__progress {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.onix-toast--warning {
+  border-color: rgba(245, 158, 11, 0.45) !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 24px rgba(245, 158, 11, 0.22) !important;
+}
+.onix-toast--warning .onix-toast__icon {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.onix-toast--warning .onix-toast__progress {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.onix-toast--info {
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 24px rgba(56, 189, 248, 0.2) !important;
+}
+.onix-toast--info .onix-toast__icon {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+.onix-toast--info .onix-toast__progress {
+  background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+  box-shadow: 0 0 8px #38bdf8;
+}
+
+/* Ícono moderno con badge */
+.onix-toast__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.onix-toast__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Texto y contenido */
+.onix-toast__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.onix-toast__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #ffffff;
+}
+.onix-toast__msg {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #cbd5e1;
+  word-break: break-word;
+}
+
+/* Botón cerrar */
+.onix-toast__close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-top: -2px;
+  margin-right: -4px;
+}
+.onix-toast__close:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Barra de progreso interactiva */
+.onix-toast__bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.onix-toast__progress {
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  animation: onix-toast-timer 4s linear forwards;
+}
+
+@keyframes onix-toast-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ── MODAL PRO 2026 RESOLUCIÓN DE CATEGORÍAS ────────────────────────────── */
+.onix-modal-pro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(4, 8, 16, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: onix-modal-fade 0.25s ease-out;
+}
+
+@keyframes onix-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.onix-modal-pro-card {
+  width: 100%;
+  max-width: 520px;
+  background: linear-gradient(145deg, rgba(22, 30, 48, 0.98), rgba(12, 17, 29, 0.99));
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 18px;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.8),
+              0 0 1px 1px rgba(255, 255, 255, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: onix-modal-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #f1f5f9;
+}
+
+@keyframes onix-modal-pop {
+  from { transform: scale(0.92) translateY(12px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.onix-modal-pro__header {
+  padding: 20px 24px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  position: relative;
+}
+
+.onix-modal-pro__icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+  flex-shrink: 0;
+}
+
+.onix-modal-pro__icon-badge--danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+}
+
+.onix-modal-pro__titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.onix-modal-pro__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #ffffff;
+}
+
+.onix-modal-pro__subtitle {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+.onix-modal-pro__close {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.onix-modal-pro__close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.onix-modal-pro__body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Badge de recuento de canciones */
+.onix-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: #fde68a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.onix-count-badge .onix-count-num {
+  background: #f59e0b;
+  color: #0f172a;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+/* Ejemplos de canciones */
+.onix-songs-preview {
+  background: rgba(10, 15, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.onix-songs-preview__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.onix-songs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.onix-song-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: #e2e8f0;
+  font-size: 11.5px;
+  white-space: nowrap;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tarjetas de opciones de resolución */
+.onix-resolve-card {
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 22, 38, 0.6);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onix-resolve-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(15, 22, 38, 0.85);
+}
+.onix-resolve-card.active {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.08);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15), inset 0 0 1px 1px rgba(56, 189, 248, 0.2);
+}
+
+.onix-resolve-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.onix-radio-custom {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+.onix-resolve-card.active .onix-radio-custom {
+  border-color: #38bdf8;
+}
+.onix-radio-custom::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.onix-resolve-card.active .onix-radio-custom::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.onix-resolve-card__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.onix-resolve-card__desc {
+  font-size: 12px;
+  color: #94a3b8;
+  padding-left: 30px;
+  line-height: 1.4;
+}
+
+.onix-resolve-select {
+  margin-top: 4px;
+  margin-left: 30px;
+  width: calc(100% - 30px);
+  background: #090e17;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.onix-resolve-select:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+/* Footer del modal */
+.onix-modal-pro__footer {
+  padding: 16px 24px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.onix-pro-btn {
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+}
+
+.onix-pro-btn--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+.onix-pro-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.onix-pro-btn--danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #ffffff;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+}
+.onix-pro-btn--danger:hover {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+  transform: translateY(-1px);
+}
+.onix-pro-btn--danger:active {
+  transform: translateY(0);
+}

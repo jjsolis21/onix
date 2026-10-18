@@ -2,6 +2,7 @@
 
 import sqlite3
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,7 +18,7 @@ def client():
 
 
 def _db():
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     c.row_factory = sqlite3.Row
     return c
 

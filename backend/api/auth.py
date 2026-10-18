@@ -47,7 +47,7 @@ from backend.paths import DB_PATH
 
 router = APIRouter(tags=["Usuarios"])
 
-ROLES = ("admin", "programacion", "operador")
+ROLES = ("admin", "programacion", "operador", "consulta")   # consulta = solo mira (jefe de grabación, director)
 COOKIE = "onix_sesion"
 DURACION_SESION = timedelta(days=14)
 ITERACIONES = 200_000
@@ -62,9 +62,8 @@ LIBRES = ("/login", "/api/v1/auth/login", "/api/v1/health", "/static/login/", "/
 
 
 def _conn():
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    from backend.database import get_connection
+    return get_connection()
 
 
 def hash_clave(clave: str, sal: Optional[bytes] = None) -> str:
@@ -121,6 +120,9 @@ _SISTEMA = re.compile(r"^/api/v1/(usuarios|respaldos|audio/|config/motor|ia/|tan
 def permiso(rol: str, metodo: str, ruta: str) -> bool:
     if rol == "admin":
         return True
+    if rol == "consulta":
+        # Solo lectura: ve el programa, la biblioteca y los reportes; no cambia nada
+        return metodo in ("GET", "HEAD", "OPTIONS") and not ruta.startswith(("/api/v1/usuarios", "/api/v1/ia/"))
     if ruta == "/" or ruta.startswith("/studio"):
         return rol == "operador"                 # el Studio opera el aire
     if ruta.startswith("/admin"):

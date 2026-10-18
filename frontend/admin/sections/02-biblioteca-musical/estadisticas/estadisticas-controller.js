@@ -39,7 +39,7 @@
   // ──────────────────────────────────────────────────────────
 
   const STATE = {
-    period: 'day',      // Período activo: day | week | month
+    period: 'week',     // Período activo: day | yesterday | week | month | custom
     top40All: [],         // Todos los ítems del Top 40 (cache)
     top40Filtered: [],         // Después de aplicar búsqueda
     top40Page: 1,          // Paginación del Top 40
@@ -53,6 +53,7 @@
     clickTimer: null,       // Timer para distinguir 1 clic de 2 clics
     waveformData: [],         // Datos generados para el waveform
     abortController: null,       // Para cancelar fetches en vuelo
+    previewPlayingId: null,    // ID del audio que se está preescuchando inline
   };
 
   // ──────────────────────────────────────────────────────────
@@ -67,20 +68,38 @@
       // Filtros de período
       periodBtns: document.querySelectorAll('.stats-period-btn'),
       periodSlider: document.querySelector('.stats-period-slider'),
+      btnPeriodCustom: document.getElementById('btn-period-custom'),
+      customRange: document.getElementById('stats-custom-range'),
+      fechaDesde: document.getElementById('stats-fecha-desde'),
+      fechaHasta: document.getElementById('stats-fecha-hasta'),
+      btnAplicarRango: document.getElementById('btn-aplicar-rango'),
 
       // Búsqueda
       searchInput: document.getElementById('stats-search-input'),
       searchCount: document.getElementById('stats-search-count'),
 
-      // Top 40
+      // Top Reproducidos y controles
       top40List: document.getElementById('top40-list'),
       top40PeriodLabel: document.getElementById('top40-period-label'),
       top40CountLabel: document.getElementById('top40-count-label'),
+      top40Tipo: document.getElementById('top40-tipo'),
+      top40Genero: document.getElementById('top40-genero'),
+      top40Rotacion: document.getElementById('top40-rotacion'),
+      wrapTop40Genero: document.getElementById('wrap-top40-genero'),
+      wrapTop40Rotacion: document.getElementById('wrap-top40-rotacion'),
+      labelTop40Genero: document.getElementById('label-top40-genero'),
+      labelTop40Rotacion: document.getElementById('label-top40-rotacion'),
+      top40Cat: document.getElementById('top40-genero') || document.getElementById('top40-categoria'),
+      top40Limit: document.getElementById('top40-limit'),
+      topBadgeNum: document.getElementById('top-badge-num'),
+      btnExportTop: document.getElementById('btn-export-top'),
       btnLoadMore: document.getElementById('btn-load-more'),
 
       // Reporte de olvido
       forgottenList: document.getElementById('forgotten-list'),
       forgottenCount: document.getElementById('forgotten-count'),
+      forgottenDias: document.getElementById('forgotten-dias'),
+      forgottenSubtitle: document.getElementById('forgotten-subtitle'),
       btnExportForgotten: document.getElementById('btn-export-forgotten'),
 
       // Modal de auditoría
@@ -216,11 +235,168 @@
     if (typeof global.toast === 'function') global.toast(`Estadísticas: ${err.message}`, 'error');
   }
 
-  /** Carga el Top 40 para el período activo. */
+  // ──────────────────────────────────────────────────────────
+  //  CATEGORÍAS Y FILTROS DINÁMICOS
+  // ──────────────────────────────────────────────────────────
+
+  let CATEGORIES_CACHE = null;
+
+  async function loadCategories() {
+    if (!CATEGORIES_CACHE) {
+      try {
+        CATEGORIES_CACHE = await apiFetch('/filtros-categorias');
+      } catch (err) {
+        console.warn('[EstadisticasModule] Error al cargar filtros-categorias:', err);
+        CATEGORIES_CACHE = {
+          musica: { generos: [], rotaciones: [] },
+          ident: { tipos: [], categorias: [] },
+          pauta: { clientes: [] },
+        };
+      }
+    }
+    populateCategoryDropdown();
+  }
+
+  function populateCategoryDropdown() {
+    const selGen = DOM.top40Genero || DOM.top40Cat;
+    const selRot = DOM.top40Rotacion;
+    if (!selGen && !selRot) return;
+
+    const tipo = DOM.top40Tipo?.value || 'musica';
+    const valorPrevioGen = selGen ? selGen.value : '';
+    const valorPrevioRot = selRot ? selRot.value : '';
+
+    if (selGen) selGen.innerHTML = '';
+    if (selRot) selRot.innerHTML = '';
+
+    if (tipo === 'musica') {
+      // 1. Desplegable de Géneros
+      if (DOM.wrapTop40Genero) DOM.wrapTop40Genero.style.display = 'flex';
+      if (DOM.labelTop40Genero) DOM.labelTop40Genero.textContent = 'Género';
+      if (selGen) {
+        selGen.style.display = '';
+        selGen.title = 'Filtrar por género musical';
+        selGen.appendChild(new Option('Géneros', ''));
+        const generos = CATEGORIES_CACHE?.musica?.generos || [];
+        generos.forEach(g => {
+          selGen.appendChild(new Option(g, g));
+        });
+        if (valorPrevioGen && Array.from(selGen.options).some(o => o.value === valorPrevioGen)) {
+          selGen.value = valorPrevioGen;
+        } else {
+          selGen.value = '';
+        }
+      }
+
+      // 2. Desplegable de Rotaciones
+      if (DOM.wrapTop40Rotacion) DOM.wrapTop40Rotacion.style.display = 'flex';
+      if (DOM.labelTop40Rotacion) DOM.labelTop40Rotacion.textContent = 'Rotación';
+      if (selRot) {
+        selRot.style.display = '';
+        selRot.title = 'Filtrar por rotación';
+        selRot.appendChild(new Option('Rotaciones', ''));
+        const rotaciones = CATEGORIES_CACHE?.musica?.rotaciones || [];
+        rotaciones.forEach(r => {
+          selRot.appendChild(new Option(r, r));
+        });
+        if (valorPrevioRot && Array.from(selRot.options).some(o => o.value === valorPrevioRot)) {
+          selRot.value = valorPrevioRot;
+        } else {
+          selRot.value = '';
+        }
+      }
+
+    } else if (tipo === 'ident') {
+      // 1. Desplegable de Tipo
+      if (DOM.wrapTop40Genero) DOM.wrapTop40Genero.style.display = 'flex';
+      if (DOM.labelTop40Genero) DOM.labelTop40Genero.textContent = 'Tipo';
+      if (selGen) {
+        selGen.style.display = '';
+        selGen.title = 'Filtrar por tipo de identificador';
+        selGen.appendChild(new Option('Identificadores', ''));
+        const tipos = CATEGORIES_CACHE?.ident?.tipos || [];
+        tipos.forEach(t => {
+          selGen.appendChild(new Option(t.nombre, t.id));
+        });
+        if (valorPrevioGen && Array.from(selGen.options).some(o => o.value === valorPrevioGen)) {
+          selGen.value = valorPrevioGen;
+        } else {
+          selGen.value = '';
+        }
+      }
+
+      // 2. Desplegable de Categorías de estación
+      if (DOM.wrapTop40Rotacion) DOM.wrapTop40Rotacion.style.display = 'flex';
+      if (DOM.labelTop40Rotacion) DOM.labelTop40Rotacion.textContent = 'Categoría';
+      if (selRot) {
+        selRot.style.display = '';
+        selRot.title = 'Filtrar por categoría';
+        selRot.appendChild(new Option('Categorías', ''));
+        const cats = CATEGORIES_CACHE?.ident?.categorias || [];
+        cats.forEach(c => {
+          selRot.appendChild(new Option(c, c));
+        });
+        if (valorPrevioRot && Array.from(selRot.options).some(o => o.value === valorPrevioRot)) {
+          selRot.value = valorPrevioRot;
+        } else {
+          selRot.value = '';
+        }
+      }
+
+    } else if (tipo === 'pauta') {
+      // 1. Desplegable de Clientes
+      if (DOM.wrapTop40Genero) DOM.wrapTop40Genero.style.display = 'flex';
+      if (DOM.labelTop40Genero) DOM.labelTop40Genero.textContent = 'Cliente';
+      if (selGen) {
+        selGen.style.display = '';
+        selGen.title = 'Filtrar por cliente';
+        selGen.appendChild(new Option('Clientes', ''));
+        const clientes = CATEGORIES_CACHE?.pauta?.clientes || [];
+        clientes.forEach(c => {
+          selGen.appendChild(new Option(c, c));
+        });
+        if (valorPrevioGen && Array.from(selGen.options).some(o => o.value === valorPrevioGen)) {
+          selGen.value = valorPrevioGen;
+        } else {
+          selGen.value = '';
+        }
+      }
+
+
+      if (DOM.wrapTop40Rotacion) DOM.wrapTop40Rotacion.style.display = 'none';
+      if (selRot) selRot.style.display = 'none';
+
+    } else {
+      // Tipo 'todo'
+      if (DOM.wrapTop40Genero) DOM.wrapTop40Genero.style.display = 'none';
+      if (DOM.wrapTop40Rotacion) DOM.wrapTop40Rotacion.style.display = 'none';
+      if (selGen) selGen.style.display = 'none';
+      if (selRot) selRot.style.display = 'none';
+    }
+  }
+
+  /** Carga el Top para el período activo y los filtros seleccionados. */
   async function fetchTop40(period) {
     try {
-      const tipo = document.getElementById('top40-tipo')?.value || 'musica';
-      return await apiFetch(`/top40?period=${period}&tipo=${tipo}`);
+      const tipo = DOM.top40Tipo?.value || 'musica';
+      const genero = (DOM.top40Genero || DOM.top40Cat)?.value || '';
+      const rotacion = DOM.top40Rotacion?.value || '';
+      const limit = DOM.top40Limit?.value || '40';
+
+      let q = `/top40?period=${encodeURIComponent(period)}&tipo=${encodeURIComponent(tipo)}&limit=${encodeURIComponent(limit)}`;
+      if (genero) {
+        q += `&genero=${encodeURIComponent(genero)}`;
+      }
+      if (rotacion) {
+        q += `&rotacion=${encodeURIComponent(rotacion)}`;
+      }
+      if (period === 'custom') {
+        const d = DOM.fechaDesde?.value;
+        const h = DOM.fechaHasta?.value;
+        if (d) q += `&desde=${encodeURIComponent(d)}`;
+        if (h) q += `&hasta=${encodeURIComponent(h)}`;
+      }
+      return await apiFetch(q);
     } catch (err) {
       if (err.name === 'AbortError') return null; // solicitud cancelada, ignorar
       avisarError(err);
@@ -228,10 +404,11 @@
     }
   }
 
-  /** Carga el reporte de olvido (no depende del período). */
+  /** Carga el reporte de olvido con umbral dinámico de días. */
   async function fetchForgotten() {
     try {
-      return await apiFetch('/top40/forgotten');
+      const dias = DOM.forgottenDias?.value ?? '30';
+      return await apiFetch(`/top40/forgotten?dias=${encodeURIComponent(dias)}`);
     } catch (err) {
       if (err.name === 'AbortError') return null;
       avisarError(err);
@@ -263,7 +440,26 @@
     if (!container) return;
 
     if (!items || items.length === 0) {
-      container.innerHTML = buildEmptyState('Sin datos para este período');
+      const gen = (DOM.top40Genero || DOM.top40Cat)?.value || '';
+      const rot = DOM.top40Rotacion?.value || '';
+      const filtrosActivos = [gen, rot].filter(Boolean).join(' · ');
+      const periodoLabel = STATE.period === 'day' ? 'hoy'
+        : STATE.period === 'yesterday' ? 'ayer'
+        : STATE.period === 'week' ? 'esta semana'
+        : STATE.period === 'month' ? 'este mes'
+        : 'el período seleccionado';
+      const msgFiltro = filtrosActivos ? `No hay emisiones de <strong>${escapeHTML(filtrosActivos)}</strong>` : 'No hay emisiones';
+      const hint = STATE.period === 'day'
+        ? '<br><small>Probá cambiando a <strong>Esta Semana</strong> o <strong>Este Mes</strong></small>'
+        : '';
+      container.innerHTML = `
+        <div class="stats-empty-state" role="status">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M12 7v5M12 15v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <p>${msgFiltro} en ${periodoLabel}.${hint}</p>
+        </div>`;
       container.setAttribute('aria-busy', 'false');
       return;
     }
@@ -288,7 +484,66 @@
     toggleHidden(DOM.btnLoadMore, visible.length >= items.length);
   }
 
-  /** Construye un elemento <div> que representa una fila del Top 40. */
+  // ──────────────────────────────────────────────────────────
+  //  PREESCUCHA INLINE DEL TOP
+  // ──────────────────────────────────────────────────────────
+
+  let inlineAudio = null;
+
+  function togglePreviewInline(id, url) {
+    if (STATE.previewPlayingId === id) {
+      if (inlineAudio) {
+        inlineAudio.pause();
+        inlineAudio = null;
+      }
+      STATE.previewPlayingId = null;
+      updateInlinePlayButtons();
+      return;
+    }
+
+    if (inlineAudio) {
+      inlineAudio.pause();
+      inlineAudio = null;
+    }
+
+    inlineAudio = new Audio(url);
+    inlineAudio.volume = 0.9;
+    inlineAudio.play().then(() => {
+      STATE.previewPlayingId = id;
+      updateInlinePlayButtons();
+    }).catch(err => {
+      console.warn('[EstadisticasModule] Error al reproducir audio inline:', err);
+      STATE.previewPlayingId = null;
+      updateInlinePlayButtons();
+    });
+
+    inlineAudio.addEventListener('ended', () => {
+      STATE.previewPlayingId = null;
+      inlineAudio = null;
+      updateInlinePlayButtons();
+    });
+  }
+
+  function updateInlinePlayButtons() {
+    document.querySelectorAll('.stats-btn-play').forEach(btn => {
+      const btnId = parseInt(btn.dataset.playId, 10);
+      const isPlaying = STATE.previewPlayingId === btnId;
+      btn.classList.toggle('is-playing', isPlaying);
+      btn.textContent = isPlaying ? '■' : '▶';
+      btn.title = isPlaying ? 'Detener preescucha' : 'Preescuchar audio';
+    });
+  }
+
+  function stopInlinePreview() {
+    if (inlineAudio) {
+      inlineAudio.pause();
+      inlineAudio = null;
+    }
+    STATE.previewPlayingId = null;
+    updateInlinePlayButtons();
+  }
+
+  /** Construye un elemento <div> que representa una fila del Top. */
   function buildTop40Row(item, rank, maxToques) {
     const row = document.createElement('div');
     row.className = 'stats-row';
@@ -312,14 +567,23 @@
     const rankClass = rank <= 3 ? 'stats-row__rank--top3' : '';
     const rankDisplay = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : `${rank}`;
 
+    const isPlaying = STATE.previewPlayingId === item.id;
+
     row.innerHTML = `
       <span class="stats-row__rank ${rankClass}" role="cell">${rankDisplay}</span>
+      <span class="stats-row__play" role="cell">
+        <button type="button" class="stats-btn-play ${isPlaying ? 'is-playing' : ''}"
+          data-play-id="${item.id}" data-audio-url="${item.audio_url}"
+          title="${isPlaying ? 'Pausar preescucha' : 'Preescuchar audio'}">
+          ${isPlaying ? '■' : '▶'}
+        </button>
+      </span>
       <span class="stats-row__type" role="cell">${tipoBadge}</span>
       <span class="stats-row__info" role="cell">
         <div class="stats-row__title">${escapeHTML(item.titulo)}</div>
         <div class="stats-row__artist">${escapeHTML(item.artista)}</div>
       </span>
-      <span class="stats-row__category" role="cell">${escapeHTML(item.categoria || '—')}</span>
+      <span class="stats-row__category" role="cell" title="${escapeHTML(item.categoria || '')}">${escapeHTML(item.categoria || '—')}</span>
       <span class="stats-row__plays" role="cell">${item.toques.toLocaleString('es-AR')}</span>
       <span class="stats-row__trend" role="cell">${tendencia}</span>`;
 
@@ -328,6 +592,12 @@
     // Enter / Space desde teclado
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') openAuditModal(item.id);
+    });
+
+    const playBtn = row.querySelector('.stats-btn-play');
+    playBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePreviewInline(item.id, item.audio_url);
     });
 
     return row;
@@ -341,8 +611,13 @@
     const container = DOM.forgottenList;
     if (!container) return;
 
+    const dias = DOM.forgottenDias?.value ?? '30';
+
     if (!items || items.length === 0) {
-      container.innerHTML = buildEmptyState('Sin ítems olvidados — ¡Todo al día!');
+      const msg = dias === '0'
+        ? 'No hay temas registrados en el reporte'
+        : `Sin temas olvidados — Toda la música activa ha sonado en los últimos ${dias} días`;
+      container.innerHTML = buildEmptyState(msg);
       container.setAttribute('aria-busy', 'false');
       if (DOM.forgottenCount) DOM.forgottenCount.textContent = '0';
       return;
@@ -399,7 +674,8 @@
     if (!DOM.auditModal) return;
 
     STATE.currentItemId = id;
-    resetPlayer();           // Detiene cualquier audio previo
+    stopInlinePreview();     // Detiene preescucha inline si estaba sonando
+    resetPlayer();           // Detiene cualquier audio previo del modal
     showModalLoading();      // Muestra skeletons mientras carga
 
     // Hacer visible el modal antes de la llamada para UX inmediata
@@ -750,13 +1026,15 @@
 
   const PERIOD_LABELS = {
     day: 'Hoy',
+    yesterday: 'Ayer',
     week: 'Esta semana',
     month: 'Este mes',
+    custom: 'Personalizado',
   };
 
   /**
    * Cambia el período activo, actualiza el indicador visual
-   * y recarga el Top 40 con los nuevos datos.
+   * y recarga el Top con los nuevos datos.
    */
   async function changePeriod(newPeriod, forzar = false) {
     if (newPeriod === STATE.period && !forzar) return;
@@ -768,15 +1046,26 @@
       btn.classList.toggle('stats-period-btn--active', isActive);
       btn.setAttribute('aria-pressed', String(isActive));
 
-      // Mover el slider al botón activo
+      // Mover el slider al botón activo con ancho dinámico
       if (isActive && DOM.periodSlider) {
+        const count = DOM.periodBtns?.length || 1;
+        DOM.periodSlider.style.width = `calc(${100 / count}% - 2px)`;
         DOM.periodSlider.style.transform = `translateX(${idx * 100}%)`;
       }
     });
 
+    // Mostrar/ocultar selector de rango personalizado
+    if (DOM.customRange) {
+      DOM.customRange.style.display = newPeriod === 'custom' ? 'flex' : 'none';
+    }
+
     // Etiqueta del panel
     if (DOM.top40PeriodLabel) {
-      DOM.top40PeriodLabel.textContent = PERIOD_LABELS[newPeriod] ?? newPeriod;
+      if (newPeriod === 'custom' && DOM.fechaDesde?.value) {
+        DOM.top40PeriodLabel.textContent = `${DOM.fechaDesde.value} / ${DOM.fechaHasta?.value || 'hoy'}`;
+      } else {
+        DOM.top40PeriodLabel.textContent = PERIOD_LABELS[newPeriod] ?? newPeriod;
+      }
     }
 
     // Mostrar skeleton durante la carga
@@ -958,7 +1247,12 @@
   // ──────────────────────────────────────────────────────────
 
   function buildTypeBadge(tipo) {
-    const cls = tipo === 'PAUTA' ? 'badge-type--pauta' : 'badge-type--tema';
+    let cls = 'badge-type--tema';
+    if (tipo === 'PAUTA') cls = 'badge-type--pauta';
+    else if (tipo === 'JINGLE') cls = 'badge-type--jingle';
+    else if (tipo === 'SWEEPER') cls = 'badge-type--sweeper';
+    else if (tipo === 'TIPS') cls = 'badge-type--tips';
+    else if (tipo === 'VOZ') cls = 'badge-type--voz';
     return `<span class="badge-type ${cls}">${escapeHTML(tipo)}</span>`;
   }
 
@@ -988,10 +1282,26 @@
   function bindEvents() {
     // Filtros de período
     DOM.periodBtns?.forEach((btn) => {
-      btn.addEventListener('click', () => changePeriod(btn.dataset.period));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.period === 'custom') {
+          const visible = DOM.customRange && DOM.customRange.style.display !== 'none';
+          if (visible && STATE.period === 'custom') {
+            changePeriod('day');
+          } else {
+            changePeriod('custom');
+          }
+        } else {
+          changePeriod(btn.dataset.period);
+        }
+      });
     });
 
-    // Búsqueda en Top 40
+    // Rango personalizado: botón Filtrar
+    DOM.btnAplicarRango?.addEventListener('click', () => {
+      changePeriod('custom', true);
+    });
+
+    // Búsqueda en Top
     if (DOM.searchInput) {
       DOM.searchInput.addEventListener(
         'input',
@@ -999,13 +1309,57 @@
       );
     }
 
-    // Cargar más en el Top 40
-    // Música / Cuñas / Todo en el Top: recarga el mismo período
-    document.getElementById('top40-tipo')?.addEventListener('change', () => changePeriod(STATE.period, true));
+    // Controles del Top: Tipo, Género, Rotación, Límite, Exportar CSV
+    DOM.top40Tipo?.addEventListener('change', () => {
+      populateCategoryDropdown();
+      changePeriod(STATE.period, true);
+    });
+
+    DOM.top40Genero?.addEventListener('change', () => {
+      changePeriod(STATE.period, true);
+    });
+
+    DOM.top40Rotacion?.addEventListener('change', () => {
+      changePeriod(STATE.period, true);
+    });
+
+    DOM.top40Cat?.addEventListener('change', () => {
+      changePeriod(STATE.period, true);
+    });
+
+    DOM.top40Limit?.addEventListener('change', (e) => {
+      if (DOM.topBadgeNum) DOM.topBadgeNum.textContent = e.target.value;
+      changePeriod(STATE.period, true);
+    });
+
+    DOM.btnExportTop?.addEventListener('click', () => {
+      const tipo = DOM.top40Tipo?.value || 'musica';
+      const genero = (DOM.top40Genero || DOM.top40Cat)?.value || '';
+      const rotacion = DOM.top40Rotacion?.value || '';
+      const limit = DOM.top40Limit?.value || '40';
+      let q = `/api/v1/stats/top40?period=${encodeURIComponent(STATE.period)}&tipo=${encodeURIComponent(tipo)}&limit=${encodeURIComponent(limit)}&formato=csv`;
+      if (genero) q += `&genero=${encodeURIComponent(genero)}`;
+      if (rotacion) q += `&rotacion=${encodeURIComponent(rotacion)}`;
+      if (STATE.period === 'custom') {
+        if (DOM.fechaDesde?.value) q += `&desde=${encodeURIComponent(DOM.fechaDesde.value)}`;
+        if (DOM.fechaHasta?.value) q += `&hasta=${encodeURIComponent(DOM.fechaHasta.value)}`;
+      }
+      window.open(q, '_blank');
+    });
 
     DOM.btnLoadMore?.addEventListener('click', () => {
       STATE.top40Page++;
       renderTop40(STATE.top40Filtered);
+    });
+
+    // Reporte de olvido: cambio de umbral de días
+    DOM.forgottenDias?.addEventListener('change', async () => {
+      if (DOM.forgottenList) DOM.forgottenList.innerHTML = buildSkeletonRows(4);
+      const data = await fetchForgotten();
+      if (data) {
+        STATE.forgottenAll = data;
+        renderForgotten(data);
+      }
     });
 
     // Exportar reporte de olvido
@@ -1081,14 +1435,32 @@
    */
   async function init() {
     resolveDOM();
+    await loadCategories();
     bindEvents();
 
-    // Posicionar el slider en el período inicial (HOY → índice 0)
-    if (DOM.periodSlider) {
-      DOM.periodSlider.style.transform = 'translateX(0%)';
+    // Fechas por defecto para rango personalizado (últimos 7 días)
+    if (DOM.fechaDesde && !DOM.fechaDesde.value) {
+      const hoy = new Date();
+      const hace7 = new Date();
+      hace7.setDate(hoy.getDate() - 7);
+      DOM.fechaDesde.value = hace7.toISOString().slice(0, 10);
+      DOM.fechaHasta.value = hoy.toISOString().slice(0, 10);
     }
 
-    // Carga inicial: Top 40 y Reporte de Olvido en paralelo
+    // Posicionar el slider en el período inicial con ancho dinámico
+    if (DOM.periodBtns && DOM.periodSlider) {
+      const count = DOM.periodBtns.length || 1;
+      DOM.periodSlider.style.width = `calc(${100 / count}% - 2px)`;
+      // Encontrar el botón que corresponde al período inicial y activarlo
+      let initIdx = 0;
+      DOM.periodBtns.forEach((btn, i) => {
+        btn.classList.remove('active');
+        if (btn.dataset.period === STATE.period) { initIdx = i; btn.classList.add('active'); }
+      });
+      DOM.periodSlider.style.transform = `translateX(${initIdx * 100}%)`;
+    }
+
+    // Carga inicial: Top y Reporte de Olvido en paralelo
     const [top40Data, forgottenData] = await Promise.all([
       fetchTop40(STATE.period),
       fetchForgotten(),
@@ -1114,6 +1486,7 @@
   /** Limpia los recursos del módulo (listeners, audio, timers). */
   function destroy() {
     if (STATE.clickTimer) clearTimeout(STATE.clickTimer);
+    stopInlinePreview();
     Object.values(STATE.abortPorTipo || {}).forEach(c => c.abort());
     resetPlayer();
   }

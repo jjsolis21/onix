@@ -191,6 +191,7 @@ const loadAudios = async () => {
       duration: a.duracion || 0, bpm: a.bpm || null, year: a.fecha_lanzamiento || null,
       soundCode: a.cat1 || '', popularity: a.cat2 || '', voz: a.voz || '',
       origen: a.origen || '', energia: a.energia ?? '',
+      epoca: a.epoca || '',
       tipo: a.tipo_audio || 'Musica',
       codigoAuto: a.id ? String(a.id).padStart(6, '0') : '—', archivo_path: a.archivo_path || '',
       cue_inicio: a.cue_inicio ?? a.intro ?? 0, cue_intro: a.cue_intro ?? a.intro ?? 0,
@@ -252,6 +253,25 @@ async function cargarArtistas() {
   } catch { /* sin lista: se escribe a mano */ }
 }
 
+function calcularEpocaJS(anio) {
+  if (anio === null || anio === undefined || anio === '') return 'Sin Clasificar';
+  const a = parseInt(anio, 10);
+  if (isNaN(a) || a <= 0) return 'Sin Clasificar';
+  if (a >= 2020) return 'Actual';
+  if (a >= 2010 && a <= 2019) return '2010s';
+  if (a >= 2000 && a <= 2009) return '2000s';
+  if (a >= 1990 && a <= 1999) return '90s';
+  if (a >= 1980 && a <= 1989) return '80s';
+  if (a >= 1970 && a <= 1979) return '70s';
+  return 'Oldies';
+}
+
+function actualizarEpocaModal() {
+  const y = $('modal-year')?.value;
+  const ep = $('modal-epoca');
+  if (ep) ep.value = calcularEpocaJS(y);
+}
+
 async function openModal(id = null) {
   const overlay = getOverlay();
   if (!overlay) return;
@@ -274,13 +294,17 @@ async function openModal(id = null) {
     if ($('modal-album')) $('modal-album').value = (t.album || '').toUpperCase();
     if ($('modal-cod-auto')) $('modal-cod-auto').value = t.codigoAuto || '';
     if ($('modal-year')) $('modal-year').value = t.year || '';
+    if ($('modal-epoca')) $('modal-epoca').value = t.epoca || calcularEpocaJS(t.year);
     if ($('modal-bpm')) $('modal-bpm').value = t.bpm || '';
     if ($('modal-popularity')) $('modal-popularity').value = t.popularity || '';
     if ($('modal-voz')) $('modal-voz').value = t.voz || '';
     if ($('modal-tipo')) $('modal-tipo').value = t.tipo || 'Musica';
     if ($('modal-origen')) $('modal-origen').value = t.origen || '';
     if ($('modal-energia')) $('modal-energia').value = t.energia ?? '';
-    if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'none';
+    selectedFile = null;
+    if ($('modal-file')) $('modal-file').value = '';
+    if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
+    renderFileInfo({ name: (t.archivo_path || '').split(/[/\\]/).pop() || 'Archivo actual', size: 0 }, null);
     if ($('modal-archivo-path')) $('modal-archivo-path').value = t.archivo_path || '';
     if (typeof window.wfLoadUrl === 'function' && t.archivo_path) {
       const streamUrl = `${API_BASE}/api/v1/audios/${t.id}/stream`;
@@ -290,8 +314,12 @@ async function openModal(id = null) {
   } else {
     if ($('modal-title-bar')) $('modal-title-bar').textContent = 'NUEVA CANCIÓN';
     ['modal-artist', 'modal-title-input', 'modal-album', 'modal-year', 'modal-bpm', 'modal-escritor', 'modal-compositor', 'modal-etiqueta', 'modal-cdkey', 'modal-barras', 'modal-archivo-path'].forEach(fid => { const el = $(fid); if (el) el.value = ''; });
+    if ($('modal-epoca')) $('modal-epoca').value = 'Sin Clasificar';
     if ($('modal-dropzone-wrap')) $('modal-dropzone-wrap').style.display = 'block';
-    if ($('modal-file-info')) $('modal-file-info').style.display = 'none';
+    if ($('jz-dropzone')) $('jz-dropzone').style.display = 'block';
+    if ($('modal-file-info')) { $('modal-file-info').innerHTML = ''; $('modal-file-info').style.display = 'none'; }
+    if ($('modal-file')) $('modal-file').value = '';
+    selectedFile = null;
     if ($('modal-tipo')) $('modal-tipo').value = 'Musica';
     if ($('modal-origen')) $('modal-origen').value = '';
     if ($('modal-energia')) $('modal-energia').value = '';
@@ -306,6 +334,9 @@ function closeModal() {
   const overlay = getOverlay(); if (!overlay) return;
   overlay.classList.remove('active'); overlay.style.display = '';
   editingId = null; selectedFile = null;
+  if ($('modal-file')) $('modal-file').value = '';
+  if ($('modal-file-info')) { $('modal-file-info').innerHTML = ''; $('modal-file-info').style.display = 'none'; }
+  if ($('jz-dropzone')) $('jz-dropzone').style.display = 'block';
   if (typeof window.wfDestroy === 'function') window.wfDestroy();
 }
 
@@ -321,6 +352,17 @@ async function saveModal() {
   try {
     let res;
     if (editingId) {
+      if (selectedFile) {
+        btnSave.textContent = 'Reemplazando archivo…';
+        const fdArch = new FormData();
+        fdArch.append('file', selectedFile);
+        const rArch = await fetch(`${API_BASE}/api/v1/audios/${editingId}/archivo`, { method: 'POST', body: fdArch });
+        if (!rArch.ok) {
+          const dErr = await rArch.json().catch(() => ({}));
+          showToast(dErr.detail || 'Error al reemplazar archivo de audio', 'error');
+          return;
+        }
+      }
       const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
       const payload = { titulo: titleVal, artista: artistVal, album: $('modal-album')?.value.trim() || null, fecha_lanzamiento: $('modal-year')?.value.trim() || null, bpm: $('modal-bpm')?.value ? Number($('modal-bpm').value) : null, cat1: toUpper($('modal-sc1')?.value || $('modal-sc2')?.value) || null, cat2: toUpper($('modal-popularity')?.value) || null, voz: toUpper($('modal-voz')?.value) || null, cue_inicio: markers.inicio ?? 0, cue_intro: markers.intro ?? 0, cue_inicio_coro: markers.inicio_coro ?? 0, cue_final_coro: markers.final_coro ?? 0, cue_mezcla: markers.mezcla ?? 0, fade_in: markers.fade_in ?? 0, fade_out: markers.fade_out ?? 0, intro: markers.intro ?? 0, outro: markers.mezcla ?? 0 };
       payload.tipo_audio = $('modal-tipo')?.value || null;
@@ -343,7 +385,7 @@ async function saveModal() {
     if (!res.ok) { const detail = data.detail; showToast(typeof detail === 'object' ? (detail.mensaje || JSON.stringify(detail)) : (detail || `Error ${res.status}`), 'error'); return; }
     wsCmd('library_updated', { id: data.data?.id, titulo: titleVal, action: editingId ? 'update' : 'create' });
     closeModal(); await loadAudios();
-    showToast(editingId ? `✓ Actualizado: ${titleVal}` : `✓ Cargado: ${titleVal}`, 'success');
+    showToast(editingId ? (selectedFile ? `✓ Audio reemplazado y actualizado: ${titleVal}` : `✓ Actualizado: ${titleVal}`) : `✓ Cargado: ${titleVal}`, 'success');
   } catch (err) {
     showToast('Error de conexión con la API', 'error'); console.error('[BM·save]', err);
   } finally {
@@ -351,26 +393,122 @@ async function saveModal() {
   }
 }
 
+function triggerModalFilePicker() {
+  const fi = $('modal-file');
+  if (fi) {
+    fi.value = '';
+    fi.click();
+  }
+}
+
+function removeModalFile() {
+  selectedFile = null;
+  const fi = $('modal-file'); if (fi) fi.value = '';
+  if (editingId) {
+    const t = library.find(x => x.id === editingId);
+    if (t) {
+      renderFileInfo({ name: (t.archivo_path || '').split(/[/\\]/).pop() || 'Archivo actual', size: 0 }, null);
+      const ap = $('modal-archivo-path'); if (ap) ap.value = t.archivo_path || '';
+      if (typeof window.wfLoadUrl === 'function' && t.archivo_path) {
+        const streamUrl = `${API_BASE}/api/v1/audios/${t.id}/stream`;
+        const cues = { inicio: t.cue_inicio || 0, intro: t.cue_intro || 0, inicio_coro: t.cue_inicio_coro || 0, final_coro: t.cue_final_coro || 0, outro: t.cue_outro || 0, mezcla: t.cue_mezcla || 0 };
+        window.wfLoadUrl(streamUrl, cues);
+      }
+      showToast('Reemplazo cancelado. Se conserva el archivo original.', 'info');
+      return;
+    }
+  }
+  const ap = $('modal-archivo-path'); if (ap) ap.value = '';
+  const info = $('modal-file-info');
+  if (info) { info.innerHTML = ''; info.style.display = 'none'; }
+  const dz = $('jz-dropzone');
+  if (dz) dz.style.display = 'block';
+  if (typeof window.wfDestroy === 'function') window.wfDestroy();
+  showToast('Archivo quitado. Selecciona un archivo de audio.', 'info');
+}
+
+function renderFileInfo(file, tagData = null) {
+  const info = $('modal-file-info');
+  if (!info) return;
+  const sizeMb = file.size > 0 ? `${(file.size / 1048576).toFixed(1)} MB` : 'Archivo en servidor';
+  const tagNote = tagData?.origen_datos === 'etiquetas' ? ' · 🏷 Metadatos leídos' : '';
+  const d = tagData?.duplicados?.[0];
+  const isExistingUnchanged = !!editingId && !selectedFile;
+  const dupHtml = d
+    ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(255,90,95,0.12);border:1px solid rgba(255,90,95,0.3);border-radius:4px;font-size:11px;color:#ff5a5f;">
+        ⚠ Ya existe en la biblioteca: <strong>${d.titulo}</strong> — ${d.artista} (#${d.id}). ¿Seguro que quieres cargarlo de nuevo?
+       </div>`
+    : '';
+
+  info.innerHTML = `
+    <div style="background:rgba(0,200,240,0.06);border:1.5px solid rgba(0,200,240,0.35);border-radius:6px;padding:10px 12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <div style="font-size:24px;line-height:1;">🎵</div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:700;font-size:12px;color:var(--jz-text,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${file.name}">
+              ${file.name}
+            </div>
+            <div style="font-size:10px;color:var(--jz-text3,#888);margin-top:2px;font-family:var(--font-mono);">
+              ${sizeMb} ${tagNote} ${editingId && selectedFile ? '· <b style="color:#00f0ff">🔄 Nuevo audio seleccionado (pendiente de guardar)</b>' : ''}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+          <button type="button" id="modal-btn-cambiar-archivo" class="jz-btn jz-btn--sm" style="background:rgba(0,200,240,0.18);color:var(--neon-cyan,#00f0ff);border:1px solid rgba(0,200,240,0.5);cursor:pointer;padding:6px 12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Cambiar archivo
+          </button>
+          ${!isExistingUnchanged ? `<button type="button" id="modal-btn-quitar-archivo" class="jz-btn jz-btn--sm" style="background:rgba(255,60,60,0.12);color:#ff5a5f;border:1px solid rgba(255,60,60,0.3);cursor:pointer;padding:6px 10px;font-size:11px;font-weight:600;" title="${editingId ? 'Cancelar cambio' : 'Quitar este archivo'}">
+            ✕ ${editingId ? 'Cancelar' : 'Quitar'}
+          </button>` : ''}
+        </div>
+      </div>
+      ${dupHtml}
+    </div>
+  `;
+  info.style.display = 'block';
+  const dz = $('jz-dropzone');
+  if (dz) dz.style.display = 'none';
+}
+
 const handleFile = file => {
   if (!file || !file.type.startsWith('audio/')) { showToast('El archivo seleccionado no es audio', 'error'); return; }
+  const prevFile = selectedFile;
   selectedFile = file;
-  const info = $('modal-file-info');
-  if (info) { info.textContent = `✓ ${file.name}  ·  ${(file.size / 1048576).toFixed(1)} MB`; info.style.display = 'block'; }
-  const ap = $('modal-archivo-path'); if (ap && !ap.value) ap.value = file.name;
-  const ti = $('modal-title-input'); if (ti && !ti.value) ti.value = file.name.replace(/\.[^.]+$/, '');
+
+  renderFileInfo(file, null);
+
+  const ap = $('modal-archivo-path');
+  if (ap) ap.value = file.name;
+
+  const ti = $('modal-title-input');
+  const prevBase = prevFile ? prevFile.name.replace(/\.[^.]+$/, '').toUpperCase() : '';
+  if (ti && (!ti.value || ti.value === prevBase)) {
+    ti.value = file.name.replace(/\.[^.]+$/, '').toUpperCase();
+  }
+
   if (typeof window.wfLoadFile === 'function') window.wfLoadFile(file);
+
   // Etiquetas del MP3 y aviso de duplicado (como Jazler al importar)
   leerEtiquetas(file).then(t => {
-    const poner = (id, v) => { const el = $(id); if (el && v && (!el.value || el.value === file.name.replace(/\.[^.]+$/, ''))) el.value = String(v).toUpperCase(); };
-    poner('modal-title-input', t.titulo); poner('modal-artist', t.artista); poner('modal-album', t.album);
-    const y = $('modal-year'); if (y && !y.value && t.anio) y.value = t.anio;
-    if (info) {
-      const d = t.duplicados?.[0];
-      info.innerHTML = `✓ ${file.name} · ${(file.size / 1048576).toFixed(1)} MB` +
-        (t.origen_datos === 'etiquetas' ? ' · 🏷 datos de las etiquetas' : '') +
-        (d ? `<br><b style="color:#ff5a5f">⚠ Ya existe en la biblioteca: ${d.titulo} — ${d.artista} (#${d.id}). ¿Seguro que quieres cargarla otra vez?</b>` : '');
+    const poner = (id, v) => {
+      const el = $(id);
+      if (el && v && (!el.value || el.value === file.name.replace(/\.[^.]+$/, '').toUpperCase() || el.value === prevBase)) {
+        el.value = String(v).toUpperCase();
+      }
+    };
+    poner('modal-title-input', t.titulo);
+    poner('modal-artist', t.artista);
+    poner('modal-album', t.album);
+    const y = $('modal-year');
+    if (y && !y.value && t.anio) {
+      y.value = t.anio;
+      actualizarEpocaModal();
     }
+    renderFileInfo(file, t);
   }).catch(() => { /* sin servidor de etiquetas: se completa a mano */ });
+
   wsCmd('FILE_SELECTED', { name: file.name, size: file.size });
 };
 
@@ -419,14 +557,58 @@ const wsCmd = (cmd, data = {}) => {
   else console.info('[BM·WS]', msg);
 };
 const setStatus = msg => { const el = getStatusMsg(); if (el) el.textContent = msg; };
-const showToast = (msg, type = 'info') => {
-  const icons = { success: '✓', error: '✕', info: '·' };
-  const t = document.createElement('div');
-  t.className = `jz-toast jz-toast--${type}`;
-  t.innerHTML = `${icons[type] || '·'}${msg}`;
-  const container = $('jz-toasts'); if (container) container.appendChild(t);
-  setTimeout(() => { t.style.cssText += 'opacity:0;transform:translateX(18px);transition:.3s'; setTimeout(() => t.remove(), 350); }, 2800);
+const showToast = (msg, type = 'info', title = null) => {
+  let container = document.getElementById('jz-toasts');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'jz-toasts';
+    container.className = 'jz-toasts';
+    document.body.appendChild(container);
+  }
+
+  const icons = {
+    success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    warning: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
+  };
+
+  const defaultTitles = {
+    success: 'Operación Exitosa',
+    error: 'Error del Sistema',
+    warning: 'Atención Requerida',
+    info: 'Notificación'
+  };
+
+  const toast = document.createElement('div');
+  toast.className = `onix-toast-2026 onix-toast--${type}`;
+  toast.innerHTML = `
+    <div class="onix-toast__icon">
+      ${icons[type] || icons.info}
+    </div>
+    <div class="onix-toast__body">
+      <span class="onix-toast__title">${title || defaultTitles[type] || 'Notificación'}</span>
+      <span class="onix-toast__msg">${msg}</span>
+    </div>
+    <button class="onix-toast__close" title="Cerrar">✕</button>
+    <div class="onix-toast__bar"><div class="onix-toast__progress"></div></div>
+  `;
+
+  let closed = false;
+  const closeToast = () => {
+    if (closed) return;
+    closed = true;
+    toast.classList.add('onix-toast--closing');
+    setTimeout(() => { toast.remove(); }, 260);
+  };
+
+  toast.querySelector('.onix-toast__close').addEventListener('click', closeToast);
+  container.appendChild(toast);
+
+  // Auto-cierre sincronizado
+  setTimeout(closeToast, 4000);
 };
+window.showToast = showToast;
 
 document.addEventListener('click', e => {
   if (e.target.closest('#jz-btn-add') || e.target.closest('#jz-sb-nueva')) { openModal(); return; }
@@ -460,7 +642,29 @@ document.addEventListener('click', e => {
   if (th) { const key = th.dataset.sort; if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; } document.querySelectorAll('.jz-table thead th').forEach(h => h.classList.remove('sort-asc', 'sort-desc')); th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc'); applyFilters(); return; }
   if (e.target.closest('#jz-player-toggle')) { if (playingId) stopPlayer(); return; }
   const tl = e.target.closest('#jz-timeline'); if (tl && playingId) { const rect = tl.getBoundingClientRect(); const pct = (e.clientX - rect.left) / rect.width; if (audioEl?.duration) audioEl.currentTime = pct * audioEl.duration; return; }
-  if (e.target.closest('#jz-dropzone')) { if (e.target.id === 'modal-file') return; const fi = $('modal-file'); if (fi) fi.click(); return; }
+  if (e.target.closest('#modal-btn-cambiar-archivo') || e.target.closest('#modal-btn-browse')) {
+    e.preventDefault();
+    e.stopPropagation();
+    triggerModalFilePicker();
+    return;
+  }
+  if (e.target.closest('#modal-btn-quitar-archivo')) {
+    e.preventDefault();
+    e.stopPropagation();
+    removeModalFile();
+    return;
+  }
+  if (e.target.closest('#modal-btn-edit-path')) {
+    e.preventDefault();
+    const ap = $('modal-archivo-path');
+    if (ap) { ap.focus(); ap.select(); }
+    return;
+  }
+  if (e.target.closest('#jz-dropzone')) {
+    if (e.target.id === 'modal-file') return;
+    triggerModalFilePicker();
+    return;
+  }
 
   /* ── LOTE WIZARD EVENTS ────────────────────────────────── */
   if (e.target.closest('#lote-next-step')) { loteNextStep(); return; }
@@ -505,9 +709,11 @@ document.addEventListener('dblclick', e => {
 /* ── DELEGATED LISTENERS — Búsqueda en tiempo real + filtros ──────── */
 document.addEventListener('input', e => {
   if (e.target.id === 'jz-search') applyFilters();
+  if (e.target.id === 'modal-year') actualizarEpocaModal();
 });
 document.addEventListener('change', e => {
   if (['jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz', 'jz-filter-cat3', 'jz-filter-year', 'jz-filter-prioridad'].includes(e.target.id)) applyFilters();
+  if (e.target.id === 'modal-year') actualizarEpocaModal();
 });
 
 /* ── LOTE WIZARD LOGIC ─────────────────────────────────────────────── */
@@ -822,9 +1028,30 @@ document.addEventListener('change', e => {
     }
   }
 });
-document.addEventListener('dragover', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.add('drag-over'); } });
-document.addEventListener('dragleave', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) dz.classList.remove('drag-over'); });
-document.addEventListener('drop', e => { const dz = e.target.closest('#jz-dropzone'); if (dz) { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); } });
+document.addEventListener('dragover', e => {
+  const dz = e.target.closest('#modal-dropzone-wrap, #jz-dropzone');
+  if (dz) {
+    e.preventDefault();
+    const jz = $('jz-dropzone');
+    if (jz && jz.style.display !== 'none') jz.classList.add('drag-over');
+  }
+});
+document.addEventListener('dragleave', e => {
+  const dz = e.target.closest('#modal-dropzone-wrap, #jz-dropzone');
+  if (dz) {
+    const jz = $('jz-dropzone');
+    if (jz) jz.classList.remove('drag-over');
+  }
+});
+document.addEventListener('drop', e => {
+  const dz = e.target.closest('#modal-dropzone-wrap, #jz-dropzone');
+  if (dz) {
+    e.preventDefault();
+    const jz = $('jz-dropzone');
+    if (jz) jz.classList.remove('drag-over');
+    if (e.dataTransfer?.files?.[0]) handleFile(e.dataTransfer.files[0]);
+  }
+});
 document.addEventListener('keydown', e => {
   const isOpen = getOverlay()?.classList.contains('active') || $('lote-overlay')?.classList.contains('active');
   /* Bloqueo del cierre por tecla Escape (Desactivado por seguridad) */
@@ -843,6 +1070,8 @@ window.openModal = openModal;
 window.closeModal = closeModal;
 window.saveModal = saveModal;
 window.populateUploadSelects = populateUploadSelects;
+window.calcularEpocaJS = calcularEpocaJS;
+window.actualizarEpocaModal = actualizarEpocaModal;
 console.log('[ÓNIX FM] admin-app.js cargado — funciones vinculadas a window.');
 
 const CategoriesModule = (function () {
@@ -927,10 +1156,191 @@ const CategoriesModule = (function () {
         .catch(e => showToast(e.message, 'error'));
     },
     async delete() {
-      const item = categories[activeKey].items[selectedIdx];
-      if (!item || !confirm(`¿Quitar "${item.label}" de la lista? Las canciones que ya lo tienen lo conservan.`)) return;
-      try { await api(`/api/v1/config/biblioteca/valores/${item.id}`, 'DELETE'); selectedIdx = -1; await recargar(); }
-      catch (e) { showToast(e.message, 'error'); }
+      const item = categories[activeKey]?.items[selectedIdx];
+      if (!item) {
+        showToast('Selecciona una categoría de la lista para eliminar', 'warning');
+        return;
+      }
+
+      try {
+        const uso = await api(`/api/v1/config/biblioteca/valores/${item.id}/uso`, 'GET');
+        const modal = document.getElementById('cat-del-modal');
+
+        if (!modal) {
+          if (!confirm(`¿Eliminar "${item.label}"? Tiene ${uso.total_audios} canción(es) asociadas.`)) return;
+          const res = await api(`/api/v1/config/biblioteca/valores/${item.id}?accion=desasignar`, 'DELETE');
+          selectedIdx = -1;
+          await recargar();
+          if (typeof loadAudios === 'function') loadAudios();
+          window.BibliotecaVista?.recargar?.();
+          showToast(res.mensaje || 'Categoría eliminada', 'success');
+          return;
+        }
+
+        const titleEl = document.getElementById('cat-del-title');
+        const subtitleEl = document.getElementById('cat-del-subtitle');
+        const iconBadge = document.getElementById('cat-del-icon-badge');
+        const bodyEl = document.getElementById('cat-del-body');
+        const confirmBtn = document.getElementById('cat-del-btn-confirmar');
+        const cancelBtn = document.getElementById('cat-del-btn-cancelar');
+        const closeBtn = document.getElementById('cat-del-close-btn');
+
+        const catName = categories[activeKey]?.name || 'Categoría';
+
+        const closeModalDel = () => {
+          modal.style.display = 'none';
+        };
+
+        closeBtn.onclick = closeModalDel;
+        cancelBtn.onclick = closeModalDel;
+        modal.onclick = (e) => { if (e.target === modal) closeModalDel(); };
+
+        if (uso.total_audios === 0) {
+          if (iconBadge) {
+            iconBadge.className = 'onix-modal-pro__icon-badge onix-modal-pro__icon-badge--danger';
+            iconBadge.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+          }
+          if (titleEl) titleEl.textContent = 'Eliminar Categoría';
+          if (subtitleEl) subtitleEl.textContent = `${catName} · Confirmación directa`;
+
+          bodyEl.innerHTML = `
+            <div style="font-size: 13.5px; line-height: 1.5; color: #e2e8f0;">
+              ¿Estás seguro de eliminar <strong style="color: #ffffff; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px;">${item.label}</strong>?
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
+              <span style="display:inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+              Esta categoría no está asignada a ninguna canción activa en el sistema.
+            </div>
+          `;
+
+          confirmBtn.textContent = 'Eliminar';
+          confirmBtn.className = 'onix-pro-btn onix-pro-btn--danger';
+          confirmBtn.onclick = async () => {
+            confirmBtn.disabled = true;
+            try {
+              const res = await api(`/api/v1/config/biblioteca/valores/${item.id}`, 'DELETE');
+              closeModalDel();
+              selectedIdx = -1;
+              await recargar();
+              if (typeof loadAudios === 'function') loadAudios();
+              window.BibliotecaVista?.recargar?.();
+              showToast(res.mensaje || `Categoría "${item.label}" eliminada`, 'success');
+            } catch (err) {
+              showToast(err.message, 'error');
+            } finally {
+              confirmBtn.disabled = false;
+            }
+          };
+        } else {
+          if (iconBadge) {
+            iconBadge.className = 'onix-modal-pro__icon-badge';
+            iconBadge.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+          }
+          if (titleEl) titleEl.textContent = 'Categoría en Uso';
+          if (subtitleEl) subtitleEl.textContent = `${catName} · Resolver canciones antes de eliminar`;
+
+          const chipsHtml = (uso.ejemplos || []).map(ej => `<span class="onix-song-chip" title="${ej}">🎵 ${ej}</span>`).join('');
+          const hayAlternativas = (uso.alternativas || []).length > 0;
+          const opcionesSelect = (uso.alternativas || []).map(alt => `<option value="${alt.id}">${alt.valor}</option>`).join('');
+
+          bodyEl.innerHTML = `
+            <div class="onix-count-badge">
+              <span class="onix-count-num">${uso.total_audios}</span>
+              <span>canción(es) tienen asignada la categoría <strong>${item.label}</strong></span>
+            </div>
+
+            ${uso.ejemplos?.length ? `
+              <div class="onix-songs-preview">
+                <div class="onix-songs-preview__title">Canciones afectadas (muestra reciente):</div>
+                <div class="onix-songs-chips">${chipsHtml}</div>
+              </div>
+            ` : ''}
+
+            <div style="font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-top: 4px;">
+              Selecciona cómo debe resolver el sistema estas canciones:
+            </div>
+
+            <div class="onix-resolve-card ${hayAlternativas ? 'active' : ''}" id="card-opt-reasignar" style="${!hayAlternativas ? 'opacity: 0.5; pointer-events: none;' : ''}">
+              <div class="onix-resolve-card__header">
+                <div class="onix-radio-custom"></div>
+                <div class="onix-resolve-card__title">Reasignar a otra categoría activa</div>
+              </div>
+              <div class="onix-resolve-card__desc">
+                Las ${uso.total_audios} canciones pasarán automáticamente a la categoría seleccionada.
+              </div>
+              ${hayAlternativas ? `
+                <select class="onix-resolve-select" id="cat-del-reassign-select">
+                  ${opcionesSelect}
+                </select>
+              ` : '<div style="font-size:11.5px; color:#ef4444; margin-left:30px;">(No hay otras categorías activas para reasignar)</div>'}
+            </div>
+
+            <div class="onix-resolve-card ${!hayAlternativas ? 'active' : ''}" id="card-opt-desasignar">
+              <div class="onix-resolve-card__header">
+                <div class="onix-radio-custom"></div>
+                <div class="onix-resolve-card__title">Desasignar (dejar sin categoría)</div>
+              </div>
+              <div class="onix-resolve-card__desc">
+                Las canciones se mantendrán en la biblioteca, pero no mostrarán esta categoría (campo vacío).
+              </div>
+            </div>
+          `;
+
+          let selectedAccion = hayAlternativas ? 'reasignar' : 'desasignar';
+          const cardReasignar = document.getElementById('card-opt-reasignar');
+          const cardDesasignar = document.getElementById('card-opt-desasignar');
+          const selectDest = document.getElementById('cat-del-reassign-select');
+
+          if (cardReasignar && hayAlternativas) {
+            cardReasignar.onclick = (e) => {
+              if (e.target === selectDest) return;
+              selectedAccion = 'reasignar';
+              cardReasignar.classList.add('active');
+              cardDesasignar.classList.remove('active');
+            };
+          }
+          if (cardDesasignar) {
+            cardDesasignar.onclick = () => {
+              selectedAccion = 'desasignar';
+              cardDesasignar.classList.add('active');
+              if (cardReasignar) cardReasignar.classList.remove('active');
+            };
+          }
+
+          confirmBtn.textContent = 'Resolver y Eliminar';
+          confirmBtn.className = 'onix-pro-btn onix-pro-btn--danger';
+          confirmBtn.onclick = async () => {
+            confirmBtn.disabled = true;
+            try {
+              let url = `/api/v1/config/biblioteca/valores/${item.id}?accion=${selectedAccion}`;
+              if (selectedAccion === 'reasignar') {
+                const targetId = selectDest?.value;
+                if (!targetId) {
+                  showToast('Debes seleccionar una categoría destino', 'warning');
+                  confirmBtn.disabled = false;
+                  return;
+                }
+                url += `&reasignar_a_id=${targetId}`;
+              }
+              const res = await api(url, 'DELETE');
+              closeModalDel();
+              selectedIdx = -1;
+              await recargar();
+              if (typeof loadAudios === 'function') loadAudios();
+              window.BibliotecaVista?.recargar?.();
+              showToast(res.mensaje || `Categoría resuelta y eliminada`, 'success');
+            } catch (err) {
+              showToast(err.message, 'error');
+            } finally {
+              confirmBtn.disabled = false;
+            }
+          };
+        }
+
+        modal.style.display = 'flex';
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
     },
     async move(dir) {
       const items = categories[activeKey].items;

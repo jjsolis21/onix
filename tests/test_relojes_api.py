@@ -2,6 +2,7 @@
 
 import time
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -28,7 +29,7 @@ def subir(client, tmp_path, titulo, tipo="Musica", cat2=None, seconds=3.0):
     # directo; si no, el resultado dependía de otras pruebas que aprobaban.
     import sqlite3
     from backend.paths import DB_PATH
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     conn.execute("UPDATE audios SET aprobada = 1 WHERE id = ?", (aid,))
     conn.commit()
     conn.close()
@@ -77,11 +78,13 @@ def test_programa(client, tmp_path):
         subir(client, tmp_path, f"PROG {i}", seconds=60)
     client.post("/api/v1/player/set_mode", json={"mode": "automatico"})   # en manual no se planifica
     client.post("/api/v1/programa/regenerar")
-    for _ in range(40):
+    t0 = time.time()
+    for _ in range(200):                                  # hasta 10 s: planificar contra MariaDB tarda más que contra un archivo
         prog = client.get("/api/v1/programa").json()
         if prog["items"]:
             break
         time.sleep(0.05)
+    print(f"[tiempo] el programa tardó {time.time() - t0:.2f} s en planificarse")
     assert prog["items"] and prog["items"][0]["hora"]
     uid = prog["items"][0]["uid"]
     client.post(f"/api/v1/programa/{uid}/quitar")
@@ -244,7 +247,7 @@ def test_la_vista_del_reloj_solo_cuenta_musica_aprobada(client):
     """La música sin aprobar (Bandeja de entrada) no la elige el automático: la vista no debe contarla como disponible."""
     import sqlite3
     from backend.paths import DB_PATH
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     for titulo, aprobada in (("Z1", 1), ("Z2", 0), ("Z3", 0)):
         c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio, subgenero, aprobada)"
                   " VALUES (?, 'ZETA', 200, ?, 'Musica', 'GENEROZETA', ?)", (titulo, f"library/{titulo}.mp3", aprobada))
@@ -252,10 +255,10 @@ def test_la_vista_del_reloj_solo_cuenta_musica_aprobada(client):
     v = client.post("/api/v1/relojes/vista-previa",
                     json={"nombre": "x", "filas": [{"tipo_audio": "Musica", "filtros": {"cat1": "GENEROZETA"}}]}).json()
     assert v["filas"][0]["candidatos"] == 1 and v["filas"][0]["pendientes"] == 2
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     c.execute("UPDATE audios SET aprobada = 0 WHERE artista = 'ZETA'"); c.commit(); c.close()
     v = client.post("/api/v1/relojes/vista-previa",
                     json={"nombre": "x", "filas": [{"tipo_audio": "Musica", "filtros": {"cat1": "GENEROZETA"}}]}).json()
     assert v["filas"][0]["candidatos"] == 0 and v["filas"][0]["pendientes"] == 3 and v["saltadas"] == [0]
-    c = sqlite3.connect(DB_PATH)
+    c = get_connection(DB_PATH)
     c.execute("DELETE FROM audios WHERE artista = 'ZETA'"); c.commit(); c.close()

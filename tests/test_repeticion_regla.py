@@ -1,5 +1,6 @@
 """Regla «volver a sonar cada N tiempo»: por lote, hasta meses, y estado para el aviso en manual."""
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -43,7 +44,7 @@ def test_estado_para_el_aviso_en_manual(client, tmp_path):
     st = client.get(f"/api/v1/audios/{a}/repeticion").json()
     assert st["bloqueada"] is False                        # sin regla ni reproducción
     client.put(f"/api/v1/audios/{a}", json={"repeticion_horas": 5})
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     conn.execute("UPDATE audios SET ultima_reproduccion = datetime('now','localtime','-1 hours') WHERE id = ?", (a,))
     conn.commit()
     st = client.get(f"/api/v1/audios/{a}/repeticion").json()

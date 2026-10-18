@@ -129,10 +129,35 @@
         <button class="ec-x" data-acc="cerrar" title="Cerrar (Esc)">✕</button>
       </header>
       <div class="ec-cuerpo">
-        ${nueva ? `<section class="ec-sec"><h3>Archivo</h3>
-          <label class="ec-zona" id="ecZona"><input type="file" id="ecArchivo" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" hidden>
-            <span id="ecZonaTxt">Arrastra aquí el archivo de audio o haz clic para elegirlo</span></label>
-          <p class="ec-aviso" id="ecAvisoArchivo" hidden></p></section>` : ''}
+        <section class="ec-sec">
+          <input type="file" id="ecArchivo" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" hidden>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <h3 style="margin:0;">Archivo</h3>
+          </div>
+          <div class="ec-zona" id="ecZona" style="cursor:pointer;">
+            ${nueva ? `<span id="ecZonaTxt">Arrastra aquí el archivo de audio o haz clic para elegirlo</span>` : `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;text-align:left;width:100%;">
+                <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                  <span style="font-size:24px;line-height:1;">🎵</span>
+                  <div style="min-width:0;flex:1;">
+                    <div style="font-weight:700;font-size:13px;color:var(--text-hi,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(f.archivo_path || '')}">
+                      ${esc((f.archivo_path || '').split(/[/\\]/).pop() || 'Archivo actual')}
+                    </div>
+                    <div style="font-size:11px;color:var(--text-mid,#aaa);margin-top:2px;">
+                      ${fmt(f.duracion)} min · <span style="color:#52b788;">Archivo en el servidor</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                  <button type="button" class="ec-btn" id="ecBtnCambiarArchivo" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px;font-weight:700;background:rgba(0,200,240,0.18);color:#00f0ff;border:1px solid rgba(0,200,240,0.5);border-radius:5px;cursor:pointer;">
+                    🔄 Cambiar archivo
+                  </button>
+                </div>
+              </div>
+            `}
+          </div>
+          <p class="ec-aviso" id="ecAvisoArchivo" hidden></p>
+        </section>
 
         ${htmlOnda(f, nueva)}
 
@@ -377,13 +402,40 @@
     R.querySelectorAll('.ec-campos input, .ec-campos select, #ecRepH, #ecRepD').forEach(el =>
       el.addEventListener('input', () => { E.sucio = true; }));
     $('#ecTapaArchivo')?.addEventListener('change', e => e.target.files[0] && tapa('archivo', e.target.files[0]));
-    // Canción nueva: archivo
+    // Archivo: nueva canción o reemplazar en existente
     const zona = $('#ecZona');
-    if (zona) {
-      $('#ecArchivo').addEventListener('change', e => e.target.files[0] && elegirArchivo(e.target.files[0]));
+    const inputArchivo = $('#ecArchivo');
+    if (zona && inputArchivo) {
+      inputArchivo.addEventListener('change', e => {
+        if (e.target.files?.[0]) elegirArchivo(e.target.files[0]);
+      });
+      zona.addEventListener('click', e => {
+        if (e.target.closest('#ecBtnCambiarArchivo')) {
+          e.preventDefault();
+          e.stopPropagation();
+          inputArchivo.value = '';
+          inputArchivo.click();
+          return;
+        }
+        if (e.target.closest('#ecBtnQuitarArchivo')) {
+          e.preventDefault();
+          e.stopPropagation();
+          quitarArchivo();
+          return;
+        }
+        // Solo abrir el picker al hacer clic en la zona vacía (canción nueva sin archivo)
+        if (!E.id && !E.archivo) {
+          inputArchivo.value = '';
+          inputArchivo.click();
+        }
+      });
       zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('encima'); });
       zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
-      zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('encima'); e.dataTransfer.files[0] && elegirArchivo(e.dataTransfer.files[0]); });
+      zona.addEventListener('drop', e => {
+        e.preventDefault();
+        zona.classList.remove('encima');
+        if (e.dataTransfer?.files?.[0]) elegirArchivo(e.dataTransfer.files[0]);
+      });
     }
   }
 
@@ -508,24 +560,90 @@
     R.querySelector('#ecSug').hidden = true;
   }
 
+  function quitarArchivo() {
+    E.archivo = null;
+    const fi = E.raiz.querySelector('#ecArchivo');
+    if (fi) fi.value = '';
+    const zona = E.raiz.querySelector('#ecZona');
+    if (zona) {
+      zona.innerHTML = `<span id="ecZonaTxt">Arrastra aquí el archivo de audio o haz clic para elegirlo</span>`;
+    }
+    const av = E.raiz.querySelector('#ecAvisoArchivo');
+    if (av) { av.hidden = true; av.textContent = ''; }
+    const cont = E.raiz.querySelector('#ecOnda');
+    if (cont) cont.innerHTML = '<p class="ec-onda-vacia">La onda aparece al elegir el archivo</p>';
+    try { E.ws?.destroy(); } catch (_) { }
+    E.ws = null;
+    E.dur = 0;
+    E.valores = Object.fromEntries(MARCAS.map(m => [m.k, 0]));
+    pintarMarcas();
+    toast('Archivo quitado. Puedes seleccionar otro.', 'info');
+  }
+
   async function elegirArchivo(file) {
+    if (!file) return;
+    const prevFile = E.archivo;
     E.archivo = file;
     const R = E.raiz;
-    R.querySelector('#ecZonaTxt').textContent = `✓ ${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+    const zona = R.querySelector('#ecZona');
+    if (zona) {
+      zona.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;text-align:left;width:100%;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+            <span style="font-size:24px;line-height:1;">🎵</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:700;font-size:13px;color:var(--text-hi,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(file.name)}</div>
+              <div style="font-size:11px;color:var(--text-mid,#aaa);margin-top:2px;">
+                ${(file.size / 1048576).toFixed(1)} MB · Archivo cargado
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+            <button type="button" class="ec-btn" id="ecBtnCambiarArchivo" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px;font-weight:700;background:rgba(0,200,240,0.18);color:#00f0ff;border:1px solid rgba(0,200,240,0.5);border-radius:5px;cursor:pointer;">
+              🔄 Cambiar archivo
+            </button>
+            <button type="button" class="ec-btn" id="ecBtnQuitarArchivo" style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;font-size:12px;font-weight:600;background:rgba(255,90,95,0.12);color:#ff5a5f;border:1px solid rgba(255,90,95,0.3);border-radius:5px;cursor:pointer;" title="Quitar este archivo">
+              ✕ Quitar
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     cargarOnda(URL.createObjectURL(file));
+
+    // Si el título era el nombre del archivo anterior, actualízalo al nuevo
+    const prevBase = prevFile ? prevFile.name.replace(/\.[^.]+$/, '').toUpperCase() : '';
+    const newBase = file.name.replace(/\.[^.]+$/, '').toUpperCase();
+    const titEl = R.querySelector('#ecTitulo');
+    if (titEl && (!titEl.value || titEl.value.toUpperCase() === prevBase)) {
+      titEl.value = newBase;
+    }
+
     try {
       const fd = new FormData();
       fd.append('file', file.slice(0, 2 * 1024 * 1024), file.name); fd.append('nombre', file.name);
       const t = await fetch('/api/v1/biblioteca/etiquetas', { method: 'POST', body: fd }).then(r => r.json());
-      const poner = (sel, v) => { const el = R.querySelector(sel); if (el && v && !el.value) el.value = v; };
+      const poner = (sel, v) => {
+        const el = R.querySelector(sel);
+        if (el && v && (!el.value || el.value.toUpperCase() === prevBase || el.value.toUpperCase() === newBase)) {
+          el.value = v;
+        }
+      };
       poner('#ecArtista', t.artista); poner('#ecTitulo', t.titulo); poner('#ecAlbum', t.album);
       poner('#ecAnio', t.anio); poner('#ecBpm', t.bpm);
-      R.querySelector('#ecCabTit').textContent = `${R.querySelector('#ecArtista').value} — ${R.querySelector('#ecTitulo').value}`;
+      const artVal = R.querySelector('#ecArtista')?.value || '';
+      const titVal = R.querySelector('#ecTitulo')?.value || '';
+      if (artVal || titVal) {
+        R.querySelector('#ecCabTit').textContent = `${artVal} — ${titVal}`;
+      }
       const av = R.querySelector('#ecAvisoArchivo'), d = t.duplicados?.[0];
-      av.hidden = !d && t.origen_datos !== 'etiquetas';
-      av.className = `ec-aviso ${d ? 'ec-aviso--error' : ''}`;
-      av.textContent = d ? `⚠ Ya existe en la biblioteca: ${d.titulo} — ${d.artista} (#${d.id}). ¿Seguro que quieres cargarla otra vez?`
-                         : '🏷 Datos leídos de las etiquetas del archivo';
+      if (av) {
+        av.hidden = !d && t.origen_datos !== 'etiquetas';
+        av.className = `ec-aviso ${d ? 'ec-aviso--error' : ''}`;
+        av.textContent = d ? `⚠ Ya existe en la biblioteca: ${d.titulo} — ${d.artista} (#${d.id}). ¿Seguro que quieres cargarla otra vez?`
+                           : '🏷 Datos leídos de las etiquetas del archivo';
+      }
     } catch (_) { /* sin etiquetas: se escribe a mano */ }
   }
 
@@ -580,6 +698,14 @@
         fd.append('tipo_audio', d.tipo_audio);
         const creada = await subir(fd, pct => { est.textContent = `Subiendo… ${pct}%`; });
         id = creada.id;
+      } else if (E.archivo) {
+        // Reemplazar archivo físico en canción existente
+        est.textContent = 'Subiendo archivo nuevo…';
+        const fd = new FormData();
+        fd.append('file', E.archivo);
+        const rFile = await subirReemplazo(id, fd, pct => { est.textContent = `Reemplazando… ${pct}%`; });
+        if (rFile.duracion) cuerpo.duracion = rFile.duracion;
+        est.textContent = 'Guardando metadatos…';
       }
       const r = await fetch(`/api/v1/audios/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
       if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(typeof x.detail === 'string' ? x.detail : (x.detail?.mensaje || `Error ${r.status}`)); }
@@ -610,6 +736,21 @@
         else mal(new Error(typeof j.detail === 'string' ? j.detail : (j.detail?.mensaje || `Error ${x.status}`)));
       };
       x.onerror = () => mal(new Error('Error de red al subir'));
+      x.send(fd);
+    });
+  }
+
+  function subirReemplazo(id, fd, progreso) {
+    return new Promise((ok, mal) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', `/api/v1/audios/${id}/archivo`);
+      x.upload.onprogress = e => e.lengthComputable && progreso(Math.round(e.loaded / e.total * 100));
+      x.onload = () => {
+        let j = {}; try { j = JSON.parse(x.responseText); } catch (_) { }
+        if (x.status >= 200 && x.status < 300) ok(j);
+        else mal(new Error(typeof j.detail === 'string' ? j.detail : (j.detail?.mensaje || `Error ${x.status}`)));
+      };
+      x.onerror = () => mal(new Error('Error de red al reemplazar archivo'));
       x.send(fd);
     });
   }

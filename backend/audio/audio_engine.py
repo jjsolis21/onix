@@ -141,14 +141,7 @@ def tandas_de_hora(grilla: dict, dia: int, hora: int, minutos: list[int],
     return m, lista("inmediatas", inmediatas), lista("cierre", cierre)
 
 
-_ESQUEMA_AJUSTES = """
-CREATE TABLE IF NOT EXISTS tanda_ajustes (
-    fecha TEXT NOT NULL, hora INTEGER NOT NULL, minuto INTEGER NOT NULL, ids TEXT NOT NULL DEFAULT '[]',
-    PRIMARY KEY (fecha, hora, minuto));
-CREATE TABLE IF NOT EXISTS tanda_quitadas (
-    fecha TEXT NOT NULL, hora INTEGER NOT NULL, pauta_id INTEGER NOT NULL,
-    PRIMARY KEY (fecha, hora, pauta_id));
-"""
+from backend.esquema_extra import ESQUEMA_AJUSTES as _ESQUEMA_AJUSTES  # noqa: E402
 
 
 def leer_ajustes(conn, fecha: str, hora: int) -> tuple[dict[int, list[int]], set[int]]:
@@ -156,15 +149,25 @@ def leer_ajustes(conn, fecha: str, hora: int) -> tuple[dict[int, list[int]], set
     Ajustes a mano del operador (Admin › Comerciales › Tandas del día) para una
     hora de un día: {minuto: [pauta_id en orden]} y las cuñas quitadas ese día.
     """
-    conn.executescript(_ESQUEMA_AJUSTES)
-    bloques = {}
-    for m, ids in conn.execute("SELECT minuto, ids FROM tanda_ajustes WHERE fecha = ? AND hora = ?", (fecha, hora)):
-        try:
-            bloques[int(m)] = [int(i) for i in json.loads(ids or "[]")]
-        except (TypeError, ValueError):
-            continue
-    quitadas = {int(r[0]) for r in conn.execute(
-        "SELECT pauta_id FROM tanda_quitadas WHERE fecha = ? AND hora = ?", (fecha, hora))}
+    try:
+        conn.executescript(_ESQUEMA_AJUSTES)
+    except Exception:
+        pass                                    # ya existen (o el motor de la base no admite el script): se intenta leer igual
+    bloques: dict[int, list[int]] = {}
+    quitadas: set[int] = set()
+    # Los ajustes son un extra del operador: si la base no los puede leer, las tandas salen con el reparto automático.
+    # Nunca deben dejar al aire sin publicidad.
+    try:
+        for m, ids in conn.execute("SELECT minuto, ids FROM tanda_ajustes WHERE fecha = ? AND hora = ?", (fecha, hora)):
+            try:
+                bloques[int(m)] = [int(i) for i in json.loads(ids or "[]")]
+            except (TypeError, ValueError):
+                continue
+        quitadas = {int(r[0]) for r in conn.execute(
+            "SELECT pauta_id FROM tanda_quitadas WHERE fecha = ? AND hora = ?", (fecha, hora))}
+    except Exception as exc:
+        log.warning("[Pautas] No se pudieron leer los ajustes de tandas (se usa el reparto automático): %s", exc)
+        return {}, set()
     return bloques, quitadas
 
 
@@ -244,8 +247,9 @@ def rubros_chocan(a: str, b: str) -> bool:
 def leer_conflictos_rubros(conn) -> list[tuple[str, str]]:
     try:
         return [(r[0], r[1]) for r in conn.execute("SELECT a, b FROM comerciales_conflictos_rubros")]
-    except sqlite3.OperationalError:
+    except Exception:
         return []
+
 
 
 SEPARAR_VOCES = True      # regla «voces de mujer no se pegan» (config regla_voces_mujer)
@@ -306,7 +310,47 @@ def ordenar_tanda(pautas: list[dict]) -> list[dict]:
         if idx is None:
             idx = next((i for i in rango if rubro_ok(pendientes[i])), 0)
         orden.append(pendientes.pop(idx))
-    return primeras + orden + ultimas
+
+    resultado = primeras + orden + ultimas
+
+    # ── Post-validación estricta y reordenamiento de seguridad (Swapping) ──
+    # Si tras armar la lista quedó algún choque consecutivo entre piezas adyacentes
+    # (por ejemplo con 'primeras' o 'ultimas'), intentamos intercambiar con un
+    # vecino no conflictivo para subsanarlo.
+    def hay_choque(a_p, b_p):
+        if not a_p or not b_p:
+            return False
+        r_a, r_b = _rubro(a_p), _rubro(b_p)
+        if rubros_chocan(r_a, r_b):
+            return True
+        if SEPARAR_VOCES and mujer(a_p) and mujer(b_p):
+            return True
+        return False
+
+    # Iterar hasta 3 pasadas para corregir cualquier adyacencia
+    for _ in range(3):
+        hubo_cambio = False
+        for i in range(len(resultado) - 1):
+            if hay_choque(resultado[i], resultado[i + 1]):
+                # Buscar un elemento j más adelante con el que intercambiar
+                # respetando las restricciones de 'posicion' (primeras y ultimas)
+                pos_i = pos(resultado[i + 1])
+                for j in range(i + 2, len(resultado)):
+                    pos_j = pos(resultado[j])
+                    if pos_i in (1, 2) or pos_j in (1, 2):
+                        continue
+                    # Verificar si al mover resultado[j] a i+1 no choca con resultado[i] ni con resultado[i+2]
+                    izq_ok = not hay_choque(resultado[i], resultado[j])
+                    der_ok = (i + 2 >= len(resultado)) or (not hay_choque(resultado[j], resultado[i + 2]))
+                    if izq_ok and der_ok:
+                        resultado[i + 1], resultado[j] = resultado[j], resultado[i + 1]
+                        hubo_cambio = True
+                        break
+        if not hubo_cambio:
+            break
+
+    return resultado
+
 
 
 def planificar_tandas(pautas: list[dict], minutos: list[int]) -> dict[int, list[dict]]:
@@ -329,20 +373,8 @@ def planificar_tandas(pautas: list[dict], minutos: list[int]) -> dict[int, list[
     return {m: ordenar_tanda(lst) for m, lst in tandas.items()}
 
 
-def _db_conn(db_path: Path = None) -> sqlite3.Connection:
-    """
-    Helper centralizado para abrir conexiones SQLite con:
-      - WAL journal mode  → lecturas concurrentes sin bloquear escrituras
-      - row_factory       → acceso por nombre de columna
-      - foreign keys      → integridad referencial
-      - check_same_thread → False para uso con threading del motor
-    """
-    path = db_path or DB_PATH
-    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=5)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+from backend.database import get_connection as _db_conn
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1051,6 +1083,7 @@ class AudioEngine:
     FAILED_TTL         = 600.0  # segundos que se evita un audio cuyo archivo fallo
     SPOT_FADE_IN       = 1.0    # salida de la musica al entrar una cuña
     SPOT_FADE_OUT      = 0.2    # empalme al terminar una cuña
+    ENTRADA_CORTO      = 0.05   # ataque de una cuña / jingle / sweeper / tip (entra a pleno volumen)
     FADE_CORTE         = 5.0    # fade de la canción cuando una tanda o evento INMEDIATO la corta (config fade_corte_seg)
     VOZ_DUCK           = 0.2    # la música bajo la voz queda al 20 % (≈ -14 dB); se cambia con config voz_fondo_pct
     VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
@@ -1208,6 +1241,21 @@ class AudioEngine:
         self._plan_slot = None
 
     def _load_config(self):
+        """Lee la tabla `config` UNA vez (antes abría una conexión a MariaDB por cada ajuste: ~1 s)."""
+        try:
+            conn = _db_conn(self._db)
+            try:
+                self._cfg_snap = {r[0]: r[1] for r in conn.execute("SELECT clave, valor FROM config").fetchall()}
+            finally:
+                conn.close()
+        except Exception:
+            self._cfg_snap = None
+        try:
+            self._load_config_inner()
+        finally:
+            self._cfg_snap = None
+
+    def _load_config_inner(self):
         try:
             self._crossfade_secs = max(0.0, float(self._cfg("crossfade_seg", "4")))
             modo = self._cfg("modo", "manual")
@@ -1359,7 +1407,12 @@ class AudioEngine:
                 self._failed_ids[track["id"]] = time.monotonic()
                 with self._programa_lock:
                     self._programa = deque(i for i in self._programa if i.get("audio_id") != track["id"])
+                # Re-planificación dinámica: recalcula tiempos desde el instante real
+                # del salto para no desfasar las tandas comerciales.
+                self._cmds.put(("plan_recalcular",))
+            else:
                 self._replanificar = True
+
             log.error("[Engine] AIRE MUERTO: '%s' lleva %ss en silencio. Se pasa a lo siguiente",
                       track.get("titulo"), seg)
             self.bus.emit("aire_muerto", {**datos, "accion": "siguiente",
@@ -1499,6 +1552,8 @@ class AudioEngine:
         if i >= 0:
             del self._playlist_queue[i]
             self._replanificar = True
+            if self._mode == "automatico":
+                self._ajustar_hueco_tanda()
             self._emit_queue()
 
     def _plan_a_cola(self, uid: int, posicion: int):
@@ -1629,6 +1684,9 @@ class AudioEngine:
                 self._vaciar_programa()
                 self._replanificar = True
                 self._actualizar_programa()
+            elif name == "plan_recalcular":
+                self._plan_recalcular_dinamico()
+
             elif name == "stop":
                 self._do_stop("manual")
             elif name == "effect":
@@ -1777,6 +1835,75 @@ class AudioEngine:
                 self._programa.extend(nuevos)
             self._emit_programa()
 
+    def _plan_recalcular_dinamico(self):
+        """
+        Re-planificación dinámica: vacía el programa actual y lo reconstruye
+        respetando estrictamente las horas de las tandas comerciales.
+        
+        Se llama cuando el operador elimina/mueve una pista desde el Studio,
+        cuando el motor detecta aire muerto y salta, o cuando un archivo falla.
+        A diferencia de plan_regenerar, calcula el tiempo restante de la pista
+        actual para que el recálculo arranque exactamente cuando termina.
+        """
+        if self._mode == "manual":
+            return
+
+        # ── Tiempo restante de la pista actual ──────────────────────────────
+        tiempo_restante = 0.0
+        if self._current_track and self._mix_point != float("inf"):
+            pos = self._audio.get_position_sec(self._active_canal)
+            tiempo_restante = max(0.0, self._mix_point - pos)
+
+        # ── Snapshot del plan actual y del historial reciente ────────────────
+        with self._programa_lock:
+            plan_snapshot = list(self._programa)
+
+        historial = list(self._recent_history)
+
+        lanzadas = (
+            {(self._plan_slot, m) for m in self._tandas_lanzadas}
+            if self._plan_slot else set()
+        ) | self._cierres_hechos
+
+        excluir = {i for i in self._failed_ids if isinstance(i, int)}
+
+        try:
+            nuevos = self._planner.recalcular_cola_dinamica(
+                plan_actual=plan_snapshot,
+                historial=historial,
+                tandas_minutos=self._tandas_base[0],
+                tiempo_restante_actual=tiempo_restante,
+                excluir=excluir,
+                tandas_emitidas=lanzadas,
+                eventos_emitidos=set(self._eventos_emitidos),
+            )
+        except Exception as exc:
+            log.error("[Engine] recalcular_cola_dinamica: %s", exc, exc_info=True)
+            return
+
+        # ── Reemplazar el programa atómicamente ─────────────────────────────
+        with self._programa_lock:
+            self._programa.clear()
+            self._programa.extend(nuevos)
+
+        self._emit_programa()
+        log.info(
+            "[Engine] Cola recalculada: %d ítems (audios=%d, tandas=%d)",
+            len(nuevos),
+            sum(1 for i in nuevos if i.get("tipo") == "audio"),
+            sum(1 for i in nuevos if i.get("tipo") == "tanda"),
+        )
+
+    def plan_recalcular(self):
+        """
+        API pública: solicita una re-planificación dinámica desde el Studio
+        o desde cualquier código externo al hilo del motor.
+        Se encola para ejecutarse de forma segura en el hilo del motor.
+        """
+        self._cmds.put(("plan_recalcular",))
+
+
+
     def _ultimo_del_reloj(self) -> Optional[dict]:
         """Lo que suena ahora, si vino del programa (para seguir el reloj)."""
         it = self._current_item or {}
@@ -1851,10 +1978,116 @@ class AudioEngine:
         self._emit_programa()
 
     def _plan_quitar(self, uid: int):
+        item_eliminado = None
+        idx_eliminado = -1
         with self._programa_lock:
+            for idx, item in enumerate(self._programa):
+                if item["uid"] == uid:
+                    item_eliminado = item
+                    idx_eliminado = idx
+                    break
+            if item_eliminado is None:
+                return
             self._programa = deque(i for i in self._programa if i["uid"] != uid)
         self._replanificar = True
+        if self._mode == "automatico" and item_eliminado.get("tipo") == "audio":
+            self._ajustar_hueco_tanda(posicion_insertar=idx_eliminado)
         self._emit_programa()
+
+    def _ajustar_hueco_tanda(self, posicion_insertar: int = -1):
+        """
+        Ajusta la cola del programa cuando se elimina una pista, rellenando el hueco
+        temporal para que la próxima tanda comercial no sufra desfase y se emita
+        estrictamente a su hora programada.
+        """
+        if self._mode == "manual":
+            return
+
+        with self._programa_lock:
+            items = list(self._programa)
+
+        tanda_idx = -1
+        tanda = None
+        for idx, it in enumerate(items):
+            if it.get("tipo") == "tanda":
+                tanda_idx = idx
+                tanda = it
+                break
+
+        if tanda is None or tanda_idx < 0:
+            return
+
+        slot = tanda.get("slot")
+        minuto = tanda.get("minuto")
+        cierre = bool(tanda.get("cierre"))
+        dur_tanda = float(tanda.get("duracion") or 0.0)
+        if not slot or minuto is None:
+            return
+
+        try:
+            base = datetime.strptime(slot, "%Y-%m-%d-%H")
+            seg = inicio_tanda(minuto, dur_tanda, cierre)
+            target_tanda = base + timedelta(seconds=seg)
+        except Exception:
+            return
+
+        t_cursor = self._fin_actual()
+        for q in list(self._playlist_queue):
+            t_cursor += timedelta(seconds=float(q.get("duracion_efectiva") or 180.0))
+
+        for k in range(tanda_idx):
+            t_cursor += timedelta(seconds=float(items[k].get("duracion") or 0.0))
+
+        brecha = (target_tanda - t_cursor).total_seconds()
+        tol = float(getattr(self, "_tolerancia_tanda", None) or (self._planner._icfg("tolerancia_tanda_seg", 90) if hasattr(self, "_planner") else 90.0))
+
+        # Si el adelanto supera los 45 segundos, rellenar con compensación
+        if brecha < 45.0:
+            return
+
+        log.info(
+            "[Engine] Desfase detectado tras quitar pista: brecha de %.1fs antes de la tanda %s (%s). "
+            "Ajustando cola con compensación para mantener la hora exacta.",
+            brecha, tanda.get("titulo", "TANDA"), target_tanda.strftime("%H:%M:%S")
+        )
+
+        en_plan = {x.get("audio_id") for x in items if x.get("audio_id")}
+        excluir = {i for i in self._failed_ids if isinstance(i, int)}
+        previos = list(self._recent_history) + [
+            {"audio_id": x.get("audio_id"), "artista": x.get("artista"),
+             "genero_vocal": x.get("genero_vocal"), "tipo_audio": x.get("tipo_audio"),
+             "ts": self._now().isoformat()}
+            for x in items if x.get("tipo") == "audio"
+        ]
+
+        nuevos_items = self._planner.obtener_compensacion_brecha(
+            brecha=brecha,
+            t_inicio=t_cursor,
+            previos=previos,
+            en_plan=en_plan,
+            excluir=excluir,
+            tol=tol,
+            crossfade=self._crossfade_secs
+        )
+
+        if nuevos_items:
+            with self._programa_lock:
+                items_act = list(self._programa)
+                curr_tanda_idx = next(
+                    (i for i, x in enumerate(items_act) if x.get("tipo") == "tanda"),
+                    len(items_act)
+                )
+                pos = curr_tanda_idx if posicion_insertar < 0 else min(posicion_insertar, curr_tanda_idx)
+                for nit in reversed(nuevos_items):
+                    items_act.insert(pos, nit)
+                self._programa = deque(items_act)
+
+            log.info(
+                "[Engine] Compensación ajustada: %d pista(s) cubriendo %.1fs. La tanda queda programada para las %s.",
+                len(nuevos_items),
+                sum(n.get("duracion", 0) for n in nuevos_items),
+                target_tanda.strftime("%H:%M:%S")
+            )
 
     def _plan_mover(self, uid: int, posicion: int):
         with self._programa_lock:
@@ -1891,11 +2124,17 @@ class AudioEngine:
                         t = fija
                 except ValueError:
                     pass
-            if it["tipo"] == "tanda" and it.get("inmediata"):
-                # Sale en punto (corta lo que suene): su hora no es estimada
+            if it["tipo"] == "tanda":
                 try:
-                    fija = datetime.strptime(it["slot"], "%Y-%m-%d-%H") + timedelta(minutes=it["minuto"])
-                    if fija > t - timedelta(minutes=10):
+                    base = datetime.strptime(it["slot"], "%Y-%m-%d-%H")
+                    cierre = bool(it.get("cierre"))
+                    seg = inicio_tanda(it["minuto"], float(it.get("duracion") or 0.0), cierre)
+                    fija = base + timedelta(seconds=seg)
+                    it["hora_objetivo"] = fija.strftime("%H:%M:%S")
+                    if it.get("inmediata") and fija > t - timedelta(minutes=10):
+                        t = fija
+                    elif cierre and abs((fija - t).total_seconds()) <= 90:
+                        # Cuadrar a su minuto fijado de inicio si está dentro de tolerancia
                         t = fija
                 except (KeyError, ValueError):
                     pass
@@ -2126,6 +2365,15 @@ class AudioEngine:
 
     # ── Voice track sobre música ─────────────────────────────────────────────
 
+    @classmethod
+    def _es_corto(cls, item: Optional[dict]) -> bool:
+        """Cuñas y elementos de la emisora (jingle, sweeper, tip, efecto…): todo lo que no es música ni locución."""
+        if not item:
+            return False
+        if cls._is_spot(item):
+            return True
+        return item["track"].get("tipo_audio") not in (TIPO_MUSICA, TIPO_VOZ, None, "")
+
     @staticmethod
     def _is_voz(item: Optional[dict]) -> bool:
         return bool(item) and item["track"].get("tipo_audio") == TIPO_VOZ
@@ -2291,9 +2539,11 @@ class AudioEngine:
         tienen, el crossfade general. Con cuñas de por medio se usan los
         empalmes cortos fijos (la musica no debe quedar debajo de la cuña).
         """
-        if self._is_spot(item):
-            return self.SPOT_FADE_IN, self.SPOT_FADE_IN
-        if prev_item and self._is_spot(prev_item):
+        if self._es_corto(item):
+            # La cuña / jingle / sweeper / tip entra YA a su volumen (ataque de 50 ms solo para evitar el clic):
+            # una rampa lenta la dejaba sonando bajo al principio. Lo que sale es lo que se desvanece.
+            return self.ENTRADA_CORTO, (self.SPOT_FADE_OUT if (prev_item and self._es_corto(prev_item)) else self.SPOT_FADE_IN)
+        if prev_item and self._es_corto(prev_item):
             return self.SPOT_FADE_OUT, self.SPOT_FADE_OUT
         if self._is_voz(item):
             return 0.1, 0.5                      # la voz entra limpia
@@ -2484,15 +2734,30 @@ class AudioEngine:
         key  = f"{(now.weekday() + 1) % 7}-{now.hour}"
         hoy  = now.date().isoformat()
 
-        # Lo que no salió en su hora se descarta, SALVO una tanda «al cierre» que esperaba a que terminara la canción:
-        # esa sale en cuanto termine (unos segundos tarde es mejor que perder la publicidad). Gracia: 5 min.
+        # Lo que no salió en su hora pasa a la cola de "Pautas en Deuda" (Cumplimiento Comercial)
+        # para recuperarse en las siguientes tandas del día sin perderse.
         vigente = lambda p: p["slot"] == slot or bool(p.get("cierre_hasta") and now < p["cierre_hasta"])
         perdidas = [p for p in self._priority_queue if not vigente(p)]
         if perdidas:
             self._priority_queue = deque(p for p in self._priority_queue if vigente(p))
             for p in perdidas:
-                log.warning("[Pautas] No salio en su hora: %s (%s)", p["cliente"], p["slot"])
+                log.warning("[Pautas] No salio en su hora (pasa a deuda): %s (%s)", p.get("cliente"), p.get("slot"))
                 self.bus.emit("pauta_missed", p)
+                pid = p.get("pauta_id")
+                if pid:
+                    try:
+                        conn_d = _db_conn(self._db)
+                        try:
+                            conn_d.execute(
+                                "INSERT INTO pautas_deuda (pauta_id, slot_original, fecha, motivo) VALUES (?, ?, ?, 'hora_expirada')",
+                                (pid, p.get("slot", ""), hoy),
+                            )
+                            conn_d.commit()
+                        finally:
+                            conn_d.close()
+                    except Exception as e_d:
+                        log.error("[Pautas] Error registrando deuda de pauta %s: %s", pid, e_d)
+
 
         try:
             conn = _db_conn(self._db)
@@ -2975,9 +3240,24 @@ class AudioEngine:
                     " WHERE id = ?",
                     (track["id"],),
                 )
+                if item.get("pauta_id"):
+                    try:
+                        # Al salir, salda UNA deuda pendiente de esa pauta (SQL que sirve igual en MariaDB y en SQLite)
+                        deuda = conn.execute(
+                            "SELECT MIN(id) AS id FROM pautas_deuda WHERE pauta_id = ? AND recuperada = 0",
+                            (item["pauta_id"],),
+                        ).fetchone()
+                        if deuda and deuda["id"] is not None:
+                            conn.execute(
+                                "UPDATE pautas_deuda SET recuperada = 1, recuperada_en = CURRENT_TIMESTAMP WHERE id = ?",
+                                (deuda["id"],),
+                            )
+                    except Exception:
+                        pass
                 conn.commit()
             finally:
                 conn.close()
+
         except Exception as exc:
             log.error("[Engine] _log_emision: %s", exc)
 
@@ -3006,6 +3286,10 @@ class AudioEngine:
             return None
 
     def _cfg(self, clave: str, default: str) -> str:
+        snap = getattr(self, "_cfg_snap", None)
+        if snap is not None:
+            v = snap.get(clave)
+            return v if v is not None else default
         conn = _db_conn(self._db)
         try:
             row = conn.execute("SELECT valor FROM config WHERE clave=?", (clave,)).fetchone()

@@ -27,15 +27,28 @@
       <button class="stats-period-btn stats-period-btn--active" data-period="day" aria-pressed="true">
         <span class="stats-period-btn__label">HOY</span>
       </button>
+      <button class="stats-period-btn" data-period="yesterday" aria-pressed="false">
+        <span class="stats-period-btn__label">AYER</span>
+      </button>
       <button class="stats-period-btn" data-period="week" aria-pressed="false">
         <span class="stats-period-btn__label">ESTA SEMANA</span>
       </button>
       <button class="stats-period-btn" data-period="month" aria-pressed="false">
         <span class="stats-period-btn__label">ESTE MES</span>
       </button>
+      <button class="stats-period-btn" data-period="custom" aria-pressed="false" id="btn-period-custom" title="Elegir rango de fechas">
+        <span class="stats-period-btn__label">RANGO ▾</span>
+      </button>
       <!-- Indicador deslizante (posicionado por JS) -->
       <span class="stats-period-slider" aria-hidden="true"></span>
     </nav>
+
+    <!-- Selector de rango de fechas personalizado -->
+    <div class="stats-custom-range" id="stats-custom-range" style="display:none;">
+      <label>Desde <input type="date" id="stats-fecha-desde" class="stats-input-fecha"></label>
+      <label>Hasta <input type="date" id="stats-fecha-hasta" class="stats-input-fecha"></label>
+      <button type="button" class="stats-btn-aplicar" id="btn-aplicar-rango">Filtrar</button>
+    </div>
   </header>
 
   <!-- ── BARRA DE BÚSQUEDA INTERNA ────────────────────────────── -->
@@ -45,7 +58,7 @@
       <path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
     </svg>
     <input type="search" id="stats-search-input" class="stats-search-bar__input"
-      placeholder="Buscar por título o artista…" aria-label="Buscar en el Top 40" autocomplete="off"
+      placeholder="Buscar por título o artista en el Top…" aria-label="Buscar en el Top" autocomplete="off"
       spellcheck="false" />
     <span class="stats-search-bar__count" id="stats-search-count" aria-live="polite"></span>
   </div>
@@ -54,27 +67,67 @@
   <div class="stats-grid">
 
     <!-- ╔══════════════════════════════════════════╗
-         ║         TOP 40 DINÁMICO                  ║
+         ║         TOP REPRODUCIDOS DINÁMICO        ║
          ╚══════════════════════════════════════════╝ -->
     <article class="stats-panel stats-panel--top40" aria-labelledby="top40-heading">
 
+      <!-- Línea 1: Encabezado del Top Reproducidos -->
       <div class="stats-panel__header">
         <h3 class="stats-panel__title" id="top40-heading">
-          <span class="stats-panel__badge" aria-hidden="true">40</span>
+          <span class="stats-panel__badge" id="top-badge-num" aria-hidden="true">40</span>
           Top Reproducidos
         </h3>
-        <select id="top40-tipo" class="stats-tipo" title="Qué contar en el Top">
-          <option value="musica">Música</option><option value="pauta">Cuñas</option><option value="todo">Todo</option>
-        </select>
-        <div class="stats-panel__meta" id="top40-period-label" aria-live="polite">Hoy</div>
+        <div class="stats-panel__meta" id="top40-period-label" aria-live="polite">Esta semana</div>
+      </div>
+
+      <!-- Línea 2: Barra de Filtros ordenada -->
+      <div class="stats-top-toolbar">
+        <div class="stats-top-controls">
+          <div class="stats-filter-field">
+            <label class="stats-filter-label" for="top40-tipo">Tipo</label>
+            <select id="top40-tipo" class="stats-tipo" title="Tipo de audio">
+              <option value="musica">🎵 Música</option>
+              <option value="ident">⚡ Identificadores</option>
+              <option value="pauta">📋 Comerciales</option>
+              <option value="todo">🌐 Todo</option>
+            </select>
+          </div>
+
+          <div class="stats-filter-field" id="wrap-top40-genero">
+            <select id="top40-genero" class="stats-tipo stats-tipo--cat" title="Filtrar por género">
+              <option value="">Géneros</option>
+            </select>
+          </div>
+
+          <div class="stats-filter-field" id="wrap-top40-rotacion">
+            <select id="top40-rotacion" class="stats-tipo stats-tipo--cat" title="Filtrar por rotación">
+              <option value="">Rotaciones</option>
+            </select>
+          </div>
+
+          <div class="stats-filter-field">
+            <label class="stats-filter-label" for="top40-limit">Mostrar</label>
+            <select id="top40-limit" class="stats-tipo stats-tipo--limit" title="Cantidad de resultados">
+              <option value="10">Top 10</option>
+              <option value="20">Top 20</option>
+              <option value="40" selected>Top 40</option>
+              <option value="100">Top 100</option>
+            </select>
+          </div>
+
+          <div class="stats-filter-field stats-filter-field--action">
+            <button type="button" class="stats-btn-csv" id="btn-export-top" title="Descargar este Top en CSV / Excel">📥 CSV</button>
+          </div>
+        </div>
       </div>
 
       <!-- Columnas de la tabla -->
       <div class="stats-table-head" role="row" aria-label="Encabezados de la tabla">
         <span role="columnheader" class="col-rank">#</span>
+        <span role="columnheader" class="col-play" title="Preescuchar">▶</span>
         <span role="columnheader" class="col-type">Tipo</span>
         <span role="columnheader" class="col-title">Título / Artista</span>
-        <span role="columnheader" class="col-category">Género</span>
+        <span role="columnheader" class="col-category">Categoría</span>
         <span role="columnheader" class="col-plays">Toques</span>
         <span role="columnheader" class="col-trend" title="Comparado con el período anterior">Tendencia</span>
       </div>
@@ -121,14 +174,23 @@
           </svg>
           Reporte de Olvido
         </h3>
-        <div class="stats-panel__badge-alert" aria-live="polite" id="forgotten-count-badge">
-          <span id="forgotten-count">0</span> ítems
+        <div class="stats-forgotten-controls">
+          <select id="forgotten-dias" class="stats-tipo stats-tipo--dias" title="Filtrar por días sin sonar">
+            <option value="30">Sin sonar > 30 días</option>
+            <option value="15">Sin sonar > 15 días</option>
+            <option value="7">Sin sonar > 7 días</option>
+            <option value="2">Sin sonar > 2 días</option>
+            <option value="1">Sin sonar > 1 día</option>
+            <option value="0">Más tiempo sin sonar</option>
+          </select>
+          <div class="stats-panel__badge-alert" aria-live="polite" id="forgotten-count-badge">
+            <span id="forgotten-count">0</span> ítems
+          </div>
         </div>
       </div>
 
-      <p class="stats-panel__subtitle">
-        Canciones activas sin sonar en los últimos <strong>30 días</strong>.
-        Doble clic en una fila para auditar.
+      <p class="stats-panel__subtitle" id="forgotten-subtitle">
+        Auditoría de rotación: canciones de la biblioteca con mayor tiempo sin emitirse al aire. Doble clic para auditar.
       </p>
 
       <div class="stats-table-head stats-table-head--forgotten" role="row" aria-label="Encabezados olvido">

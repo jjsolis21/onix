@@ -42,15 +42,7 @@ CLAVES_FILTRO = set(FILTRO_COLUMNA) | {"energia_min", "energia_max", "anio_min",
 CLAVES_NUMERO = {"energia_min", "energia_max", "anio_min", "anio_max", "prioridad"}
 
 
-def get_db():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+from backend.database import get_db
 
 
 def _replanificar():
@@ -70,6 +62,10 @@ def _limpiar_filtros(filtros: dict) -> dict:
                     out[k] = int(v)
                 except (TypeError, ValueError):
                     pass                      # un número mal escrito no filtra (ni rompe el reloj)
+            elif k == "epoca":
+                s = str(v).strip()
+                if s.upper() not in ("TODAS", "TODOS", "ALL", ""):
+                    out[k] = s
             else:
                 out[k] = str(v).strip().upper()
     return out

@@ -61,6 +61,7 @@ from backend.api import playlists as playlists_api
 from backend.api import identificadores as identificadores_api
 from backend.api import ia as ia_api
 from backend.api import voicetrack as voicetrack_api
+from backend.api import locuciones as locuciones_api
 from backend.api import locutor as locutor_api
 from backend.api import cartuchera as cartuchera_api
 from backend.api import comerciales as comerciales_api
@@ -70,6 +71,7 @@ from backend.api import respaldos as respaldos_api
 from backend.api.red import router as red_router
 from backend.api import biblioteca as biblioteca_api
 from backend.api import auth as auth_api
+from backend.api.utils_musica import calcular_epoca
 
 # Motor de audio:
 #   ONIX_ENGINE=local  (por defecto) → el motor corre dentro de este proceso.
@@ -84,17 +86,22 @@ else:
     from backend.audio.audio_engine import engine
 
 # ---------------------------------------------------------------------------
-# Conexión a DB con check_same_thread=False
-# Esto es necesario porque FastAPI usa múltiples hilos y SQLite por defecto
-# rechaza conexiones creadas en un hilo distinto al que las usa.
+# Conexión a Base de Datos (MariaDB / SQLAlchemy)
 # ---------------------------------------------------------------------------
-def get_connection(db_path: str = None) -> sqlite3.Connection:
-    path = db_path or DB_PATH
-    conn = sqlite3.connect(path, check_same_thread=False)  # FIX: multi-thread support
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+from backend.database import (
+    get_connection,
+    db_session,
+    get_db,
+    engine as db_engine,
+    SessionLocal,
+    Base,
+    MariaDBConnection,
+    IntegrityError,
+    OperationalError,
+    DatabaseError,
+    Error,
+)
+
 
 # ---------------------------------------------------------------------------
 # Configuración
@@ -150,6 +157,8 @@ async def lifespan(app: FastAPI):
     # ── STARTUP ──────────────────────────────────────────────────────────
     logger.info("Iniciando Ónix FM API v2.0...")
     initialize_database(DB_PATH)
+    from backend.migraciones_maria import migrar as _migrar_maria
+    _migrar_maria()           # esquema nuevo en MariaDB (la base real)
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
     MUSICA_DIR.mkdir(parents=True, exist_ok=True)
@@ -221,6 +230,7 @@ voicetrack_api.medir_volumen = _normalizador.avisar
 app.include_router(cartuchera_api.router)
 app.include_router(comerciales_api.router)
 app.include_router(voicetrack_api.router)
+app.include_router(locuciones_api.router)
 problemas_api.engine = engine
 app.include_router(problemas_api.router)
 app.include_router(respaldos_api.router)
@@ -279,25 +289,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
 
-# ---------------------------------------------------------------------------
-# DB Dependency
-# ---------------------------------------------------------------------------
-@contextmanager
-def db_session():
-    conn = get_connection(DB_PATH)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+# db_session y get_db provienen de backend.database (MariaDB / SQLAlchemy)
 
-
-def get_db():
-    with db_session() as conn:
-        yield conn
 
 
 
@@ -349,6 +342,32 @@ def _get_all_valid_values(conn: sqlite3.Connection, nombre_interno: str) -> set[
     return {r["valor"] for r in rows}
 
 
+def _valores_activos_por_categoria(conn: sqlite3.Connection) -> dict[str, dict[str, str]]:
+    """Devuelve los mapeos {valor_upper: valor_oficial} activos para cada categoría."""
+    rows = conn.execute("""
+        SELECT cd.nombre_interno, cv.valor
+        FROM config_categorias_valores cv
+        JOIN config_categorias_def cd ON cd.id = cv.cat_id
+        WHERE cv.activo = 1
+    """).fetchall()
+    cats = {"cat1": {}, "cat2": {}, "cat3": {}, "voz": {}}
+    for r in rows:
+        ni = r["nombre_interno"]
+        if ni in cats and r["valor"]:
+            val = r["valor"].strip()
+            cats[ni][val.upper()] = val
+    return cats
+
+
+def _sanitizar_cat(val: Optional[str], cat_map: dict[str, str]) -> Optional[str]:
+    """Retorna el valor oficial registrado o None si no existe en la categoría activa."""
+    if not val or not str(val).strip():
+        return None
+    if not cat_map:
+        return str(val).strip()
+    return cat_map.get(str(val).strip().upper(), None)
+
+
 def _validate_categoria_valor(
     conn: sqlite3.Connection,
     nombre_interno: str,
@@ -356,53 +375,29 @@ def _validate_categoria_valor(
     campo_api: str,
 ) -> None:
     """
-    Acepta cualquier string no vacío para una categoría.
-    Si el valor no existe en config_categorias_valores lo auto-registra
-    (upsert) para mantener el catálogo actualizado.
-    Permite None/vacío (campo opcional en audio).
+    Valida que el valor pertenezca o se ajuste al catálogo activo.
+    No auto-registra valores no creados por el usuario en config_categorias_valores.
     """
-    if not valor:
+    if not valor or not valor.strip():
         return
 
-    # Buscar la definición de la categoría
     cat_def = conn.execute(
         "SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
         (nombre_interno,)
     ).fetchone()
 
     if not cat_def:
-        # La categoría no existe en la configuración — aceptar igualmente
-        logger.warning(
-            f"Categoría '{nombre_interno}' no definida en config_categorias_def; "
-            f"se acepta el valor '{valor}' sin registrar."
-        )
         return
 
     cat_id = cat_def["id"]
-
-    # Verificar si el valor ya existe (activo o inactivo)
+    # Si existe inactivo, se reactiva
     existing = conn.execute(
-        "SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND valor = ?",
-        (cat_id, valor)
+        "SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
+        (cat_id, valor.strip())
     ).fetchone()
 
-    if existing is None:
-        # Auto-registrar el valor nuevo
-        max_orden = conn.execute(
-            "SELECT COALESCE(MAX(orden), 0) FROM config_categorias_valores WHERE cat_id = ?",
-            (cat_id,)
-        ).fetchone()[0]
-        conn.execute(
-            "INSERT INTO config_categorias_valores (cat_id, valor, orden, activo) VALUES (?, ?, ?, 1)",
-            (cat_id, valor, max_orden + 1)
-        )
-        logger.info(f"Auto-registrado valor '{valor}' en categoría '{nombre_interno}'.")
-    elif not existing["activo"]:
-        # Reactivar si estaba inactivo
-        conn.execute(
-            "UPDATE config_categorias_valores SET activo = 1 WHERE id = ?",
-            (existing["id"],)
-        )
+    if existing and not existing["activo"]:
+        conn.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (existing["id"],))
         logger.info(f"Reactivado valor '{valor}' en categoría '{nombre_interno}'.")
 
 
@@ -613,21 +608,95 @@ def add_categoria_valor(
     }
 
 
-@app.delete(
-    "/api/v1/config/biblioteca/valores/{valor_id}",
+@app.get(
+    "/api/v1/config/biblioteca/valores/{valor_id}/uso",
+    response_model=dict,
     status_code=status.HTTP_200_OK,
-    summary="Eliminar valor de una categoría",
+    summary="Consultar el uso de un valor de categoría antes de eliminar",
     tags=["Config Biblioteca"],
 )
-def delete_categoria_valor(
+def get_categoria_valor_uso(
     valor_id: int,
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """
-    Elimina (soft-delete: marca como inactivo) un valor de categoría.
-    Los audios que ya usaban este valor NO se ven afectados retroactivamente.
+    Retorna cuántas canciones activas tienen asignado este valor y las alternativas
+    disponibles para reasignación en el Modal PRO 2026.
     """
-    logger.info(f"DELETE /api/v1/config/biblioteca/valores/{valor_id}")
+    valor = conn.execute("""
+        SELECT cv.id, cv.valor, cv.cat_id, cd.nombre_interno, cd.etiqueta_visible
+        FROM config_categorias_valores cv
+        JOIN config_categorias_def cd ON cd.id = cv.cat_id
+        WHERE cv.id = ? AND cv.activo = 1
+    """, (valor_id,)).fetchone()
+
+    if not valor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró ningún valor activo con id={valor_id}"
+        )
+
+    campo_map = {
+        "cat1": "subgenero",
+        "cat2": "categoria",
+        "cat3": "cat3",
+        "voz":  "genero_vocal",
+    }
+    campo_db = campo_map.get(valor["nombre_interno"])
+    total_audios = 0
+    ejemplos = []
+
+    if campo_db:
+        row = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM audios WHERE {campo_db} = ? AND activo = 1",
+            (valor["valor"],)
+        ).fetchone()
+        total_audios = row["cnt"] if row else 0
+
+        if total_audios > 0:
+            filas_ej = conn.execute(
+                f"SELECT titulo, artista FROM audios WHERE {campo_db} = ? AND activo = 1 ORDER BY id DESC LIMIT 5",
+                (valor["valor"],)
+            ).fetchall()
+            ejemplos = [f"{r['titulo']} - {r['artista']}" if r['artista'] else r['titulo'] for r in filas_ej]
+
+    # Alternativas para reasignar (otros valores activos de la misma categoría)
+    alternativas = conn.execute("""
+        SELECT id, valor FROM config_categorias_valores
+        WHERE cat_id = ? AND activo = 1 AND id != ?
+        ORDER BY orden ASC, valor ASC
+    """, (valor["cat_id"], valor_id)).fetchall()
+
+    return {
+        "id": valor_id,
+        "valor": valor["valor"],
+        "nombre_interno": valor["nombre_interno"],
+        "etiqueta_visible": valor["etiqueta_visible"],
+        "total_audios": total_audios,
+        "ejemplos": ejemplos,
+        "alternativas": [{"id": a["id"], "valor": a["valor"]} for a in alternativas],
+    }
+
+
+@app.delete(
+    "/api/v1/config/biblioteca/valores/{valor_id}",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Eliminar valor de una categoría con resolución inteligente",
+    tags=["Config Biblioteca"],
+)
+def delete_categoria_valor(
+    valor_id: int,
+    accion: Optional[str] = "desasignar",
+    reasignar_a_id: Optional[int] = None,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """
+    Elimina (soft-delete) un valor de categoría resolviendo los audios asignados:
+      - accion='reasignar': traslada las canciones a `reasignar_a_id`.
+      - accion='desasignar': deja las canciones sin categoría (campo en NULL).
+    """
+    logger.info(f"DELETE /api/v1/config/biblioteca/valores/{valor_id}?accion={accion}&reasignar={reasignar_a_id}")
 
     valor = conn.execute("""
         SELECT cv.id, cv.valor, cv.cat_id, cd.nombre_interno, cd.etiqueta_visible
@@ -643,7 +712,6 @@ def delete_categoria_valor(
             detail=f"No se encontró ningún valor activo con id={valor_id}"
         )
 
-    # Verificar si algún audio usa este valor (solo informativo, no bloquea)
     campo_map = {
         "cat1": "subgenero",
         "cat2": "categoria",
@@ -660,31 +728,60 @@ def delete_categoria_valor(
             ).fetchone()
             audios_afectados = row["cnt"] if row else 0
         except Exception:
-            pass  # campo puede no existir en versiones anteriores
+            pass
 
-    # Soft-delete
+    nuevo_valor_str = None
+    if audios_afectados > 0 and campo_db:
+        if accion == "reasignar":
+            if not reasignar_a_id:
+                raise HTTPException(status_code=400, detail="Debe indicar 'reasignar_a_id' para reasignar.")
+            dest = conn.execute(
+                "SELECT valor FROM config_categorias_valores WHERE id = ? AND cat_id = ? AND activo = 1",
+                (reasignar_a_id, valor["cat_id"])
+            ).fetchone()
+            if not dest:
+                raise HTTPException(status_code=400, detail="La categoría de destino no es válida o está inactiva.")
+            nuevo_valor_str = dest["valor"]
+            conn.execute(
+                f"UPDATE audios SET {campo_db} = ? WHERE {campo_db} = ? AND activo = 1",
+                (nuevo_valor_str, valor["valor"])
+            )
+            logger.info(f"  → Reasignados {audios_afectados} audios de '{valor['valor']}' a '{nuevo_valor_str}'.")
+        else:
+            # desasignar: poner a NULL para que no muestren categorías borradas
+            conn.execute(
+                f"UPDATE audios SET {campo_db} = NULL WHERE {campo_db} = ? AND activo = 1",
+                (valor["valor"],)
+            )
+            logger.info(f"  → Desasignados {audios_afectados} audios de '{valor['valor']}'.")
+
+    # Soft-delete en catálogo
     conn.execute(
         "UPDATE config_categorias_valores SET activo = 0 WHERE id = ?",
         (valor_id,)
     )
+    conn.commit()
 
-    logger.info(
-        f"  → Valor '{valor['valor']}' desactivado de '{valor['nombre_interno']}'. "
-        f"Audios afectados: {audios_afectados}"
-    )
+    if audios_afectados > 0:
+        if accion == "reasignar":
+            msg = f"Categoría '{valor['valor']}' eliminada. {audios_afectados} canción(es) reasignada(s) a '{nuevo_valor_str}'."
+        else:
+            msg = f"Categoría '{valor['valor']}' eliminada. {audios_afectados} canción(es) quedaron sin categoría."
+    else:
+        msg = f"Categoría '{valor['valor']}' eliminada de '{valor['etiqueta_visible']}'."
 
     return {
-        "mensaje": f"Valor '{valor['valor']}' eliminado de '{valor['etiqueta_visible']}'",
-        "advertencia": (
-            f"{audios_afectados} audio(s) aún usan este valor y quedarán sin categoría válida."
-            if audios_afectados > 0 else None
-        ),
+        "mensaje": msg,
+        "audios_afectados": audios_afectados,
+        "accion": accion if audios_afectados > 0 else "directa",
+        "nuevo_valor": nuevo_valor_str,
         "data": {
             "id": valor_id,
             "valor": valor["valor"],
             "nombre_interno": valor["nombre_interno"],
         }
     }
+
 
 
 # ===========================================================================
@@ -703,6 +800,7 @@ class AudioTrack(BaseModel):
     duracion:          Optional[int] = Field(default=0, ge=0)
     bpm:               Optional[int] = Field(default=None, ge=40, le=300)
     fecha_lanzamiento: Optional[str] = Field(default=None)
+    epoca:             Optional[str] = Field(default=None)
     # Categorías dinámicas
     cat1:  Optional[str] = Field(default=None, description="Género")
     cat2:  Optional[str] = Field(default=None, description="Rotación")
@@ -730,6 +828,7 @@ class AudioCreateRequest(BaseModel):
     duracion:           Optional[int] = Field(default=0, ge=0, description="Duración en segundos")
     bpm:                Optional[int] = Field(default=None, ge=40, le=300)
     fecha_lanzamiento:  Optional[str] = Field(default=None, description="YYYY o YYYY-MM-DD")
+    epoca:              Optional[str] = Field(default=None)
     # Campos de categoría dinámica (nombres del frontend Jazler)
     cat1:  Optional[str] = Field(default=None, description="Género → config cat1")
     cat2:  Optional[str] = Field(default=None, description="Rotación → config cat2")
@@ -748,6 +847,7 @@ class AudioUpdateRequest(BaseModel):
     duracion:          Optional[int] = Field(default=None, ge=0)
     bpm:               Optional[int] = Field(default=None, ge=40, le=300)
     fecha_lanzamiento: Optional[str] = Field(default=None)
+    epoca:             Optional[str] = Field(default=None)
     cat1:  Optional[str] = Field(default=None)
     cat2:  Optional[str] = Field(default=None)
     cat3:  Optional[str] = Field(default=None)
@@ -1044,13 +1144,13 @@ def _move_to_library(staging_path: str, titulo: str, artista: str) -> str:
 
 def _categoria_canonica(conn: sqlite3.Connection, nombre_interno: str, valor: Optional[str]) -> Optional[str]:
     """La escritura ya registrada ("Pop") en vez de otra ("POP"): una sola categoría, no dos."""
-    if not valor:
-        return valor
+    if not valor or not str(valor).strip():
+        return None
     fila = conn.execute(
         "SELECT cv.valor FROM config_categorias_valores cv JOIN config_categorias_def cd ON cd.id = cv.cat_id"
         " WHERE cd.nombre_interno = ? AND UPPER(cv.valor) = UPPER(?) AND cv.activo = 1",
-        (nombre_interno, valor.strip())).fetchone()
-    return fila[0] if fila else valor.strip()
+        (nombre_interno, str(valor).strip())).fetchone()
+    return fila[0] if fila else str(valor).strip()
 
 
 def _validate_all_categorias(
@@ -1160,16 +1260,19 @@ async def create_audio(
     if not duracion:
         duracion = _probe_duration(dest)
 
+    # Época calculada automáticamente a partir del año de lanzamiento
+    epoca = calcular_epoca(fecha_lanzamiento)
+
     # PASO 3: Insertar en DB
     try:
         cursor = conn.execute("""
             INSERT INTO audios (
                 titulo, artista, album, duracion, archivo_path,
                 subgenero, categoria, cat3, genero_vocal,
-                bpm, intro, outro, hook, fecha_lanzamiento,
+                bpm, intro, outro, hook, fecha_lanzamiento, epoca,
                 cue_inicio, cue_intro, cue_inicio_coro, cue_final_coro,
                 cue_mezcla, fade_in, fade_out, tipo_audio, origen, energia, aprobada
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             titulo,
             artista,
@@ -1185,6 +1288,7 @@ async def create_audio(
             outro,
             hook,
             fecha_lanzamiento,
+            epoca,
             cue_inicio,
             cue_intro,
             cue_inicio_coro,
@@ -1246,6 +1350,8 @@ async def create_audio(
             "cue_mezcla":      cue_mezcla,
             "fade_in":         fade_in,
             "fade_out":        fade_out,
+            "fecha_lanzamiento": fecha_lanzamiento,
+            "epoca":           epoca,
         }
     }
 
@@ -1308,6 +1414,7 @@ async def update_audio(
     if body.hook     is not None: campos_update["hook"]            = body.hook
     if body.fecha_lanzamiento is not None:
         campos_update["fecha_lanzamiento"] = body.fecha_lanzamiento.upper() if body.fecha_lanzamiento else None
+        campos_update["epoca"] = calcular_epoca(campos_update["fecha_lanzamiento"])
     
     # Categorías con la escritura ya registrada (antes se forzaban a MAYÚSCULAS y
     # "Pop" y "POP" quedaban como dos categorías)
@@ -1383,7 +1490,91 @@ async def update_audio(
             "cat2": cat2_final,
             "cat3": cat3_final,
             "voz": voz_final,
+            "fecha_lanzamiento": campos_update.get("fecha_lanzamiento", audio["fecha_lanzamiento"]),
+            "epoca": campos_update.get("epoca", audio["epoca"] if "epoca" in audio.keys() else None),
         }
+    }
+
+
+# ---- POST /api/v1/audios/{audio_id}/archivo ----
+
+@app.post(
+    "/api/v1/audios/{audio_id}/archivo",
+    summary="Reemplazar el archivo físico de audio de una pista existente",
+    tags=["Audios"],
+)
+async def update_audio_file(
+    audio_id: int,
+    file: UploadFile = File(...),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """
+    Reemplaza el archivo físico de audio de una pista existente.
+    Conserva la ID, metadatos, rotación y estadísticas de emisión,
+    actualizando el archivo físico, archivo_path y recalcula la duración real.
+    """
+    logger.info(f"POST /api/v1/audios/{audio_id}/archivo → archivo='{file.filename}'")
+
+    audio = conn.execute(
+        "SELECT * FROM audios WHERE id = ? AND activo = 1", (audio_id,)
+    ).fetchone()
+
+    if not audio:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audio con id={audio_id} no encontrado o inactivo"
+        )
+
+    artista = audio["artista"] or "VARIOS"
+    artista_slug = "".join(c if c.isalnum() or c in " _-" else "_" for c in artista).strip()
+    dest_dir = LIBRARY_DIR / artista_slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    nombre_seguro = _normalize_filename(file.filename)
+    dest = dest_dir / nombre_seguro
+
+    if dest.exists():
+        stem, suffix = dest.stem, dest.suffix
+        counter = 1
+        while dest.exists():
+            dest = dest_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    try:
+        with open(dest, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        logger.info(f"  → Archivo reemplazado guardado en: {dest}")
+    except Exception as e:
+        logger.error(f"  → Error guardando archivo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fallo al guardar el archivo: {e}"
+        )
+
+    nueva_duracion = _probe_duration(dest)
+    if not nueva_duracion and audio["duracion"]:
+        nueva_duracion = audio["duracion"]
+
+    nuevo_path = to_stored(dest)
+
+    conn.execute(
+        "UPDATE audios SET archivo_path = ?, duracion = ?, updated_at = datetime('now') WHERE id = ?",
+        (nuevo_path, nueva_duracion or 0, audio_id)
+    )
+    conn.commit()
+
+    # Broadcast WebSocket
+    await _manager.broadcast(_ws_message(
+        "library_updated",
+        {"action": "update", "id": audio_id, "campos": ["archivo_path", "duracion"]},
+    ))
+
+    return {
+        "status": "ok",
+        "audio_id": audio_id,
+        "archivo_path": nuevo_path,
+        "duracion": nueva_duracion,
+        "nombre": file.filename
     }
 
 
@@ -1422,7 +1613,7 @@ def list_audios(
     query = """
         SELECT id, titulo, artista, album, duracion, archivo_path,
                subgenero as cat1, categoria as cat2, cat3, genero_vocal as voz,
-               bpm, fecha_lanzamiento, activo, created_at, updated_at,
+               bpm, fecha_lanzamiento, epoca, activo, created_at, updated_at,
                intro, outro, hook,
                cue_inicio, cue_intro, cue_inicio_coro,
                cue_final_coro, cue_mezcla, fade_in, fade_out,
@@ -1439,6 +1630,9 @@ def list_audios(
         query += " AND ambito = 'cartuchera'"
     elif not ids:
         query += " AND COALESCE(ambito, '') != 'cartuchera'"
+    # Las locuciones (voces del Locutor IA y voice tracks) tienen su propia sección: no entran en las listas de audios
+    if not ids and "Locucion" not in (tipo or ""):
+        query += " AND tipo_audio != 'Locucion'"
 
     # categoria_1 (multi-valor, pautas-controller): tiene precedencia sobre cat1
     if categoria_1:
@@ -1487,12 +1681,22 @@ def list_audios(
     params.extend([limit, offset])
 
     audios = conn.execute(query, params).fetchall()
+    active_cats = _valores_activos_por_categoria(conn)
+    data = []
+    for a in audios:
+        d = dict(a)
+        if d.get("tipo_audio") == "Musica":
+            d["cat1"] = _sanitizar_cat(d.get("cat1"), active_cats["cat1"])
+            d["cat2"] = _sanitizar_cat(d.get("cat2"), active_cats["cat2"])
+            d["cat3"] = _sanitizar_cat(d.get("cat3"), active_cats["cat3"])
+            d["voz"]  = _sanitizar_cat(d.get("voz"),  active_cats["voz"])
+        data.append(d)
 
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
-        "data": [dict(a) for a in audios],
+        "data": data,
     }
 
 
@@ -1509,7 +1713,8 @@ def _sin_acentos(texto: Optional[str]) -> str:
 _CAMPOS_LISTA = [
     ("id", "id"), ("titulo", "titulo"), ("artista", "artista"), ("album", "album"), ("duracion", "duracion"),
     ("archivo_path", "archivo_path"), ("subgenero", "cat1"), ("categoria", "cat2"), ("cat3", "cat3"),
-    ("genero_vocal", "voz"), ("bpm", "bpm"), ("fecha_lanzamiento", "fecha_lanzamiento"), ("intro", "intro"),
+    ("genero_vocal", "voz"), ("bpm", "bpm"), ("fecha_lanzamiento", "fecha_lanzamiento"), ("epoca", "epoca"),
+    ("intro", "intro"),
     ("cue_intro", "cue_intro"), ("cue_inicio_coro", "cue_inicio_coro"), ("cue_mezcla", "cue_mezcla"),
     ("tipo_audio", "tipo_audio"), ("veces_reproducido", "veces_reproducido"),
     ("ultima_reproduccion", "ultima_reproduccion"), ("loudness_estado", "loudness_estado"), ("origen", "origen"),
@@ -1533,13 +1738,33 @@ def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Opt
     import gzip
     sql = f"SELECT {', '.join(c for c, _ in _CAMPOS_LISTA)} FROM audios WHERE activo = 1"
     params: list = []
+    # Lo cargado desde la cartuchera es solo de la cartuchera, y las voces (Locutor IA / voice tracks) tienen su sección:
+    # ninguno de los dos entra en la Biblioteca Musical
+    sql += " AND COALESCE(ambito, '') != 'cartuchera'"
+    if tipo != "Locucion":
+        sql += " AND tipo_audio != 'Locucion'"
     if tipo:
         sql += " AND tipo_audio = ?"; params.append(_validate_tipo_audio(tipo))
     if sin_tipo:                      # uno o varios separados por coma
         excluir = [_validate_tipo_audio(t) for t in sin_tipo.split(",") if t.strip()]
         if excluir:
             sql += f" AND tipo_audio NOT IN ({', '.join('?' * len(excluir))})"; params.extend(excluir)
-    cuerpo = json.dumps({"campos": [a for _, a in _CAMPOS_LISTA], "filas": [list(r) for r in conn.execute(sql, params)]},
+
+    active_cats = _valores_activos_por_categoria(conn)
+    col_idx = {alias: idx for idx, (_, alias) in enumerate(_CAMPOS_LISTA)}
+    tipo_idx = col_idx.get("tipo_audio")
+    filas = []
+    for r in conn.execute(sql, params):
+        fila = list(r.values()) if hasattr(r, "values") else list(r)
+        if tipo_idx is None or fila[tipo_idx] == "Musica":
+            for cat_key in ("cat1", "cat2", "cat3", "voz"):
+                idx = col_idx.get(cat_key)
+                if idx is not None and fila[idx]:
+                    sanitized = _sanitizar_cat(fila[idx], active_cats[cat_key])
+                    fila[idx] = sanitized if sanitized is not None else ""
+        filas.append(fila)
+
+    cuerpo = json.dumps({"campos": [a for _, a in _CAMPOS_LISTA], "filas": filas},
                         separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     cabeceras = {}
     if "gzip" in request.headers.get("accept-encoding", "") and len(cuerpo) > 2000:
@@ -1551,7 +1776,7 @@ def lista_biblioteca(request: Request, sin_tipo: Optional[str] = None, tipo: Opt
 @app.get("/api/v1/biblioteca/conteos", tags=["Audios"], summary="Cuántos audios hay de cada tipo")
 def conteos_biblioteca(conn: sqlite3.Connection = Depends(get_db)):
     filas = conn.execute("SELECT tipo_audio, COUNT(*) AS n FROM audios WHERE activo = 1"
-                         " AND COALESCE(ambito, '') != 'cartuchera' GROUP BY tipo_audio")
+                         " AND COALESCE(ambito, '') != 'cartuchera' AND tipo_audio != 'Locucion' GROUP BY tipo_audio")
     return {r["tipo_audio"]: r["n"] for r in filas}
 
 
@@ -1893,12 +2118,14 @@ def create_pauta(
                 (cliente, audio_id, audio_nombre, matriz,
                  fecha_inicio, fecha_fin, notas,
                  cue_intro, cue_outro, menciones_diarias, rubro, prioridad, contrato_id,
-                 agencia, posicion, seccion, activo, created_at, updated_at)
+                 agencia, posicion, seccion, hora_inicio_permitida, hora_fin_permitida,
+                 activo, created_at, updated_at)
             VALUES
                 (:cliente, :audio_id, :audio_nombre, :matriz,
                  :fecha_inicio, :fecha_fin, :notas,
                  :cue_intro, :cue_outro, :menciones_diarias, :rubro, :prioridad, :contrato_id,
-                 :agencia, :posicion, :seccion, 1, datetime('now'), datetime('now'))
+                 :agencia, :posicion, :seccion, :hora_inicio_permitida, :hora_fin_permitida,
+                 1, datetime('now'), datetime('now'))
             """,
             db_data,
         )
@@ -1968,6 +2195,8 @@ def update_pauta(
             agencia      = :agencia,
             posicion     = :posicion,
             seccion      = :seccion,
+            hora_inicio_permitida = :hora_inicio_permitida,
+            hora_fin_permitida    = :hora_fin_permitida,
             updated_at   = datetime('now')
         WHERE id = :id
         """,
@@ -2035,6 +2264,41 @@ def delete_pauta(
     conn.execute("DELETE FROM pautas WHERE id = ?", (pauta_id,))
     logger.info(f"  → Pauta id={pauta_id} ('{existing['cliente']}') eliminada")
     # FastAPI devuelve 204 sin cuerpo automáticamente cuando el handler retorna None
+
+
+@app.get(
+    "/api/v1/pautas/preview_tanda",
+    tags=["Pautas"],
+    summary="Simular y obtener vista previa de las tandas de una hora sin afectar el aire",
+)
+def preview_tanda(
+    fecha: str = Query(..., description="Fecha en formato YYYY-MM-DD", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    hora: int = Query(..., ge=0, le=23, description="Hora del día (0-23)"),
+    minuto: Optional[int] = Query(None, description="Minuto específico de la tanda (opcional)"),
+    rubro: Optional[str] = Query(None, description="Filtrar cuñas de un rubro específico (opcional)"),
+):
+
+    """
+    Calcula una simulación en memoria de los bloques comerciales planificados para
+    una fecha y hora determinadas, usando el motor del Planner (Dayparting, Spacing,
+    Pautas en Deuda, Separación de rubros y voces).
+
+    **Completamente seguro e inocuo:**
+    No altera el estado del motor ni registra nada en el historial ni en la base de datos.
+    """
+    try:
+        from backend.audio.planner import Planner
+        planner = Planner(DB_PATH)
+        resultado = planner.simular_tanda(hora=hora, fecha=fecha, minuto=minuto, rubro_filtro=rubro)
+        return resultado
+
+    except Exception as exc:
+        logger.error(f"[API] Error en preview_tanda: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al simular la tanda: {exc}"
+        )
+
 
 
 # ---------------------------------------------------------------------------
@@ -2254,8 +2518,98 @@ def player_command(cmd: str, body: Optional[PlayerCommand] = None):
 
 
 # ===========================================================================
-# SECCIÓN: CARTUCHERA — Botones de disparo del Studio
+# SECCIÓN: RE-PLANIFICACIÓN DINÁMICA — /api/v1/programa/recalcular
+# Permite al Studio o al motor solicitar un recálculo de la cola sin cortar
+# el audio que está sonando en ese momento.
 # ===========================================================================
+
+class RecalcularBody(BaseModel):
+    motivo: Optional[str] = Field(
+        default="manual",
+        description="Razón del recálculo: 'manual' (operador), 'skip', 'aire_muerto', 'archivo_corrupto'."
+    )
+    uid_eliminado: Optional[int] = Field(
+        default=None,
+        description="UID del ítem que se acaba de eliminar del programa (para anotarlo en el log)."
+    )
+
+
+@app.post(
+    "/api/v1/programa/recalcular",
+    tags=["Player"],
+    summary="Recalcular cola del programa manteniendo las tandas en su hora",
+)
+def recalcular_programa(body: Optional[RecalcularBody] = None):
+    """
+    Solicita una re-planificación dinámica del programa.
+
+    El motor vacía su cola pendiente y la reconstruye desde el instante en que
+    termina la pista que suena ahora, respetando estrictamente las horas de las
+    tandas comerciales configuradas.
+
+    **Cuándo llamarlo desde el Studio:**
+    - Al eliminar una pista de la cola (`plan_quitar`).
+    - Al mover una pista a otra posición (`plan_mover`).
+    - Al hacer skip manual (opcional, el motor lo hace automáticamente).
+    - Cuando el operador detecta un desfase y quiere cuadrar el reloj.
+
+    **No interrumpe el audio que está sonando en este momento.**
+
+    Responde con la cola actualizada para que el Studio la pinte de inmediato.
+    """
+    st = engine.status
+    if not st.get("running"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Motor de audio detenido. Inicia el motor antes de recalcular.",
+        )
+    if st.get("modo") == "manual":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El recálculo solo aplica en modo automático. "
+                   "En modo manual, el operador arma la cola.",
+        )
+
+    motivo = (body.motivo if body else None) or "manual"
+    uid_el = body.uid_eliminado if body else None
+    log_extra = f" (uid eliminado: {uid_el})" if uid_el else ""
+    logger.info(
+        "[API] Recálculo dinámico solicitado — motivo: %s%s", motivo, log_extra
+    )
+
+    # Encolar el comando en el hilo del motor (no bloquea la respuesta HTTP)
+    engine.plan_recalcular()
+
+    # Devolver el programa actualizado para que el Studio lo pinte.
+    # Como el recálculo es asíncrono (se ejecuta en el hilo del motor),
+    # esperamos hasta 500 ms a que se complete antes de responder.
+    import time as _time
+    for _ in range(10):
+        _time.sleep(0.05)
+        prog = engine.programa
+        # El recálculo habrá terminado cuando el programa tenga ítems
+        if prog.get("items") or prog.get("cola"):
+            break
+
+    prog = engine.programa
+    return {
+        "ok": True,
+        "motivo": motivo,
+        "modo": prog.get("modo"),
+        "items": prog.get("items", []),
+        "cola": prog.get("cola", []),
+        "fin_estimado": prog.get("fin"),
+        "total_items": len(prog.get("items", [])),
+        "total_audios": sum(
+            1 for i in prog.get("items", []) if i.get("tipo") == "audio"
+        ),
+        "total_tandas": sum(
+            1 for i in prog.get("items", []) if i.get("tipo") == "tanda"
+        ),
+    }
+
+
+
 
 # Paletas de la cartuchera (como las de Jazler): cada una con nombre y nº de botones propios.
 # Se administran en Admin › Cartuchera; el operador carga sus botones desde el Studio.
@@ -2277,7 +2631,7 @@ class PaletaIn(BaseModel):
 
 
 def _paletas(conn) -> list[dict]:
-    return [dict(r) for r in conn.execute("SELECT clave, nombre, slots FROM paletas ORDER BY orden, rowid")]
+    return [dict(r) for r in conn.execute("SELECT clave, nombre, slots FROM paletas ORDER BY orden, clave")]
 
 
 def _check_slot(conn, banco: str, slot: int) -> None:
@@ -2870,6 +3224,8 @@ class _ConnectionManager:
 
 # Instancia global — un único gestor para todo el proceso
 _manager = _ConnectionManager()
+# Quién tiene el control del aire (una sola PC a la vez). `ws` = su conexión; None = libre.
+_control: dict = {"ws": None, "usuario": ""}
 
 
 @app.websocket("/ws")
@@ -2937,6 +3293,23 @@ async def websocket_endpoint(ws: WebSocket):
                     "playback_error", {"reason": "sin_permiso", "cmd": cmd,
                                        "msg": "Tu usuario no puede operar el aire"}))
                 continue
+            # Control del aire: una sola PC opera a la vez. Quien lo tiene lo suelta al cerrar, o lo toma otra con «tomar_control».
+            if cmd == "tomar_control" and opera_aire:
+                previo = _control["ws"]
+                _control.update(ws=ws, usuario=usuario["nombre"])
+                if previo is not None and previo is not ws:
+                    await previo.send_text(_ws_message("playback_error", {
+                        "reason": "control_perdido", "msg": f"{usuario['nombre']} tomó el control del aire"}))
+                await _manager.broadcast(_ws_message("control_aire", {"usuario": usuario["nombre"]}))
+                continue
+            if cmd in PLAYER_COMMANDS and _control["ws"] is None:
+                _control.update(ws=ws, usuario=usuario["nombre"])
+                await _manager.broadcast(_ws_message("control_aire", {"usuario": usuario["nombre"]}))
+            if cmd in PLAYER_COMMANDS and _control["ws"] is not ws:
+                await ws.send_text(_ws_message(
+                    "playback_error", {"reason": "sin_control", "cmd": cmd,
+                                       "msg": f"El control del aire lo tiene {_control['usuario']}. Toma el control para operar."}))
+                continue
             if cmd in PLAYER_COMMANDS:
                 logger.info(f"[WS] ← player/{cmd} | {str(msg)[:120]}")
                 try:
@@ -2959,6 +3332,9 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         # Desconexión limpia iniciada por el cliente (cierre normal)
+        if _control["ws"] is ws:
+            _control.update(ws=None, usuario="")          # al cerrar su Studio, el control queda libre
+            await _manager.broadcast(_ws_message("control_aire", {"usuario": ""}))
         _manager.disconnect(ws)
     except Exception as exc:
         # Error inesperado — logueamos y limpiamos la conexión

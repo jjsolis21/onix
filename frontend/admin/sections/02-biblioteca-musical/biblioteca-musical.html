@@ -2568,7 +2568,7 @@
   <div class="bv-menu-cols" id="bvMenuCols" hidden></div>
 </div>
 <link rel="stylesheet" href="sections/02-biblioteca-musical/editor-cancion.css?v=7">
-<script src="sections/02-biblioteca-musical/editor-cancion.js?v=15"></script>
+<script src="sections/02-biblioteca-musical/editor-cancion.js?v=17"></script>
 <script src="sections/02-biblioteca-musical/biblioteca-vista.js?v=16"></script>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -2751,6 +2751,11 @@
                 style="padding-left:8px;" />
             </div>
             <div class="jz-field">
+              <label>Época</label>
+              <input class="jz-input" id="modal-epoca" type="text" placeholder="Sin Clasificar" readonly disabled
+                style="padding-left:8px; background: rgba(255,255,255,0.05); color: #38bdf8; font-weight: 600; cursor: not-allowed;" />
+            </div>
+            <div class="jz-field">
               <label>BPM</label>
               <input class="jz-input" id="modal-bpm" type="number" placeholder="120" min="40" max="300"
                 style="padding-left:8px;" />
@@ -2775,8 +2780,7 @@
                 <p style="margin-top:3px">MP3 · WAV · FLAC · máx 200 MB</p>
                 <input type="file" id="modal-file" accept="audio/*" style="display:none" />
               </div>
-              <div id="modal-file-info"
-                style="display:none;font-family:var(--font-mono);font-size:11px;color:#2ecc71;padding:4px 0;"></div>
+              <div id="modal-file-info" style="display:none;padding:4px 0;"></div>
             </div>
 
             <!-- Ruta de archivo -->
@@ -2785,8 +2789,8 @@
                 de archivo</label>
               <input class="jz-input" id="modal-archivo-path" type="text" placeholder="D:\Audio\cancion.mp3"
                 style="font-family:var(--font-mono);font-size:11px;" />
-              <button class="jz-btn jz-btn--sm">…</button>
-              <button class="jz-btn jz-btn--sm">Editar</button>
+              <button type="button" class="jz-btn jz-btn--sm" id="modal-btn-browse" title="Seleccionar o cambiar archivo">…</button>
+              <button type="button" class="jz-btn jz-btn--sm" id="modal-btn-edit-path" title="Editar ruta manualmente">Editar</button>
             </div>
 
             <!-- Editor de onda Jazler 6 cue points -->
@@ -3641,6 +3645,33 @@
 
   </div><!-- /.cat-modal -->
 </div><!-- /#cat-overlay -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODAL PRO 2026 — RESOLUCIÓN DE ELIMINACIÓN DE CATEGORÍA
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="cat-del-modal" class="onix-modal-pro-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cat-del-title">
+  <div class="onix-modal-pro-card">
+    <div class="onix-modal-pro__header">
+      <div class="onix-modal-pro__icon-badge" id="cat-del-icon-badge">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="onix-modal-pro__titles">
+        <h3 class="onix-modal-pro__title" id="cat-del-title">Eliminar Categoría</h3>
+        <p class="onix-modal-pro__subtitle" id="cat-del-subtitle">Verificando canciones asignadas...</p>
+      </div>
+      <button class="onix-modal-pro__close" id="cat-del-close-btn" title="Cerrar">✕</button>
+    </div>
+
+    <div class="onix-modal-pro__body" id="cat-del-body">
+      <!-- Dinámico -->
+    </div>
+
+    <div class="onix-modal-pro__footer" id="cat-del-footer">
+      <button class="onix-pro-btn onix-pro-btn--ghost" id="cat-del-btn-cancelar">Cancelar</button>
+      <button class="onix-pro-btn onix-pro-btn--danger" id="cat-del-btn-confirmar">Eliminar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      CSS — MODAL CARGAR LOTE (Wizard 4 Pasos)

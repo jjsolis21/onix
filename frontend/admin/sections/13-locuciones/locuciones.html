@@ -1,0 +1,133 @@
+<!-- ============================================================
+     ÓNIX FM — Sección 13 — Locuciones
+     Las voces: lo que genera el Locutor IA y los voice tracks del operador. Van aparte de la Biblioteca Musical.
+     API: /api/v1/locuciones · /api/v1/audios/{id}/stream (escuchar)
+     ============================================================ -->
+<link rel="stylesheet" href="css/secciones-operacion.css">
+<style>
+  .loc-root { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px; gap: 12px; overflow-y: auto; }
+  .loc-root h2 { margin: 0; font-size: 1.35rem; color: var(--text-hi); }
+  .loc-root p.sub { margin: 2px 0 0; color: var(--text-lo); font-size: .82rem; }
+  .loc-card { background: var(--choc-2); border: 1px solid var(--choc-4); border-radius: 8px; }
+  .loc-barra { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--choc-4); flex-wrap: wrap; }
+  .loc-barra input, .loc-barra select, .loc-barra .num { background: var(--choc-0); border: 1px solid var(--choc-5); border-radius: 5px; color: var(--text-hi);
+    padding: 7px 9px; font: inherit; font-size: .86rem; color-scheme: dark; }
+  .loc-barra input[type=search] { flex: 1 1 240px; min-width: 160px; }
+  .loc-barra .num { width: 70px; }
+  .loc-btn { background: var(--choc-3); color: var(--text-hi); border: 1px solid var(--choc-5); border-radius: 6px; padding: 7px 11px; font: 600 .8rem inherit; cursor: pointer; }
+  .loc-btn:hover:not(:disabled) { border-color: var(--gold-0); color: var(--gold-1); }
+  .loc-btn--peligro:hover:not(:disabled) { border-color: var(--red-live); color: var(--red-live); }
+  .loc-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .loc-resumen { display: flex; gap: 22px; flex-wrap: wrap; font-size: .88rem; color: var(--text-mid); padding: 10px 14px; }
+  .loc-resumen b { font-family: var(--font-data, monospace); font-size: 1.1rem; color: var(--text-hi); }
+  .loc-tabla-wrap { overflow: auto; max-height: calc(100vh - 360px); min-height: 160px; }
+  .loc-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .loc-tabla th { position: sticky; top: 0; background: var(--choc-0); color: var(--text-lo); font-weight: 500; text-align: left; padding: 8px; font-size: .7rem;
+    letter-spacing: .08em; text-transform: uppercase; }
+  .loc-tabla td { padding: 7px 8px; border-bottom: 1px solid var(--choc-3); color: var(--text-mid); vertical-align: top; }
+  .loc-tabla td.num { font-family: var(--font-data, monospace); white-space: nowrap; }
+  .loc-tabla .txt { color: var(--text-hi); max-width: 560px; }
+  .loc-tabla .txt small { display: block; color: var(--text-lo); margin-top: 2px; }
+  .loc-play { background: var(--gold-0); color: #000; border: 0; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: .8rem; }
+  .loc-play.on { background: var(--red-live); color: #fff; }
+  .loc-ins { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .72rem; }
+  .loc-ins.ia { background: color-mix(in srgb, #4dabf7 22%, transparent); color: #8ccbff; }
+  .loc-ins.vt { background: color-mix(in srgb, var(--gold-0) 22%, transparent); color: var(--gold-1); }
+  .loc-vacio { text-align: center; color: var(--text-lo); padding: 28px !important; }
+  .loc-msg { font-size: .82rem; } .loc-msg.ok { color: #52d273; } .loc-msg.err { color: #ff6b6b; }
+</style>
+
+<div class="loc-root" id="locRoot">
+  <div>
+    <h2>🎙 Locuciones</h2>
+    <p class="sub">Las voces van aparte de la música: lo que genera el <b>Locutor IA</b> y los <b>voice tracks</b> que grabas. Aquí las escuchas y limpias las viejas.</p>
+  </div>
+
+  <div class="loc-card">
+    <div class="loc-resumen" id="locResumen">Cargando…</div>
+    <div class="loc-barra">
+      <input type="search" id="locBuscar" placeholder="Buscar por texto o título…" autocomplete="off">
+      <select id="locOrigen"><option value="">Todas</option><option value="ia">Del Locutor IA</option><option value="voicetrack">Voice tracks</option></select>
+      <span style="margin-left:auto"></span>
+      <label style="display:flex;gap:6px;align-items:center;font-size:.82rem;color:var(--text-lo)">Borrar las de más de
+        <input class="num" id="locDias" type="number" min="1" max="3650" value="7"> días</label>
+      <button class="loc-btn loc-btn--peligro" id="locLimpiar">🧹 Limpiar</button>
+      <span class="loc-msg" id="locMsg"></span>
+    </div>
+    <div class="loc-tabla-wrap">
+      <table class="loc-tabla"><thead><tr><th></th><th>Cuándo</th><th>Origen</th><th>Texto</th><th>Voz</th><th>Dur.</th><th>Sonó</th><th></th></tr></thead>
+        <tbody id="locFilas"><tr><td colspan="8" class="loc-vacio">Cargando…</td></tr></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  if (!$("locRoot") || $("locRoot").dataset.listo) return;
+  $("locRoot").dataset.listo = "1";
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const mmss = s => `${Math.floor((+s || 0) / 60)}:${String(Math.round((+s || 0) % 60)).padStart(2, "0")}`;
+  const msg = (t, ok = true) => { const m = $("locMsg"); m.textContent = t; m.className = `loc-msg ${ok ? "ok" : "err"}`; };
+  async function api(url, opt) {
+    const r = await fetch(url, opt);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : `Error ${r.status}`);
+    return d;
+  }
+  let audio = null, sonando = null, temporizador = null;
+  function parar() { if (audio) audio.pause(); sonando = null; document.querySelectorAll(".loc-play").forEach(b => { b.textContent = "▶"; b.classList.remove("on"); }); }
+
+  async function cargar() {
+    const p = new URLSearchParams({ limit: 200 });
+    if ($("locBuscar").value.trim()) p.set("q", $("locBuscar").value.trim());
+    if ($("locOrigen").value) p.set("origen", $("locOrigen").value);
+    let d;
+    try { d = await api(`/api/v1/locuciones?${p}`); }
+    catch (e) { $("locFilas").innerHTML = `<tr><td colspan="8" class="loc-vacio">${esc(e.message)}</td></tr>`; return; }
+    const r = d.resumen;
+    $("locResumen").innerHTML = `<span><b>${r.total}</b> locuciones</span><span><b>${r.ia}</b> del Locutor IA</span><span><b>${r.voicetrack}</b> voice tracks</span>` +
+      `<span><b>${Math.floor(r.segundos / 60)}</b> min de audio</span>`;
+    $("locFilas").innerHTML = d.data.length ? d.data.map(l => `<tr>
+      <td><button class="loc-play" data-play="${l.id}" title="Escuchar">▶</button></td>
+      <td class="num">${esc(String(l.created_at || "").replace("T", " ").slice(0, 16))}</td>
+      <td><span class="loc-ins ${l.origen === "ia" ? "ia" : "vt"}">${l.origen === "ia" ? "🤖 " + esc(l.interv_tipo || "Locutor IA") : "🎙 Voice track"}</span></td>
+      <td class="txt">${esc(l.texto || l.titulo)}<small>${esc(l.titulo)}${l.estado ? " · " + esc(l.estado) : ""}</small></td>
+      <td>${esc(l.persona || "")}${l.proveedor_voz ? `<small style="display:block;color:var(--text-lo)">${esc(l.proveedor_voz)}</small>` : ""}</td>
+      <td class="num">${l.duracion > 600 ? `<span title="Duración dudosa guardada en la base (más de 10 min): el archivo puede estar dañado">⚠ ${mmss(l.duracion)}</span>` : mmss(l.duracion)}</td>
+      <td class="num">${l.veces_reproducido || 0}×</td>
+      <td><button class="loc-btn loc-btn--peligro" data-del="${l.id}" ${l.en_uso ? 'disabled title="Está lista para salir al aire"' : ""}>🗑</button></td></tr>`).join("")
+      : '<tr><td colspan="8" class="loc-vacio">No hay locuciones con ese filtro.</td></tr>';
+  }
+
+  document.addEventListener("click", async e => {
+    if (!$("locRoot")?.isConnected) return;
+    const pl = e.target.closest("[data-play]"), del = e.target.closest("[data-del]");
+    if (pl) {
+      const id = +pl.dataset.play;
+      if (sonando === id) { parar(); return; }
+      parar();
+      if (!audio) { audio = new Audio(); audio.addEventListener("ended", parar); }
+      audio.src = `/api/v1/audios/${id}/stream`;
+      audio.play().catch(() => { });
+      sonando = id; pl.textContent = "■"; pl.classList.add("on");
+    } else if (del) {
+      if (!confirm("¿Borrar esta locución? Se elimina también su archivo.")) return;
+      try { await api(`/api/v1/locuciones/${del.dataset.del}`, { method: "DELETE" }); msg("✓ Borrada"); cargar(); }
+      catch (err) { msg(err.message, false); }
+    } else if (e.target.id === "locLimpiar") {
+      const dias = parseInt($("locDias").value) || 0;
+      if (dias < 1) { msg("Pon cuántos días", false); return; }
+      if (!confirm(`¿Borrar todas las locuciones de más de ${dias} día(s)? Se eliminan también sus archivos.`)) return;
+      try {
+        const r = await api("/api/v1/locuciones/limpiar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dias }) });
+        msg(`✓ ${r.borradas} borrada(s)${r.saltadas ? `, ${r.saltadas} lista(s) para salir al aire se dejaron` : ""}`); cargar();
+      } catch (err) { msg(err.message, false); }
+    }
+  });
+  $("locBuscar").addEventListener("input", () => { clearTimeout(temporizador); temporizador = setTimeout(cargar, 250); });
+  $("locOrigen").addEventListener("change", cargar);
+  cargar();
+})();
+</script>

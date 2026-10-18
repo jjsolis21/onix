@@ -100,7 +100,8 @@ def detectar(path, ffmpeg: str) -> Optional[dict]:
 def procesar_pendientes(db_path: str, resolve: Callable[[str], Path], ffmpeg: str,
                         seguir: Callable[[], bool] = lambda: True, limite: int = 0) -> int:
     """Analiza la música sin marcas automáticas. Devuelve cuántos audios procesó."""
-    conn = sqlite3.connect(db_path, timeout=10)
+    from backend.database import get_connection
+    conn = get_connection()
     try:
         r = conn.execute("SELECT valor FROM config WHERE clave = 'marcas_auto'").fetchone()
     finally:
@@ -109,7 +110,7 @@ def procesar_pendientes(db_path: str, resolve: Callable[[str], Path], ffmpeg: st
         return 0
     hechos = 0
     while seguir():
-        conn = sqlite3.connect(db_path, timeout=10)
+        conn = get_connection()
         try:
             row = conn.execute(
                 "SELECT id, archivo_path, cue_inicio, cue_mezcla FROM audios"
@@ -127,7 +128,7 @@ def procesar_pendientes(db_path: str, resolve: Callable[[str], Path], ffmpeg: st
             conn.close()
         path = resolve(archivo)
         res = detectar(path, ffmpeg) if path.is_file() else None
-        conn = sqlite3.connect(db_path, timeout=10)
+        conn = get_connection()
         try:
             if res:
                 conn.execute(

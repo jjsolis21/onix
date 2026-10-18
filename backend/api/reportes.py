@@ -37,18 +37,34 @@ router = APIRouter(tags=["Estadísticas"])
 PERIODOS = {"day": 1, "week": 7, "month": 30}
 
 
-def get_db():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+from backend.database import get_db
 
 
 def _tipo_reporte(tipo_audio: Optional[str]) -> str:
     """Etiqueta que usa el módulo de Estadísticas del Admin."""
-    return "PAUTA" if tipo_audio == "Cuña" else "TEMA"
+    if tipo_audio == "Cuña":
+        return "PAUTA"
+    elif tipo_audio == "Efecto":
+        return "JINGLE"
+    elif tipo_audio == "Sweeper":
+        return "SWEEPER"
+    elif tipo_audio == "Tips":
+        return "TIPS"
+    elif tipo_audio == "Locucion":
+        return "VOZ"
+    return "TEMA"
+
+
+def _dedup_case(items: list[str]) -> list[str]:
+    vistos = set()
+    res = []
+    for item in items:
+        if item and item.strip():
+            norm = item.strip().lower()
+            if norm not in vistos:
+                vistos.add(norm)
+                res.append(item.strip())
+    return sorted(res, key=lambda s: s.lower())
 
 
 def _csv(nombre: str, filas: list[dict]) -> Response:
@@ -72,52 +88,303 @@ def _parse_fecha(valor: Optional[str], defecto: date) -> date:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Top 40, olvidados y detalle
+# Top 40, filtros dinámicos, olvidados y detalle
 # ═══════════════════════════════════════════════════════════════════════════
 
-@router.get("/api/v1/stats/top40", summary="Top 40 de emisiones")
+@router.get("/api/v1/stats/filtros-categorias", summary="Categorías disponibles para filtros en estadísticas")
+def filtros_categorias(conn: sqlite3.Connection = Depends(get_db)):
+    """Devuelve las categorías de música, identificadores y pautas presentes en el sistema.
+    SOLO incluye valores que existen en la biblioteca real (audios con archivos),
+    nunca categorías vacías de la tabla de configuración.
+
+    Nota sobre la DB:
+      a.subgenero → Género musical  (SALSA, MERENGUE, URBANO, POP, BALADA …)
+      a.categoria → Rotación        (Clásico, Reciente, Éxito, Nuevo …)
+    """
+    # ── Música: Géneros (a.subgenero) ────────────────────────────────────
+    generos_raw = [
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT subgenero FROM audios"
+            " WHERE tipo_audio = 'Musica'"
+            "   AND subgenero IS NOT NULL AND TRIM(subgenero) != ''"
+            " ORDER BY subgenero COLLATE NOCASE"
+        ).fetchall() if r[0]
+    ]
+
+    # ── Música: Rotaciones (a.categoria) ─────────────────────────────────
+    rotaciones_raw = [
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT categoria FROM audios"
+            " WHERE tipo_audio = 'Musica'"
+            "   AND categoria IS NOT NULL AND TRIM(categoria) != ''"
+            " ORDER BY categoria COLLATE NOCASE"
+        ).fetchall() if r[0]
+    ]
+
+    # ── Identificadores: tipos base con al menos 1 audio ─────────────────
+    ident_tipos_base = [
+        {"id": "Efecto",  "nombre": "Jingles / Efectos"},
+        {"id": "Sweeper", "nombre": "Sweepers / Barridos"},
+        {"id": "Tips",    "nombre": "Tips / Consejos"},
+    ]
+    tipos_con_audio = {
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT tipo_audio FROM audios"
+            " WHERE tipo_audio IN ('Efecto','Sweeper','Tips')"
+        ).fetchall()
+    }
+    ident_tipos = [t for t in ident_tipos_base if t["id"] in tipos_con_audio]
+
+    # ── Identificadores: subcategorías con al menos 1 audio real ─────────
+    ident_cats_raw = [
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT categoria_ident FROM audios"
+            " WHERE tipo_audio IN ('Efecto','Sweeper','Tips')"
+            "   AND categoria_ident IS NOT NULL AND TRIM(categoria_ident) != ''"
+            " ORDER BY categoria_ident COLLATE NOCASE"
+        ).fetchall() if r[0]
+    ]
+
+    # ── Pautas: clientes ─────────────────────────────────────────────────
+    try:
+        clientes_raw = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT cliente FROM pautas"
+                " WHERE cliente IS NOT NULL AND TRIM(cliente) != ''"
+                " UNION"
+                " SELECT DISTINCT artista FROM audios"
+                " WHERE tipo_audio = 'Cuña'"
+                "   AND artista IS NOT NULL AND TRIM(artista) != ''"
+                " ORDER BY 1 COLLATE NOCASE"
+            ).fetchall() if r[0]
+        ]
+    except Exception:
+        clientes_raw = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT artista FROM audios"
+                " WHERE tipo_audio = 'Cuña'"
+                "   AND artista IS NOT NULL AND TRIM(artista) != ''"
+            ).fetchall() if r[0]
+        ]
+
+    return {
+        "musica": {
+            "generos":    _dedup_case(generos_raw),
+            "rotaciones": _dedup_case(rotaciones_raw),
+        },
+        "ident": {
+            "tipos":      ident_tipos,
+            "categorias": _dedup_case(ident_cats_raw),
+        },
+        "pauta": {
+            "clientes": _dedup_case(clientes_raw),
+        }
+    }
+
+
+
+@router.get("/api/v1/stats/top40", summary="Top de emisiones con filtros avanzados")
 def top40(period: str = "week", limit: int = 40, tipo: str = "musica",
+          categoria: Optional[str] = None, subtipo: Optional[str] = None,
+          genero: Optional[str] = None, rotacion: Optional[str] = None,
+          desde: Optional[str] = None, hasta: Optional[str] = None,
+          formato: str = "json",
           conn: sqlite3.Connection = Depends(get_db)):
     """
-    Más emitidos del período. tipo: musica (por defecto) · pauta · todo.
-    `previos` = toques en el período anterior de igual largo (para la tendencia).
+    Más emitidos del período.
+    tipo: musica (por defecto) · ident · pauta · todo.
+    genero: filtro por género musical (SALSA, MERENGUE, POP…).
+    rotacion: filtro por rotación (Clásico, Reciente, Éxito, Nuevo…).
+    categoria: compatibilidad con filtro único legado.
+    subtipo: filtro secundario específico (ej. Efecto | Sweeper | Tips).
+    period: day · yesterday · week · month · custom.
     """
-    dias = PERIODOS.get(period)
-    if dias is None:
-        raise HTTPException(status_code=422, detail="period debe ser day, week o month")
-    tipos = {"musica": ("musica",), "pauta": ("pauta",), "todo": ("musica", "pauta")}.get(tipo)
-    if tipos is None:
-        raise HTTPException(status_code=422, detail="tipo debe ser musica, pauta o todo")
+    tipos_validos = ("musica", "pauta", "todo", "ident", "identificadores")
+    if tipo not in tipos_validos:
+        raise HTTPException(status_code=422, detail="tipo debe ser musica, ident, pauta o todo")
+
+    periodos_validos = ("day", "yesterday", "week", "month", "custom")
+    if period not in periodos_validos:
+        raise HTTPException(status_code=422, detail="period debe ser day, yesterday, week, month o custom")
+
     ahora = datetime.now()
-    desde = (ahora - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
-    antes = (ahora - timedelta(days=2 * dias)).strftime("%Y-%m-%d %H:%M:%S")
-    ph = ",".join("?" * len(tipos))
+    if period == "yesterday":
+        hoy_00 = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+        desde_dt = hoy_00 - timedelta(days=1)
+        hasta_dt = hoy_00 - timedelta(seconds=1)
+        duracion = timedelta(days=1)
+    elif period == "day":
+        hasta_dt = ahora
+        duracion = timedelta(days=1)
+        desde_dt = ahora - duracion
+    elif period == "week":
+        hasta_dt = ahora
+        duracion = timedelta(days=7)
+        desde_dt = ahora - duracion
+    elif period == "month":
+        hasta_dt = ahora
+        duracion = timedelta(days=30)
+        desde_dt = ahora - duracion
+    elif period == "custom":
+        if not desde:
+            raise HTTPException(status_code=422, detail="Para período personalizado debe indicar 'desde'")
+        try:
+            d_str = desde.strip()
+            if len(d_str) == 10:
+                d_str += " 00:00:00"
+            desde_dt = datetime.fromisoformat(d_str)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Formato de 'desde' inválido (use AAAA-MM-DD)")
+
+        if hasta:
+            try:
+                h_str = hasta.strip()
+                if len(h_str) == 10:
+                    h_str += " 23:59:59"
+                hasta_dt = datetime.fromisoformat(h_str)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Formato de 'hasta' inválido (use AAAA-MM-DD)")
+        else:
+            hasta_dt = ahora
+        duracion = max(timedelta(hours=1), hasta_dt - desde_dt)
+
+    antes_dt = desde_dt - duracion
+    desde_sql = desde_dt.strftime("%Y-%m-%d %H:%M:%S")
+    hasta_sql = hasta_dt.strftime("%Y-%m-%d %H:%M:%S")
+    antes_sql = antes_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    condiciones = ["h.iniciado_en >= ?", "h.iniciado_en <= ?"]
+    params: list = [desde_sql, hasta_sql]
+
+    # Tipo de audio y filtros específicos
+    if tipo == "musica":
+        condiciones.append("(a.tipo_audio = 'Musica' OR (a.tipo_audio IS NULL AND h.tipo = 'musica'))")
+
+        # Género musical (subgenero en DB)
+        gen_val = (genero.strip() if genero and genero.strip() else None)
+        if not gen_val and categoria and categoria.strip().startswith("genero:"):
+            gen_val = categoria.strip()[7:].strip()
+
+        if gen_val:
+            condiciones.append("(LOWER(COALESCE(a.subgenero, '')) = LOWER(?) OR LOWER(COALESCE(a.categoria, '')) = LOWER(?))")
+            params.extend([gen_val, gen_val])
+
+        # Rotación (categoria en DB)
+        rot_val = (rotacion.strip() if rotacion and rotacion.strip() else None)
+        if not rot_val and categoria and categoria.strip().startswith("rotacion:"):
+            rot_val = categoria.strip()[9:].strip()
+
+        if rot_val:
+            condiciones.append("(LOWER(COALESCE(a.categoria, '')) = LOWER(?) OR LOWER(COALESCE(a.subgenero, '')) = LOWER(?))")
+            params.extend([rot_val, rot_val])
+
+        # Búsqueda libre en categoría si se envía sin prefijo
+        if not gen_val and not rot_val and categoria and categoria.strip():
+            cat = categoria.strip()
+            condiciones.append("(LOWER(COALESCE(a.categoria, '')) = LOWER(?) OR LOWER(COALESCE(a.subgenero, '')) = LOWER(?) OR LOWER(COALESCE(a.cat3, '')) = LOWER(?))")
+            params.extend([cat, cat, cat])
+
+    elif tipo in ("ident", "identificadores"):
+        condiciones.append("(a.tipo_audio IN ('Efecto', 'Sweeper', 'Tips') OR h.tipo IN ('efecto', 'sweeper', 'tips'))")
+        
+        # Tipo base (Efecto / Sweeper / Tips)
+        t_base = subtipo or genero
+        if not t_base and categoria and categoria.strip().startswith("tipo:"):
+            t_base = categoria.strip()[5:].strip()
+
+        if t_base and t_base.strip() in ('Efecto', 'Sweeper', 'Tips'):
+            condiciones.append("a.tipo_audio = ?")
+            params.append(t_base.strip())
+
+        # Categoría de estación
+        cat_est = rotacion
+        if not cat_est and categoria and not categoria.strip().startswith("tipo:"):
+            cat_est = categoria.strip()
+
+        if cat_est and cat_est.strip():
+            condiciones.append("LOWER(COALESCE(a.categoria_ident, '')) = LOWER(?)")
+            params.append(cat_est.strip())
+
+    elif tipo == "pauta":
+        condiciones.append("(a.tipo_audio = 'Cuña' OR h.tipo = 'pauta')")
+        cliente_val = genero or categoria
+        if cliente_val and cliente_val.strip():
+            cat = cliente_val.strip()
+            condiciones.append("(LOWER(COALESCE(a.artista, '')) = LOWER(?) OR LOWER(COALESCE(a.subgenero, '')) = LOWER(?))")
+            params.extend([cat, cat])
+
+    elif tipo == "todo":
+        condiciones.append("COALESCE(a.ambito, '') != 'cartuchera'")
+
+    limite_real = max(1, min(limit, 500))
+    where_clausula = " AND ".join(condiciones)
+
     rows = conn.execute(
         f"""
         SELECT a.id, a.titulo, a.artista, a.tipo_audio, a.duracion,
-               COALESCE(a.subgenero, '') AS categoria,
+               COALESCE(a.categoria, '') AS cat_genero,
+               COALESCE(a.subgenero, '') AS cat_rotacion,
+               COALESCE(a.categoria_ident, '') AS categoria_ident,
                COUNT(*) AS toques, MAX(h.iniciado_en) AS ultima_emision
         FROM historial_emision h
         JOIN audios a ON a.id = h.audio_id
-        WHERE h.iniciado_en >= ? AND h.tipo IN ({ph})
+        WHERE {where_clausula}
         GROUP BY a.id
         ORDER BY toques DESC, ultima_emision DESC
         LIMIT ?
         """,
-        (desde, *tipos, max(1, min(limit, 200))),
+        (*params, limite_real),
     ).fetchall()
+
     ids = [r["id"] for r in rows]
-    previos = dict(conn.execute(
-        f"SELECT audio_id, COUNT(*) FROM historial_emision WHERE iniciado_en >= ? AND iniciado_en < ?"
-        f" AND audio_id IN ({','.join('?' * len(ids))}) GROUP BY audio_id",
-        (antes, desde, *ids)).fetchall()) if ids else {}
-    return [{
-        "id": r["id"], "tipo": _tipo_reporte(r["tipo_audio"]), "titulo": r["titulo"],
-        "artista": r["artista"], "categoria": r["categoria"], "toques": r["toques"],
-        "previos": previos.get(r["id"], 0),
-        "duracion": r["duracion"] or 0, "ultima_emision": r["ultima_emision"],
-        "audio_url": f"/api/v1/audios/{r['id']}/stream",
-    } for r in rows]
+    previos = {}
+    if ids:
+        ph_ids = ",".join("?" * len(ids))
+        previos = dict(conn.execute(
+            f"SELECT audio_id, COUNT(*) FROM historial_emision WHERE iniciado_en >= ? AND iniciado_en < ?"
+            f" AND audio_id IN ({ph_ids}) GROUP BY audio_id",
+            (antes_sql, desde_sql, *ids)).fetchall())
+
+    resultado = []
+    for r in rows:
+        t_audio = r["tipo_audio"] or "Musica"
+        if t_audio in ("Efecto", "Sweeper", "Tips"):
+            cat_display = r["categoria_ident"] or ("Jingle" if t_audio == "Efecto" else t_audio)
+        elif t_audio == "Cuña":
+            cat_display = r["cat_rotacion"] or "Comercial"
+        else:
+            cat_display = r["cat_genero"] or r["cat_rotacion"] or "Música"
+
+        resultado.append({
+            "id": r["id"],
+            "tipo": _tipo_reporte(t_audio),
+            "tipo_audio": t_audio,
+            "titulo": r["titulo"],
+            "artista": r["artista"],
+            "categoria": cat_display,
+            "toques": r["toques"],
+            "previos": previos.get(r["id"], 0),
+            "duracion": r["duracion"] or 0,
+            "ultima_emision": r["ultima_emision"],
+            "audio_url": f"/api/v1/audios/{r['id']}/stream",
+        })
+
+    if formato == "csv":
+        filas_csv = [{
+            "Posición": idx + 1,
+            "Tipo": x["tipo"],
+            "Título": x["titulo"],
+            "Artista": x["artista"],
+            "Categoría": x["categoria"],
+            "Toques": x["toques"],
+            "Período Anterior": x["previos"],
+            "Duración": f"{x['duracion'] // 60}:{x['duracion'] % 60:02d}",
+            "Última Emisión": x["ultima_emision"] or "",
+        } for idx, x in enumerate(resultado)]
+        nombre_arch = f"Top_Reproducidos_{tipo}_{period}.csv"
+        return _csv(nombre_arch, filas_csv)
+
+    return resultado
 
 
 @router.get("/api/v1/stats/top40/forgotten", summary="Música que no suena hace tiempo")
@@ -126,12 +393,10 @@ def olvidados(dias: int = 30, limit: int = 100, conn: sqlite3.Connection = Depen
     rows = conn.execute(
         """
         SELECT id, titulo, artista, tipo_audio, ultima_reproduccion, created_at,
-               CAST(julianday('now', 'localtime')
-                    - julianday(COALESCE(ultima_reproduccion, created_at)) AS INTEGER) AS dias
+               CAST(TIMESTAMPDIFF(SECOND, COALESCE(ultima_reproduccion, created_at), NOW()) / 86400 AS SIGNED) AS dias
         FROM audios
         WHERE activo = 1 AND tipo_audio = 'Musica'
-          AND julianday('now', 'localtime')
-              - julianday(COALESCE(ultima_reproduccion, created_at)) >= ?
+          AND TIMESTAMPDIFF(SECOND, COALESCE(ultima_reproduccion, created_at), NOW()) / 86400.0 >= ?
         ORDER BY dias DESC
         LIMIT ?
         """,

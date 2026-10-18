@@ -442,18 +442,24 @@
     <option value="">${txt}: todas</option>${[1, 2, 3, 4, 5].map(n =>
       `<option value="${n}" ${+valor === n ? "selected" : ""}>${txt.split(" ")[1]} ${n} · ${["", "Lenta", "Suave", "Media", "Movida", "Rápida"][n]}</option>`).join("")}</select>`;
 
-  // Año de lanzamiento (desde / hasta) y prioridad de la canción: filtros que también entiende el planificador
+  // Año de lanzamiento (desde / hasta), época y prioridad de la canción: filtros que también entiende el planificador
   const PRIORIDADES = { 1: "Alta", 2: "Normal", 3: "Baja" };
+  const EPOCAS = ["Actual", "2010s", "2000s", "90s", "80s", "70s", "Oldies"];
+  const selectEpoca = valor => `<select class="ox-select" data-filtro="epoca" title="Época">
+    <option value="">Época: Todas</option>${EPOCAS.map(ep =>
+      `<option value="${ep}" ${(valor || "").toLowerCase() === ep.toLowerCase() ? "selected" : ""}>${ep}</option>`).join("")}</select>`;
   const inputAnio = (campo, txt, valor) => `<input type="number" class="ox-input" data-filtro="${campo}" min="1900" max="2100"
     placeholder="${txt}" title="${txt} (las canciones sin año no entran)" value="${esc(valor ?? "")}">`;
   const selectPrioridad = valor => `<select class="ox-select" data-filtro="prioridad" title="Prioridad de la canción">
     <option value="">Prioridad: todas</option>${Object.entries(PRIORIDADES).map(([n, t]) =>
       `<option value="${n}" ${+valor === +n ? "selected" : ""}>Prioridad ${t}</option>`).join("")}</select>`;
-  const filtrosMusica = fl => selectEnergia("energia_min", "Energía desde", fl.energia_min) + selectEnergia("energia_max", "Energía hasta", fl.energia_max)
+  const filtrosMusica = fl => selectEpoca(fl.epoca)
+    + selectEnergia("energia_min", "Energía desde", fl.energia_min) + selectEnergia("energia_max", "Energía hasta", fl.energia_max)
     + inputAnio("anio_min", "Año desde", fl.anio_min) + inputAnio("anio_max", "Año hasta", fl.anio_max) + selectPrioridad(fl.prioridad);
   function chipsDe(f) {
     const fl = f.filtros || {};
     return [...filtrosDe(f.tipo_audio).map(([k, t]) => fl[k] ? `<span class="chip" title="${t}">${esc(fl[k])}</span>` : ""),
+      fl.epoca ? `<span class="chip" title="Época">${esc(fl.epoca)}</span>` : "",
       fl.energia_min || fl.energia_max ? `<span class="chip">Energía ${fl.energia_min || 1}–${fl.energia_max || 5}</span>` : "",
       fl.anio_min || fl.anio_max ? `<span class="chip">Años ${esc(fl.anio_min || "…")}–${esc(fl.anio_max || "…")}</span>` : "",
       fl.prioridad ? `<span class="chip">Prioridad ${PRIORIDADES[fl.prioridad] || esc(fl.prioridad)}</span>` : ""].join("");

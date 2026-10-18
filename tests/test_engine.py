@@ -7,6 +7,7 @@ import json
 import sqlite3
 from datetime import datetime
 
+from backend.database import get_connection
 import pytest
 
 from backend.audio.audio_engine import AudioEngine
@@ -45,7 +46,7 @@ def engine(tmp_db, media):
 
 
 def db(engine):
-    conn = sqlite3.connect(engine._db)
+    conn = get_connection(engine._db)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -190,8 +191,16 @@ def test_fades_por_pista(engine):
     assert engine._fade_times(a, b) == (1.0, 2.0)
     assert engine._fade_times(sin, sin) == (4.0, 4.0)
     spot = {"track": {"tipo_audio": "Cuña", "fade_in": 3.0}, "origen": "pauta"}
-    assert engine._fade_times(a, spot) == (engine.SPOT_FADE_IN, engine.SPOT_FADE_IN)
+    # La cuña entra a pleno volumen (sin rampa lenta) y lo que sale es la música
+    assert engine._fade_times(a, spot) == (engine.ENTRADA_CORTO, engine.SPOT_FADE_IN)
     assert engine._fade_times(spot, b) == (engine.SPOT_FADE_OUT, engine.SPOT_FADE_OUT)
+    # Lo mismo para jingles, sweepers y tips: no arrancan bajos
+    for tipo in ("Sweeper", "Tips", "Jingle", "Efecto"):
+        corto = {"track": {"tipo_audio": tipo, "fade_in": 3.0}, "origen": "auto"}
+        assert engine._fade_times(a, corto)[0] == engine.ENTRADA_CORTO, tipo
+        assert engine._fade_times(corto, b) == (engine.SPOT_FADE_OUT, engine.SPOT_FADE_OUT), tipo
+    # Entre dos cuñas seguidas el empalme es corto
+    assert engine._fade_times(spot, spot) == (engine.ENTRADA_CORTO, engine.SPOT_FADE_OUT)
 
 
 def test_punto_de_mezcla_usa_fade_out(engine, media):

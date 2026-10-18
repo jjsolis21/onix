@@ -25,10 +25,9 @@ MAX_BYTES = 60 * 1024 * 1024
 _COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+def _conn():
+    from backend.database import get_connection
+    return get_connection()
 
 
 def _nombre(original: str) -> str:

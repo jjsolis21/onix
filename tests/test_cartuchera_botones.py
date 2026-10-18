@@ -5,6 +5,8 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.database import get_connection
+
 from conftest import make_wav
 
 
@@ -42,8 +44,8 @@ def test_cargar_efecto_desde_archivo_queda_en_el_boton(client, paleta, tmp_path)
     assert b["volumen"] == 100 and b["mark_in"] is None and b["color"] == ""
     # el efecto queda en la Biblioteca como «Efecto», no como música
     from backend.paths import DB_PATH
-    c = sqlite3.connect(DB_PATH)
-    assert c.execute("SELECT tipo_audio, artista FROM audios WHERE id = ?", (d["audio_id"],)).fetchone() == ("Efecto", "EFECTO")
+    c = get_connection()
+    assert tuple(c.execute("SELECT tipo_audio, artista FROM audios WHERE id = ?", (d["audio_id"],)).fetchone()) == ("Efecto", "EFECTO")
 
 
 def test_archivo_que_no_es_audio_se_rechaza(client, paleta):
@@ -145,7 +147,7 @@ def test_lo_cargado_en_la_cartuchera_es_solo_de_la_cartuchera(client, paleta, tm
     # El botón sigue funcionando
     assert _boton(client, paleta, 5)["audio_id"] == aid
     # Un efecto de Identificadores (subido por la biblioteca) sí aparece en Identificadores
-    con = sqlite3.connect(__import__("backend.paths", fromlist=["DB_PATH"]).DB_PATH)
+    con = get_connection()
     con.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, duracion) VALUES ('JINGLE NORMAL', 'EMISORA', 'library/EMISORA/jingle_normal.mp3', 'Efecto', 5)")
     con.commit()
     con.close()

@@ -5,6 +5,7 @@ import sqlite3
 import wave
 from datetime import datetime, timedelta
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -41,11 +42,9 @@ class MotorFalso:
 
 
 @pytest.fixture
-def db(tmp_path):
-    from scripts.init_db import initialize_database
-    ruta = tmp_path / "loc.db"
-    initialize_database(str(ruta))
-    c = sqlite3.connect(ruta)
+def db(tmp_db):
+    ruta = tmp_db                                   # MariaDB: tmp_db deja onix_test limpia antes de cada prueba
+    c = get_connection(ruta)
     c.row_factory = sqlite3.Row
     ids = []
     for i, (t, a) in enumerate([("Provenza", "Karol G"), ("Normal", "Feid"), ("Hawai", "Maluma"),
@@ -101,7 +100,7 @@ def ia(monkeypatch):
 
 
 def _estados(ruta):
-    c = sqlite3.connect(ruta)
+    c = get_connection(ruta)
     try:
         return [r[0] for r in c.execute("SELECT estado FROM locutor_intervenciones ORDER BY id")]
     finally:
@@ -139,13 +138,13 @@ def test_corta_en_automatico_llega_al_programa_antes_de_sonar(db, ia):
     assert len(motor.insertados) == 1
     audio_id, pos = motor.insertados[0]
     assert pos == 2                                          # justo tras la 2.ª canción
-    c = sqlite3.connect(ruta)
+    c = get_connection(ruta)
     t = c.execute("SELECT tipo_audio, artista FROM audios WHERE id = ?", (audio_id,)).fetchone()
-    assert t == ("Locucion", "Britny")
+    assert tuple(t) == ("Locucion", "Britny")
     # no repite el mismo hueco
     for _ in range(3):
         svc.ciclo(motor, ruta, AHORA)
-    anteriores = [r[0] for r in sqlite3.connect(ruta).execute(
+    anteriores = [r[0] for r in get_connection(ruta).execute(
         "SELECT anterior_id FROM locutor_intervenciones")]
     assert len(anteriores) == len(set(anteriores))
 
@@ -226,7 +225,7 @@ def client():
         yield c
 
 
-def test_api_activar_config_y_aprobacion(client):
+def test_api_activar_config_y_aprobacion(client, tmp_db):             # tmp_db: parte de una base limpia (el estado «activo» persiste)
     assert client.get("/api/v1/locutor/estado").json()["activo"] is False
     assert client.post("/api/v1/locutor/activar", json={"activo": True}).json() == {"activo": True}
     cfg = client.put("/api/v1/locutor/config", json={"aprobacion": {"noticia": "auto"},
@@ -248,11 +247,9 @@ def test_api_mensaje_moderado_y_turnos(client):
     assert client.delete(f"/api/v1/locutor/turnos/{t['id']}").status_code == 200
 
 
-def test_api_probar_y_aprobar_inserta_la_voz(client, ia, monkeypatch):
-    import sqlite3 as sq
+def test_api_probar_y_aprobar_inserta_la_voz(client, ia, monkeypatch, tmp_db):
     from backend.api import locutor as api
-    from backend.paths import DB_PATH
-    c = sq.connect(DB_PATH)
+    c = get_connection()
     a = c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio)"
                   " VALUES ('Provenza', 'Karol G', 180, 'library/p.mp3', 'Musica')").lastrowid
     b = c.execute("INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio)"
@@ -278,7 +275,7 @@ def test_api_probar_y_aprobar_inserta_la_voz(client, ia, monkeypatch):
 
 def test_api_importar_hace_copia_previa(client, tmp_path):
     o = tmp_path / "locutor.db"
-    x = sqlite3.connect(o)
+    x = sqlite3.connect(o)                       # el Locutor anterior (AzuraCast) era un archivo SQLite
     x.executescript("""
     CREATE TABLE clientes (id INTEGER PRIMARY KEY, slug TEXT, nombre TEXT, ciudad TEXT, genero TEXT,
         zona_horaria TEXT, modo TEXT, entrega_cifrada TEXT);
@@ -301,7 +298,7 @@ def test_api_importar_hace_copia_previa(client, tmp_path):
     r = client.post("/api/v1/locutor/importar", json={"origen": str(o), "reemplazar": True})
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["importado"] is True and d["turnos"] == 1 and d["copia_previa"].endswith(".db")
+    assert d["importado"] is True and d["turnos"] == 1 and d["copia_previa"].endswith(".sql.gz")
     from pathlib import Path
     assert Path(d["copia_previa"]).is_file()
     assert client.post("/api/v1/locutor/importar", json={"origen": str(tmp_path / "no.db")}).status_code == 404

@@ -424,7 +424,31 @@ const Decks = (() => {
   const lista = $("decksLista");
   let items = [], colaItems = [], sel = null;     // sel = uid de la tarjeta elegida (de la cola o del programa)
 
+  // Cuñas de cada tanda (se piden al desplegar; el plan solo trae cuántas son)
+  const tandasAbiertas = new Set(), cunasTanda = {};
+  let ultimoProg = null;
+  const claveTanda = it => `${it.slot}|${it.minuto}`;
+  async function pedirCunas(it) {
+    const k = claveTanda(it);
+    cunasTanda[k] = null;                                            // null = cargando
+    try {
+      const r = await fetch(`/api/v1/studio/tanda?slot=${encodeURIComponent(it.slot)}&minuto=${it.minuto}`);
+      cunasTanda[k] = r.ok ? await r.json() : { cunas: [], error: true };
+    } catch { cunasTanda[k] = { cunas: [], error: true }; }
+    if (ultimoProg) pintar(ultimoProg);
+  }
+  function htmlCunas(it) {
+    const d = cunasTanda[claveTanda(it)];
+    if (d === undefined || d === null) return `<div class="tanda-cunas"><div class="tc-vacio">Cargando cuñas…</div></div>`;
+    if (!d.cunas.length) return `<div class="tanda-cunas"><div class="tc-vacio">${d.error ? "No se pudo leer la tanda" : "Sin cuñas para esta tanda"}</div></div>`;
+    return `<div class="tanda-cunas">` + d.cunas.map((c, n) => `<div class="tc">
+        <span class="tc-n">${n + 1}</span>
+        <span class="tc-t"><b>${esc(c.cliente || c.spot)}</b>${c.cliente && c.spot ? " · " + esc(c.spot) : ""}${c.rubro ? ` <i>${esc(c.rubro)}</i>` : ""}</span>
+        <span class="tc-v">${c.mujer ? "♀" : ""}${c.fijada ? " 📌" : ""}</span><span class="tc-d">${fmt(c.duracion)}</span></div>`).join("") + `</div>`;
+  }
+
   function pintar(prog) {
+    ultimoProg = prog;
     items = prog?.items ?? [];
     colaItems = prog?.cola ?? [];
     const cola = colaItems;
@@ -461,9 +485,10 @@ const Decks = (() => {
         const marcas = (it.cierre ? " ⇥ TERMINA EN PUNTO" : (it.inmediata ? " ⚡ EN PUNTO" : "")) + (it.excede ? " ⚠ LARGA" : "");
         html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tanda">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
-          <div class="deck-txt"><div class="deck-tit">📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
+          <div class="deck-txt"><div class="deck-tit"><span class="tg" data-tg="${esc(claveTanda(it))}" title="Ver las cuñas de esta tanda">${tandasAbiertas.has(claveTanda(it)) ? "▾" : "▸"}</span> 📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
             <div class="deck-art">${it.cunas} cuña(s)</div></div>
           <span class="deck-dur">${fmt(it.duracion)}</span></div>`;
+        if (tandasAbiertas.has(claveTanda(it))) html += htmlCunas(it);
         return;
       }
       const marcas = [it.compensacion ? "⚖" : "", it.cortada ? "✂" : "", it.operador ? "✋" : ""].join(" ").trim();
@@ -558,6 +583,13 @@ const Decks = (() => {
   }
 
   lista.addEventListener("click", e => {
+    const tg = e.target.closest("[data-tg]");
+    if (tg) {
+      const k = tg.dataset.tg, it = items.find(x => x.tipo === "tanda" && claveTanda(x) === k);
+      if (tandasAbiertas.has(k)) tandasAbiertas.delete(k); else { tandasAbiertas.add(k); if (it) pedirCunas(it); }
+      if (ultimoProg) pintar(ultimoProg);
+      return;
+    }
     const d = e.target.closest(".deck[data-uid]");
     if (d) { elegir(+d.dataset.uid, false); lista.focus({ preventScroll: true }); }
   });

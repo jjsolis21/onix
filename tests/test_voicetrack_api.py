@@ -4,6 +4,7 @@ import base64
 import io
 import wave
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -30,7 +31,7 @@ def sin_claves(client):
 def _audio(aid):
     import sqlite3
     from backend.paths import DB_PATH
-    c = sqlite3.connect(DB_PATH); c.row_factory = sqlite3.Row
+    c = get_connection(DB_PATH); c.row_factory = sqlite3.Row
     try:
         return dict(c.execute("SELECT * FROM audios WHERE id = ?", (aid,)).fetchone())
     finally:

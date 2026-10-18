@@ -42,15 +42,7 @@ router = APIRouter(tags=["Playlists"])
 engine = None
 
 
-def get_db():
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+from backend.database import get_db
 
 
 _FECHA_HORA = r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})?$"

@@ -15,7 +15,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.paths import DB_PATH, resolve_media
@@ -26,19 +26,7 @@ replanificar = None        # api_server lo conecta: el motor rehace su plan (eng
 
 TIPOS = {"clientes": ("comerciales_clientes", "cliente"), "agencias": ("comerciales_agencias", "agencia")}
 
-_ESQUEMA = """
-CREATE TABLE IF NOT EXISTS comerciales_clientes (
-    id INTEGER PRIMARY KEY, nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
-    contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
-    notas TEXT NOT NULL DEFAULT '', creado_en TEXT NOT NULL DEFAULT (datetime('now')));
-CREATE TABLE IF NOT EXISTS comerciales_rubros (nombre TEXT PRIMARY KEY COLLATE NOCASE);
-CREATE TABLE IF NOT EXISTS comerciales_conflictos_rubros (
-    a TEXT NOT NULL, b TEXT NOT NULL, PRIMARY KEY (a, b));
-CREATE TABLE IF NOT EXISTS comerciales_agencias (
-    id INTEGER PRIMARY KEY, nombre TEXT NOT NULL COLLATE NOCASE UNIQUE,
-    contacto TEXT NOT NULL DEFAULT '', telefono TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
-    notas TEXT NOT NULL DEFAULT '', creado_en TEXT NOT NULL DEFAULT (datetime('now')));
-"""
+from backend.esquema_extra import ESQUEMA_COMERCIALES as _ESQUEMA  # noqa: E402
 
 
 # Rubros principales (la primera vez se cargan al catálogo; después el operador agrega y quita los suyos)
@@ -62,11 +50,9 @@ def _sembrar_rubros(c) -> None:
     c.commit()
 
 
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    c.executescript(_ESQUEMA)
-    return c
+def _conn():
+    from backend.database import get_connection
+    return get_connection()
 
 
 def _tipo(tipo: str):
@@ -285,6 +271,34 @@ def tandas_dia(fecha: Optional[str] = None):
                           "ajustada": bool(ajustes or quitadas),
                           "quitadas": [{"pauta_id": q, "cliente": nombres.get(q, f"pauta {q}")} for q in sorted(quitadas)]})
         return {"fecha": dia.isoformat(), "maximo": maximo, "horas": horas}
+    finally:
+        c.close()
+
+
+@router.get("/api/v1/studio/tanda", summary="Las cuñas de UNA tanda, en el orden en que saldrán (Studio)")
+def tanda_studio(slot: str, minuto: int = Query(..., ge=0, le=59)):
+    """`slot` = AAAA-MM-DD-HH (el mismo que trae el plan del motor)."""
+    from backend.audio.audio_engine import cargar_grilla, es_voz_mujer, parse_minutos, tandas_de_hora
+    from backend.audio.planner import Planner
+    try:
+        ini = datetime.strptime(slot, "%Y-%m-%d-%H")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="slot inválido (AAAA-MM-DD-HH)")
+    c = _conn()
+    try:
+        cfg = {r["clave"]: r["valor"] for r in c.execute("SELECT clave, valor FROM config")}
+        base = (parse_minutos(cfg.get("tandas_minutos", "15,45")),
+                parse_minutos(cfg["tandas_inmediatas"]) if (cfg.get("tandas_inmediatas") or "").strip() else [],
+                parse_minutos(cfg["tandas_cierre"]) if (cfg.get("tandas_cierre") or "").strip() else [])
+        minutos, _inm, _cie = tandas_de_hora(cargar_grilla(cfg.get("tandas_grilla", "")), (ini.weekday() + 1) % 7, ini.hour, *base)
+        if minuto not in minutos:
+            minutos = sorted(set(minutos) | {minuto})
+        cunas = Planner(DB_PATH).lista_tanda(c, ini, minuto, minutos)
+        return {"slot": slot, "minuto": minuto, "duracion": round(sum(x["dur"] for x in cunas)),
+                "cunas": [{"pauta_id": x["pauta_id"], "cliente": x["cliente"] or "", "spot": x["spot"] or "",
+                           "rubro": x["rubro"] or "", "seccion": x["seccion"], "comercial": x["comercial"],
+                           "fijada": bool(x.get("fijada")), "mujer": es_voz_mujer(x.get("voz")),
+                           "duracion": round(x["dur"])} for x in cunas]}
     finally:
         c.close()
 

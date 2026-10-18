@@ -9,12 +9,14 @@ biblioteca con sus marcas, cartuchera, historial y configuración).
     GET  /api/v1/respaldos/{archivo}    → descargar una copia
 
 CÓMO
-    · Copia con la API de respaldo de SQLite: es consistente aunque el motor
-      esté escribiendo el historial en ese momento (no es copiar el archivo).
+    · Vuelca la base MariaDB (backend/respaldo_maria.py) con una foto consistente
+      aunque el motor esté escribiendo el historial en ese momento. La copia se
+      verifica (cierre y conteos) antes de aceptarla.
     · Una copia al arrancar si la última tiene más de 23 h, y luego una por
       día (se revisa cada hora). Se conservan las `respaldo_conservar` más
       nuevas (14 por defecto) y se borran las más viejas.
-    · Archivo: onix-AAAA-MM-DD_HHMM.db
+    · Archivo: onix-AAAA-MM-DD_HHMM.sql.gz  (las copias viejas .db de SQLite se
+      siguen listando, pero ya no se pueden restaurar en MariaDB).
 
 LO QUE NO RESPALDA: los audios (media/). Son archivos grandes que hay que
 copiar aparte. Restaurar: scripts\\restaurar_respaldo.ps1 (ver README).
@@ -22,7 +24,6 @@ copiar aparte. Restaurar: scripts\\restaurar_respaldo.ps1 (ver README).
 
 import logging
 import re
-import sqlite3
 import threading
 import time
 from datetime import datetime
@@ -38,7 +39,7 @@ from backend.paths import DB_PATH, RESPALDOS_BD_DIR
 log = logging.getLogger("onix.respaldos")
 router = APIRouter(tags=["Respaldos"])
 
-PATRON = re.compile(r"^onix-\d{4}-\d{2}-\d{2}_\d{4}(-\d+)?\.db$")
+PATRON = re.compile(r"^onix-\d{4}-\d{2}-\d{2}_\d{4}(-\d+)?\.(sql\.gz|db)$")
 EDAD_MAX_H = 23          # más vieja que esto: toca respaldar
 CONSERVAR = 14
 _lock = threading.Lock()
@@ -51,7 +52,8 @@ def _cfg(conn, clave, defecto=""):
 
 
 def ajustes() -> dict:
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    from backend.database import get_connection
+    conn = get_connection()
     try:
         carpeta = _cfg(conn, "respaldo_carpeta", "")
         try:
@@ -77,29 +79,23 @@ def listar(carpeta: Optional[Path] = None) -> list[dict]:
 
 
 def crear(motivo: str = "manual") -> dict:
-    """Hace una copia ahora. Lanza OSError/sqlite3.Error si no se puede."""
+    """Hace una copia ahora. Lanza OSError/ValueError/pymysql.Error si no se puede."""
+    from backend.respaldo_maria import verificar, volcar
     with _lock:
         a = ajustes()
         carpeta: Path = a["carpeta"]
         carpeta.mkdir(parents=True, exist_ok=True)
         base = datetime.now().strftime("onix-%Y-%m-%d_%H%M")
-        destino, n = carpeta / f"{base}.db", 2
+        destino, n = carpeta / f"{base}.sql.gz", 2
         while destino.exists():
-            destino, n = carpeta / f"{base}-{n}.db", n + 1
-        temporal = destino.with_suffix(".tmp")
-        origen = sqlite3.connect(str(DB_PATH), timeout=30)
+            destino, n = carpeta / f"{base}-{n}.sql.gz", n + 1
+        temporal = destino.with_name(destino.name + ".tmp")
         try:
-            copia = sqlite3.connect(str(temporal))
-            try:
-                origen.backup(copia)
-                ok = copia.execute("PRAGMA integrity_check").fetchone()[0]
-            finally:
-                copia.close()
-        finally:
-            origen.close()
-        if ok != "ok":
+            volcar(temporal)
+            verificar(temporal)            # cierre y conteos: una copia incompleta no se acepta
+        except Exception:
             temporal.unlink(missing_ok=True)
-            raise sqlite3.DatabaseError(f"La copia no pasó la verificación: {ok}")
+            raise
         temporal.replace(destino)          # nunca queda una copia a medias con nombre válido
         for viejo in listar(carpeta)[a["conservar"]:]:
             try:
@@ -174,14 +170,15 @@ def ver():
 def respaldar_ahora():
     try:
         return crear("manual")
-    except (OSError, sqlite3.Error) as exc:
+    except Exception as exc:
         estado["ultimo_error"] = f"{type(exc).__name__}: {exc}"
         raise HTTPException(status_code=500, detail=f"No se pudo respaldar: {exc}")
 
 
 @router.put("/api/v1/respaldos/config", summary="Carpeta y cantidad de copias")
 def configurar(body: RespaldoConfig):
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    from backend.database import get_connection
+    conn = get_connection()
     try:
         if body.carpeta is not None:
             carpeta = body.carpeta.strip()
@@ -220,8 +217,16 @@ def descargar(archivo: str):
 def mismo_disco(carpeta: Path) -> bool:
     """¿La copia está en el mismo disco que la base? (no protege si el disco muere)."""
     try:
-        a, b = Path(DB_PATH).resolve(), Path(carpeta).resolve()
-    except OSError:
+        from backend.database import DB_HOST, get_connection
+        if DB_HOST not in ("localhost", "127.0.0.1", "::1"):
+            return False                                  # MariaDB corre en otro equipo: cualquier copia local sí la protege
+        conn = get_connection()
+        try:
+            datadir = conn.execute("SELECT @@datadir").fetchone()[0]
+        finally:
+            conn.close()
+        a, b = Path(datadir).resolve(), Path(carpeta).resolve()
+    except Exception:
         return True
     if a.drive or b.drive:                 # Windows: letra de unidad
         return a.drive.upper() == b.drive.upper()

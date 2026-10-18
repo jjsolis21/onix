@@ -88,7 +88,7 @@ def huecos(items: list, cada: int) -> list:
 
 def _minutos_desde(c, tipo: str) -> float:
     r = c.execute(
-        "SELECT (julianday('now') - julianday(MAX(creado_en))) * 1440 FROM locutor_intervenciones"
+        "SELECT TIMESTAMPDIFF(SECOND, MAX(creado_en), NOW()) / 60.0 FROM locutor_intervenciones"
         " WHERE tipo = ? AND estado IN ('borrador','aprobada','lista','al_aire')", (tipo,)).fetchone()
     return float("inf") if r[0] is None else float(r[0])
 
@@ -119,9 +119,9 @@ def elegir_tipo(c, reglas: dict, ahora: datetime) -> Optional[str]:
     elegido = None
     if reglas["patron"]:
         hechas = c.execute(      # con el reloj de la base, el mismo con que se guardó creado_en
-            "SELECT COUNT(*) FROM locutor_intervenciones WHERE creado_en >= datetime('now', ?) AND estado IN"
+            "SELECT COUNT(*) FROM locutor_intervenciones WHERE creado_en >= DATE_SUB(NOW(), INTERVAL ? MINUTE) AND estado IN"
             " ('borrador','aprobada','lista','al_aire','fallo')",       # un intento fallido también avanza el patrón
-            (f"-{ahora.minute} minutes",)).fetchone()[0]
+            (int(ahora.minute),)).fetchone()[0]
         entrada = reglas["patron"][hechas % len(reglas["patron"])]
         elegido = ENTRADAS.get(entrada)
     else:
@@ -377,14 +377,14 @@ def ciclo(engine, db_path: Any = None, ahora: Optional[datetime] = None,
             elif r["anterior_id"] in ids_prog and insertar(c, r["id"], engine):
                 continue
             else:
-                viejo = c.execute("SELECT (julianday('now') - julianday(?)) * 24", (r["creado_en"],)).fetchone()[0]
+                viejo = c.execute("SELECT TIMESTAMPDIFF(SECOND, ?, NOW()) / 3600.0", (r["creado_en"],)).fetchone()[0]
                 if viejo > 3:
                     almacen.cambiar_estado(c, r["id"], "descartada", motivo="No llegó a sonar")
 
         # 3) borradores/aprobadas cuya canción ya pasó: ya no tienen lugar
         for r in c.execute("SELECT * FROM locutor_intervenciones WHERE estado = 'borrador'").fetchall():
             if r["anterior_id"] and r["anterior_id"] not in ids_prog and items:
-                viejo = c.execute("SELECT (julianday('now') - julianday(?)) * 1440", (r["creado_en"],)).fetchone()[0]
+                viejo = c.execute("SELECT TIMESTAMPDIFF(SECOND, ?, NOW()) / 60.0", (r["creado_en"],)).fetchone()[0]
                 if viejo > 10:
                     almacen.cambiar_estado(c, r["id"], "descartada", motivo="Ya pasó su lugar en el programa")
 

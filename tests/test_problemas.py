@@ -2,6 +2,7 @@
 
 import sqlite3
 
+from backend.database import get_connection
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,7 +16,7 @@ def client():
 
 def test_detecta_archivo_faltante_y_respaldo_vacio(client):
     from backend.paths import DB_PATH
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = get_connection(str(DB_PATH))
     conn.execute("INSERT INTO audios (titulo, artista, archivo_path, tipo_audio, duracion)"
                  " VALUES ('FANTASMA', 'NADIE', 'library/musica/no_existe.mp3', 'Musica', 200)")
     conn.commit()

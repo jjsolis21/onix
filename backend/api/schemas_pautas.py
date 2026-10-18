@@ -53,11 +53,16 @@ class PautaIn(BaseModel):
     contrato_id:  str            = Field("", max_length=100)
     agencia:      str            = Field("", max_length=200)
     posicion:     int            = Field(0, ge=0, le=2, description="0 libre · 1 primero · 2 último en la tanda")
+    hora_inicio_permitida: Optional[int] = Field(None, ge=0, le=23, description="Hora inicial permitida (Dayparting)")
+    hora_fin_permitida:    Optional[int] = Field(None, ge=0, le=23, description="Hora final permitida (Dayparting)")
+
     # Varias versiones del spot que rotan en cada salida (incluye la principal).
+
     # None = no tocar las que ya tiene; [] = una sola versión (audio_id)
     versiones:    Optional[list[int]] = Field(None, max_length=20)
     seccion:      int            = Field(3, ge=0, le=99,
                                          description="Sección de la tanda (1 ID, 2 cortina de entrada, 3 comerciales…)")
+
 
     # ── Normalización de texto ────────────────────────────────────
 
@@ -147,6 +152,8 @@ class PautaIn(BaseModel):
             "contrato_id":  self.contrato_id,
             "agencia":      self.agencia,
             "posicion":     self.posicion,
+            "hora_inicio_permitida": self.hora_inicio_permitida,
+            "hora_fin_permitida":    self.hora_fin_permitida,
             "seccion":      self.seccion,
         }
 
@@ -178,12 +185,15 @@ class PautaOut(BaseModel):
     contrato_id:  str
     agencia:      str = ""
     posicion:     int = 0
+    hora_inicio_permitida: Optional[int] = None
+    hora_fin_permitida:    Optional[int] = None
     orden:        Optional[int] = None
     versiones:    list[dict] = []
     seccion:      int = 3
     activo:       int
     created_at:   str
     updated_at:   str
+
 
     model_config = {"from_attributes": True}
 

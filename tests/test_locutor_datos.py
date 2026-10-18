@@ -38,8 +38,8 @@ def pagina(titulo, tipo, descripcion, extracto):
 
 
 @pytest.fixture
-def c(tmp_path):
-    con = almacen.conectar(tmp_path / "d.db")
+def c(tmp_db):
+    con = almacen.conectar(tmp_db)                  # MariaDB: tmp_db deja onix_test limpia antes de cada prueba
     yield con
     con.close()
 

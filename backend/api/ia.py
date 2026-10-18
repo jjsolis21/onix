@@ -26,9 +26,8 @@ router = APIRouter(tags=["IA"])
 
 
 def _conn():
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+    from backend.database import get_connection
+    return get_connection()
 
 
 class ClaveIn(BaseModel):

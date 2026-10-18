@@ -38,6 +38,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.paths import DB_PATH, MEDIA_ROOT, resolve_media
+from backend.api.utils_musica import calcular_epoca
 
 router = APIRouter(tags=["Biblioteca"])
 
@@ -47,10 +48,10 @@ engine = None
 MAX_CABECERA = 2 * 1024 * 1024     # lo que se lee del comienzo del archivo
 
 
+from backend.database import get_connection
+
 def _conn():
-    conn = sqlite3.connect(str(DB_PATH), timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_connection()
 
 
 def normalizar(texto: str) -> str:
@@ -215,11 +216,34 @@ def ficha(audio_id: int):
             except Exception:
                 pass
 
+        # Sanitizar categorías con catálogo activo
+        cats_act = conn.execute("""
+            SELECT cd.nombre_interno, cv.valor
+            FROM config_categorias_valores cv
+            JOIN config_categorias_def cd ON cd.id = cv.cat_id
+            WHERE cv.activo = 1
+        """).fetchall()
+        valid_map = {"cat1": {}, "cat2": {}, "cat3": {}, "voz": {}}
+        for r in cats_act:
+            if r["nombre_interno"] in valid_map and r["valor"]:
+                v = r["valor"].strip()
+                valid_map[r["nombre_interno"]][v.upper()] = v
+
+        def _clean_cat(val, k):
+            if not val or not str(val).strip():
+                return None
+            return valid_map[k].get(str(val).strip().upper(), None)
+
         claves = a.keys()
         return {
             "id": a["id"], "titulo": a["titulo"], "artista": a["artista"], "album": a["album"],
-            "anio": (a["fecha_lanzamiento"] or "")[:4], "tipo_audio": a["tipo_audio"],
-            "cat1": a["subgenero"], "cat2": a["categoria"], "cat3": a["cat3"], "voz": a["genero_vocal"],
+            "anio": (a["fecha_lanzamiento"] or "")[:4],
+            "epoca": a["epoca"] if "epoca" in claves else None,
+            "tipo_audio": a["tipo_audio"],
+            "cat1": _clean_cat(a["subgenero"], "cat1"),
+            "cat2": _clean_cat(a["categoria"], "cat2"),
+            "cat3": _clean_cat(a["cat3"], "cat3"),
+            "voz": _clean_cat(a["genero_vocal"], "voz"),
             "categoria_ident": a["categoria_ident"],
             "origen": a["origen"], "energia": a["energia"], "bpm": a["bpm"],
             "prioridad": a["prioridad"] if "prioridad" in claves else None,
@@ -265,7 +289,7 @@ def papelera():
     try:
         return [dict(r) for r in conn.execute(
             "SELECT id, titulo, artista, tipo_audio, duracion, updated_at FROM audios"
-            " WHERE activo = 0 AND tipo_audio != 'Cuña' ORDER BY updated_at DESC, id DESC")]
+            " WHERE activo = 0 AND tipo_audio NOT IN ('Cuña', 'Locucion') ORDER BY updated_at DESC, id DESC")]
     finally:
         conn.close()
 
@@ -391,8 +415,9 @@ def calidad():
         ult30 = {r[0] for r in conn.execute(
             "SELECT DISTINCT audio_id FROM historial_emision WHERE audio_id IS NOT NULL"
             " AND iniciado_en >= datetime('now', 'localtime', '-30 days')")}
+        limite_30d = str(conn.execute("SELECT datetime('now', '-30 days')").fetchone()[0])[:19]
         olvidadas = [r["id"] for r in musica if r["aprobada"] and r["id"] not in ult30
-                     and (r["created_at"] or "") < conn.execute("SELECT datetime('now', '-30 days')").fetchone()[0]]
+                     and str(r["created_at"] or "")[:19] < limite_30d]
         restringidas = [r["id"] for r in musica if r["restr_dias"] or r["max_por_dia"]
                         or (r["restr_desde"] is not None and r["restr_hasta"] is not None
                             and r["restr_desde"] != r["restr_hasta"])]
@@ -653,9 +678,10 @@ def anios_aplicar(body: AniosAplicarIn):
     try:
         n = 0
         for it in body.items:
+            ep = calcular_epoca(it.anio)
             n += c.execute(
-                "UPDATE audios SET fecha_lanzamiento = ?, updated_at = datetime('now') WHERE id = ? AND activo = 1"
-                " AND COALESCE(TRIM(fecha_lanzamiento), '') = ''", (str(it.anio), it.id)).rowcount
+                "UPDATE audios SET fecha_lanzamiento = ?, epoca = ?, updated_at = datetime('now') WHERE id = ? AND activo = 1"
+                " AND COALESCE(TRIM(fecha_lanzamiento), '') = ''", (str(it.anio), ep, it.id)).rowcount
         c.commit()
         return {"guardados": n, "omitidos": len(body.items) - n}
     finally:

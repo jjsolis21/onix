@@ -255,8 +255,8 @@ def _revisar_pautas_hoy(conn) -> list:
 def revisar(forzar: bool = False) -> list:
     ahora = time.monotonic()
     if forzar or ahora - _cache["t"] >= REVISION_SEG:
-        conn = sqlite3.connect(str(DB_PATH), timeout=10)
-        conn.row_factory = sqlite3.Row
+        from backend.database import get_connection
+        conn = get_connection()
         try:
             bd = _revisar_bd(conn) + _revisar_pautas_hoy(conn)
         finally:

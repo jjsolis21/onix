@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 
+from backend.database import get_connection
 import pytest
 
 from backend.audio.planner import Planner, duracion_efectiva
@@ -12,7 +13,7 @@ LUNES_10 = datetime(2026, 10, 12, 10, 0)     # lunes → día 1 de la grilla
 
 
 def db(path):
-    conn = sqlite3.connect(path)
+    conn = get_connection(path)
     conn.row_factory = sqlite3.Row
     return conn
 

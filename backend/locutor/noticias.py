@@ -147,7 +147,7 @@ def siguiente(c: sqlite3.Connection, max_horas: int = 18) -> Optional[sqlite3.Ro
         "SELECT n.*, f.nombre AS fuente, f.cierre AS cierre FROM locutor_noticias n"
         " LEFT JOIN locutor_fuentes f ON f.id = n.fuente_id"
         " WHERE n.estado = 'nueva' AND COALESCE(f.activo, 1) = 1"
-        " AND (n.prioridad > 0 OR (julianday('now') - julianday(COALESCE(n.publicada_en, n.creado_en))) * 24 <= ?)"
+        " AND (n.prioridad > 0 OR TIMESTAMPDIFF(SECOND, COALESCE(n.publicada_en, n.creado_en), NOW()) / 3600.0 <= ?)"
         " ORDER BY n.prioridad DESC, COALESCE(n.publicada_en, n.creado_en) DESC LIMIT 1",
         (max_horas,)).fetchone()
 
@@ -155,7 +155,7 @@ def siguiente(c: sqlite3.Connection, max_horas: int = 18) -> Optional[sqlite3.Ro
 def titulares_leidos(c: sqlite3.Connection, horas: int = 24) -> list:
     return [r[0] for r in c.execute(
         "SELECT titulo FROM locutor_noticias WHERE estado = 'leida'"
-        " AND (julianday('now') - julianday(creado_en)) * 24 <= ?", (horas,))]
+        " AND TIMESTAMPDIFF(SECOND, creado_en, NOW()) / 3600.0 <= ?", (horas,))]
 
 
 _SIN_PESO = {"para", "este", "esta", "desde", "hasta", "sobre", "entre", "tras", "ante", "como", "pero", "según",
