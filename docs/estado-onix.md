@@ -131,6 +131,11 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     (respaldo previo `onix-2026-10-18_1446.sql.gz`): Balada 24, Pop 23, Salsa 27, Hombre 51 + Mujer 17 + Grupo 7 + Dúo 1; voces de sistema
     Hombre/Mujer/Genérico aseguradas. DECISIÓN DEL DUEÑO pendiente sobre valores que quedan en la lista y no son repetidos: `DANCE`, `URBANO`,
     `COMERCIAL` (género interno de las cuñas), voz `MALE` y `FT`, y una canción con género `GEN_ALPHA` que no está en la lista.
+    RESUELTO el mismo día: GEN_ALPHA quitado; MALE = Hombre; voces oficiales Hombre, Mujer, Dúo, Grupo, FT (+ Genérico para cuñas); Dance y Urbano
+    con la forma «Dance», «Urbano». COMERCIAL ya NO es un género: las cuñas se identifican por su tipo (Cuña) y viven en la sección Comerciales, no en
+    la lista de géneros de la Biblioteca Musical. REGLA: géneros, rotaciones y subgéneros son solo los que el usuario crea; una instalación nueva no
+    trae ninguno de adorno (solo las voces). En `onix_db` se retiraron los sin uso (géneros: Clásica, Cumbia, Electrónica, Jazz, Ranchera, Reggaetón,
+    Rock, Romántica, Tropical; rotación: Desconocido; subgéneros: Acústico, Cover, En Vivo, Remix). Respaldo previo: `onix-2026-10-18_1500.sql.gz`.
 8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — PENDIENTE:** se programa en el reloj; también en la
    biblioteca de Studio para modo manual. Sobre intro: al inicio del intro o al final del intro (intro 20 s, tip 7 s ⇒ empieza a los 13 s).
    Puente: el tip se reparte entre las dos canciones (tip 8 s ⇒ 4 s en la canción que sale y 4 s en la que entra).

@@ -394,24 +394,6 @@ def _validate_categoria_valor(
                    f"o créalo antes en Configuración › Biblioteca.")
 
 
-def _asegurar_valor_sistema(conn: MariaDBConnection, nombre_interno: str, valor: str) -> None:
-    """Valor que el propio sistema necesita (p. ej. el género «COMERCIAL» de las cuñas): lo crea o reactiva si falta."""
-    cat_def = conn.execute("SELECT id FROM config_categorias_def WHERE nombre_interno = ? AND activo = 1",
-                           (nombre_interno,)).fetchone()
-    if not cat_def:
-        return
-    fila = conn.execute("SELECT id, activo FROM config_categorias_valores WHERE cat_id = ? AND UPPER(valor) = UPPER(?)",
-                        (cat_def["id"], valor)).fetchone()
-    if fila and fila["activo"]:
-        return
-    if fila:
-        conn.execute("UPDATE config_categorias_valores SET activo = 1 WHERE id = ?", (fila["id"],))
-        return
-    orden = conn.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM config_categorias_valores WHERE cat_id = ?",
-                         (cat_def["id"],)).fetchone()[0]
-    conn.execute("INSERT INTO config_categorias_valores (cat_id, valor, orden) VALUES (?, ?, ?)", (cat_def["id"], valor, orden))
-
-
 # ---- Endpoints de Configuración ----
 
 @app.get(
@@ -1055,10 +1037,10 @@ async def upload_audio_file(
     audio_id = None
     if tipo == "pauta":
         titulo = Path(file.filename).stem.strip().upper() or dest.stem.upper()
-        _asegurar_valor_sistema(conn, "cat1", "COMERCIAL")
+        # Las cuñas se identifican por su TIPO («Cuña»), no por un género: no entran a la lista de géneros de la Biblioteca Musical
         cursor = conn.execute(
-            "INSERT INTO audios (titulo, artista, duracion, archivo_path, subgenero, tipo_audio)"
-            " VALUES (?, 'PUBLICIDAD', ?, ?, 'COMERCIAL', 'Cuña')",
+            "INSERT INTO audios (titulo, artista, duracion, archivo_path, tipo_audio)"
+            " VALUES (?, 'PUBLICIDAD', ?, ?, 'Cuña')",
             (titulo, _probe_duration(dest), to_stored(dest)),
         )
         audio_id = cursor.lastrowid

@@ -36,7 +36,6 @@
   const API_BASE = '';
 
   // Categorías que interesan al filtrar audios del catálogo
-  const AUDIO_CATEGORIAS = ['COMERCIAL', 'PUBLICIDAD'];
 
   // Días de aviso previo al vencimiento para el semáforo amarillo
   const DAYS_WARN = 3;

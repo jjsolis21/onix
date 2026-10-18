@@ -140,7 +140,7 @@ CREATE TABLE `config_categorias_def` (
 CREATE TABLE `config_categorias_valores` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `cat_id` int(11) NOT NULL,
-  `valor` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `valor` varchar(150) NOT NULL,
   `orden` int(11) NOT NULL DEFAULT 0,
   `activo` int(11) NOT NULL DEFAULT 1,
   `created_at` text NOT NULL DEFAULT current_timestamp(),

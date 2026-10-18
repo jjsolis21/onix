@@ -65,6 +65,14 @@ def test_instalacion_nueva_queda_igual_que_la_base_de_pruebas(base_vacia):
         assert cur.fetchone()[0] > 0, tabla
     cur.execute("SELECT COUNT(*) FROM audios")
     assert cur.fetchone()[0] == 0
+    # Una instalación nueva NO trae géneros, rotaciones ni subgéneros de adorno: solo existen los que el usuario crea.
+    # Lo único precargado son las voces oficiales.
+    cur.execute("SELECT d.nombre_interno, v.valor FROM config_categorias_valores v JOIN config_categorias_def d ON d.id = v.cat_id")
+    por = {}
+    for categoria, valor in cur.fetchall():
+        por.setdefault(categoria, set()).add(valor)
+    assert por.keys() == {"voz"}, por
+    assert por["voz"] == {"Hombre", "Mujer", "Dúo", "Grupo", "FT", "Genérico"}
     c.close()
 
 

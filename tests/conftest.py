@@ -183,6 +183,10 @@ def resetear_base() -> None:
             c.executemany(f"INSERT INTO `{t}` ({', '.join('`' + k + '`' for k in cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
                           [tuple(f[k] for k in cols) for f in filas])
         c.execute("SET FOREIGN_KEY_CHECKS = 1")
+        # La semilla de init_db trae la lista de voces de antes (con «Instrumental», sin «FT» ni «Genérico»): se deja como en producción
+        from backend.migraciones_maria import _asegurar_valores_de_sistema, _retirar_valores_sin_uso
+        _retirar_valores_sin_uso(c)
+        _asegurar_valores_de_sistema(c)
         c.commit()
     finally:
         c.close()

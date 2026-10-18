@@ -6,8 +6,8 @@
    "etiqueta_visible": "Género",
    "orden": 1,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "updated_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18",
+   "updated_at": "2026-10-18 19:00:18"
   },
   {
    "id": 2,
@@ -15,8 +15,8 @@
    "etiqueta_visible": "Rotación",
    "orden": 2,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "updated_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18",
+   "updated_at": "2026-10-18 19:00:18"
   },
   {
    "id": 3,
@@ -24,8 +24,8 @@
    "etiqueta_visible": "Subgénero",
    "orden": 3,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "updated_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18",
+   "updated_at": "2026-10-18 19:00:18"
   },
   {
    "id": 4,
@@ -33,243 +33,18 @@
    "etiqueta_visible": "Voz/Tipo",
    "orden": 4,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "updated_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18",
+   "updated_at": "2026-10-18 19:00:18"
   }
  ],
  "config_categorias_valores": [
-  {
-   "id": 1,
-   "cat_id": 1,
-   "valor": "Romántica",
-   "orden": 1,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 2,
-   "cat_id": 1,
-   "valor": "Pop",
-   "orden": 2,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 3,
-   "cat_id": 1,
-   "valor": "Rock",
-   "orden": 3,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 4,
-   "cat_id": 1,
-   "valor": "Balada",
-   "orden": 4,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 5,
-   "cat_id": 1,
-   "valor": "Cumbia",
-   "orden": 5,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 6,
-   "cat_id": 1,
-   "valor": "Tropical",
-   "orden": 6,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 7,
-   "cat_id": 1,
-   "valor": "Ranchera",
-   "orden": 7,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 8,
-   "cat_id": 1,
-   "valor": "Electrónica",
-   "orden": 8,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 9,
-   "cat_id": 1,
-   "valor": "Reggaetón",
-   "orden": 9,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 10,
-   "cat_id": 1,
-   "valor": "Salsa",
-   "orden": 10,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 11,
-   "cat_id": 1,
-   "valor": "Merengue",
-   "orden": 11,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 12,
-   "cat_id": 1,
-   "valor": "Bachata",
-   "orden": 12,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 13,
-   "cat_id": 1,
-   "valor": "Jazz",
-   "orden": 13,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 14,
-   "cat_id": 1,
-   "valor": "Clásica",
-   "orden": 14,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 15,
-   "cat_id": 2,
-   "valor": "Nuevo",
-   "orden": 1,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 16,
-   "cat_id": 2,
-   "valor": "Reciente",
-   "orden": 2,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 17,
-   "cat_id": 2,
-   "valor": "Éxito",
-   "orden": 3,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 18,
-   "cat_id": 2,
-   "valor": "Recurrente",
-   "orden": 4,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 19,
-   "cat_id": 2,
-   "valor": "Clásico",
-   "orden": 5,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 20,
-   "cat_id": 2,
-   "valor": "Desconocido",
-   "orden": 6,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 21,
-   "cat_id": 3,
-   "valor": "Acústico",
-   "orden": 1,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 22,
-   "cat_id": 3,
-   "valor": "En Vivo",
-   "orden": 2,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 23,
-   "cat_id": 3,
-   "valor": "Remix",
-   "orden": 3,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 24,
-   "cat_id": 3,
-   "valor": "Original",
-   "orden": 4,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
-  {
-   "id": 25,
-   "cat_id": 3,
-   "valor": "Cover",
-   "orden": 5,
-   "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
-   "color": null
-  },
   {
    "id": 26,
    "cat_id": 4,
    "valor": "Hombre",
    "orden": 1,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
+   "created_at": "2026-10-18 19:00:18",
    "color": null
   },
   {
@@ -278,7 +53,7 @@
    "valor": "Mujer",
    "orden": 2,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
+   "created_at": "2026-10-18 19:00:18",
    "color": null
   },
   {
@@ -287,7 +62,7 @@
    "valor": "Dúo",
    "orden": 3,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
+   "created_at": "2026-10-18 19:00:18",
    "color": null
   },
   {
@@ -296,7 +71,7 @@
    "valor": "Grupo",
    "orden": 4,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
+   "created_at": "2026-10-18 19:00:18",
    "color": null
   },
   {
@@ -305,7 +80,7 @@
    "valor": "Instrumental",
    "orden": 5,
    "activo": 1,
-   "created_at": "2026-10-18 18:24:26",
+   "created_at": "2026-10-18 19:00:18",
    "color": null
   }
  ],
@@ -445,35 +220,35 @@
    "nombre": "Jingles",
    "slots": 9,
    "orden": 0,
-   "created_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18"
   },
   {
    "clave": "efectos",
    "nombre": "Efectos",
    "slots": 9,
    "orden": 1,
-   "created_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18"
   },
   {
    "clave": "voces",
    "nombre": "Voces",
    "slots": 9,
    "orden": 2,
-   "created_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18"
   },
   {
    "clave": "publicidad",
    "nombre": "Publicidad",
    "slots": 9,
    "orden": 3,
-   "created_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18"
   },
   {
    "clave": "especiales",
    "nombre": "Especiales",
    "slots": 9,
    "orden": 4,
-   "created_at": "2026-10-18 18:24:26"
+   "created_at": "2026-10-18 19:00:18"
   }
  ],
  "ident_categorias": [

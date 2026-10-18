@@ -70,6 +70,12 @@ def semilla() -> dict:
                 if t not in existentes or t in ("sesiones", "usuarios", "historial_emision"):
                     continue
                 filas = [dict(f) for f in lit.execute(f"SELECT * FROM `{t}`").fetchall()]
+                if t == "config_categorias_valores":
+                    # Una instalación nueva NO trae géneros, rotaciones ni subgéneros: solo existen los que el usuario crea.
+                    # Quedan únicamente las voces oficiales (Hombre, Mujer, Dúo, Grupo, FT, Genérico), que las asegura la migración.
+                    ids_listas = {f["id"] for f in [dict(x) for x in lit.execute(
+                        "SELECT id FROM config_categorias_def WHERE nombre_interno IN ('cat1', 'cat2', 'cat3')").fetchall()]}
+                    filas = [f for f in filas if f["cat_id"] not in ids_listas]
                 if filas and len(filas) <= 500:
                     out[t] = filas
         finally:
