@@ -724,6 +724,7 @@ let lotePlayerIdx = -1;
 
 function openLoteModal() {
   loteStep = 1; loteFiles = []; loteResetPlayer();
+  if ($('lote-sin-clasificar')) $('lote-sin-clasificar').checked = false;     // cada carga empieza pidiendo género y rotación
   $('lote-overlay').classList.add('active');
   loteUpdateUI();
   syncLoteSelects();
@@ -758,6 +759,22 @@ function loteUpdateUI() {
   if (loteStep === 2) {
     $('lote-next-step').disabled = !loteFiles.some(f => f.selected);
   }
+  if (loteStep === 3 && !loteProcesando) loteValidarPaso3();
+}
+
+/* Paso 3: género y rotación son obligatorios; la única salida es «cargar sin clasificar», dicho a propósito y por escrito */
+function loteValidarPaso3() {
+  const sinClasificar = $('lote-sin-clasificar')?.checked;
+  const completo = !!$('lote-sc1').value && !!$('lote-pop').value;
+  const hayGeneros = $('lote-sc1').options.length > 1, hayRotaciones = $('lote-pop').options.length > 1;
+  const aviso = $('lote-aviso-listas');
+  if (aviso) {
+    const faltan = [!hayGeneros && 'géneros', !hayRotaciones && 'rotaciones'].filter(Boolean);
+    aviso.style.display = faltan.length ? 'block' : 'none';
+    aviso.textContent = faltan.length ? `Todavía no hay ${faltan.join(' ni ')} creados. Créalos en Configuración › Biblioteca para poder elegirlos, o carga sin clasificar.` : '';
+  }
+  $('lote-next-step').disabled = !(completo || sinClasificar);
+  $('lote-next-step').title = (completo || sinClasificar) ? '' : 'Elige el género y la rotación (o marca «Cargar sin clasificar»)';
 }
 
 function loteNextStep() {
@@ -907,8 +924,8 @@ function syncLoteSelects() {
     const s1 = $('lote-sc1'), pop = $('lote-pop'), voz = $('lote-voz');
     const getItems = (key) => window.onixCategories.getCategories()[key]?.items || [];
 
-    const fill = (el, items) => {
-      el.innerHTML = '<option value="">— Mismo del archivo —</option>';
+    const fill = (el, items, vacio) => {
+      el.innerHTML = `<option value="">${vacio}</option>`;
       items.forEach(it => el.innerHTML += `<option value="${it.label}">${it.label}</option>`);
     };
 
@@ -918,7 +935,9 @@ function syncLoteSelects() {
     // Llenaremos manualmente.
     const cats = ['soundCode', 'popularity', 'voz'];
     const targets = [s1, pop, voz];
-    cats.forEach((k, i) => fill(targets[i], getItems(k)));   // del servidor (antes, del navegador)
+    const vacios = ['— Elige el género —', '— Elige la rotación —', '— Sin definir —'];
+    cats.forEach((k, i) => fill(targets[i], getItems(k), vacios[i]));   // del servidor (antes, del navegador)
+    if (typeof loteValidarPaso3 === 'function' && loteStep === 3) loteValidarPaso3();
   }
 }
 
@@ -933,11 +952,10 @@ async function processLote() {
   $('lote-next-prev').disabled = true;
   $('lote-processing-info').style.display = 'block';
 
-  let success = 0, error = 0;
-  const toUpper = v => (v && typeof v === 'string') ? v.trim().toUpperCase() : v;
+  let success = 0, error = 0, listas = 0, porCompletar = 0;
   const globalMeta = {
-    cat1: toUpper($('lote-sc1').value), cat2: toUpper($('lote-pop').value),
-    voz: toUpper($('lote-voz').value), year: $('lote-year').value,
+    cat1: $('lote-sc1').value.trim(), cat2: $('lote-pop').value.trim(),
+    voz: $('lote-voz').value.trim(), year: $('lote-year').value,
     bpm: $('lote-bpm').value, active: $('lote-active').checked
   };
 
@@ -979,6 +997,7 @@ async function processLote() {
       if (res.ok) {
         success++;
         const d = await res.json().catch(() => ({}));
+        if (d.lista_para_sonar) listas++; else porCompletar++;
         wsCmd('library_updated', { id: d.data?.id, titulo: title, action: 'create' });
       } else {
         error++;
@@ -995,7 +1014,9 @@ async function processLote() {
   loteProcesando = false;
   loteUpdateUI();
   $('lote-success-msg').innerHTML = `Se han procesado <strong>${selected.length}</strong> archivos.<br>
-    <span style="color:#00ff88">✓ ${success} Éxitos</span> | <span style="color:#ff6666">✕ ${error} Errores</span>`;
+    <span style="color:#00ff88">✓ ${listas} listas para sonar</span>
+    ${porCompletar ? ` | <span style="color:#FF6600">⏳ ${porCompletar} por completar (no suenan hasta ponerles género y rotación)</span>` : ''}
+    ${error ? ` | <span style="color:#ff6666">✕ ${error} con error</span>` : ''}`;
   $('lote-next-step').disabled = false;
   $('lote-next-prev').disabled = false;
 }
@@ -1003,6 +1024,7 @@ async function processLote() {
 const FIDS = new Set(['jz-search', 'jz-filter-sc', 'jz-filter-pop', 'jz-filter-voz']);
 document.addEventListener('input', e => { if (FIDS.has(e.target.id)) applyFilters(); });
 document.addEventListener('change', e => {
+  if (['lote-sc1', 'lote-pop', 'lote-sin-clasificar'].includes(e.target.id)) loteValidarPaso3();
   if (FIDS.has(e.target.id)) applyFilters();
   if (e.target.id === 'modal-file' && e.target.files?.[0]) handleFile(e.target.files[0]);
 

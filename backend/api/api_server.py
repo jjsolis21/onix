@@ -11,7 +11,6 @@ import os
 import re
 import secrets
 import shutil
-from backend.database import DualError, DualIntegrityError, MariaDBConnection
 import time
 import unicodedata
 from contextlib import contextmanager
@@ -39,6 +38,8 @@ if str(root_path) not in sys.path:
 
 # Rutas compartidas con el motor (misma BD, misma carpeta de medios)
 from backend.paths import DB_PATH as _DB_PATH, MEDIA_ROOT, resolve_media, to_stored, normalize_stored
+# (después de añadir la raíz al camino: este archivo también se arranca como script, «python backendpipi_server.py»)
+from backend.database import DualError, DualIntegrityError, MariaDBConnection
 
 # Schemas para el módulo Pautas (Sección 03)
 # Archivo: backend/api/schemas_pautas.py

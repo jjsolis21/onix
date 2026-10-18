@@ -4013,16 +4013,18 @@
 
       <!-- PASO 3: METADATOS MASIVOS -->
       <div class="lote-step" id="lote-step-3">
-        <h3>Configuración Global</h3>
-        <p style="color: #666;">Los siguientes valores se aplicarán a todos los audios seleccionados.</p>
+        <h3>Género y rotación</h3>
+        <p style="color: #aaa;">Se aplican a todos los audios seleccionados. <b>Con género y rotación, las canciones suenan en
+          automático apenas se cargan.</b> Sin ellos quedan <b>por completar</b> y no suenan hasta que se los pongas.</p>
+        <div id="lote-aviso-listas" style="display:none; margin: 8px 0; padding: 10px; background: rgba(255,102,0,.12); border-left: 4px solid #FF6600; font-size: 13px; color: #ddd;"></div>
 
         <div class="lote-meta-grid">
           <div class="jz-field">
-            <label>Categoría 1</label>
+            <label>Género <b style="color:#FF6600">*</b></label>
             <select id="lote-sc1" class="jz-input"></select>
           </div>
           <div class="jz-field">
-            <label>Categoría 2</label>
+            <label>Rotación <b style="color:#FF6600">*</b></label>
             <select id="lote-pop" class="jz-input"></select>
           </div>
           <div class="jz-field">
@@ -4047,9 +4049,14 @@
           </div>
         </div>
 
+        <label style="display:flex; align-items:center; gap:8px; margin-top: 16px; font-size: 13px; color:#aaa; cursor:pointer;">
+          <input type="checkbox" id="lote-sin-clasificar">
+          Cargar <b>sin clasificar</b>: quedan POR COMPLETAR y no suenan en automático hasta ponerles género y rotación
+        </label>
+
         <div
           style="margin-top: 30px; padding: 20px; background: rgba(142, 68, 173, 0.1); border-left: 4px solid #8e44ad;">
-          <h4 style="color: #8e44ad; margin-top: 0;">Resumen Legislativo</h4>
+          <h4 style="color: #8e44ad; margin-top: 0;">Resumen</h4>
           <p style="font-size: 13px; color: #aaa;">Se procesarán <strong id="lote-final-count"
               style="color: #fff;">0</strong> archivos. Ónix extraerá el título y artista automáticamente si el nombre
             del archivo sigue el patrón <code style="color: #FF6600;">Artista - Título.mp3</code>.</p>

@@ -123,7 +123,8 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     género y rotación suena sola; una que falta se completa y se aprueba sola cuando una edición (individual o por lote) le pone lo que faltaba
     (una completa que alguien retuvo a propósito NO se aprueba sola). El aviso de carga dice qué pasó («lista para sonar» o «falta género…, no suena»).
     La vista «Por completar» explica cuántas faltan de qué y tiene «✓ Completar y aprobar» (pone género/rotación solo a las que no lo tienen).
-    Botón «A la Bandeja» → «⏸ Retener». Sigue pendiente: que el diálogo de carga por lote pida género y rotación antes de subir.
+    Botón «A la Bandeja» → «⏸ Retener». El diálogo de carga por lote (paso 3, «Género y rotación») exige género y rotación para continuar; la única
+    salida es marcar «Cargar sin clasificar» (quedan por completar); el resumen final dice cuántas quedaron listas para sonar y cuántas por completar.
 12. **Géneros y categorías solo de la lista (HECHO 2026-10-18):** la causa eran duplicados en la propia lista (Pop/POP, Balada/BALADA, Salsa/SALSA,
     Hombre/HOMBRE…) y que la validación nunca rechazaba un valor. Ahora: crear un valor repetido (sin distinguir mayúsculas ni tildes) da 409; poner un
     género que no está en la lista da 422 (en edición y lote); una carga cuyo género de las etiquetas no está en la lista lo deja vacío con aviso;
