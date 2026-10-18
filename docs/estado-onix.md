@@ -147,10 +147,10 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
 8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — HECHO 2026-10-18 (sin probar con BASS real):**
    - Reloj: la fila de Tips tiene «Suena solo / Inicio del intro / Final del intro / Puente» (`reloj_filas.tip_modo`, migración 50).
      Con modo, la fila no ocupa tiempo: de intro va sobre la canción siguiente; de puente, entre la anterior y la siguiente.
-   - Studio (manual): en Separadores, cada Tips tiene «💡 SOBRE…» (intro de la próxima canción o puente de la que suena);
+   - Studio (manual): en Separadores, filtro fijo «💡 Tips: …» junto a Tipo; con un modo elegido, «💡 COLOCAR» / doble clic en un Tips lo monta;
      aviso ámbar con qué tip entra, cómo y a qué segundo, y botón QUITAR TIP. Comando `tip` / `tip_quitar` (WS, API y motor remoto).
    - Motor: canal propio (9), entra a pleno; la música baja como bajo una voz (`voz_fondo_pct`) y vuelve a pleno al terminar.
-     Final del intro = intro − duración (20 − 7 ⇒ 13 s). Puente = mezcla − mitad (tip 8 ⇒ 4 s + 4 s). Sin intro ⇒ al inicio.
+     Final del intro = intro − duración (20 − 7 ⇒ 13 s). Puente = fin de la canción − mitad del tip (tip 6 ⇒ entra a 3 s del final, aunque la siguiente ya haya entrado en la mezcla). Sin intro ⇒ al inicio.
      Tip más largo que el intro ⇒ fundido de 0,8 s que termina justo en la voz (en el puente, también la voz de la canción que entra).
    - Casos: el puente no se monta si lo que sigue es tanda, voz o nada; una cuña, voz, salto o stop cortan el tip con fundido corto;
      la pausa lo congela; si el operador adelanta más allá del intro, no sale; el tip de intro espera a la primera canción tras la tanda.

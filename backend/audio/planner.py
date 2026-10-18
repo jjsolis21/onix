@@ -82,20 +82,21 @@ def duracion_efectiva(track: dict, crossfade: float) -> float:
 # «Tips» sobre la música (estilo Jazler SoHo): la fila de Tips del reloj no suena sola, se monta encima.
 #   intro_inicio → desde el inicio de la canción siguiente
 #   intro_final  → termina justo cuando entra la voz de la canción siguiente (intro − duración del tip)
-#   puente       → mitad sobre el final de la anterior y mitad sobre la siguiente, alrededor de la mezcla
+#   puente       → arranca cuando a la canción le queda la mitad del tip (tip de 6 s ⇒ a 3 s del final) y sigue sobre la siguiente
 TIP_MODOS = ("intro_inicio", "intro_final", "puente")
 
 
-def calcular_tip(modo: str, tip_dur: float, cue_in: float, intro: float, mezcla: float) -> tuple[float, Optional[float]]:
+def calcular_tip(modo: str, tip_dur: float, cue_in: float, intro: float, fin: float) -> tuple[float, Optional[float]]:
     """
     (disparo, límite) en segundos del archivo de la canción a la que va pegado el tip.
     `límite` = dónde el tip ya tiene que haberse ido (la entrada de la voz); None = sin límite en esta canción.
+    `fin` = dónde termina de sonar la canción (su duración o su marca de fin): el puente se mide desde ahí.
     Sin intro marcado el tip va al inicio. Un tip más largo que el intro se recorta con fundido en el límite.
     """
     tip_dur = max(0.0, float(tip_dur or 0))
     hay_intro = intro > cue_in
     if modo == "puente":
-        return max(cue_in, mezcla - tip_dur / 2), None
+        return max(cue_in, fin - tip_dur / 2), None
     if modo == "intro_final" and hay_intro:
         return max(cue_in, intro - tip_dur), intro
     return cue_in, (intro if hay_intro else None)

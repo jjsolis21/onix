@@ -392,7 +392,7 @@
     "": "El tip suena solo, entre canciones.",
     intro_inicio: "Suena desde el segundo 0 de la canción siguiente, con la música abajo.",
     intro_final: "Termina justo cuando entra la voz de la canción siguiente (intro − duración del tip). Sin intro marcado, va al inicio.",
-    puente: "Mitad sobre el final de la canción anterior y mitad sobre la siguiente, alrededor de la mezcla.",
+    puente: "Entra cuando a la canción anterior le queda la mitad del tip (tip de 6 s ⇒ a 3 s del final) y sigue sobre la siguiente.",
   };
   const selectTip = (f, i) => `<select class="ox-select rj-tipmodo" data-tipmodo="${i}" title="${esc(TIP_AYUDA[f.tip_modo || ""])}">
     ${Object.entries(TIP_MODOS).map(([k, t]) => `<option value="${k}" ${k === (f.tip_modo || "") ? "selected" : ""}>💡 ${t}</option>`).join("")}</select>`;

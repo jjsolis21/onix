@@ -886,6 +886,7 @@ const Biblioteca = (() => {
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
     $("libTipo").hidden = tab !== "Imagen";
+    $("libTipModo").hidden = tab !== "Imagen";
     const th = document.querySelector(".lib-tabla th:nth-child(2)");       // en Separadores esa columna es la categoría
     if (th) th.textContent = tab === "Imagen" ? "Categoría" : "Rotación";
   }
@@ -906,10 +907,7 @@ const Biblioteca = (() => {
         <td class="num">${fmt(a.duracion)}</td>
         <td class="lib-acc">
           <button data-cue="${a.id}" class="${a.id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${a.id === enCue ? "■" : "🎧"}</button>
-          <button data-cola="${a.id}" title="Agregar a la cola">+ COLA</button>
-          ${a.tipo_audio === "Tips" ? `<select class="tip" data-tip="${a.id}" title="Montar este tip sobre la música">
-            <option value="">💡 SOBRE…</option><option value="intro_inicio">Inicio del intro (próxima)</option>
-            <option value="intro_final">Final del intro (próxima)</option><option value="puente">Puente (la que suena → próxima)</option></select>` : ""}
+          <button data-cola="${a.id}" title="${a.tipo_audio === "Tips" && tipModo() ? `Colocar sobre las canciones: ${TIP_MODO_NOMBRE[tipModo()]}` : "Agregar a la cola"}">${a.tipo_audio === "Tips" && tipModo() ? "💡 COLOCAR" : "+ COLA"}</button>
           <button data-aire="${a.id}" class="aire" title="Poner al aire ahora">▶ AIRE</button>
         </td></tr>`;
   }
@@ -960,7 +958,7 @@ const Biblioteca = (() => {
     if (b.dataset.plreemp) { lanzarPlaylist(+b.dataset.plreemp, true); return; }
     const a = cache.get(+(b.dataset.cue || b.dataset.cola || b.dataset.aire));
     if (b.dataset.cue) WS.send(enCue === +b.dataset.cue ? { cmd: "cue_stop" } : { cmd: "cue", audio_id: +b.dataset.cue });
-    if (b.dataset.cola) Decks.agregar(+b.dataset.cola, a?.titulo ?? "");
+    if (b.dataset.cola && !colocarTip(+b.dataset.cola)) Decks.agregar(+b.dataset.cola, a?.titulo ?? "");
     if (b.dataset.aire) {
       const sonando = Estado.st?.current_track;
       if (!sonando || confirm(`¿Poner "${a?.titulo}" al aire AHORA?\n\nLo que suena sale con crossfade.`)) {
@@ -968,17 +966,23 @@ const Biblioteca = (() => {
       }
     }
   });
-  $("libFilas").addEventListener("change", e => {        // Tips: cómo suena sobre la música
-    const s = e.target.closest("select[data-tip]");
-    if (!s || !s.value) return;
-    WS.send({ cmd: "tip", audio_id: +s.dataset.tip, modo: s.value });
-    toast(`💡 Tip (${TIP_MODO_NOMBRE[s.value]}): ${cache.get(+s.dataset.tip)?.titulo ?? ""}`, "info", 2500);
-    s.value = "";
+  // Separadores: filtro «cómo colocar el Tips». Con un modo elegido, + COLA / doble clic en un Tips lo monta sobre las canciones
+  function tipModo() { return $("libTipModo")?.value || ""; }
+  function colocarTip(id) {
+    const a = cache.get(id), modo = tipModo();
+    if (!modo || a?.tipo_audio !== "Tips") return false;
+    WS.send({ cmd: "tip", audio_id: id, modo });
+    toast(`💡 Tip (${TIP_MODO_NOMBRE[modo]}): ${a.titulo}`, "info", 2500);
+    return true;
+  }
+  $("libTipModo").addEventListener("change", () => {
+    $("libTipModo").classList.toggle("on", !!tipModo());
+    pintarFilas();
   });
   $("libFilas").addEventListener("dblclick", e => {
     const tr = e.target.closest("tr[data-id]");
     if (!tr || e.target.closest("button")) return;
-    Decks.agregar(+tr.dataset.id, cache.get(+tr.dataset.id)?.titulo ?? "");
+    if (!colocarTip(+tr.dataset.id)) Decks.agregar(+tr.dataset.id, cache.get(+tr.dataset.id)?.titulo ?? "");
   });
   $("libFilas").addEventListener("dragstart", e => {
     const tr = e.target.closest("tr[data-id]");

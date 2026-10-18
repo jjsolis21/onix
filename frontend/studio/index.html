@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=24" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=25" />
 </head>
 <body>
 
@@ -140,6 +140,9 @@
       <div class="lib-filtros">
         <input type="search" id="libBuscar" placeholder="Buscar título o artista…" autocomplete="off" />
         <select id="libTipo" title="Tipo" hidden><option value="">Todos</option><option value="Efecto">Jingles</option><option value="Sweeper">Sweepers</option><option value="Tips">Tips</option></select>
+        <select id="libTipModo" title="Cómo colocar el Tips sobre las canciones: elige aquí y después + COLA (o doble clic) en el Tips" hidden>
+          <option value="">💡 Tips: suena solo</option><option value="intro_inicio">💡 Tips: inicio del intro</option>
+          <option value="intro_final">💡 Tips: final del intro</option><option value="puente">💡 Tips: puente</option></select>
         <select id="libCat1" title="Género"><option value="">Género</option></select>
         <select id="libCat2" title="Rotación"><option value="">Rotación</option></select>
         <select id="libVoz" title="Voz"><option value="">Voz</option></select>
@@ -230,7 +233,7 @@
 
   <div class="toasts" id="toasts"></div>
   <script src="/static/studio/cartuchera.js?v=4"></script>
-  <script src="/static/studio/studio.js?v=31"></script>
+  <script src="/static/studio/studio.js?v=32"></script>
   <script src="/static/studio/locutor.js?v=1"></script>
   <script src="/static/studio/voicetracker.js?v=3"></script>
 </body>

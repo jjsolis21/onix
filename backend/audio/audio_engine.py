@@ -2525,7 +2525,9 @@ class AudioEngine:
         item = self._current_item
         cue_in = self._cue_range(item)[0]
         mezcla = self._mix_point if self._mix_point != float("inf") else (self._duration or cue_in)
-        disparo, limite = calcular_tip(modo, dur, cue_in, self._intro_de(self._current_track), mezcla)
+        fin = self._hard_end if self._hard_end != float("inf") else (self._duration or mezcla)
+        disparo, limite = calcular_tip(modo, dur, cue_in, self._intro_de(self._current_track),
+                                       fin if modo == "puente" else mezcla)
         if limite is None and modo != "puente":
             limite = mezcla if mezcla > cue_in else None    # tip más largo que la canción: se va antes de la siguiente
         self._tip = {"track": tip_track, "modo": modo, "origen": origen, "plan_uid": plan_uid,
@@ -2556,7 +2558,7 @@ class AudioEngine:
 
     def _tip_disparar(self):
         t = self._tip
-        if t["plan_uid"] is not None:
+        if t["plan_uid"] is not None and not t.get("cruzo"):
             # Del reloj: sale del programa al sonar (si el operador lo quitó, ya no suena)
             with self._programa_lock:
                 antes = len(self._programa)
@@ -2612,6 +2614,13 @@ class AudioEngine:
         t = self._tip
         if not t or self._pausado:
             return
+        if t["estado"] == "espera" and t.get("disparo_en") is not None:
+            # Puente que aún no sonaba cuando entró la siguiente: sale a su hora (la anterior sigue en el fundido)
+            if self._current_item is not t["item"]:
+                self._tip_cancelar("la_cancion_cambio")
+            elif time.monotonic() >= t["disparo_en"]:
+                self._tip_disparar()
+            return
         if t["estado"] == "espera":
             if self._current_item is not t["item"] or self._active_canal != t["canal"]:
                 self._tip_cancelar("la_cancion_cambio")
@@ -2645,8 +2654,13 @@ class AudioEngine:
         t = self._tip
         if not t:
             return False
-        if (t["estado"] == "sonando" and t["modo"] == "puente" and not t["saliendo"]
-                and not t.get("cruzo") and self._es_musica(item)):
+        if (t["modo"] == "puente" and not t["saliendo"] and not t.get("cruzo") and self._es_musica(item)
+                and (t["estado"] == "sonando" or (self._current_item is t["item"] and self._mix_fired))):
+            if t["estado"] == "espera":
+                # La siguiente entra (en la mezcla) antes de que la anterior llegue a su final: el tip
+                # igual sale cuando a la anterior le quede la mitad del tip
+                pos = self._audio.get_position_sec(t["canal"])
+                t["disparo_en"] = time.monotonic() + max(0.0, t["disparo"] - pos)
             t["cruzo"] = True
             return True
         self._tip_cancelar("entra_otro_audio")
