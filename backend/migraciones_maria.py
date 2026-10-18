@@ -120,6 +120,13 @@ def migrar() -> None:
     from backend.database import get_connection
     c = get_connection()
     try:
+        # 50 — Tips sobre la música (estilo Jazler SoHo): la fila de Tips del reloj puede sonar al inicio o al final del intro
+        #      de la canción siguiente, o de puente entre dos canciones. '' = suena sola, como hasta ahora.
+        if "tip_modo" not in _columnas(c, "reloj_filas"):
+            c.execute("ALTER TABLE reloj_filas ADD COLUMN `tip_modo` VARCHAR(20) NOT NULL DEFAULT ''")
+            logger.info("  → reloj_filas.tip_modo agregada")
+        c.commit()
+
         # 44 — Dayparting por spot (franja horaria permitida) y «deuda» de pautas no emitidas
         cols = _columnas(c, "pautas")
         for col in ("hora_inicio_permitida", "hora_fin_permitida"):

@@ -49,6 +49,7 @@ except ImportError:
     from backend.api.schemas_pautas import PautaIn, PautaOut
 
 from backend.audio.loudness import NormalizadorWorker
+from backend.audio.planner import TIP_MODOS
 from backend.version import VERSION
 from backend.api.reportes import router as reportes_router
 from backend.api import relojes as relojes_api
@@ -2433,7 +2434,7 @@ def get_status():
 PLAYER_COMMANDS = {"play", "queue", "fire_effect", "set_mode", "skip", "stop", "clear_queue",
                    "lanzar_tanda", "cue", "cue_stop", "detener_al_terminar", "pausar",
                    "plan_insertar", "plan_mover", "plan_quitar", "seek",
-                   "cola_insertar", "cola_mover", "cola_quitar", "plan_a_cola"}
+                   "cola_insertar", "cola_mover", "cola_quitar", "plan_a_cola", "tip", "tip_quitar"}
 
 
 def _opciones_boton(msg: dict) -> dict:
@@ -2524,6 +2525,15 @@ def _run_player_command(cmd: str, msg: dict) -> dict:
         engine.detener_al_terminar(bool(msg.get("activo", True)))
     elif cmd == "pausar":
         engine.pausar(bool(msg.get("activo", True)))
+    elif cmd == "tip":
+        # Tips sobre la música (modo manual): intro_inicio | intro_final de la próxima canción, o puente de la que suena
+        modo = str(msg.get("modo") or msg.get("mode") or "")
+        if modo not in TIP_MODOS:
+            raise ValueError(f"modo debe ser uno de: {', '.join(TIP_MODOS)}")
+        if not engine.tip_programar(_audio_id(), modo):
+            raise ValueError(f"Audio id={msg['audio_id']} no existe o está inactivo")
+    elif cmd == "tip_quitar":
+        engine.tip_quitar()
     elif cmd == "seek":
         try:
             engine.seek(float(msg["posicion"]))
@@ -2555,6 +2565,7 @@ class PlayerCommand(BaseModel):
     activo:       Optional[bool] = True     # detener_al_terminar / pausar
     posicion:     Optional[float] = 0       # plan_insertar / plan_mover (índice) · seek (segundos)
     uid:          Optional[int] = None      # plan_mover / plan_quitar
+    modo:         Optional[str] = None      # tip: intro_inicio | intro_final | puente
 
 
 @app.post("/api/v1/player/{cmd}", tags=["Player"], summary="Enviar comando al motor de audio")

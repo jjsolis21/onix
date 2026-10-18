@@ -30,7 +30,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend.audio.planner import FILTRO_COLUMNA, TIPOS_RELOJ
+from backend.audio.planner import FILTRO_COLUMNA, TIP_MODOS, TIPOS_RELOJ
 from backend.paths import DB_PATH
 
 router = APIRouter(tags=["Relojes"])
@@ -76,6 +76,15 @@ class FilaIn(BaseModel):
     filtros:    dict = Field(default_factory=dict)
     audio_id:   Optional[int] = None
     nota:       str = Field("", max_length=200)
+    tip_modo:   str = ""          # solo filas de Tips: '' (suena sola) | intro_inicio | intro_final | puente
+
+    @field_validator("tip_modo")
+    @classmethod
+    def _tip_modo(cls, v):
+        v = (v or "").strip().lower()
+        if v and v not in TIP_MODOS:
+            raise ValueError(f"tip_modo debe ser uno de: {', '.join(TIP_MODOS)} (o vacío)")
+        return v
 
     @field_validator("tipo_audio")
     @classmethod
@@ -124,6 +133,7 @@ def _reloj_out(conn, r) -> dict:
     filas = [{
         "id": f["id"], "orden": f["orden"], "tipo_audio": f["tipo_audio"],
         "filtros": json.loads(f["filtros"] or "{}"), "audio_id": f["audio_id"], "nota": f["nota"],
+        "tip_modo": (f["tip_modo"] if "tip_modo" in f.keys() else "") or "",
         "audio_titulo": f["titulo"],
     } for f in conn.execute(
         "SELECT rf.*, a.titulo FROM reloj_filas rf LEFT JOIN audios a ON a.id = rf.audio_id"
@@ -142,9 +152,10 @@ def _guardar_filas(conn, reloj_id: int, filas: list[FilaIn]):
                 "SELECT 1 FROM audios WHERE id = ? AND activo = 1", (f.audio_id,)).fetchone():
             raise HTTPException(status_code=422, detail=f"Fila {i + 1}: el audio {f.audio_id} no existe")
         conn.execute(
-            "INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (reloj_id, i, f.tipo_audio, json.dumps(_limpiar_filtros(f.filtros)), f.audio_id, f.nota))
+            "INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota, tip_modo)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (reloj_id, i, f.tipo_audio, json.dumps(_limpiar_filtros(f.filtros)), f.audio_id, f.nota,
+             f.tip_modo if f.tipo_audio == "Tips" else ""))
 
 
 # ── Relojes ──────────────────────────────────────────────────────────────────
@@ -267,7 +278,8 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
     out, t = [], 0.0
     for f in filas:
         n, media = _contar(conn, f)
-        efectiva = max(1.0, media - crossfade) if media else 0
+        encima = f.get("tipo_audio") == "Tips" and bool(f.get("tip_modo"))   # tip sobre la música: no ocupa tiempo
+        efectiva = 0 if encima else (max(1.0, media - crossfade) if media else 0)
         out.append({**f, "candidatos": n, "duracion_media": media, "inicio": round(t),
                     "pendientes": _contar(conn, f, pendientes=True)[0]})   # esperan en la Bandeja de entrada
         t += efectiva
@@ -276,7 +288,8 @@ def _vista_filas(conn, filas: list[dict]) -> dict:
     disponible = max(0, 3600 - tandas)
     # Hora simulada: qué fila cae en cada momento (las filas sin audios se saltan)
     linea, t, vueltas = [], 0.0, 0
-    validas = [(i, f) for i, f in enumerate(out) if f["candidatos"] and f["duracion_media"]]
+    validas = [(i, f) for i, f in enumerate(out) if f["candidatos"] and f["duracion_media"]
+               and not (f.get("tipo_audio") == "Tips" and f.get("tip_modo"))]
     while validas and t < disponible and len(linea) < 200:
         for i, f in validas:
             if t >= disponible:
@@ -420,8 +433,8 @@ def duplicar(reloj_id: int, conn: MariaDBConnection = Depends(get_db)):
         "INSERT INTO relojes (nombre, color, comentario, compensacion, respaldo) VALUES (?, ?, ?, ?, ?)",
         (nombre, r["color"], r["comentario"], r["compensacion"], r["respaldo"])).lastrowid
     conn.execute(
-        "INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota)"
-        " SELECT ?, orden, tipo_audio, filtros, audio_id, nota FROM reloj_filas WHERE reloj_id = ?",
+        "INSERT INTO reloj_filas (reloj_id, orden, tipo_audio, filtros, audio_id, nota, tip_modo)"
+        " SELECT ?, orden, tipo_audio, filtros, audio_id, nota, tip_modo FROM reloj_filas WHERE reloj_id = ?",
         (nuevo, reloj_id))
     conn.commit()
     return _reloj_out(conn, conn.execute("SELECT * FROM relojes WHERE id = ?", (nuevo,)).fetchone())

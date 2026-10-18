@@ -195,6 +195,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 .aviso-ambar button { color: var(--ambar-vivo); border: 1px solid var(--ambar); }
 .aviso-tanda { animation: pulsoFondo 1.6s ease-in-out infinite; }
 #btnTandaAhora { background: var(--ambar); color: var(--bg-0); font-weight: 600; }
+.lib-acc select.tip { font-size: .66rem; max-width: 92px; background: transparent; color: var(--ambar-vivo); border: 1px solid var(--ambar); border-radius: 3px; }
 .aviso-cyan { background: rgba(72, 202, 228, .10); color: var(--cyan); border-bottom: 1px solid var(--cyan); }
 .aviso-cyan button { color: var(--cyan); border: 1px solid var(--cyan); }
 

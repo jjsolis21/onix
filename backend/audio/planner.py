@@ -79,6 +79,28 @@ def duracion_efectiva(track: dict, crossfade: float) -> float:
     return max(mix - cue_in, 1.0)
 
 
+# «Tips» sobre la música (estilo Jazler SoHo): la fila de Tips del reloj no suena sola, se monta encima.
+#   intro_inicio → desde el inicio de la canción siguiente
+#   intro_final  → termina justo cuando entra la voz de la canción siguiente (intro − duración del tip)
+#   puente       → mitad sobre el final de la anterior y mitad sobre la siguiente, alrededor de la mezcla
+TIP_MODOS = ("intro_inicio", "intro_final", "puente")
+
+
+def calcular_tip(modo: str, tip_dur: float, cue_in: float, intro: float, mezcla: float) -> tuple[float, Optional[float]]:
+    """
+    (disparo, límite) en segundos del archivo de la canción a la que va pegado el tip.
+    `límite` = dónde el tip ya tiene que haberse ido (la entrada de la voz); None = sin límite en esta canción.
+    Sin intro marcado el tip va al inicio. Un tip más largo que el intro se recorta con fundido en el límite.
+    """
+    tip_dur = max(0.0, float(tip_dur or 0))
+    hay_intro = intro > cue_in
+    if modo == "puente":
+        return max(cue_in, mezcla - tip_dur / 2), None
+    if modo == "intro_final" and hay_intro:
+        return max(cue_in, intro - tip_dur), intro
+    return cue_in, (intro if hay_intro else None)
+
+
 def _item(tipo: str, inicio: datetime, duracion: float, **kw) -> dict:
     return {"uid": nuevo_uid(), "tipo": tipo, "inicio": inicio.isoformat(timespec="seconds"),
             "duracion": round(duracion, 1), **kw}
@@ -122,6 +144,7 @@ class Planner:
                     "orden": f["orden"], "tipo_audio": f["tipo_audio"],
                     "filtros": filtros if isinstance(filtros, dict) else {},
                     "audio_id": f["audio_id"],
+                    "tip_modo": (f["tip_modo"] if "tip_modo" in f.keys() else "") or "",
                 })
         self.grilla = {(g["dia"], g["hora"]): g["reloj_id"]
                        for g in conn.execute("SELECT dia, hora, reloj_id FROM reloj_grilla")}
@@ -387,6 +410,18 @@ class Planner:
             if sin_musica > max(4, len(filas)):
                 log.warning("[Planner] El reloj no consigue música: se corta el plan en %s", t.strftime("%H:%M"))
                 break
+            if audio["tipo_audio"] == "Tips" and fila.get("tip_modo") in TIP_MODOS:
+                # Tip sobre la música: no ocupa tiempo propio, el motor lo monta sobre la canción (ver calcular_tip)
+                nuevos.append(_item(
+                    "audio", t, 0, audio_id=audio["id"], titulo=audio["titulo"], artista=audio["artista"],
+                    tipo_audio="Tips", tip_modo=fila["tip_modo"], duracion_total=audio.get("duracion") or 0,
+                    reloj_id=reloj["id"] if reloj else None, reloj=reloj["nombre"] if reloj else None,
+                    color=reloj["color"] if reloj else None,
+                    fila=(fila_idx - 1) % len(filas) if reloj else None, compensacion=False, cortada=False,
+                ))
+                previos.append({"audio_id": audio["id"], "artista": audio["artista"], "genero_vocal": None,
+                                "tipo_audio": "Tips", "ts": t.isoformat(), "plan": True})
+                continue
             dur = duracion_efectiva(audio, crossfade)
             cortada = False
             if hito_inm and t + timedelta(seconds=dur) > hito_hora:

@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=23" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=24" />
 </head>
 <body>
 
@@ -103,6 +103,10 @@
     <span id="avisoTandaTxt">📢 TANDA EN ESPERA</span>
     <button id="btnTandaAhora">LANZAR AHORA</button>
     <button id="btnTandaLuego">AL TERMINAR LA CANCIÓN</button>
+  </div>
+  <div class="aviso aviso-ambar" id="avisoTip" hidden>
+    <span id="avisoTipTxt">💡 TIP</span>
+    <button id="btnTipQuitar" title="El tip no sale (si ya suena, se va con un fundido corto)">✕ QUITAR TIP</button>
   </div>
   <div class="aviso aviso-cyan" id="avisoCue" hidden>
     <span id="avisoCueTxt">🎧 PREESCUCHA</span>
@@ -226,7 +230,7 @@
 
   <div class="toasts" id="toasts"></div>
   <script src="/static/studio/cartuchera.js?v=4"></script>
-  <script src="/static/studio/studio.js?v=30"></script>
+  <script src="/static/studio/studio.js?v=31"></script>
   <script src="/static/studio/locutor.js?v=1"></script>
   <script src="/static/studio/voicetracker.js?v=3"></script>
 </body>

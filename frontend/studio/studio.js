@@ -19,6 +19,8 @@ const fmt = s => {
   return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`;
 };
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+// Tips sobre la música (como Jazler SoHo)
+const TIP_MODO_NOMBRE = { intro_inicio: "inicio del intro", intro_final: "final del intro", puente: "puente" };
 const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips", Locucion: "Voz" };
 
 function toast(msg, tipo = "info", ms = 5000) {
@@ -176,6 +178,16 @@ const Estado = (() => {
     const n = st.tanda_en_espera ?? 0;
     $("avisoTanda").hidden = n === 0;
     if (n) $("avisoTandaTxt").textContent = `📢 TANDA EN ESPERA — ${n} cuña(s). En manual sale cuando tú la lances.`;
+    // Tip montado sobre la música: cuál entra, cómo y cuándo
+    const tip = st.tip, tipPend = st.tip_pendiente;
+    $("avisoTip").hidden = !tip && !tipPend;
+    if (tip) {
+      const cuando = tip.estado === "sonando" ? "AL AIRE" : `entra a los ${fmt(tip.disparo)}${tip.modo === "puente" ? " (sigue sobre la próxima canción)" : ""}`;
+      $("avisoTipTxt").textContent = `💡 TIP ${TIP_MODO_NOMBRE[tip.modo] ?? tip.modo}: ${tip.titulo} · ${fmt(tip.duracion)} · ${cuando}`
+        + (tip.recorta ? " · se recorta para no pisar la voz" : "");
+    } else if (tipPend) {
+      $("avisoTipTxt").textContent = `💡 TIP ${TIP_MODO_NOMBRE[tipPend.modo] ?? tipPend.modo} de la próxima canción: ${tipPend.titulo}`;
+    }
     const cue = st.preescucha;
     $("avisoCue").hidden = !cue;
     if (cue) $("avisoCueTxt").textContent = `🎧 PREESCUCHA (no sale al aire): ${cue.titulo} · ${fmt(cue.posicion)} / ${fmt(cue.duracion)}`;
@@ -189,7 +201,7 @@ const Estado = (() => {
   function pintarSiguiente() {
     if (!st) return;
     const q = programa?.cola?.[0];
-    const it = q ? null : (programa?.items ?? [])[0];
+    const it = q ? null : (programa?.items ?? []).find(x => !x.tip_modo);   // el tip va encima, no es «lo siguiente»
     const auto = st.modo === "automatico" || !!q;
     let tipo = "—", titulo = "—", artista = " ";
     if (q) { tipo = "COLA"; titulo = q.titulo; artista = q.artista; }
@@ -395,6 +407,7 @@ $("btnTandaLuego").addEventListener("click", () => {
   toast("La tanda sale al terminar la canción", "aviso", 3000);
 });
 $("btnCueStop").addEventListener("click", () => WS.send({ cmd: "cue_stop" }));
+$("btnTipQuitar").addEventListener("click", () => WS.send({ cmd: "tip_quitar" }));
 $("btnRegenerar").addEventListener("click", async () => {
   if (!confirm("¿Volver a planificar el programa desde ahora? Se pierden los cambios hechos a mano.")) return;
   await api("/api/v1/programa/regenerar", { method: "POST" });
@@ -489,6 +502,15 @@ const Decks = (() => {
             <div class="deck-art">${it.cunas} cuña(s)</div></div>
           <span class="deck-dur">${fmt(it.duracion)}</span></div>`;
         if (tandasAbiertas.has(claveTanda(it))) html += htmlCunas(it);
+        return;
+      }
+      if (it.tip_modo) {
+        const sobre = it.tip_modo === "puente" ? "puente entre la anterior y la siguiente" : `${TIP_MODO_NOMBRE[it.tip_modo]} de la siguiente`;
+        html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tips"
+            title="El tip no suena solo: se monta sobre la música (${esc(sobre)})">
+          <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
+          <div class="deck-txt"><div class="deck-tit">💡 ${esc(it.titulo)}</div><div class="deck-art">TIP · ${esc(sobre)}</div></div>
+          <span class="deck-dur">${fmt(it.duracion_total)}<br><span class="deck-marcas">ENCIMA</span></span></div>`;
         return;
       }
       const marcas = [it.compensacion ? "⚖" : "", it.cortada ? "✂" : "", it.operador ? "✋" : ""].join(" ").trim();
@@ -885,6 +907,9 @@ const Biblioteca = (() => {
         <td class="lib-acc">
           <button data-cue="${a.id}" class="${a.id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${a.id === enCue ? "■" : "🎧"}</button>
           <button data-cola="${a.id}" title="Agregar a la cola">+ COLA</button>
+          ${a.tipo_audio === "Tips" ? `<select class="tip" data-tip="${a.id}" title="Montar este tip sobre la música">
+            <option value="">💡 SOBRE…</option><option value="intro_inicio">Inicio del intro (próxima)</option>
+            <option value="intro_final">Final del intro (próxima)</option><option value="puente">Puente (la que suena → próxima)</option></select>` : ""}
           <button data-aire="${a.id}" class="aire" title="Poner al aire ahora">▶ AIRE</button>
         </td></tr>`;
   }
@@ -942,6 +967,13 @@ const Biblioteca = (() => {
         respetaRepeticion(+b.dataset.aire, a?.titulo ?? "").then(ok => ok && WS.send({ cmd: "play", audio_id: +b.dataset.aire }));
       }
     }
+  });
+  $("libFilas").addEventListener("change", e => {        // Tips: cómo suena sobre la música
+    const s = e.target.closest("select[data-tip]");
+    if (!s || !s.value) return;
+    WS.send({ cmd: "tip", audio_id: +s.dataset.tip, modo: s.value });
+    toast(`💡 Tip (${TIP_MODO_NOMBRE[s.value]}): ${cache.get(+s.dataset.tip)?.titulo ?? ""}`, "info", 2500);
+    s.value = "";
   });
   $("libFilas").addEventListener("dblclick", e => {
     const tr = e.target.closest("tr[data-id]");

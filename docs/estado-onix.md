@@ -144,8 +144,16 @@ Léelo antes de tocar el código. Escrito al pasar de la sesión en la nube a Cl
     forzar la recarga. El servidor ahora manda `Cache-Control: no-cache` a JS/CSS/HTML (revalida; 304 si no cambió) y se subieron los `?v=`.
     Reproductor de la Biblioteca: el «No se pudo reproducir» intermitente era un AbortError del navegador al cambiar de canción rápido (no un
     fallo del archivo); ahora se ignora y los fallos reales (archivo borrado o movido) dicen la causa.
-8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — PENDIENTE:** se programa en el reloj; también en la
-   biblioteca de Studio para modo manual. Sobre intro: al inicio del intro o al final del intro (intro 20 s, tip 7 s ⇒ empieza a los 13 s).
-   Puente: el tip se reparte entre las dos canciones (tip 8 s ⇒ 4 s en la canción que sale y 4 s en la que entra).
+8. **Tips sobre el intro y puente entre canciones (estilo SoHo) — HECHO 2026-10-18 (sin probar con BASS real):**
+   - Reloj: la fila de Tips tiene «Suena solo / Inicio del intro / Final del intro / Puente» (`reloj_filas.tip_modo`, migración 50).
+     Con modo, la fila no ocupa tiempo: de intro va sobre la canción siguiente; de puente, entre la anterior y la siguiente.
+   - Studio (manual): en Separadores, cada Tips tiene «💡 SOBRE…» (intro de la próxima canción o puente de la que suena);
+     aviso ámbar con qué tip entra, cómo y a qué segundo, y botón QUITAR TIP. Comando `tip` / `tip_quitar` (WS, API y motor remoto).
+   - Motor: canal propio (9), entra a pleno; la música baja como bajo una voz (`voz_fondo_pct`) y vuelve a pleno al terminar.
+     Final del intro = intro − duración (20 − 7 ⇒ 13 s). Puente = mezcla − mitad (tip 8 ⇒ 4 s + 4 s). Sin intro ⇒ al inicio.
+     Tip más largo que el intro ⇒ fundido de 0,8 s que termina justo en la voz (en el puente, también la voz de la canción que entra).
+   - Casos: el puente no se monta si lo que sigue es tanda, voz o nada; una cuña, voz, salto o stop cortan el tip con fundido corto;
+     la pausa lo congela; si el operador adelanta más allá del intro, no sale; el tip de intro espera a la primera canción tras la tanda.
+   - Pruebas: `tests/test_tips.py` (20) y una de API en `test_relojes_api.py`.
 
 Estimación honesta para publicar: ~60–65 %. Lo que falta es lo que decide si aguanta 24/7 (prueba de 72 h, encoder, salud).

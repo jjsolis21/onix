@@ -483,6 +483,7 @@ CREATE TABLE `reloj_filas` (
   `filtros` text NOT NULL DEFAULT '{}',
   `audio_id` int(11) DEFAULT NULL,
   `nota` text NOT NULL DEFAULT '',
+  `tip_modo` varchar(20) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `reloj_id` (`reloj_id`),
   KEY `audio_id` (`audio_id`),

@@ -121,6 +121,7 @@
   .rj-filas td.rj-tipo { width: 22px; text-align: center; }
   .rj-filas td.que { max-width: 0; width: 100%; }
   .rj-filas .chips { display: flex; gap: 3px; flex-wrap: wrap; }
+  .rj-filas .rj-tipmodo { margin-left: 6px; width: auto; max-width: 150px; }
   .rj-filas .chip { background: var(--choc-3); border-radius: 3px; padding: 0 6px; font-size: .7rem; white-space: nowrap; }
   .rj-filas .todo { color: var(--text-lo); }
   .rj-filas .mover { white-space: nowrap; }
@@ -385,6 +386,16 @@
   const FILTROS_IDENT = [["ident", "Categoría"]];
   const esIdent = tipo => tipo === "Efecto" || tipo === "Sweeper" || tipo === "Tips";
   const filtrosDe = tipo => esIdent(tipo) ? FILTROS_IDENT : FILTROS;
+  // Tips sobre la música (como Jazler SoHo): la fila de Tips puede montarse sobre la canción en vez de sonar sola
+  const TIP_MODOS = { "": "Suena solo", intro_inicio: "Inicio del intro", intro_final: "Final del intro", puente: "Puente" };
+  const TIP_AYUDA = {
+    "": "El tip suena solo, entre canciones.",
+    intro_inicio: "Suena desde el segundo 0 de la canción siguiente, con la música abajo.",
+    intro_final: "Termina justo cuando entra la voz de la canción siguiente (intro − duración del tip). Sin intro marcado, va al inicio.",
+    puente: "Mitad sobre el final de la canción anterior y mitad sobre la siguiente, alrededor de la mezcla.",
+  };
+  const selectTip = (f, i) => `<select class="ox-select rj-tipmodo" data-tipmodo="${i}" title="${esc(TIP_AYUDA[f.tip_modo || ""])}">
+    ${Object.entries(TIP_MODOS).map(([k, t]) => `<option value="${k}" ${k === (f.tip_modo || "") ? "selected" : ""}>💡 ${t}</option>`).join("")}</select>`;
   let identCats = {};
 
   let relojes = [], grilla = [], valores = {}, actual = null, filas = [];
@@ -483,6 +494,7 @@
       } else {
         que = chipsDe(f) || `<span class="todo">${f.tipo_audio === "Musica" ? "Canción aleatoria (sin filtro)" : "Cualquier audio de este tipo"}</span>`;
       }
+      if (f.tipo_audio === "Tips") que += selectTip(f, i);
       return `<tr data-i="${i}" class="${i === sel ? "elegida" : ""}">
         <td class="ox-mono">${i + 1}</td>
         <td class="rj-ini" data-ini></td>
@@ -545,8 +557,8 @@
       ${f.pendientes ? `<em>${f.pendientes} más esperan aprobación en la Bandeja de entrada.</em>` : ""}`;
   }
   const filaNueva = () => cons.modo === "fijo"
-    ? { tipo_audio: cons.tipo, filtros: {}, audio_id: cons.audio?.id ?? null, fijo: true }
-    : { tipo_audio: cons.tipo, filtros: { ...cons.filtros }, audio_id: null, fijo: false };
+    ? { tipo_audio: cons.tipo, filtros: {}, audio_id: cons.audio?.id ?? null, fijo: true, tip_modo: "" }
+    : { tipo_audio: cons.tipo, filtros: { ...cons.filtros }, audio_id: null, fijo: false, tip_modo: "" };
 
   function seleccionar(i) {
     sel = i;
@@ -572,7 +584,9 @@
     else if (accion === "insertar") { const i = sel >= 0 ? sel : filas.length; filas.splice(i, 0, filaNueva()); sel = i; }
     else if (accion === "cambiar") {
       if (sel < 0) { $("rjSelTxt").textContent = "Elige primero una fila (en la tabla o en el reloj)."; return; }
+      const antes = filas[sel];
       filas[sel] = filaNueva();
+      if (antes.tipo_audio === "Tips" && filas[sel].tipo_audio === "Tips") filas[sel].tip_modo = antes.tip_modo || "";
     } else if (accion === "eliminar") {
       if (sel < 0) { $("rjSelTxt").textContent = "Elige primero la fila que quieres quitar."; return; }
       filas.splice(sel, 1); sel = Math.min(sel, filas.length - 1);
@@ -605,7 +619,13 @@
   $("rjBEliminar").addEventListener("click", () => aplicar("eliminar"));
   $("rjFilas").addEventListener("click", e => {          // elegir una fila haciendo clic en ella
     const tr = e.target.closest("tr[data-i]");
-    if (tr && !e.target.closest("button")) seleccionar(+tr.dataset.i);
+    if (tr && !e.target.closest("button, select")) seleccionar(+tr.dataset.i);
+  });
+  $("rjFilas").addEventListener("change", e => {         // cómo suena el tip de esa fila
+    const s = e.target.closest("select[data-tipmodo]"); if (!s) return;
+    const f = filas[+s.dataset.tipmodo]; if (!f) return;
+    f.tip_modo = s.value; s.title = TIP_AYUDA[s.value];
+    previa();
   });
 
   // ── Reloj circular ──────────────────────────────────────────────────────
@@ -694,7 +714,7 @@
     tPrevia = setTimeout(async () => {
       leerFilas();
       const n = ++nPrevia;
-      const body = { respaldo: leerRespaldo(), filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros, audio_id: f.fijo ? f.audio_id : null })) };
+      const body = { respaldo: leerRespaldo(), filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros, audio_id: f.fijo ? f.audio_id : null, tip_modo: f.tip_modo || "" })) };
       const r = await fetch("/api/v1/relojes/vista-previa", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok || n !== nPrevia) return;
       pintarHora(await r.json());
@@ -763,7 +783,7 @@
     actual = r;
     await OnixBuscador.porIds(r.filas.map(f => f.audio_id));      // nombres de los audios fijos
     filas = r.filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: { ...f.filtros },
-                                audio_id: f.audio_id, fijo: f.audio_id != null }));
+                                audio_id: f.audio_id, fijo: f.audio_id != null, tip_modo: f.tip_modo || "" }));
     $("rjTituloEditor").textContent = `Reloj: ${r.nombre}`;
     $("rjNombre").value = r.nombre; $("rjColor").value = r.color; $("rjComentario").value = r.comentario;
     $("rjDuplicar").disabled = $("rjBorrar").disabled = false;
@@ -799,7 +819,7 @@
       compensacion: Object.fromEntries([...document.querySelectorAll("#rjComp [data-filtro]")]
         .filter(el => el.value).map(el => [el.dataset.filtro, el.value])),
       filas: filas.map(f => ({ tipo_audio: f.tipo_audio, filtros: f.fijo ? {} : f.filtros,
-                               audio_id: f.fijo ? f.audio_id : null })),
+                               audio_id: f.fijo ? f.audio_id : null, tip_modo: f.tipo_audio === "Tips" ? (f.tip_modo || "") : "" })),
     };
     if (!body.nombre) { msg("rjMsg", "Ponle un nombre al reloj", false); return; }
     if (sinAudio >= 0) { msg("rjMsg", `Fila ${sinAudio + 1}: elige el audio fijo`, false); return; }

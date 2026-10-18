@@ -76,7 +76,7 @@ log = logging.getLogger("AudioEngine")
 # Rutas compartidas con api_server.py (misma BD, misma carpeta de medios)
 from backend.paths import AUDIO_EXTS, DB_PATH, RESPALDO_DIR, resolve_media
 from backend.audio.loudness import ganancia_db
-from backend.audio.planner import Planner, duracion_efectiva
+from backend.audio.planner import Planner, duracion_efectiva, calcular_tip, TIP_MODOS
 from backend.audio.eventbus import EventBus  # noqa: F401  (re-export)
 from backend.version import VERSION
 
@@ -1035,6 +1035,7 @@ CANAL_A        = 0
 CANAL_B        = 1
 CANAL_EFX_BASE = 2  # canales 2-7 para cartuchera (6 slots disponibles)
 CANAL_CUE      = 8  # preescucha (sale por la tarjeta de preescucha, nunca al aire)
+CANAL_TIP      = 9  # tip montado sobre el intro o el puente de las canciones (al aire)
 
 # Salidas de audio (roles). Cada una apunta a una tarjeta de la PC
 # (config dispositivo_<rol>; -1 = predeterminada del sistema).
@@ -1083,6 +1084,9 @@ class AudioEngine:
     VOZ_BAJAR_MS       = 400    # cuánto tarda en bajar la música cuando entra la voz
     VOZ_SALIDA_CAMA    = 1.5    # la música de fondo se va en este tiempo antes de que termine la voz
     VOZ_FIN            = 0.2    # la siguiente entra este tiempo antes del final de la voz
+    TIP_CORTE          = 0.8    # fundido del tip que no cabe en el intro: termina justo donde entra la voz
+    TIP_SALIDA         = 0.3    # fundido del tip cuando lo interrumpe una cuña, una voz o el operador
+    TIP_SUBIR_MS       = 600    # la música vuelve a pleno al terminar el tip
 
     def __init__(self, db_path: Path = None, respaldo_dir: Path = None):
         self.bus = EventBus()
@@ -1119,6 +1123,9 @@ class AudioEngine:
         self._duck_until       = 0.0
         self._voz_duck         = self.VOZ_DUCK   # volumen de la música bajo una locución (0–1)
         self._efx: dict[int, dict] = {}        # canal de cartuchera → {boton, audio_id, titulo, fin, hasta}
+        # Tips sobre la música (ver calcular_tip): uno a la vez, en CANAL_TIP
+        self._tip:      Optional[dict] = None  # programado o sonando sobre la canción `item`
+        self._tip_pend: Optional[dict] = None  # tip de intro esperando a la próxima canción
 
         # Salidas: rol -> dispositivo BASS (-1 = predeterminado del sistema)
         self._devices: dict[str, int] = {rol: -1 for rol in ROLES_SALIDA}
@@ -1426,6 +1433,8 @@ class AudioEngine:
         """
         if self._cue_track and not self._audio.is_active(CANAL_CUE):
             self._do_cue_stop()
+        if self._tip:
+            self._vigilar_tip()
 
         if self._xfade or self._pausado:
             return
@@ -1629,6 +1638,8 @@ class AudioEngine:
             # (la cola del operador se queda); el operador arma su propio programa.
             self._vaciar_programa()
             self._emit_programa()
+            if self._tip_pend and self._tip_pend.get("origen") == "auto":
+                self._tip_pend = None
         elif mode == "automatico":
             self._replanificar = True          # al volver, el plan se rehace desde ahora
         self._update_cfg_db("modo", mode)
@@ -1697,6 +1708,11 @@ class AudioEngine:
                 self._do_cue(cmd[1], cmd[2])
             elif name == "cue_stop":
                 self._do_cue_stop()
+            elif name == "tip":
+                self._do_tip(cmd[1], cmd[2])
+            elif name == "tip_quitar":
+                self._tip_pend = None
+                self._tip_cancelar("operador")
 
     # ── Seleccion y arranque de pistas ────────────────────────────────────────
 
@@ -1747,6 +1763,14 @@ class AudioEngine:
                 # segundos para su minuto (compensacion del planificador).
                 self._check_pautas(forzar=(it["slot"], it["minuto"]))
                 continue
+            if it.get("tip_modo") in TIP_MODOS:
+                # Fila de Tips sobre la música: no suena sola
+                if it["tip_modo"] != "puente" and it["audio_id"] not in self._failed_ids:
+                    tip = self._fetch_track(it["audio_id"])
+                    if tip:
+                        self._tip_pend = {"track": tip, "modo": it["tip_modo"], "origen": "auto"}
+                        self.bus.emit("tip_programado", self._tip_info(self._tip_pend))
+                continue                         # el puente que no llegó a sonar se descarta
             if it.get("evento_key"):
                 hoy = self._now().date()
                 self._eventos_emitidos = {k for k in self._eventos_emitidos
@@ -1918,6 +1942,8 @@ class AudioEngine:
                 return
             if self._cama:
                 self._audio.pause(self._cama["canal"])       # la música bajo la voz también
+            if self._tip and self._tip["estado"] == "sonando":
+                self._audio.pause(CANAL_TIP)
             self._pausado, self._pausado_desde, self._pausa_avisada = True, time.monotonic(), False
             log.info("[Engine] PAUSA en %.1fs de '%s'",
                      self._audio.get_position_sec(self._active_canal), self._current_track.get("titulo"))
@@ -1927,6 +1953,8 @@ class AudioEngine:
                 self._emit_error(self._current_track.get("id"), "error_play_backend", "No se pudo reanudar el audio")
             if self._cama:
                 self._audio.play(self._cama["canal"])
+            if self._tip and self._tip["estado"] == "sonando":
+                self._audio.play(CANAL_TIP)
             self._silencio_desde = None
             log.info("[Engine] Se reanuda '%s'", (self._current_track or {}).get("titulo"))
         self.bus.emit("pausa", {"activo": self._pausado})
@@ -1939,6 +1967,8 @@ class AudioEngine:
         cue_in = self._cue_range(self._current_item)[0]
         fin = self._hard_end if self._hard_end != float("inf") else self._duration
         destino = max(cue_in, min(float(segundos), max(cue_in, fin - 1.0)))
+        if self._tip and self._tip["estado"] == "sonando":
+            self._tip_cancelar("salto_del_operador")
         if self._audio.set_position_sec(self._active_canal, destino):
             # Si se salta mas alla del punto de mezcla, la siguiente entra enseguida
             self._mix_fired = False
@@ -2234,6 +2264,7 @@ class AudioEngine:
 
         if self._cama:
             self._soltar_cama()                  # la música de fondo deja libre su canal
+        tip_cruza = self._tip_antes_de_arrancar(item)
 
         outgoing_active = (self._current_track is not None
                            and self._audio.is_active(self._active_canal))
@@ -2347,6 +2378,7 @@ class AudioEngine:
 
         if not item.get("_restart"):
             self._on_track_started(track, item, dur)
+        self._tip_tras_arrancar(item, tip_cruza)
         return True
 
     def _finish_crossfade(self, force: bool = False):
@@ -2433,8 +2465,223 @@ class AudioEngine:
         self.bus.emit("voz_fin_sin_siguiente", {"musica_id": c["track"].get("id")})
         return True
 
+    # ── Tips sobre el intro / puente (estilo Jazler SoHo) ─────────────────────
+
+    @staticmethod
+    def _es_musica(item: Optional[dict]) -> bool:
+        return bool(item) and item.get("origen") != "pauta" and \
+            (item["track"].get("tipo_audio") or TIPO_MUSICA) == TIPO_MUSICA
+
+    @staticmethod
+    def _intro_de(track: dict) -> float:
+        return float(track.get("cue_intro") or track.get("intro") or 0)
+
+    def _tip_info(self, t: Optional[dict]) -> Optional[dict]:
+        if not t:
+            return None
+        return {"audio_id": t["track"].get("id"), "titulo": t["track"].get("titulo", ""), "modo": t["modo"],
+                "estado": t.get("estado", "pendiente"), "origen": t.get("origen"),
+                "cancion_id": (t.get("item") or {}).get("track", {}).get("id"),
+                "disparo": round(t["disparo"], 2) if t.get("disparo") is not None else None,
+                "limite": round(t["limite"], 2) if t.get("limite") is not None else None,
+                "duracion": round(t["dur"], 2) if t.get("dur") is not None else None,
+                "recorta": bool(t.get("recorta"))}
+
+    def tip_programar(self, audio_id: int, modo: str) -> bool:
+        """Operador (modo manual): monta un Tips sobre el intro de la próxima canción o en el puente de la que suena."""
+        if modo not in TIP_MODOS:
+            raise ValueError(f"Modo de tip inválido: {modo!r}")
+        track = self._fetch_track(audio_id)
+        if not track:
+            return False
+        self._cmds.put(("tip", track, modo))
+        return True
+
+    def tip_quitar(self):
+        self._cmds.put(("tip_quitar",))
+
+    def _do_tip(self, track: dict, modo: str):
+        if modo == "puente":
+            if not (self._current_track and self._es_musica(self._current_item)
+                    and self._audio.is_active(self._active_canal)):
+                self._emit_error(track.get("id"), "tip_sin_cancion", "Para el puente tiene que estar sonando una canción")
+                return
+            self._tip_cancelar("reemplazado")
+            self._tip_montar(track, modo, "manual")
+        else:
+            self._tip_pend = {"track": track, "modo": modo, "origen": "manual"}
+            self.bus.emit("tip_programado", self._tip_info(self._tip_pend))
+
+    def _tip_montar(self, tip_track: dict, modo: str, origen: str, plan_uid: Optional[int] = None) -> bool:
+        """Pega el tip a la canción que suena (recién arrancada para los de intro). Lo carga ya para saber su duración real."""
+        path = self._path_of(tip_track)
+        if not path or not Path(path).exists() or not self._audio.load_stream(path, CANAL_TIP, self._devices["aire"]):
+            self._emit_error(tip_track.get("id"), "tip_no_carga", f"No se pudo abrir el tip: {tip_track.get('titulo', '')}")
+            return False
+        tip_in = float(tip_track.get("cue_inicio") or 0)
+        if tip_in > 0:
+            self._audio.set_position_sec(CANAL_TIP, tip_in)
+        dur = (self._audio.get_duration_sec(CANAL_TIP) or float(tip_track.get("duracion") or 0)) - tip_in
+        item = self._current_item
+        cue_in = self._cue_range(item)[0]
+        mezcla = self._mix_point if self._mix_point != float("inf") else (self._duration or cue_in)
+        disparo, limite = calcular_tip(modo, dur, cue_in, self._intro_de(self._current_track), mezcla)
+        if limite is None and modo != "puente":
+            limite = mezcla if mezcla > cue_in else None    # tip más largo que la canción: se va antes de la siguiente
+        self._tip = {"track": tip_track, "modo": modo, "origen": origen, "plan_uid": plan_uid,
+                     "item": item, "canal": self._active_canal, "disparo": disparo, "limite": limite,
+                     "dur": dur, "estado": "espera", "duck": False, "saliendo": False, "corta_en": None,
+                     "recorta": limite is not None and disparo + dur > limite + 0.05}
+        self.bus.emit("tip_programado", self._tip_info(self._tip))
+        log.info("[Engine] Tip «%s» (%s) programado a %.1fs de «%s»", tip_track.get("titulo"), modo,
+                 disparo, self._current_track.get("titulo"))
+        return True
+
+    def _proximo_es_musica(self, saltar_uid: Optional[int] = None) -> bool:
+        """¿Lo que entra después de la canción es otra canción? (el puente no se monta sobre una tanda ni una voz)"""
+        if self._detener_al_terminar:
+            return False
+        if self._priority_queue and (self._mode == "automatico" or self._tanda_liberada):
+            return False
+        if self._playlist_queue:
+            return (self._playlist_queue[0].get("tipo_audio") or TIPO_MUSICA) == TIPO_MUSICA
+        if self._mode != "automatico":
+            return False
+        with self._programa_lock:
+            for it in self._programa:
+                if saltar_uid is not None and it.get("uid") == saltar_uid:
+                    continue
+                return it.get("tipo") == "audio" and it.get("tipo_audio") == TIPO_MUSICA
+        return False
+
+    def _tip_disparar(self):
+        t = self._tip
+        if t["plan_uid"] is not None:
+            # Del reloj: sale del programa al sonar (si el operador lo quitó, ya no suena)
+            with self._programa_lock:
+                antes = len(self._programa)
+                self._programa = deque(i for i in self._programa if i.get("uid") != t["plan_uid"])
+                quitado = len(self._programa) != antes
+            if not quitado:
+                self._tip_cancelar("quitado_del_programa")
+                return
+            self._emit_programa()
+        self._audio.set_volume(CANAL_TIP, self._master_volume * self._gain_of(t["track"]))  # a pleno, como un jingle
+        if not self._audio.play(CANAL_TIP):
+            self._tip_cancelar("error_play")
+            return
+        t["estado"], t["duck"] = "sonando", True
+        if self._current_track:
+            self._audio.slide_volume(self._active_canal, self._target_volume(), self.VOZ_BAJAR_MS)
+        self._log_emision(t["track"], {"origen": t["origen"]}, tipo="tips")
+        self.bus.emit("tip_al_aire", self._tip_info(t))
+
+    def _tip_salir(self, segundos: float):
+        """Fundido del tip; la música vuelve a pleno mientras tanto."""
+        t = self._tip
+        t["saliendo"], t["corta_en"] = True, time.monotonic() + segundos
+        self._audio.slide_volume(CANAL_TIP, 0.0, int(segundos * 1000))
+        if t["duck"]:
+            t["duck"] = False
+            if self._current_track:
+                self._audio.slide_volume(self._active_canal, self._target_volume(), int(segundos * 1000))
+
+    def _tip_fin(self, motivo: str):
+        t, self._tip = self._tip, None
+        if not t:
+            return
+        self._audio.stop(CANAL_TIP)
+        if t["duck"] and self._current_track and not self._pausado:
+            self._audio.slide_volume(self._active_canal, self._target_volume(), self.TIP_SUBIR_MS)
+        self.bus.emit("tip_fin", {**self._tip_info(t), "motivo": motivo})
+
+    def _tip_cancelar(self, motivo: str, fundido: bool = True):
+        """Quita el tip: si aún no sonaba, se descarta; si suena, sale con un fundido corto (o ya, sin fundido)."""
+        t = self._tip
+        if not t:
+            return
+        if t["estado"] == "sonando" and fundido and not t["saliendo"]:
+            self._tip_salir(self.TIP_SALIDA)
+            t["motivo"] = motivo
+        elif t["estado"] != "sonando" or not fundido:
+            if t["estado"] != "sonando":
+                log.info("[Engine] Tip «%s» no sale: %s", t["track"].get("titulo"), motivo)
+            self._tip_fin(motivo)
+
+    def _vigilar_tip(self):
+        t = self._tip
+        if not t or self._pausado:
+            return
+        if t["estado"] == "espera":
+            if self._current_item is not t["item"] or self._active_canal != t["canal"]:
+                self._tip_cancelar("la_cancion_cambio")
+                return
+            pos = self._audio.get_position_sec(t["canal"])
+            if t["limite"] is not None and pos >= t["limite"] - self.TIP_CORTE:
+                self._tip_cancelar("ya_paso_el_intro")         # p. ej. el operador adelantó la canción
+            elif pos >= t["disparo"]:
+                if t["modo"] == "puente" and not self._proximo_es_musica(t["plan_uid"]):
+                    self._tip_cancelar("no_sigue_una_cancion")
+                else:
+                    self._tip_disparar()
+            return
+        # sonando
+        if not self._audio.is_active(CANAL_TIP):
+            self._tip_fin(t.get("motivo") or "fin")
+            return
+        if t["saliendo"]:
+            pos = self._audio.get_position_sec(t["canal"])
+            if time.monotonic() >= t["corta_en"] or (t["limite"] is not None and pos >= t["limite"]):
+                self._tip_fin(t.get("motivo") or "recortado")
+            return
+        if t["limite"] is not None and self._audio.get_position_sec(t["canal"]) >= t["limite"] - self.TIP_CORTE:
+            self._tip_salir(self.TIP_CORTE)                     # nunca tapa la entrada del cantante
+
+    def _tip_antes_de_arrancar(self, item: dict) -> bool:
+        """
+        Algo nuevo va al aire. El puente que suena sigue sobre la canción siguiente; cualquier otro tip
+        se va (una cuña, una voz o un salto del operador no se tapan). True = el tip cruza a esta canción.
+        """
+        t = self._tip
+        if not t:
+            return False
+        if (t["estado"] == "sonando" and t["modo"] == "puente" and not t["saliendo"]
+                and not t.get("cruzo") and self._es_musica(item)):
+            t["cruzo"] = True
+            return True
+        self._tip_cancelar("entra_otro_audio")
+        if self._tip and self._tip["estado"] == "sonando":
+            self._tip["duck"] = False                           # lo que entra ya no queda debajo del tip
+        return False
+
+    def _tip_tras_arrancar(self, item: dict, cruza: bool):
+        if cruza and self._tip:
+            # Mitad del puente sobre la canción nueva: tampoco pisa su voz
+            t = self._tip
+            t["item"], t["canal"] = item, self._active_canal
+            cue_in, intro = self._cue_range(item)[0], self._intro_de(item["track"])
+            t["limite"] = intro if intro > cue_in else None
+            return
+        if not self._es_musica(item) or self._tip:
+            return
+        if self._tip_pend:
+            p, self._tip_pend = self._tip_pend, None
+            self._tip_montar(p["track"], p["modo"], p["origen"], p.get("plan_uid"))
+            self._vigilar_tip()                                 # «inicio del intro» sale ya
+            return
+        if self._mode == "automatico" and item.get("origen") == "auto":
+            # Puente del reloj: la fila de Tips que viene justo después de esta canción
+            with self._programa_lock:
+                sig = self._programa[0] if self._programa else None
+            if sig and sig.get("tip_modo") == "puente":
+                tip = self._fetch_track(sig["audio_id"])
+                if tip:
+                    self._tip_montar(tip, "puente", "auto", sig["uid"])
+
     def _do_stop(self, reason: str):
         self._finish_crossfade(force=True)
+        self._tip_pend = None
+        self._tip_cancelar("stop", fundido=False)
         self._cama = None                        # A y B se detienen abajo
         if self._pausado:
             self._pausado, self._pausado_desde = False, None
@@ -2579,6 +2826,8 @@ class AudioEngine:
     def _target_volume(self, track: Optional[dict] = None) -> float:
         track = track if track is not None else self._current_track
         duck  = self._ducking_vol if self._effect_ducking else 1.0
+        if self._tip and self._tip.get("duck"):
+            duck *= self._voz_duck               # bajo un tip la música queda como bajo una voz
         return self._master_volume * duck * self._gain_of(track)
 
     # ── Cartuchera ────────────────────────────────────────────────────────────
@@ -3358,6 +3607,9 @@ class AudioEngine:
             # Voice track al aire sobre la canción anterior (que sigue bajita)
             "voz_sobre":         {"audio_id": self._cama["track"].get("id"),
                                   "titulo": self._cama["track"].get("titulo", "")} if self._cama else None,
+            # Tip montado sobre la canción (programado o sonando) y el que espera a la próxima canción
+            "tip":               self._tip_info(self._tip),
+            "tip_pendiente":     self._tip_info(self._tip_pend),
             "crossfade_seg":     self._crossfade_secs,
             "should_be_playing": self._should_be_playing,
             "detener_al_terminar": self._detener_al_terminar,

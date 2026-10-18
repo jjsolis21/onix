@@ -48,7 +48,7 @@ METHODS = {
     "lanzar_tanda", "cue_play", "cue_stop", "list_devices",
     "programa", "plan_quitar", "plan_mover", "plan_regenerar", "plan_recalcular",
     "plan_insertar", "detener_al_terminar", "seek", "pausar",
-    "cola_mover", "cola_quitar", "plan_a_cola",
+    "cola_mover", "cola_quitar", "plan_a_cola", "tip_programar", "tip_quitar",
 }
 
 

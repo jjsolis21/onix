@@ -264,3 +264,23 @@ def test_la_vista_del_reloj_solo_cuenta_musica_aprobada(client):
     assert v["filas"][0]["candidatos"] == 0 and v["filas"][0]["pendientes"] == 3 and v["saltadas"] == [0]
     c = get_connection(DB_PATH)
     c.execute("DELETE FROM audios WHERE artista = 'ZETA'"); c.commit(); c.close()
+
+
+def test_fila_de_tips_guarda_como_suena_sobre_la_musica(client, tmp_path):
+    tip = subir(client, tmp_path, "TIP RELOJ", tipo="Tips")
+    filas = [{"tipo_audio": "Musica"}, {"tipo_audio": "Tips", "audio_id": tip, "tip_modo": "puente"},
+             {"tipo_audio": "Musica", "tip_modo": "puente"}]               # en una fila de música no vale
+    r = client.post("/api/v1/relojes", json={"nombre": "Con tip", "filas": filas})
+    assert r.status_code == 201, r.text
+    reloj = r.json()
+    assert [f["tip_modo"] for f in reloj["filas"]] == ["", "puente", ""]
+    copia = client.post(f"/api/v1/relojes/{reloj['id']}/duplicar").json()
+    assert copia["filas"][1]["tip_modo"] == "puente"
+    assert client.post("/api/v1/relojes", json={"nombre": "Mal", "filas": [
+        {"tipo_audio": "Tips", "tip_modo": "encima"}]}).status_code == 422
+    # Vista previa: el tip encima de la música no ocupa tiempo de la hora
+    v = client.post("/api/v1/relojes/vista-previa", json={"filas": filas[:2]}).json()
+    assert all(seg["fila"] != 1 for seg in v["linea"])
+    for rid in (reloj["id"], copia["id"]):
+        client.delete(f"/api/v1/relojes/{rid}")
+    assert client.post("/api/v1/player/tip", json={"audio_id": tip, "modo": "encima"}).status_code == 422

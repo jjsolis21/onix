@@ -246,6 +246,12 @@ class RemoteEngine:
     def seek(self, segundos: float):
         self._call("seek", segundos)
 
+    def tip_programar(self, audio_id: int, modo: str) -> bool:
+        return bool(self._call("tip_programar", audio_id, modo))
+
+    def tip_quitar(self):
+        self._call("tip_quitar")
+
     def reload_config(self):
         try:
             self._call("reload_config")
