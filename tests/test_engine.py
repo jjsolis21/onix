@@ -189,7 +189,11 @@ def test_fades_por_pista(engine):
     b = {"track": {"fade_in": 1.0}, "origen": "auto"}
     sin = {"track": {}, "origen": "auto"}
     assert engine._fade_times(a, b) == (1.0, 2.0)
-    assert engine._fade_times(sin, sin) == (4.0, 4.0)
+    # Sin fade_in propio la canción que entra llega a su volumen normal enseguida (no sube en 4 s); la que sale baja en todo el crossfade
+    assert engine._fade_times(sin, sin) == (engine.ENTRADA_CANCION, 4.0) == (0.5, 4.0)
+    engine._crossfade_secs = 0.2
+    assert engine._fade_times(sin, sin) == (0.2, 0.2)               # nunca más que el crossfade configurado
+    engine._crossfade_secs = 4.0
     spot = {"track": {"tipo_audio": "Cuña", "fade_in": 3.0}, "origen": "pauta"}
     # La cuña entra a pleno volumen (sin rampa lenta) y lo que sale es la música
     assert engine._fade_times(a, spot) == (engine.ENTRADA_CORTO, engine.SPOT_FADE_IN)

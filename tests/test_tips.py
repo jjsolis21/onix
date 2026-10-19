@@ -368,12 +368,15 @@ def test_en_un_puente_el_cambio_de_cancion_es_corto_para_que_se_oiga_la_siguient
     _plan(engine, _p_audio(tip, "Tips", tip_modo="puente"), _p_audio(b))
     engine._start({"track": engine._fetch_track(a), "origen": "auto"})
     _al(engine, 33.5)                                              # arranca el tip (mezcla 36.5 − 3)
+    canal_a = engine._active_canal
     _al(engine, 36.5)                                              # entra B con el tip encima
     canal_b = engine._active_canal
     assert engine._current_track["id"] == b
-    entradas = [m for c, v, m in ms if c == canal_b]
-    assert entradas and entradas[0] == int(engine.TIP_XFADE * 1000)   # B sube en 1,5 s, no en 4
-    assert (engine._tip["estado"] == "sonando")
+    entrada_b = [m for c, v, m in ms if c == canal_b][0]
+    salida_a = [m for c, v, m in ms[::-1] if c == canal_a and v == 0.0][0]
+    assert entrada_b <= int(engine.TIP_XFADE * 1000)               # B ya está a su nivel en la 1.ª mitad del cruce
+    assert salida_a == int(engine.TIP_XFADE * 1000)                # A se va en 1,5 s, no en los 4 s normales
+    assert engine._tip["estado"] == "sonando"
 
 
 def test_sin_puente_el_crossfade_sigue_siendo_el_normal(engine, media):
@@ -386,3 +389,18 @@ def test_sin_puente_el_crossfade_sigue_siendo_el_normal(engine, media):
     engine._start({"track": engine._fetch_track(a), "origen": "auto"})
     _al(engine, 36.5)
     assert any(m == 4000 for c, v, m in ms)                        # crossfade de 4 s intacto fuera de los puentes
+
+
+def test_la_cancion_que_entra_arranca_a_su_volumen_sin_subir_en_4_segundos(engine, media):
+    """Queja del operador: «cuando inicia una canción empieza baja y después sube»."""
+    a = add_audio(engine, media, "A", seconds=40.0, cue_mezcla=36.5)
+    b = add_audio(engine, media, "B", seconds=40.0)
+    ms = []
+    real = engine._audio.slide_volume
+    engine._audio.slide_volume = lambda c, v, m: (ms.append((c, round(v, 2), m)), real(c, v, m))[1]
+    _plan(engine, _p_audio(b))
+    engine._start({"track": engine._fetch_track(a), "origen": "auto"})
+    _al(engine, 36.5)
+    canal_b = engine._active_canal
+    entrada = [(v, m) for c, v, m in ms if c == canal_b][0]
+    assert entrada[0] == round(engine._target_volume(engine._current_track), 2) and entrada[1] == 500
