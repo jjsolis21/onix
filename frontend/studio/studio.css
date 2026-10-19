@@ -548,6 +548,18 @@ kbd {
 .sp-play { width: 40px; height: 40px; }
 .sp-play .ico { width: 28px; height: 28px; }
 .sp-b#spStop .ico { width: 24px; height: 24px; }
+/* AUTO PLAY: apagado es un botón plano; encendido se ilumina en ámbar */
+.sp-b.sp-auto { width: auto; height: 28px; padding: 0 10px; margin-left: 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg-3);
+  color: var(--txt-lo); font-family: var(--f-data); font-size: 11px; font-weight: 600; letter-spacing: .12em; cursor: pointer; }
+.sp-b.sp-auto:hover { color: var(--txt-hi); border-color: #666; filter: none; }
+.sp-b.sp-auto.on { color: var(--bg-0); background: var(--ambar); border-color: var(--ambar); box-shadow: 0 0 10px rgba(238, 155, 0, .45); }
+/* Cabecera de la sección TANDA: hora, duración y cuántas cuñas */
+.lib-tabla tr.tanda-tit td { padding: 8px 10px; }
+.tt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.tt b { font-size: 13px; letter-spacing: .08em; color: var(--ambar-vivo); }
+.tt span { font-size: 12px; letter-spacing: .06em; color: var(--txt-mid); white-space: nowrap; }
+.tt span i { font-style: normal; color: var(--txt-lo); margin-right: 4px; }
+.tt span em { font-style: normal; color: var(--txt-hi); font-weight: 600; }
 .sp-centro { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .sp-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
 .sp-txt { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }

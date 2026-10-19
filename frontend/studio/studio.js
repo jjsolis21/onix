@@ -817,16 +817,29 @@ const Biblioteca = (() => {
       tandaLista = d.lista;
       document.querySelector('#libTabs [data-tab="Tanda"]')?.classList.toggle("tanda-lista-on", tandaLista);
     }
-    const f = JSON.stringify([d.titulo, d.filas]);
+    const f = JSON.stringify([d.titulo, d.filas, d.meta]);
     if (f === firmaTanda) return;
     firmaTanda = f; datosTanda = d;
     if (tab === "Tanda") pintarTanda();
   }
   function pintarTanda() {
-    const { titulo, filas: fs } = datosTanda;
+    const { titulo, filas: fs, meta } = datosTanda;
+    // Hora y duración del bloque (la hora estimada de salida viene del plan; si ya está cargada, «ahora»)
+    const total = meta?.duracion || fs.reduce((s, c) => s + (c.duracion || 0), 0);
+    const finTxt = (() => {
+      const m = /^(\d\d):(\d\d):(\d\d)$/.exec(meta?.hora || "");
+      if (!m || !total) return "";
+      const t = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + Math.round(total), p2 = n => String(n).padStart(2, "0");
+      return `${p2(Math.floor(t / 3600) % 24)}:${p2(Math.floor(t % 3600 / 60))}:${p2(t % 60)}`;
+    })();
+    const cab = !titulo ? "" : `<tr class="tanda-tit"><td colspan="6"><div class="tt"><b>${esc(titulo)}</b>`
+      + (meta?.cuando ? `<span><i>HORA</i><em>${esc(meta.cuando)}</em></span>` : (meta?.hora ? `<span><i>HORA</i><em>${esc(meta.hora)}</em></span>` : ""))
+      + (finTxt && !meta?.cuando ? `<span><i>TERMINA</i><em>${finTxt}</em></span>` : "")
+      + (total ? `<span><i>DURACIÓN</i><em>${fmt(total)}</em></span>` : "")
+      + (fs.length ? `<span><i>CUÑAS</i><em>${fs.length}</em></span>` : "") + `</div></td></tr>`;
     fs.forEach(c => { if (c.audio_id != null && !cache.has(c.audio_id)) cache.set(c.audio_id, { id: c.audio_id, titulo: c.spot || c.cliente, artista: c.cliente, duracion: c.duracion, tipo_audio: "Cuña" }); });
     $("libFilas").innerHTML = fs.length
-      ? (titulo ? `<tr class="tanda-tit"><td colspan="6">${esc(titulo)}</td></tr>` : "") + fs.map((c, n) => `
+      ? cab + fs.map((c, n) => `
         <tr class="tanda-fila ${c.audio_id === P.id ? "elegida" : ""}" ${c.audio_id != null ? `data-id="${c.audio_id}"` : ""}>
           <td colspan="6"><div class="tf">
             <span class="tf-n">${n + 1}</span>
@@ -837,7 +850,7 @@ const Biblioteca = (() => {
           </div></td></tr>`).join("")
       : `<tr><td colspan="6" class="vacio">${esc(titulo || "Sin tandas en lo planificado")}</td></tr>`;
     cuenta(fs.length, fs.length, "cuñas");
-    $("libInfo").textContent = "Clic en una cuña y ▶ (abajo) para escucharla por la salida de preescucha";
+    $("libInfo").textContent = "";
   }
   function irATanda() {
     if (tab !== "Tanda") { $("libBuscar").value = ""; $("libTipo").value = ""; $("libTipModo").value = ""; tab = "Tanda"; pintarTabs(); pintar(); }
@@ -1090,6 +1103,7 @@ const Biblioteca = (() => {
     const ico = $("spPlay").querySelector("img");
     if (!ico.src.endsWith(img)) ico.src = img;
   }
+  const autoPlayActivo = () => autoPlay;
   /** Lo llama el sondeo del estado con st.preescucha */
   function estadoCue(cue) {
     if (cue) {
@@ -1098,7 +1112,7 @@ const Biblioteca = (() => {
     } else if (P.activo) {
       // Terminó solo (o lo paró otro): si no fue la pausa del operador, vuelve al inicio
       P.activo = false;
-      if (!P.pausado) P.pos = 0;
+      if (!P.pausado) { P.pos = 0; if (autoPlayActivo()) { pintarPlayer(); siguienteAuto(); return; } }
     }
     pintarPlayer();
   }
@@ -1119,6 +1133,29 @@ const Biblioteca = (() => {
       WS.send({ cmd: "cue", audio_id: P.id, desde: P.pos >= (P.dur || Infinity) - 0.5 ? 0 : P.pos });
     }
     pintarPlayer();
+  }
+  // AUTO PLAY: cuando lo que se escucha termina solo, pasa a la siguiente fila de la lista que se está viendo
+  let autoPlay = false;
+  try { autoPlay = localStorage.getItem("onix_autoplay") === "1"; } catch { /* sin almacenamiento */ }
+  const pintarAuto = () => $("spAuto").classList.toggle("on", autoPlay);
+  pintarAuto();
+  $("spAuto").addEventListener("click", () => {
+    autoPlay = !autoPlay;
+    try { localStorage.setItem("onix_autoplay", autoPlay ? "1" : "0"); } catch { /* sin almacenamiento */ }
+    pintarAuto();
+    toast(autoPlay ? "AUTO PLAY activado: al terminar pasa a la siguiente de la lista" : "AUTO PLAY apagado", "info", 2200);
+  });
+  function siguienteAuto() {
+    const filasId = [...document.querySelectorAll("#libFilas tr[data-id]")];
+    const i = filasId.findIndex(tr => +tr.dataset.id === P.id);
+    const sig = i >= 0 ? filasId[i + 1] : null;
+    if (!sig) { toast("AUTO PLAY: se acabó la lista", "info", 2000); return; }
+    const id = +sig.dataset.id;
+    elegir(id);
+    P.pos = 0; P.pausado = false; P.activo = true; P.recibido = performance.now();
+    WS.send({ cmd: "cue", audio_id: id, desde: 0 });
+    sig.scrollIntoView({ block: "nearest" });
+    if (i + 2 >= filasId.length && filas.length < totalFiltro) masFilas();   // se acerca el final de una lista larga: trae más
   }
   $("spPlay").addEventListener("click", reproducirOPausar);
   $("spStop").addEventListener("click", () => {
@@ -1250,8 +1287,9 @@ const Derecha = (() => {
     // Tanda ya cargada (esperando al operador o sonando): las cuñas que faltan, en orden
     const enCola = st?.cunas_en_cola ?? [];
     const enTanda = (id, c) => ({ audio_id: id, cliente: c.cliente || "", spot: c.spot || Decks.spotDe(id) || "", rubro: c.rubro || "", duracion: c.duracion || 0 });
-    const aBiblioteca = (titulo, filas) => Biblioteca.setTanda({ titulo, filas, lista: enCola.length > 0 });
-    if (enCola.length) aBiblioteca(`${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}`, enCola.map(c => enTanda(c.audio_id, c)));
+    const aBiblioteca = (titulo, filas, meta) => Biblioteca.setTanda({ titulo, filas, lista: enCola.length > 0, meta });
+    if (enCola.length) aBiblioteca(`${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}`, enCola.map(c => enTanda(c.audio_id, c)),
+      { cuando: espera ? "AL LANZARLA" : "AHORA", duracion: enCola.reduce((s, c) => s + (c.duracion || 0), 0) });
     if (espera) {
       proxima = null;
       $("tandaHora").textContent = "";
@@ -1270,7 +1308,8 @@ const Derecha = (() => {
     if (!enCola.length) {
       const d = Decks.cunasDe(it);
       aBiblioteca(!d ? "Cargando cuñas…" : (d.cunas?.length ? `SONARÁN · TANDA :${String(it.minuto).padStart(2, "0")}` : (d.error ? "No se pudo leer la tanda" : "Sin cuñas para esta tanda")),
-        (d?.cunas ?? []).map(c => enTanda(c.audio_id, c)));
+        (d?.cunas ?? []).map(c => enTanda(c.audio_id, c)),
+        d?.cunas?.length ? { hora: it.hora, duracion: it.duracion || d.duracion } : null);
     }
     const [h, m, s] = it.hora.split(":").map(Number);
     const d = new Date(); d.setHours(h, m, s || 0, 0);
