@@ -590,6 +590,13 @@ kbd {
 .tanda-det { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tanda-cuenta { grid-column: 2; grid-row: 1 / span 2; font-size: 30px; line-height: 1; }
 .tanda-box { cursor: pointer; }
+/* Botones de las pestañas del panel derecho: planos y rectangulares, con la barra de color abajo cuando están activos */
+.der-tabs .der-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 10px 7px 7px;
+  background: linear-gradient(#2d2d2d, #1a1a1a); color: #b5b5b5; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.der-tabs .der-tab:hover { color: #fff; background: linear-gradient(#3a3a3a, #222); border-bottom-color: #555; }
+.der-tabs .der-tab.active { background: linear-gradient(#242424, #141414); color: var(--ambar-vivo); border-bottom-color: var(--ambar); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.der-tabs .der-tab.der-sel { flex: 1 0 auto; min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.der-tabs .der-tab.tanda-lista-on, .der-tabs .der-tab.active.tanda-lista-on { border-bottom-color: #ff3b30; color: #fff; }
 .tanda-lista { padding: 8px 12px; }
 .tanda-lista .tl-vacio { font-size: 12px; color: var(--txt-lo); padding: 6px 0; }
 /* Botón «TANDA» de las pestañas: parpadea en rojo cuando hay un bloque de cuñas listo o sonando */
@@ -602,7 +609,7 @@ kbd {
 .tanda-lista .tl-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt-hi); }
 .tanda-lista .tl-t i { color: var(--txt-lo); font-style: normal; margin-left: 4px; }
 .tanda-lista .tl-d { font-family: var(--f-data); }
-.der-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; background: var(--bg-0); border-bottom: 1px solid var(--line); }
+.der-tabs { flex: none; display: flex; flex-wrap: nowrap; gap: 2px; padding: 0; background: #080808; border-bottom: 2px solid #000; }
 .der-tab {
   background: var(--bg-2); border: 1px solid var(--line); color: var(--txt-lo); border-radius: 14px;
   font-family: var(--f-data); font-size: 10px; letter-spacing: .1em; padding: 4px 11px; cursor: pointer; white-space: nowrap;
@@ -707,6 +714,15 @@ kbd {
 .cart-cab .cart-nom small { font-size: 12px; color: #8a8a8a; font-weight: 400; margin-left: 4px; }
 .cart-nav { background: linear-gradient(#444, #262626); border: 1px solid #000; color: #ddd; border-radius: 3px; cursor: pointer;
   width: 30px; height: 30px; font-size: 13px; flex: none; }
+.cart-cab { flex-wrap: wrap; }
+.cart-cab .cart-nom { order: -1; flex: 1 0 100%; text-align: left; }
+.cart-cab .cart-nav-txt { flex: 1 1 0; }
+.cart-nav-txt { padding: 8px 10px; font-size: 11px; font-weight: 600; letter-spacing: .08em; white-space: nowrap; }
+button.cart-nom { background: none; border: 0; padding: 0; color: #fff; font-size: 21px; font-weight: 400; cursor: pointer; font-family: inherit; text-transform: none; }
+button.cart-nom:hover { color: var(--ambar-vivo); }
+.cart-pag .cart-ven { flex-basis: auto; text-align: left; color: var(--txt-lo); font-size: 11px; letter-spacing: .06em; }
+.cart-pag b#cartCuenta { margin-left: auto; font-size: 26px; font-weight: 300; color: #1a5c1a; font-variant-numeric: tabular-nums; }
+.cart-pag b#cartCuenta.activa { color: #19f019; }
 .cart-nav:hover { border-color: var(--ambar); color: var(--ambar-vivo); }
 .pal-sel { position: fixed; z-index: 90; background: var(--bg-2); border: 1px solid var(--ambar); border-radius: 6px; padding: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .55); display: flex; flex-direction: column; gap: 6px; max-height: 70vh; }

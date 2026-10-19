@@ -1136,18 +1136,14 @@ const Derecha = (() => {
   function pintarVista() {
     const cs = claves();
     if (!especial(vista)) banco = vista;
-    let html = `<button class="der-tab ${vista === "tanda" ? "active" : ""} ${tandaLista ? "tanda-lista-on" : ""}" data-vista="tanda" title="Cuñas de la próxima tanda (parpadea cuando el bloque está listo o sonando)">📢 TANDA</button>`
+    // Una sola línea: TANDA · HISTORIAL · VOZ · PALETA (las paletas de la cartuchera —efectos, tips, risa…— van juntas
+    // bajo ese botón; la paleta concreta se elige dentro, con el nombre de arriba o con ANTERIOR / SIGUIENTE)
+    const enPaleta = !especial(vista);
+    const nomPaleta = (nombres[banco] || banco || "PALETA").toUpperCase();
+    const html = `<button class="der-tab ${vista === "tanda" ? "active" : ""} ${tandaLista ? "tanda-lista-on" : ""}" data-vista="tanda" title="Cuñas de la próxima tanda (parpadea cuando el bloque está listo o sonando)">📢 TANDA</button>`
       + `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
-      + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`;
-    if (cs.length > COMPACTO) {
-      const enPaleta = !especial(vista);
-      html += `<button class="der-tab der-sel ${enPaleta ? "active" : ""}" data-selector="1" title="Elegir paleta (${cs.length}) · , y . cambian a la anterior y a la siguiente">`
-        + `▦ ${esc(((enPaleta ? nombres[banco] : "") || "PALETAS").toUpperCase())} ▾</button>`;
-      html += recientes.filter(c => c in bancos && c !== vista).slice(0, 4)
-        .map(c => `<button class="der-tab der-rec" data-vista="${esc(c)}" title="Paleta usada hace poco">${esc((nombres[c] || c).toUpperCase())}</button>`).join("");
-    } else {
-      html += cs.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
-    }
+      + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`
+      + (cs.length ? `<button class="der-tab der-sel ${enPaleta ? "active" : ""}" data-paleta="1" title="Cartuchera: efectos, tips y demás paletas (${cs.length}). Ahora: ${esc(nomPaleta)}">▦ PALETAS</button>` : "");
     $("derTabs").innerHTML = html;
     $("tandaLista").hidden = vista !== "tanda";
     $("historial").hidden = vista !== "hist";
@@ -1188,9 +1184,9 @@ const Derecha = (() => {
       lista.innerHTML = [...grupos.values()].map(g => {
         const it = g.items.sort((x, y) => (x.n ?? 0) - (y.n ?? 0));
         if (it.length === 1)
-          return `<button class="pal-fila ${it[0].clave === vista ? "act" : ""}" data-pal="${esc(it[0].clave)}"><b>${esc(it[0].nombre)}</b><small>${it[0].cargados}/${it[0].total}</small></button>`;
+          return `<button class="pal-fila ${it[0].clave === banco ? "act" : ""}" data-pal="${esc(it[0].clave)}"><b>${esc(it[0].nombre)}</b><small>${it[0].cargados}/${it[0].total}</small></button>`;
         return `<div class="pal-grupo"><span>${esc(g.base)}</span><div>${it.map(x =>
-          `<button class="pal-chip ${x.clave === vista ? "act" : ""}" data-pal="${esc(x.clave)}" title="${esc(x.nombre)} · ${x.cargados} de ${x.total} botones cargados">${x.n}<small>${x.cargados}/${x.total}</small></button>`).join("")}</div></div>`;
+          `<button class="pal-chip ${x.clave === banco ? "act" : ""}" data-pal="${esc(x.clave)}" title="${esc(x.nombre)} · ${x.cargados} de ${x.total} botones cargados">${x.n}<small>${x.cargados}/${x.total}</small></button>`).join("")}</div></div>`;
       }).join("") || `<p class="pal-vacia">Sin paletas con ese nombre</p>`;
     };
     q.addEventListener("input", pintarLista);
@@ -1305,6 +1301,16 @@ const Derecha = (() => {
     paginas[banco] = (((paginas[banco] ?? 0) + delta) % tp + tp) % tp;
     pintarCart();
   }
+  /** ANTERIOR / SIGUIENTE (como Soho): pasa de ventana en ventana y, al acabar las de una paleta, sigue con la otra */
+  function ventana(delta) {
+    const cs = claves();
+    if (!cs.length) return;
+    const lista = cs.flatMap(c => Array.from({ length: totalPaginas(bancos[c] ?? 0) }, (_, k) => [c, k]));
+    const i = Math.max(0, lista.findIndex(([c, k]) => c === banco && k === Math.min(paginas[banco] ?? 0, totalPaginas(bancos[banco] ?? 0) - 1)));
+    const [c, k] = lista[((i + delta) % lista.length + lista.length) % lista.length];
+    paginas[c] = k;
+    irA(c);
+  }
   function pintarCart() {
     const n = bancos[banco] ?? 0;
     const tp = totalPaginas(n);
@@ -1313,18 +1319,15 @@ const Derecha = (() => {
     const desde = pg * PAG, hasta = Math.min(n, desde + PAG);
     // Como la paleta de Soho: nombre de la paleta y cuenta atrás del efecto, y debajo los botones de color
     const cs = claves(), pos = cs.indexOf(banco) + 1;
-    const flechas = cs.length > 1;
     $("cartuchera").innerHTML = `<div class="cart-cab">
-        ${flechas ? '<button class="cart-nav" data-nav="-1" title="Paleta anterior (,)">◀</button>' : ""}
-        <span class="cart-nom">${esc(nombres[banco] || banco || "")}${flechas ? ` <small>${pos}/${cs.length}</small>` : ""}</span>
-        ${flechas ? '<button class="cart-nav" data-nav="1" title="Paleta siguiente (.)">▶</button>' : ""}
+        <button class="cart-nav cart-nav-txt" data-nav="-1" title="Ventana anterior (,)">◀ ANTERIOR</button>
+        <button class="cart-nom" data-selector="1" title="Elegir otra paleta (${cs.length})">${esc(nombres[banco] || banco || "")} ▾</button>
+        <button class="cart-nav cart-nav-txt" data-nav="1" title="Ventana siguiente (.)">SIGUIENTE ▶</button></div>
+      <div class="cart-pag">
+        <small class="cart-ven">PALETA ${pos}/${cs.length} · VENTANA ${pg + 1}/${tp}</small>
+        ${tp > 1 ? `<span>${Array.from({ length: tp }, (_, k) => k).filter(k => k === 0 || k === tp - 1 || Math.abs(k - pg) <= 2)
+          .map((k, j, a) => `${j && k - a[j - 1] > 1 ? "<i>…</i>" : ""}<button class="pg ${k === pg ? "act" : ""}" data-pag-ir="${k}" title="Ir a la ventana ${k + 1}">${k + 1}</button>`).join("")}</span>` : ""}
         <b id="cartCuenta">00.0s</b></div>`
-      + (tp > 1 ? `<div class="cart-pag">
-          <button data-pag="-1" title="Página anterior (-)">‹</button>
-          <span>${Array.from({ length: tp }, (_, k) => k).filter(k => k === 0 || k === tp - 1 || Math.abs(k - pg) <= 2)
-            .map((k, j, a) => `${j && k - a[j - 1] > 1 ? "<i>…</i>" : ""}<button class="pg ${k === pg ? "act" : ""}" data-pag-ir="${k}">${k + 1}</button>`).join("")}</span>
-          <button data-pag="1" title="Página siguiente (+)">›</button>
-          <small>teclas 1–9 → botones ${desde + 1}–${hasta}</small></div>` : "")
       + Array.from({ length: hasta - desde }, (_, k) => desde + k).map(i => {
       const s = (slots[banco] ?? []).find(x => x.slot === i + 1);
       const num = i + 1;
@@ -1339,6 +1342,7 @@ const Derecha = (() => {
   $("derTabs").addEventListener("click", e => {
     const t = e.target.closest(".der-tab");
     if (!t) return;
+    if (t.dataset.paleta) { if (especial(vista)) irA(banco); else abrirSelector(); return; }
     if (t.dataset.selector) { abrirSelector(); return; }
     if (especial(t.dataset.vista)) {
       vista = t.dataset.vista;
@@ -1349,7 +1353,8 @@ const Derecha = (() => {
   new MutationObserver(() => marcarEfectos()).observe($("cartuchera"), { childList: true });
   $("cartuchera").addEventListener("click", e => {
     const n = e.target.closest("[data-nav]");
-    if (n) { vecina(+n.dataset.nav); return; }
+    if (n) { ventana(+n.dataset.nav); return; }
+    if (e.target.closest("[data-selector]")) { abrirSelector(); return; }
     const pg = e.target.closest("[data-pag]");
     if (pg) { pagina(+pg.dataset.pag); return; }
     const ir = e.target.closest("[data-pag-ir]");
@@ -1427,7 +1432,7 @@ const Derecha = (() => {
     marcarEfectos();
   }
   setInterval(() => { if (efectosSonando.size) { for (const [k, e] of efectosSonando) if (e.fin < performance.now() - 400) efectosSonando.delete(k); marcarEfectos(); } }, 100);
-  return { tanda, cuentaTanda, efecto, marcarEfectos, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector, pagina };
+  return { tanda, cuentaTanda, efecto, marcarEfectos, historial, agregarHistorial, cartuchera, dispararSlot, vecina, ventana, abrirSelector, pagina };
 })();
 
 /* ─────────────────────────── vúmetro ───────────────────────────
@@ -1503,7 +1508,7 @@ const Atajos = (() => {
       Derecha.pagina(e.key === "-" ? -1 : 1);                 // página anterior / siguiente de la paleta
     } else if (e.key === "," || e.key === ".") {
       e.preventDefault();
-      Derecha.vecina(e.key === "," ? -1 : 1);                 // paleta anterior / siguiente
+      Derecha.ventana(e.key === "," ? -1 : 1);                // ventana anterior / siguiente (sigue con la paleta que viene)
     } else if (e.key.toLowerCase() === "p") {
       $("btnPausa").click();
     } else if (e.key.toLowerCase() === "d") {
