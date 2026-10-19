@@ -6,7 +6,7 @@ o de puente (cruza el cambio de canción: mitad del tip antes de que entre la si
 from backend.audio.audio_engine import CANAL_TIP
 from backend.audio.planner import calcular_tip, nuevo_uid
 
-from test_engine import _al, add_audio, db, engine, media  # noqa: F401  (fixtures)
+from test_engine import _al, add_audio, add_pauta, db, engine, media  # noqa: F401  (fixtures)
 import test_planner as tp
 
 
@@ -430,3 +430,14 @@ def test_el_estado_muestra_las_cunas_de_la_tanda_cargada(engine, media):
     assert [c["cliente"] for c in st["cunas_en_cola"]] == ["FARMACIA", "BANCO"] and st["cunas_en_cola"][0]["duracion"] == 30
     engine._priority_queue.clear()
     assert engine.status["cunas_en_cola"] == []
+
+
+def test_cada_cuna_de_la_tanda_dice_su_audio_para_poder_escucharla(engine, media):
+    """El Studio escucha cada cuña de la tanda con el Play de preescucha: necesita su audio_id."""
+    from datetime import datetime
+    from backend.audio.planner import Planner
+    pid = add_pauta(engine, media, "FARMACIA")
+    conn = db(engine)
+    audio_id = conn.execute("SELECT audio_id FROM pautas WHERE id = ?", (pid,)).fetchone()[0]
+    cunas = Planner(engine._db).lista_tanda(conn, datetime(2026, 10, 12, 10), 15, [15, 45])
+    assert [c["audio_id"] for c in cunas] == [audio_id]

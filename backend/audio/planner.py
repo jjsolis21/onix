@@ -682,7 +682,7 @@ class Planner:
             SELECT p.id, p.rubro, p.matriz, a.duracion, COALESCE(p.seccion, 3) AS seccion,
                    p.menciones_diarias, p.cliente, p.posicion, p.orden, a.titulo,
                    a.genero_vocal AS voz, p.hora_inicio_permitida, p.hora_fin_permitida,
-                   COALESCE(p.prioridad, 0) AS prioridad
+                   COALESCE(p.prioridad, 0) AS prioridad, p.audio_id AS audio_id
             FROM pautas p
             JOIN audios a ON a.id = p.audio_id AND a.activo = 1
             WHERE p.activo = 1
@@ -761,9 +761,11 @@ class Planner:
             opcional, comercial = secciones.get(r["seccion"], (False, True))
             dur = r["duracion"] or 30
             voz = r["voz"]
+            audio_toca = r["audio_id"]
             if pid in versiones:
                 ids = [v[0] for v in versiones[pid]]
                 toca = version_rotada(ids, salidas.get(pid, 0))
+                audio_toca = toca or audio_toca
                 dur = dict(versiones[pid]).get(toca, dur)
                 voz = voz_de.get(toca, voz)
 
@@ -774,7 +776,7 @@ class Planner:
                 "pauta_id": pid, "rubro": r["rubro"], "dur": dur, "opcional": opcional,
                 "cliente": r["cliente"], "spot": r["titulo"], "seccion": r["seccion"],
                 "posicion": r["posicion"], "orden": r["orden"], "comercial": comercial,
-                "voz": voz, "prioridad": prioridad_efectiva, "es_deuda": es_deuda,
+                "voz": voz, "prioridad": prioridad_efectiva, "es_deuda": es_deuda, "audio_id": audio_toca,
             }
             (pautas if comercial else fijas).append(p)
 

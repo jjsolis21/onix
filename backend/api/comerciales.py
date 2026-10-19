@@ -297,6 +297,7 @@ def tanda_studio(slot: str, minuto: int = Query(..., ge=0, le=59)):
                 "cunas": [{"pauta_id": x["pauta_id"], "cliente": x["cliente"] or "", "spot": x["spot"] or "",
                            "rubro": x["rubro"] or "", "seccion": x["seccion"], "comercial": x["comercial"],
                            "fijada": bool(x.get("fijada")), "mujer": es_voz_mujer(x.get("voz")),
+                           "audio_id": x.get("audio_id"),
                            "duracion": round(x["dur"])} for x in cunas]}
     finally:
         c.close()

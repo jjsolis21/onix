@@ -749,7 +749,15 @@ const Decks = (() => {
              siguiente: ref(colaItems.find(cancion) || (Estado.st?.modo === "automatico" ? audiosPlan[0] : null)), elegida: false };
   }
 
-  return { pintar, agregar, vecinos, cunasDe };
+  /** Nombre del archivo de una cuña ya vista en alguna tanda */
+  function spotDe(audioId) {
+    for (const d of Object.values(cunasTanda)) {
+      const c = d?.cunas?.find(x => x.audio_id === audioId);
+      if (c) return c.spot || "";
+    }
+    return "";
+  }
+  return { pintar, agregar, vecinos, cunasDe, spotDe };
 })();
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
@@ -758,7 +766,7 @@ const Biblioteca = (() => {
   const IMAGEN = ["Efecto", "Sweeper", "Tips"];
   const NOMBRE_TIPO = { Efecto: "JINGLE", Sweeper: "SWEEPER", Tips: "TIP" };
   const TABS = [["Musica", "MÚSICA"], ["Imagen", "SEPARADORES"], ["Cuña", "CUÑAS"],
-                ["Programa", "PROGRAMAS"], ["Playlist", "LISTAS"]];
+                ["Programa", "PROGRAMAS"], ["Playlist", "LISTAS"], ["Tanda", "📢 TANDA"]];
   const enTab = (a, t) => t === "Imagen" ? IMAGEN.includes(a.tipo_audio) : a.tipo_audio === t;
   // La biblioteca NO se baja entera: el servidor busca y filtra (hay decenas de miles de audios)
   // y el Studio pide 100 filas por vez, y más al llegar al final de la lista.
@@ -800,6 +808,36 @@ const Biblioteca = (() => {
       try { plItems[id] = (await api(`/api/v1/playlists/${id}`)).items; } catch (_) { plItems[id] = []; }
       pintar();
     }
+  }
+  // ── Pestaña TANDA: las cuñas del bloque que va a sonar; se escuchan con el Play / Stop de preescucha ──
+  let datosTanda = { titulo: "", filas: [] }, firmaTanda = "", tandaLista = false;
+  /** Lo llama el panel de la derecha con lo que sonará (o lo que falta por sonar) */
+  function setTanda(d) {
+    if (d.lista !== tandaLista) {
+      tandaLista = d.lista;
+      document.querySelector('#libTabs [data-tab="Tanda"]')?.classList.toggle("tanda-lista-on", tandaLista);
+    }
+    const f = JSON.stringify([d.titulo, d.filas]);
+    if (f === firmaTanda) return;
+    firmaTanda = f; datosTanda = d;
+    if (tab === "Tanda") pintarTanda();
+  }
+  function pintarTanda() {
+    const { titulo, filas: fs } = datosTanda;
+    fs.forEach(c => { if (c.audio_id != null && !cache.has(c.audio_id)) cache.set(c.audio_id, { id: c.audio_id, titulo: c.spot || c.cliente, artista: c.cliente, duracion: c.duracion, tipo_audio: "Cuña" }); });
+    $("libFilas").innerHTML = fs.length
+      ? (titulo ? `<tr class="tanda-tit"><td colspan="6">${esc(titulo)}</td></tr>` : "") + fs.map((c, n) => `
+        <tr class="tanda-fila ${c.audio_id === P.id ? "elegida" : ""}" ${c.audio_id != null ? `data-id="${c.audio_id}"` : ""}>
+          <td><div class="lib-celda"><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(c.cliente || c.spot || "Cuña")}</div><div class="lib-art">${esc(c.spot || "")}</div></div></td>
+          <td>${esc(c.rubro || "")}</td><td></td><td class="num"></td>
+          <td class="num">${fmt(c.duracion)}</td>
+          <td class="lib-acc">${c.audio_id != null ? `<button data-cue="${c.audio_id}" class="${c.audio_id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${c.audio_id === enCue ? "■" : "🎧"}</button>` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="vacio">${esc(titulo || "Sin tandas en lo planificado")}</td></tr>`;
+    cuenta(fs.length, fs.length, "cuñas");
+    $("libInfo").textContent = "Clic en una cuña y ▶ (abajo) para escucharla por la salida de preescucha";
+  }
+  function irATanda() {
+    if (tab !== "Tanda") { $("libBuscar").value = ""; $("libTipo").value = ""; $("libTipModo").value = ""; tab = "Tanda"; pintarTabs(); pintar(); }
   }
   function pintarPlaylists(q) {
     const lista = playlists.filter(p => !q || norm(`${p.nombre} ${p.reloj ?? ""}`).includes(q));
@@ -908,9 +946,10 @@ const Biblioteca = (() => {
   }
   function pintarTabs() {
     $("libTabs").innerHTML = TABS.map(([t, n]) =>
-      `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}</button>`).join("");
+      `<button class="lib-tab ${t === tab ? "active" : ""} ${t === "Tanda" && tandaLista ? "tanda-lista-on" : ""}" data-tab="${t}" ${t === "Tanda" ? 'title="Cuñas de la tanda: clic en una y ▶ para escucharla (parpadea cuando el bloque está listo o sonando)"' : ""}>${n}</button>`).join("");
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
+    $("libBuscar").hidden = tab === "Tanda";
     $("libTipo").hidden = tab !== "Imagen";
     verTipModo();
     const th = document.querySelector(".lib-tabla th:nth-child(2)");       // en Separadores esa columna es la categoría
@@ -920,6 +959,7 @@ const Biblioteca = (() => {
   function pintar() {
     const q = norm($("libBuscar").value.trim());
     if (tab === "Playlist") { pintarPlaylists(q); return; }
+    if (tab === "Tanda") { pintarTanda(); return; }
     recargar();
   }
 
@@ -1011,7 +1051,7 @@ const Biblioteca = (() => {
   });
   $("libFilas").addEventListener("dblclick", e => {
     const tr = e.target.closest("tr[data-id]");
-    if (!tr || e.target.closest("button")) return;
+    if (!tr || e.target.closest("button") || tr.classList.contains("tanda-fila")) return;
     if (!colocarTip(+tr.dataset.id)) Decks.agregar(+tr.dataset.id, cache.get(+tr.dataset.id)?.titulo ?? "");
   });
   $("libFilas").addEventListener("dragstart", e => {
@@ -1097,18 +1137,18 @@ const Biblioteca = (() => {
   });
 
   cargar();
-  return { cargar, marcar, estadoCue };
+  return { cargar, marcar, estadoCue, setTanda, irATanda };
 })();
 
 /* ─────────────────────────── derecha ─────────────────────────── */
 const Derecha = (() => {
   let proxima = null, bancos = {}, slots = {}, nombres = {}, banco = "jingles";
-  const especial = v => v === "hist" || v === "vt" || v === "tanda";      // vistas que no son una paleta
-  let tandaLista = false;                                                  // hay un bloque de cuñas cargado: listo para sonar o sonando
+  const especial = v => v === "hist" || v === "vt";                        // vistas que no son una paleta
   const efectosSonando = new Map();                                        // «banco/slot» → {audio_id, fin}: sobrevive a cambiar de paleta
   // Qué se ve en el panel de la derecha: "hist" (historial) o la clave de una paleta
   let vista = "hist";
   try { vista = localStorage.getItem("onix_vista_der") || "hist"; } catch { /* sin almacenamiento */ }
+  if (vista === "tanda") vista = "hist";                                   // la tanda ahora vive en la biblioteca
   // Con pocas paletas se muestran como pestañas (como siempre). Con muchas, un selector compacto con buscador,
   // las últimas usadas y las paletas agrupadas por nombre («SOLIS 1», «SOLIS 2»… = grupo «SOLIS»).
   const COMPACTO = 6;
@@ -1140,12 +1180,10 @@ const Derecha = (() => {
     // bajo ese botón; la paleta concreta se elige dentro, con el nombre de arriba o con ANTERIOR / SIGUIENTE)
     const enPaleta = !especial(vista);
     const nomPaleta = (nombres[banco] || banco || "PALETA").toUpperCase();
-    const html = `<button class="der-tab ${vista === "tanda" ? "active" : ""} ${tandaLista ? "tanda-lista-on" : ""}" data-vista="tanda" title="Cuñas de la próxima tanda (parpadea cuando el bloque está listo o sonando)">📢 TANDA</button>`
-      + `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
+    const html = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
       + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`
       + (cs.length ? `<button class="der-tab der-sel ${enPaleta ? "active" : ""}" data-paleta="1" title="Cartuchera: efectos, tips y demás paletas (${cs.length}). Ahora: ${esc(nomPaleta)}">▦ PALETAS</button>` : "");
     $("derTabs").innerHTML = html;
-    $("tandaLista").hidden = vista !== "tanda";
     $("historial").hidden = vista !== "hist";
     $("voiceTracker").hidden = vista !== "vt";
     $("cartuchera").hidden = especial(vista);
@@ -1204,17 +1242,11 @@ const Derecha = (() => {
     const it = (prog?.items ?? []).find(i => i.tipo === "tanda");
     const espera = st?.tanda_en_espera ?? 0;
     $("tandaBox").classList.toggle("espera", espera > 0);
-    const lista = $("tandaLista");
     // Tanda ya cargada (esperando al operador o sonando): las cuñas que faltan, en orden
     const enCola = st?.cunas_en_cola ?? [];
-    if ((enCola.length > 0) !== tandaLista) {                       // el botón TANDA parpadea mientras haya un bloque cargado
-      tandaLista = enCola.length > 0;
-      document.querySelector('#derTabs [data-vista="tanda"]')?.classList.toggle("tanda-lista-on", tandaLista);
-    }
-    if (enCola.length) {
-      lista.innerHTML = `<div class="tl-tit">${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}</div>` + enCola.map((c, n) =>
-        `<div class="tl"><span class="tl-n">${n + 1}</span><span class="tl-t"><b>${esc(c.cliente || "Cuña")}</b></span><span class="tl-d">${fmt(c.duracion)}</span></div>`).join("");
-    }
+    const enTanda = (id, c) => ({ audio_id: id, cliente: c.cliente || "", spot: c.spot || Decks.spotDe(id) || "", rubro: c.rubro || "", duracion: c.duracion || 0 });
+    const aBiblioteca = (titulo, filas) => Biblioteca.setTanda({ titulo, filas, lista: enCola.length > 0 });
+    if (enCola.length) aBiblioteca(`${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}`, enCola.map(c => enTanda(c.audio_id, c)));
     if (espera) {
       proxima = null;
       $("tandaHora").textContent = "";
@@ -1227,15 +1259,13 @@ const Derecha = (() => {
       $("tandaHora").textContent = "";
       $("tandaCuenta").textContent = "—";
       $("tandaDet").textContent = "Sin tandas en lo planificado";
-      if (!enCola.length) lista.innerHTML = "";
+      if (!enCola.length) aBiblioteca("Sin tandas en lo planificado", []);
       return;
     }
     if (!enCola.length) {
       const d = Decks.cunasDe(it);
-      lista.innerHTML = !d ? `<div class="tl-tit">Cargando cuñas…</div>`
-        : (d.cunas?.length ? `<div class="tl-tit">SONARÁN</div>` + d.cunas.map((c, n) =>
-          `<div class="tl"><span class="tl-n">${n + 1}</span><span class="tl-t"><b>${esc(c.cliente || c.spot)}</b>${c.cliente && c.spot ? ` <i>${esc(c.spot)}</i>` : ""}</span><span class="tl-d">${fmt(c.duracion)}</span></div>`).join("")
-          : `<div class="tl-tit">${d.error ? "No se pudo leer la tanda" : "Sin cuñas para esta tanda"}</div>`);
+      aBiblioteca(!d ? "Cargando cuñas…" : (d.cunas?.length ? `SONARÁN · TANDA :${String(it.minuto).padStart(2, "0")}` : (d.error ? "No se pudo leer la tanda" : "Sin cuñas para esta tanda")),
+        (d?.cunas ?? []).map(c => enTanda(c.audio_id, c)));
     }
     const [h, m, s] = it.hora.split(":").map(Number);
     const d = new Date(); d.setHours(h, m, s || 0, 0);
@@ -1408,11 +1438,7 @@ const Derecha = (() => {
     else toast(`El botón ${slot} de la cartuchera está vacío`, "info", 2000);
   }
 
-  $("tandaBox").addEventListener("click", () => {
-    vista = "tanda";
-    try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
-    cerrarSelector(); pintarVista();
-  });
+  $("tandaBox").addEventListener("click", () => Biblioteca.irATanda());
   /** Efectos de la cartuchera sonando (botón exacto «banco/slot»): se marcan también al cambiar de paleta */
   function marcarEfectos() {
     let alguno = false;

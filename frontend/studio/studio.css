@@ -599,6 +599,9 @@ kbd {
 .der-tabs .der-tab.tanda-lista-on, .der-tabs .der-tab.active.tanda-lista-on { border-bottom-color: #ff3b30; color: #fff; }
 .tanda-lista { padding: 8px 12px; }
 .tanda-lista .tl-vacio { font-size: 12px; color: var(--txt-lo); padding: 6px 0; }
+.lib-tab.tanda-lista-on { color: #fff; background: #b3120a; animation: tandaListaParpadeo .9s ease-in-out infinite; }
+.lib-tabla tr.tanda-tit td { color: var(--ambar); font-family: var(--f-data); font-size: 11px; letter-spacing: .08em; padding: 6px 10px; background: var(--bg-2); }
+.lib-tabla tr.tanda-fila { cursor: pointer; }
 /* Botón «TANDA» de las pestañas: parpadea en rojo cuando hay un bloque de cuñas listo o sonando */
 .der-tab.tanda-lista-on, .der-tab.active.tanda-lista-on { background: #b3120a; border-color: #ff3b30; color: #fff; animation: tandaListaParpadeo .9s ease-in-out infinite; }
 @keyframes tandaListaParpadeo { 50% { background: #5a0a06; box-shadow: 0 0 10px #ff3b30; } }
