@@ -198,10 +198,12 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 #libTipModo { color: var(--ambar-vivo); border-color: var(--ambar); }
 #libTipModo.on { background: rgba(238, 155, 0, .16); font-weight: 600; }
 .lib-acc select.tip { font-size: .66rem; max-width: 92px; background: transparent; color: var(--ambar-vivo); border: 1px solid var(--ambar); border-radius: 3px; }
-.deck-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
-.deck-meta span { font-size: 11px; line-height: 1.5; padding: 0 6px; border-radius: 3px; background: var(--bg-2); color: var(--txt-mid); white-space: nowrap; }
+.deck-meta { display: inline-flex; max-width: 100%; margin-top: 3px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-2); overflow: hidden; }
+.deck-meta span { font-size: 11px; line-height: 1.6; padding: 0 8px; color: var(--txt-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-meta span + span { border-left: 1px solid var(--line); }
 .deck-meta .gen { color: var(--cyan); } .deck-meta .rot { color: var(--ambar-vivo); } .deck-meta .anio { font-family: var(--f-data); }
-.deck-tip { color: var(--ambar-vivo); font-size: .7rem; margin-top: 2px; }
+.deck-tip { color: var(--ambar-vivo); font-size: .7rem; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-tip b { letter-spacing: .04em; }
 .aviso-cyan { background: rgba(72, 202, 228, .10); color: var(--cyan); border-bottom: 1px solid var(--cyan); }
 .aviso-cyan button { color: var(--cyan); border: 1px solid var(--cyan); }
 
@@ -541,9 +543,11 @@ kbd {
 }
 .sp-b:hover { border-color: var(--ambar); }
 .sp-b .ico { width: 18px; height: 18px; display: block; }
-.sp-play { width: 40px; height: 40px; border-radius: 50%; }
-.sp-play .ico { width: 24px; height: 24px; }
-.sp-player.sonando .sp-play { box-shadow: 0 0 0 3px rgba(238, 155, 0, .28); }
+.sp-b, .sp-play { background: transparent; border: 0; border-radius: 0; box-shadow: none; }   /* sin círculo ni marco: solo el ícono */
+.sp-b:hover { filter: brightness(1.35); }
+.sp-play { width: 40px; height: 40px; }
+.sp-play .ico { width: 28px; height: 28px; }
+.sp-b#spStop .ico { width: 24px; height: 24px; }
 .sp-centro { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .sp-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
 .sp-txt { min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }

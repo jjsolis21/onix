@@ -20,14 +20,14 @@ const fmt = s => {
 };
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 // Tips sobre la música (como Jazler SoHo)
-const TIP_MODO_NOMBRE = { intro_inicio: "inicio del intro", intro_final: "final del intro", puente: "puente" };
+const TIP_MODO_NOMBRE = { intro_inicio: "INICIO/INTRO", intro_final: "FIN/INTRO", puente: "PUENTE" };   // los mismos textos del filtro de Separadores
 // Género, rotación y año de la canción (en la lista del programa y la cola)
 const metaCancion = x => {
   const g = x.genero, r = x.rotacion, a = x.anio;
   return (g || r || a) ? `<div class="deck-meta">${g ? `<span class="gen" title="Género">${esc(g)}</span>` : ""}${r ? `<span class="rot" title="Rotación">${esc(r)}</span>` : ""}${a ? `<span class="anio" title="Año">${esc(a)}</span>` : ""}</div>` : "";
 };
 // Insignia del tip que se monta encima de una canción (no es una fila: pisa a esa canción)
-const insigniaTip = t => !t ? "" : `<div class="deck-tip" title="Este tip suena ENCIMA de la canción, no es la siguiente">💡 TIP ${TIP_MODO_NOMBRE[t.modo] ?? t.modo}: ${esc(t.titulo)}</div>`;
+const insigniaTip = t => !t ? "" : `<div class="deck-tip" title="Este tip suena ENCIMA de la canción, no es la siguiente">💡 <b>${TIP_MODO_NOMBRE[t.modo] ?? t.modo}</b> · ${esc(t.titulo)}</div>`;
 const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips", Locucion: "Voz" };
 
 function toast(msg, tipo = "info", ms = 5000) {
@@ -190,10 +190,10 @@ const Estado = (() => {
     $("avisoTip").hidden = !tip && !tipPend;
     if (tip) {
       const cuando = tip.estado === "sonando" ? "AL AIRE" : `entra a los ${fmt(tip.disparo)}${tip.modo === "puente" ? " (sigue sobre la próxima canción)" : ""}`;
-      $("avisoTipTxt").textContent = `💡 TIP ${TIP_MODO_NOMBRE[tip.modo] ?? tip.modo}: ${tip.titulo} · ${fmt(tip.duracion)} · ${cuando}`
+      $("avisoTipTxt").textContent = `💡 ${TIP_MODO_NOMBRE[tip.modo] ?? tip.modo} · ${tip.titulo} · ${fmt(tip.duracion)} · ${cuando}`
         + (tip.recorta ? " · se recorta para no pisar la voz" : "");
     } else if (tipPend) {
-      $("avisoTipTxt").textContent = `💡 TIP ${TIP_MODO_NOMBRE[tipPend.modo] ?? tipPend.modo} de la próxima canción: ${tipPend.titulo}`;
+      $("avisoTipTxt").textContent = `💡 ${TIP_MODO_NOMBRE[tipPend.modo] ?? tipPend.modo} · ${tipPend.titulo} (próxima canción)`;
     }
     const cue = st.preescucha;
     $("avisoCue").hidden = !cue;
@@ -524,7 +524,7 @@ const Decks = (() => {
         return;
       }
       if (it.tip_modo) {
-        const sobre = it.tip_modo === "puente" ? "puente entre la anterior y la siguiente" : `${TIP_MODO_NOMBRE[it.tip_modo]} de la siguiente`;
+        const sobre = TIP_MODO_NOMBRE[it.tip_modo];
         html += `<div class="deck${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tips"
             title="El tip no suena solo: se monta sobre la música (${esc(sobre)})">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
