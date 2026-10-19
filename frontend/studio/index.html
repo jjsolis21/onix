@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=26" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=28" />
 </head>
 <body>
 
@@ -140,9 +140,9 @@
       <div class="lib-filtros">
         <input type="search" id="libBuscar" placeholder="Buscar título o artista…" autocomplete="off" />
         <select id="libTipo" title="Tipo" hidden><option value="">Todos</option><option value="Efecto">Jingles</option><option value="Sweeper">Sweepers</option><option value="Tips">Tips</option></select>
-        <select id="libTipModo" title="Cómo colocar el Tips sobre las canciones: elige aquí y después + COLA (o doble clic) en el Tips" hidden>
-          <option value="">💡 Tips: suena solo</option><option value="intro_inicio">💡 Tips: inicio del intro</option>
-          <option value="intro_final">💡 Tips: final del intro</option><option value="puente">💡 Tips: puente</option></select>
+        <select id="libTipModo" title="Cómo colocar el Tips: elige aquí y después COLOCAR (o doble clic) en el Tips" hidden>
+          <option value="">SOLO</option><option value="intro_inicio">INICIO/INTRO</option>
+          <option value="intro_final">FIN/INTRO</option><option value="puente">PUENTE</option></select>
         <select id="libCat1" title="Género"><option value="">Género</option></select>
         <select id="libCat2" title="Rotación"><option value="">Rotación</option></select>
         <select id="libVoz" title="Voz"><option value="">Voz</option></select>
@@ -157,10 +157,8 @@
       <!-- Preescucha por la salida interna (nunca al aire): mismo modelo que Admin › Biblioteca -->
       <footer class="sp-player" id="spPlayer">
         <div class="sp-mandos">
-          <button class="sp-b" id="spAtras" title="Atrás 5 s"><img class="ico" src="/static/studio/icons/atras2.svg" alt=""></button>
           <button class="sp-b sp-play" id="spPlay" title="Escuchar / pausar"><img class="ico" src="/static/studio/icons/play2.svg" alt=""></button>
           <button class="sp-b" id="spStop" title="Detener"><img class="ico" src="/static/studio/icons/stop2.svg" alt=""></button>
-          <button class="sp-b" id="spAdelante" title="Adelante 5 s"><img class="ico" src="/static/studio/icons/avanzar2.svg" alt=""></button>
         </div>
         <div class="sp-centro">
           <div class="sp-fila">
@@ -179,6 +177,7 @@
         <div class="tanda-lbl">PRÓXIMA TANDA <span id="tandaHora">—</span></div>
         <div class="tanda-cuenta" id="tandaCuenta"></div>
         <div class="tanda-det" id="tandaDet"></div>
+        <div class="tanda-lista" id="tandaLista"></div>
       </div>
 
       <!-- HISTORIAL y las paletas de la cartuchera comparten el mismo espacio -->
@@ -233,7 +232,7 @@
 
   <div class="toasts" id="toasts"></div>
   <script src="/static/studio/cartuchera.js?v=4"></script>
-  <script src="/static/studio/studio.js?v=33"></script>
+  <script src="/static/studio/studio.js?v=34"></script>
   <script src="/static/studio/locutor.js?v=1"></script>
   <script src="/static/studio/voicetracker.js?v=3"></script>
 </body>

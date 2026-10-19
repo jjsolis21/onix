@@ -198,6 +198,9 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 #libTipModo { color: var(--ambar-vivo); border-color: var(--ambar); }
 #libTipModo.on { background: rgba(238, 155, 0, .16); font-weight: 600; }
 .lib-acc select.tip { font-size: .66rem; max-width: 92px; background: transparent; color: var(--ambar-vivo); border: 1px solid var(--ambar); border-radius: 3px; }
+.deck-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.deck-meta span { font-size: 11px; line-height: 1.5; padding: 0 6px; border-radius: 3px; background: var(--bg-2); color: var(--txt-mid); white-space: nowrap; }
+.deck-meta .gen { color: var(--cyan); } .deck-meta .rot { color: var(--ambar-vivo); } .deck-meta .anio { font-family: var(--f-data); }
 .deck-tip { color: var(--ambar-vivo); font-size: .7rem; margin-top: 2px; }
 .aviso-cyan { background: rgba(72, 202, 228, .10); color: var(--cyan); border-bottom: 1px solid var(--cyan); }
 .aviso-cyan button { color: var(--cyan); border: 1px solid var(--cyan); }
@@ -283,7 +286,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 }
 .lib-tab b { font-weight: 400; color: var(--txt-lo); margin-left: 4px; }
 .lib-tab.active { color: var(--txt-hi); border-bottom-color: var(--ambar); }
-.lib-filtros { display: flex; gap: 6px; padding: 8px 10px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.lib-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
 .lib-filtros input, .lib-filtros select {
   background: var(--bg-0); border: 1px solid var(--line); color: var(--txt-hi); border-radius: 4px;
   padding: 7px 9px; font-family: var(--f-ui); font-size: 14px;
@@ -582,6 +585,14 @@ kbd {
 .tanda-lbl { grid-column: 1; }
 .tanda-det { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tanda-cuenta { grid-column: 2; grid-row: 1 / span 2; font-size: 30px; line-height: 1; }
+.tanda-lista { grid-column: 1 / span 2; margin-top: 4px; max-height: 120px; overflow-y: auto; }
+.tanda-lista:empty { display: none; }
+.tanda-lista .tl-tit { font-family: var(--f-data); font-size: 10px; letter-spacing: .08em; color: var(--ambar); margin: 2px 0; }
+.tanda-lista .tl { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; font-size: 12px; line-height: 1.5; color: var(--txt-mid); }
+.tanda-lista .tl-n { font-family: var(--f-data); color: var(--ambar); }
+.tanda-lista .tl-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt-hi); }
+.tanda-lista .tl-t i { color: var(--txt-lo); font-style: normal; margin-left: 4px; }
+.tanda-lista .tl-d { font-family: var(--f-data); }
 .der-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; background: var(--bg-0); border-bottom: 1px solid var(--line); }
 .der-tab {
   background: var(--bg-2); border: 1px solid var(--line); color: var(--txt-lo); border-radius: 14px;

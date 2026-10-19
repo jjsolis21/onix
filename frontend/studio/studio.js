@@ -21,6 +21,11 @@ const fmt = s => {
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 // Tips sobre la música (como Jazler SoHo)
 const TIP_MODO_NOMBRE = { intro_inicio: "inicio del intro", intro_final: "final del intro", puente: "puente" };
+// Género, rotación y año de la canción (en la lista del programa y la cola)
+const metaCancion = x => {
+  const g = x.genero, r = x.rotacion, a = x.anio;
+  return (g || r || a) ? `<div class="deck-meta">${g ? `<span class="gen" title="Género">${esc(g)}</span>` : ""}${r ? `<span class="rot" title="Rotación">${esc(r)}</span>` : ""}${a ? `<span class="anio" title="Año">${esc(a)}</span>` : ""}</div>` : "";
+};
 // Insignia del tip que se monta encima de una canción (no es una fila: pisa a esa canción)
 const insigniaTip = t => !t ? "" : `<div class="deck-tip" title="Este tip suena ENCIMA de la canción, no es la siguiente">💡 TIP ${TIP_MODO_NOMBRE[t.modo] ?? t.modo}: ${esc(t.titulo)}</div>`;
 const TIPO_NOMBRE = { Musica: "Música", Efecto: "Jingle", Sweeper: "Sweeper", "Cuña": "Cuña", Programa: "Programa", Tips: "Tips", Locucion: "Voz" };
@@ -440,17 +445,25 @@ const Decks = (() => {
   let items = [], colaItems = [], sel = null;     // sel = uid de la tarjeta elegida (de la cola o del programa)
 
   // Cuñas de cada tanda (se piden al desplegar; el plan solo trae cuántas son)
-  const tandasAbiertas = new Set(), cunasTanda = {};
+  const tandasAbiertas = new Set(), tandasCerradas = new Set(), cunasTanda = {};
   let ultimoProg = null;
   const claveTanda = it => `${it.slot}|${it.minuto}`;
   async function pedirCunas(it) {
     const k = claveTanda(it);
-    cunasTanda[k] = null;                                            // null = cargando
+    const viejo = cunasTanda[k];
+    if (viejo === null) return;                                      // ya se está pidiendo
+    if (!viejo) cunasTanda[k] = null;                                // primera vez: «cargando» (si ya había datos se refrescan sin parpadeo)
     try {
       const r = await fetch(`/api/v1/studio/tanda?slot=${encodeURIComponent(it.slot)}&minuto=${it.minuto}`);
-      cunasTanda[k] = r.ok ? await r.json() : { cunas: [], error: true };
-    } catch { cunasTanda[k] = { cunas: [], error: true }; }
-    if (ultimoProg) pintar(ultimoProg);
+      cunasTanda[k] = r.ok ? { ...(await r.json()), t: Date.now() } : (viejo || { cunas: [], error: true });
+    } catch { cunasTanda[k] = viejo || { cunas: [], error: true }; }
+    if (ultimoProg) { pintar(ultimoProg); Derecha.tanda(ultimoProg, Estado.st); }
+  }
+  /** Cuñas de una tanda: las devuelve ya cargadas y pide (o refresca, cada 45 s) lo que falte. */
+  function cunasDe(it) {
+    const d = cunasTanda[claveTanda(it)];
+    if (d === undefined || (d && d.t && Date.now() - d.t > 45000)) pedirCunas(it);
+    return d || null;
   }
   function htmlCunas(it) {
     const d = cunasTanda[claveTanda(it)];
@@ -462,6 +475,9 @@ const Decks = (() => {
         <span class="tc-v">${c.mujer ? "♀" : ""}${c.fijada ? " 📌" : ""}</span><span class="tc-d">${fmt(c.duracion)}</span></div>`).join("") + `</div>`;
   }
 
+  let proximaTanda = null;
+  // La próxima tanda va desplegada (se ven los archivos que sonarán); el operador puede plegarla
+  const abierta = it => !tandasCerradas.has(claveTanda(it)) && (tandasAbiertas.has(claveTanda(it)) || it === proximaTanda);
   function pintar(prog) {
     ultimoProg = prog;
     items = prog?.items ?? [];
@@ -483,10 +499,11 @@ const Decks = (() => {
       html += cola.map((q, i) => `<div class="deck cola${q.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${q.uid}" data-zona="cola" data-tipo="${q.tipo_audio === "Locucion" ? "Locucion" : "Cola"}">
         <span class="deck-hora">${esc(q.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(q.titulo)}</div><div class="deck-art">${esc(q.artista)}</div>
-          ${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}${insigniaTip(q.tip)}</div>
+          ${metaCancion(q)}${q.nota ? `<div class="deck-memo" title="Memo para el locutor">📝 ${esc(q.nota)}</div>` : ""}${insigniaTip(q.tip)}</div>
         <span class="deck-dur">${q.tipo_audio === "Locucion" ? "🎙 VOZ" : "COLA"}</span></div>`).join("");
     }
     let reloj;
+    proximaTanda = items.find(x => x.tipo === "tanda") || null;
     items.forEach((it, i) => {
       // Separador al cambiar de reloj o al empezar/terminar un evento a hora fija
       const grupo = it.evento_key || it.reloj;
@@ -500,10 +517,10 @@ const Decks = (() => {
         const marcas = (it.cierre ? " ⇥ TERMINA EN PUNTO" : (it.inmediata ? " ⚡ EN PUNTO" : "")) + (it.excede ? " ⚠ LARGA" : "");
         html += `<div class="deck tanda${it.uid === sel ? " sel" : ""}" draggable="true" data-i="${i}" data-uid="${it.uid}" data-zona="plan" data-tipo="Tanda">
           <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
-          <div class="deck-txt"><div class="deck-tit"><span class="tg" data-tg="${esc(claveTanda(it))}" title="Ver las cuñas de esta tanda">${tandasAbiertas.has(claveTanda(it)) ? "▾" : "▸"}</span> 📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
+          <div class="deck-txt"><div class="deck-tit"><span class="tg" data-tg="${esc(claveTanda(it))}" title="Ver las cuñas de esta tanda">${abierta(it) ? "▾" : "▸"}</span> 📢 TANDA :${String(it.minuto).padStart(2, "0")}${marcas}</div>
             <div class="deck-art">${it.cunas} cuña(s)</div></div>
           <span class="deck-dur">${fmt(it.duracion)}</span></div>`;
-        if (tandasAbiertas.has(claveTanda(it))) html += htmlCunas(it);
+        if (abierta(it)) { cunasDe(it); html += htmlCunas(it); }
         return;
       }
       if (it.tip_modo) {
@@ -520,7 +537,7 @@ const Decks = (() => {
           title="${it.compensacion ? "⚖ elegida para que la tanda caiga a su hora. " : ""}${it.cortada ? "✂ se corta para que la tanda o el evento salga en punto. " : ""}${it.operador ? "✋ agregada por el operador." : ""}">
         <span class="deck-hora">${esc(it.hora.slice(0, 5))}</span>
         <div class="deck-txt"><div class="deck-tit">${esc(it.titulo)}</div>
-          <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div>${insigniaTip(it.tip)}</div>
+          <div class="deck-art">${esc(TIPO_NOMBRE[it.tipo_audio] && it.tipo_audio !== "Musica" ? TIPO_NOMBRE[it.tipo_audio] + " · " : "")}${esc(it.artista)}</div>${metaCancion(it)}${insigniaTip(it.tip)}</div>
         <span class="deck-dur">${fmt(it.duracion_total)}<br><span class="deck-marcas">${marcas}</span></span>
       </div>`;
     });
@@ -610,7 +627,8 @@ const Decks = (() => {
     const tg = e.target.closest("[data-tg]");
     if (tg) {
       const k = tg.dataset.tg, it = items.find(x => x.tipo === "tanda" && claveTanda(x) === k);
-      if (tandasAbiertas.has(k)) tandasAbiertas.delete(k); else { tandasAbiertas.add(k); if (it) pedirCunas(it); }
+      if (it && abierta(it)) { tandasAbiertas.delete(k); tandasCerradas.add(k); }
+      else { tandasCerradas.delete(k); tandasAbiertas.add(k); if (it) cunasDe(it); }
       if (ultimoProg) pintar(ultimoProg);
       return;
     }
@@ -731,7 +749,7 @@ const Decks = (() => {
              siguiente: ref(colaItems.find(cancion) || (Estado.st?.modo === "automatico" ? audiosPlan[0] : null)), elegida: false };
   }
 
-  return { pintar, agregar, vecinos };
+  return { pintar, agregar, vecinos, cunasDe };
 })();
 
 /* ─────────────────────────── biblioteca ─────────────────────────── */
@@ -882,13 +900,19 @@ const Biblioteca = (() => {
     finally { cargandoMas = false; }
   }
 
+  /** «Cómo colocar» solo aparece cuando se eligió Tips en el filtro Tipo; si no, queda oculto y en SOLO. */
+  function verTipModo() {
+    const ver = tab === "Imagen" && $("libTipo").value === "Tips";
+    $("libTipModo").hidden = !ver;
+    if (!ver) { $("libTipModo").value = ""; $("libTipModo").classList.remove("on"); }
+  }
   function pintarTabs() {
     $("libTabs").innerHTML = TABS.map(([t, n]) =>
       `<button class="lib-tab ${t === tab ? "active" : ""}" data-tab="${t}">${n}</button>`).join("");
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
     $("libTipo").hidden = tab !== "Imagen";
-    $("libTipModo").hidden = tab !== "Imagen";
+    verTipModo();
     const th = document.querySelector(".lib-tabla th:nth-child(2)");       // en Separadores esa columna es la categoría
     if (th) th.textContent = tab === "Imagen" ? "Categoría" : "Rotación";
   }
@@ -945,13 +969,17 @@ const Biblioteca = (() => {
   $("libTabs").addEventListener("click", e => {
     const b = e.target.closest(".lib-tab");
     if (!b) return;
+    if (b.dataset.tab !== tab) {
+      $("libBuscar").value = "";                       // búsqueda nueva en cada sección
+      $("libTipo").value = ""; $("libTipModo").value = "";
+    }
     tab = b.dataset.tab;
     if (tab === "Playlist") cargarPlaylists().then(() => { pintarTabs(); pintar(); });
     else { pintarTabs(); pintar(); }
   });
   let t;
   $("libBuscar").addEventListener("input", () => { clearTimeout(t); t = setTimeout(pintar, 250); });
-  ["libCat1", "libCat2", "libVoz", "libTipo"].forEach(id => $(id).addEventListener("change", pintar));
+  ["libCat1", "libCat2", "libVoz", "libTipo"].forEach(id => $(id).addEventListener("change", () => { verTipModo(); pintar(); }));
 
   $("libFilas").addEventListener("click", e => {
     const b = e.target.closest("button");
@@ -1054,8 +1082,6 @@ const Biblioteca = (() => {
     if (P.activo) { P.activo = false; WS.send({ cmd: "cue_stop" }); }
     pintarPlayer();
   });
-  $("spAtras").addEventListener("click", () => irA(posP() - 5));
-  $("spAdelante").addEventListener("click", () => irA(posP() + 5));
   $("spProg").addEventListener("click", e => {
     const r = $("spProg").getBoundingClientRect();
     irA((e.clientX - r.left) / r.width * (P.dur || 0));
@@ -1177,6 +1203,13 @@ const Derecha = (() => {
     const it = (prog?.items ?? []).find(i => i.tipo === "tanda");
     const espera = st?.tanda_en_espera ?? 0;
     $("tandaBox").classList.toggle("espera", espera > 0);
+    const lista = $("tandaLista");
+    // Tanda ya cargada (esperando al operador o sonando): las cuñas que faltan, en orden
+    const enCola = st?.cunas_en_cola ?? [];
+    if (enCola.length) {
+      lista.innerHTML = `<div class="tl-tit">${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}</div>` + enCola.map((c, n) =>
+        `<div class="tl"><span class="tl-n">${n + 1}</span><span class="tl-t"><b>${esc(c.cliente || "Cuña")}</b></span><span class="tl-d">${fmt(c.duracion)}</span></div>`).join("");
+    }
     if (espera) {
       proxima = null;
       $("tandaHora").textContent = "";
@@ -1189,7 +1222,15 @@ const Derecha = (() => {
       $("tandaHora").textContent = "";
       $("tandaCuenta").textContent = "—";
       $("tandaDet").textContent = "Sin tandas en lo planificado";
+      if (!enCola.length) lista.innerHTML = "";
       return;
+    }
+    if (!enCola.length) {
+      const d = Decks.cunasDe(it);
+      lista.innerHTML = !d ? `<div class="tl-tit">Cargando cuñas…</div>`
+        : (d.cunas?.length ? `<div class="tl-tit">SONARÁN</div>` + d.cunas.map((c, n) =>
+          `<div class="tl"><span class="tl-n">${n + 1}</span><span class="tl-t"><b>${esc(c.cliente || c.spot)}</b>${c.cliente && c.spot ? ` <i>${esc(c.spot)}</i>` : ""}</span><span class="tl-d">${fmt(c.duracion)}</span></div>`).join("")
+          : `<div class="tl-tit">${d.error ? "No se pudo leer la tanda" : "Sin cuñas para esta tanda"}</div>`);
     }
     const [h, m, s] = it.hora.split(":").map(Number);
     const d = new Date(); d.setHours(h, m, s || 0, 0);

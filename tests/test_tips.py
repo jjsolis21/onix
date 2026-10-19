@@ -404,3 +404,29 @@ def test_la_cancion_que_entra_arranca_a_su_volumen_sin_subir_en_4_segundos(engin
     canal_b = engine._active_canal
     entrada = [(v, m) for c, v, m in ms if c == canal_b][0]
     assert entrada[0] == round(engine._target_volume(engine._current_track), 2) and entrada[1] == 500
+
+
+# ── Studio: lo que se ve en la lista del programa y en la tanda ─────────────
+
+def test_el_programa_trae_genero_rotacion_y_anio_de_cada_cancion(engine, media):
+    a = add_audio(engine, media, "A", seconds=60.0)
+    b = add_audio(engine, media, "B", seconds=60.0, subgenero="SALSA", categoria="EXITO", fecha_lanzamiento="2019-05-03")
+    c = add_audio(engine, media, "C", seconds=60.0, subgenero="POP", categoria="NUEVO")
+    engine._mode = "manual"
+    engine.queue_track(c); engine._drain_commands()
+    _plan(engine, _p_audio(b, titulo="B"))
+    engine._start({"track": engine._fetch_track(a), "origen": "manual"})
+    prog = engine.programa()
+    assert prog["items"][0]["genero"] == "SALSA" and prog["items"][0]["rotacion"] == "EXITO" and prog["items"][0]["anio"] == "2019"
+    assert prog["cola"][0]["genero"] == "POP" and prog["cola"][0]["rotacion"] == "NUEVO" and prog["cola"][0]["anio"] == ""
+
+
+def test_el_estado_muestra_las_cunas_de_la_tanda_cargada(engine, media):
+    from collections import deque
+    spot = add_audio(engine, media, "CUNA", tipo="Cuña", seconds=10.0)
+    engine._priority_queue = deque([{"pauta_id": 1, "cliente": "FARMACIA", "audio_id": spot, "duracion": 30.4, "slot": "x"},
+                                    {"pauta_id": 2, "cliente": "BANCO", "audio_id": spot, "duracion": 20, "slot": "x"}])
+    st = engine.status
+    assert [c["cliente"] for c in st["cunas_en_cola"]] == ["FARMACIA", "BANCO"] and st["cunas_en_cola"][0]["duracion"] == 30
+    engine._priority_queue.clear()
+    assert engine.status["cunas_en_cola"] == []

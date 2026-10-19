@@ -2172,8 +2172,37 @@ class AudioEngine:
             it["hora"] = t.strftime("%H:%M:%S")
             t += timedelta(seconds=it["duracion"])
         items = self._pegar_tips(items, cola)
+        self._con_detalles(cola + items)
         return {"modo": self._mode, "horas": self._horas_plan, "cola": cola,
                 "items": items, "fin": t.strftime("%H:%M:%S")}
+
+    def _con_detalles(self, filas: list[dict]) -> None:
+        """Género, rotación y año de cada canción (el Studio los muestra en la lista). Una sola consulta por vista."""
+        ids = sorted({f.get("audio_id", f.get("id")) for f in filas
+                      if f.get("tipo", "audio") == "audio" and f.get("audio_id", f.get("id")) is not None})
+        if not ids:
+            return
+        ahora = time.monotonic()
+        cache = self.__dict__.setdefault("_det_cache", {})
+        faltan = [i for i in ids if i not in cache or ahora - cache[i][0] > 120]
+        if faltan:
+            try:
+                conn = _db_conn(self._db)
+                try:
+                    marcas = ",".join("?" * len(faltan))
+                    for r in conn.execute(f"SELECT id, subgenero, categoria, fecha_lanzamiento FROM audios WHERE id IN ({marcas})", faltan):
+                        cache[r[0]] = (ahora, {"genero": (r[1] or "").strip(), "rotacion": (r[2] or "").strip(),
+                                               "anio": str(r[3] or "")[:4]})
+                finally:
+                    conn.close()
+            except Exception as exc:
+                log.warning("[Engine] detalles de canciones: %s", exc)
+        if len(cache) > 3000:
+            cache.clear()
+        for f in filas:
+            d = cache.get(f.get("audio_id", f.get("id")))
+            if d and f.get("tipo", "audio") == "audio":
+                f.update(d[1])
 
     def _pegar_tips(self, items: list[dict], cola: list[dict]) -> list[dict]:
         """
@@ -3651,6 +3680,9 @@ class AudioEngine:
             "queue_length":      len(self._playlist_queue),
             "pausado":           self._pausado,
             "pautas_pendientes": len(self._priority_queue),
+            # Cuñas de la tanda que ya está cargada (esperando al operador o sonando), en el orden en que saldrán
+            "cunas_en_cola":     [{"cliente": p.get("cliente") or "", "audio_id": p.get("audio_id"),
+                                   "duracion": round(float(p.get("duracion") or 0))} for p in list(self._priority_queue)[:30]],
             "tandas_minutos":    list(self._tandas_minutos),
             "tandas_cierre":     list(self._tandas_cierre),
             "fade_corte_seg":    self._fade_corte,
