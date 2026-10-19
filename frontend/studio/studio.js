@@ -828,10 +828,13 @@ const Biblioteca = (() => {
     $("libFilas").innerHTML = fs.length
       ? (titulo ? `<tr class="tanda-tit"><td colspan="6">${esc(titulo)}</td></tr>` : "") + fs.map((c, n) => `
         <tr class="tanda-fila ${c.audio_id === P.id ? "elegida" : ""}" ${c.audio_id != null ? `data-id="${c.audio_id}"` : ""}>
-          <td><div class="lib-celda"><div class="lib-tit"><span class="pl-n">${n + 1}</span>${esc(c.cliente || c.spot || "Cuña")}</div><div class="lib-art">${esc(c.spot || "")}</div></div></td>
-          <td>${esc(c.rubro || "")}</td><td></td><td class="num"></td>
-          <td class="num">${fmt(c.duracion)}</td>
-          <td class="lib-acc">${c.audio_id != null ? `<button data-cue="${c.audio_id}" class="${c.audio_id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${c.audio_id === enCue ? "■" : "🎧"}</button>` : ""}</td></tr>`).join("")
+          <td colspan="6"><div class="tf">
+            <span class="tf-n">${n + 1}</span>
+            <div class="tf-txt"><b>${esc(c.cliente || c.spot || "Cuña")}</b>${c.cliente && c.spot ? `<span>${esc(c.spot)}</span>` : ""}</div>
+            ${c.rubro ? `<em class="tf-rubro">${esc(c.rubro)}</em>` : ""}
+            <span class="tf-dur">${fmt(c.duracion)}</span>
+            <span class="lib-acc">${c.audio_id != null ? `<button data-cue="${c.audio_id}" class="${c.audio_id === enCue ? "cue-on" : ""}" title="Preescuchar (salida interna)">${c.audio_id === enCue ? "■" : "🎧"}</button>` : ""}</span>
+          </div></td></tr>`).join("")
       : `<tr><td colspan="6" class="vacio">${esc(titulo || "Sin tandas en lo planificado")}</td></tr>`;
     cuenta(fs.length, fs.length, "cuñas");
     $("libInfo").textContent = "Clic en una cuña y ▶ (abajo) para escucharla por la salida de preescucha";
@@ -950,6 +953,7 @@ const Biblioteca = (() => {
     const esMusica = tab === "Musica";
     ["libCat1", "libCat2", "libVoz"].forEach(id => { $(id).hidden = !esMusica; });
     $("libBuscar").hidden = tab === "Tanda";
+    document.querySelector(".lib-tabla").classList.toggle("tanda-modo", tab === "Tanda");
     $("libTipo").hidden = tab !== "Imagen";
     verTipModo();
     const th = document.querySelector(".lib-tabla th:nth-child(2)");       // en Separadores esa columna es la categoría
@@ -1132,6 +1136,7 @@ const Biblioteca = (() => {
     if (e.target.closest("button")) return;
     const tr = e.target.closest("tr[data-id]");
     if (tr) { elegir(+tr.dataset.id); return; }
+    if (e.target.closest("tr.tanda-fila")) { toast("Esta cuña no trae su archivo: reinicia el servidor de ONIX para escucharla", "aviso", 4000); return; }
     const cab = e.target.closest("tr[data-pl]");
     if (cab) alternarLista(+cab.dataset.pl);
   });

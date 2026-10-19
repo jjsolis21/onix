@@ -602,6 +602,17 @@ kbd {
 .lib-tab.tanda-lista-on { color: #fff; background: #b3120a; animation: tandaListaParpadeo .9s ease-in-out infinite; }
 .lib-tabla tr.tanda-tit td { color: var(--ambar); font-family: var(--f-data); font-size: 11px; letter-spacing: .08em; padding: 6px 10px; background: var(--bg-2); }
 .lib-tabla tr.tanda-fila { cursor: pointer; }
+.lib-tabla.tanda-modo thead { display: none; }
+/* Cada cuña ocupa todo el ancho: número · cliente y archivo · rubro · duración · escuchar */
+.lib-tabla tr.tanda-fila td { padding: 6px 10px; }
+.tf { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tf-n { flex: none; width: 18px; font-family: var(--f-data); font-size: 12px; color: var(--ambar); }
+.tf-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.tf-txt b { color: var(--txt-hi); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-txt span { color: var(--txt-lo); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-rubro { flex: 0 1 140px; min-width: 0; font-style: normal; font-size: 12px; color: var(--txt-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-dur { flex: none; font-family: var(--f-data); font-size: 13px; color: var(--txt-mid); }
+.tf .lib-acc { flex: none; min-width: 34px; }
 /* Botón «TANDA» de las pestañas: parpadea en rojo cuando hay un bloque de cuñas listo o sonando */
 .der-tab.tanda-lista-on, .der-tab.active.tanda-lista-on { background: #b3120a; border-color: #ff3b30; color: #fff; animation: tandaListaParpadeo .9s ease-in-out infinite; }
 @keyframes tandaListaParpadeo { 50% { background: #5a0a06; box-shadow: 0 0 10px #ff3b30; } }
