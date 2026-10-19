@@ -297,6 +297,7 @@ body.en-pausa #nowTranscurrido { color: var(--ambar); animation: pulso 1.2s ease
 .lib-filtros select { max-width: 150px; }
 .lib-filtros input:focus, .lib-filtros select:focus { outline: none; border-color: var(--ambar); }
 .lib-tabla-wrap { flex: 1; overflow-y: auto; }
+.lib-tabla-wrap:focus { outline: none; }
 .lib-tabla { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .lib-tabla th {
   position: sticky; top: 0; background: var(--bg-1); z-index: 1; text-align: left;

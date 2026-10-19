@@ -6,7 +6,7 @@
   <title>ONIX FM — Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/studio/studio.css?v=38" />
+  <link rel="stylesheet" href="/static/studio/studio.css?v=39" />
 </head>
 <body>
 
@@ -148,7 +148,7 @@
         <select id="libVoz" title="Voz"><option value="">Voz</option></select>
         <span class="lib-cuenta" id="libCuenta" title="Archivos de esta sección"></span>
       </div>
-      <div class="lib-tabla-wrap">
+      <div class="lib-tabla-wrap" tabindex="0">
         <table class="lib-tabla">
           <thead><tr><th>Título / Artista</th><th>Rotación</th><th>Voz</th><th class="num">Intro</th><th class="num">Dur</th><th></th></tr></thead>
           <tbody id="libFilas"><tr><td colspan="6" class="vacio">Cargando biblioteca…</td></tr></tbody>
@@ -159,7 +159,7 @@
         <div class="sp-mandos">
           <button class="sp-b sp-play" id="spPlay" title="Escuchar / pausar"><img class="ico" src="/static/studio/icons/play2.svg" alt=""></button>
           <button class="sp-b" id="spStop" title="Detener"><img class="ico" src="/static/studio/icons/stop2.svg" alt=""></button>
-          <button class="sp-b sp-auto" id="spAuto" title="Auto play: al terminar lo que escuchas, pasa solo al siguiente de la lista (música, separadores, cuñas, programas, listas o tanda)">AUTO</button>
+          <button class="sp-b sp-auto" id="spAuto" title="Auto play (como en Admin › Biblioteca): al elegir un archivo —clic o flechas ↑ ↓— suena enseguida">AUTO</button>
         </div>
         <div class="sp-centro">
           <div class="sp-fila">
@@ -232,7 +232,7 @@
 
   <div class="toasts" id="toasts"></div>
   <script src="/static/studio/cartuchera.js?v=4"></script>
-  <script src="/static/studio/studio.js?v=42"></script>
+  <script src="/static/studio/studio.js?v=45"></script>
   <script src="/static/studio/locutor.js?v=1"></script>
   <script src="/static/studio/voicetracker.js?v=3"></script>
 </body>

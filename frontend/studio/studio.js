@@ -1103,16 +1103,21 @@ const Biblioteca = (() => {
     const ico = $("spPlay").querySelector("img");
     if (!ico.src.endsWith(img)) ico.src = img;
   }
-  const autoPlayActivo = () => autoPlay;
   /** Lo llama el sondeo del estado con st.preescucha */
   function estadoCue(cue) {
+    // Acabo de pedir un audio y el motor todavía no lo arrancó: el sondeo viejo no debe pisar lo elegido
+    if (P.esperaId != null) {
+      if (performance.now() > P.esperaHasta) P.esperaId = null;
+      else if (!cue || cue.audio_id !== P.esperaId) return;
+      else P.esperaId = null;
+    }
     if (cue) {
       if (P.id !== cue.audio_id) elegir(cue.audio_id, cue.titulo);
       Object.assign(P, { activo: true, pausado: false, pos: cue.posicion, dur: cue.duracion || P.dur, recibido: performance.now() });
     } else if (P.activo) {
       // Terminó solo (o lo paró otro): si no fue la pausa del operador, vuelve al inicio
       P.activo = false;
-      if (!P.pausado) { P.pos = 0; if (autoPlayActivo()) { pintarPlayer(); siguienteAuto(); return; } }
+      if (!P.pausado) P.pos = 0;
     }
     pintarPlayer();
   }
@@ -1130,11 +1135,13 @@ const Biblioteca = (() => {
       WS.send({ cmd: "cue_stop" });
     } else {
       P.pausado = false;
+      P.esperaId = P.id; P.esperaHasta = performance.now() + 2500;
       WS.send({ cmd: "cue", audio_id: P.id, desde: P.pos >= (P.dur || Infinity) - 0.5 ? 0 : P.pos });
     }
     pintarPlayer();
   }
-  // AUTO PLAY: cuando lo que se escucha termina solo, pasa a la siguiente fila de la lista que se está viendo
+  // AUTO PLAY (igual que en Admin › Biblioteca musical): con él encendido, al elegir un archivo de la lista
+  // —con un clic o recorriéndola con las flechas— suena enseguida por la preescucha
   let autoPlay = false;
   try { autoPlay = localStorage.getItem("onix_autoplay") === "1"; } catch { /* sin almacenamiento */ }
   const pintarAuto = () => $("spAuto").classList.toggle("on", autoPlay);
@@ -1143,20 +1150,31 @@ const Biblioteca = (() => {
     autoPlay = !autoPlay;
     try { localStorage.setItem("onix_autoplay", autoPlay ? "1" : "0"); } catch { /* sin almacenamiento */ }
     pintarAuto();
-    toast(autoPlay ? "AUTO PLAY activado: al terminar pasa a la siguiente de la lista" : "AUTO PLAY apagado", "info", 2200);
+    toast(autoPlay ? "AUTO PLAY activado: al elegir un archivo suena enseguida" : "AUTO PLAY apagado", "info", 2200);
   });
-  function siguienteAuto() {
-    const filasId = [...document.querySelectorAll("#libFilas tr[data-id]")];
-    const i = filasId.findIndex(tr => +tr.dataset.id === P.id);
-    const sig = i >= 0 ? filasId[i + 1] : null;
-    if (!sig) { toast("AUTO PLAY: se acabó la lista", "info", 2000); return; }
-    const id = +sig.dataset.id;
+  /** Elige el archivo y, con AUTO PLAY, lo reproduce (si ya está sonando no lo reinicia) */
+  function escucharAuto(id) {
+    const yaSuena = P.id === id && P.activo;                       // antes de elegir: si es el mismo y suena, no se reinicia
     elegir(id);
+    if (!autoPlay || yaSuena) return;
     P.pos = 0; P.pausado = false; P.activo = true; P.recibido = performance.now();
+    P.esperaId = id; P.esperaHasta = performance.now() + 2500;
     WS.send({ cmd: "cue", audio_id: id, desde: 0 });
-    sig.scrollIntoView({ block: "nearest" });
-    if (i + 2 >= filasId.length && filas.length < totalFiltro) masFilas();   // se acerca el final de una lista larga: trae más
+    pintarPlayer();
   }
+  // Flechas ↑ ↓ sobre la lista: eligen el archivo anterior / siguiente (y con AUTO PLAY suena cada uno)
+  $("libFilas").closest(".lib-tabla-wrap").addEventListener("keydown", e => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (e.target.closest("input, select, textarea")) return;
+    const lista = [...document.querySelectorAll("#libFilas tr[data-id]")];
+    if (!lista.length) return;
+    e.preventDefault();
+    const i = lista.findIndex(tr => +tr.dataset.id === P.id);
+    const sig = lista[Math.max(0, Math.min(lista.length - 1, i < 0 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1)))];
+    escucharAuto(+sig.dataset.id);
+    sig.scrollIntoView({ block: "nearest" });
+    if (e.key === "ArrowDown" && sig === lista[lista.length - 1] && filas.length < totalFiltro) masFilas();   // al final de una lista larga: trae más
+  });
   $("spPlay").addEventListener("click", reproducirOPausar);
   $("spStop").addEventListener("click", () => {
     P.pos = 0; P.pausado = false;
@@ -1172,7 +1190,7 @@ const Biblioteca = (() => {
   $("libFilas").addEventListener("click", e => {
     if (e.target.closest("button")) return;
     const tr = e.target.closest("tr[data-id]");
-    if (tr) { elegir(+tr.dataset.id); return; }
+    if (tr) { escucharAuto(+tr.dataset.id); return; }
     if (e.target.closest("tr.tanda-fila")) { toast("Esta cuña no trae su archivo: reinicia el servidor de ONIX para escucharla", "aviso", 4000); return; }
     const cab = e.target.closest("tr[data-pl]");
     if (cab) alternarLista(+cab.dataset.pl);
