@@ -589,8 +589,13 @@ kbd {
 .tanda-lbl { grid-column: 1; }
 .tanda-det { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tanda-cuenta { grid-column: 2; grid-row: 1 / span 2; font-size: 30px; line-height: 1; }
-.tanda-lista { grid-column: 1 / span 2; margin-top: 4px; max-height: 120px; overflow-y: auto; }
-.tanda-lista:empty { display: none; }
+.tanda-box { cursor: pointer; }
+.tanda-lista { padding: 8px 12px; }
+.tanda-lista .tl-vacio { font-size: 12px; color: var(--txt-lo); padding: 6px 0; }
+/* Botón «TANDA» de las pestañas: parpadea en rojo cuando hay un bloque de cuñas listo o sonando */
+.der-tab.tanda-lista-on, .der-tab.active.tanda-lista-on { background: #b3120a; border-color: #ff3b30; color: #fff; animation: tandaListaParpadeo .9s ease-in-out infinite; }
+@keyframes tandaListaParpadeo { 50% { background: #5a0a06; box-shadow: 0 0 10px #ff3b30; } }
+@media (prefers-reduced-motion: reduce) { .der-tab.tanda-lista-on, .der-tab.active.tanda-lista-on { animation: none; } }
 .tanda-lista .tl-tit { font-family: var(--f-data); font-size: 10px; letter-spacing: .08em; color: var(--ambar); margin: 2px 0; }
 .tanda-lista .tl { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; font-size: 12px; line-height: 1.5; color: var(--txt-mid); }
 .tanda-lista .tl-n { font-family: var(--f-data); color: var(--ambar); }
@@ -688,7 +693,11 @@ kbd {
 .cart-btn.vacio-btn { opacity: 1; background: linear-gradient(#3a3a3a, #1c1c1c); cursor: context-menu; }
 .cart-btn.vacio-btn .cart-n { color: #8a8a8a; font-size: 12px; }
 .cart-btn.disparado { filter: brightness(1.6); }
-.cart-btn.sonando { outline: 3px solid #19f019; outline-offset: -3px; }
+/* El botón que está sonando: borde blanco, pulso de luz y barra que avanza hasta el final del efecto */
+.cart-btn.sonando { outline: 3px solid #fff; outline-offset: -3px; animation: cartSuena .8s ease-in-out infinite; z-index: 1; }
+.cart-btn.sonando::after { content: ""; position: absolute; left: 0; bottom: 0; height: 6px; width: var(--prog, 0%); background: rgba(255, 255, 255, .85); }
+.hay-sonando .cart-btn:not(.sonando) { filter: brightness(.45) saturate(.6); }
+@keyframes cartSuena { 50% { filter: brightness(1.7); box-shadow: 0 0 16px 2px rgba(255, 255, 255, .8); } }
 
 /* ── Muchas paletas: selector compacto, recientes y flechas en la cabecera ── */
 .der-tab.der-sel { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }

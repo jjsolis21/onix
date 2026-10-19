@@ -1103,6 +1103,9 @@ const Biblioteca = (() => {
 /* ─────────────────────────── derecha ─────────────────────────── */
 const Derecha = (() => {
   let proxima = null, bancos = {}, slots = {}, nombres = {}, banco = "jingles";
+  const especial = v => v === "hist" || v === "vt" || v === "tanda";      // vistas que no son una paleta
+  let tandaLista = false;                                                  // hay un bloque de cuñas cargado: listo para sonar o sonando
+  const efectosSonando = new Map();                                        // «banco/slot» → {audio_id, fin}: sobrevive a cambiar de paleta
   // Qué se ve en el panel de la derecha: "hist" (historial) o la clave de una paleta
   let vista = "hist";
   try { vista = localStorage.getItem("onix_vista_der") || "hist"; } catch { /* sin almacenamiento */ }
@@ -1132,11 +1135,12 @@ const Derecha = (() => {
   }
   function pintarVista() {
     const cs = claves();
-    if (vista !== "hist" && vista !== "vt") banco = vista;
-    let html = `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
+    if (!especial(vista)) banco = vista;
+    let html = `<button class="der-tab ${vista === "tanda" ? "active" : ""} ${tandaLista ? "tanda-lista-on" : ""}" data-vista="tanda" title="Cuñas de la próxima tanda (parpadea cuando el bloque está listo o sonando)">📢 TANDA</button>`
+      + `<button class="der-tab ${vista === "hist" ? "active" : ""}" data-vista="hist">HISTORIAL</button>`
       + `<button class="der-tab ${vista === "vt" ? "active" : ""}" data-vista="vt" title="Voice Tracker: graba o crea con IA lo que dice el locutor entre canciones">🎙 VOZ</button>`;
     if (cs.length > COMPACTO) {
-      const enPaleta = vista !== "hist" && vista !== "vt";
+      const enPaleta = !especial(vista);
       html += `<button class="der-tab der-sel ${enPaleta ? "active" : ""}" data-selector="1" title="Elegir paleta (${cs.length}) · , y . cambian a la anterior y a la siguiente">`
         + `▦ ${esc(((enPaleta ? nombres[banco] : "") || "PALETAS").toUpperCase())} ▾</button>`;
       html += recientes.filter(c => c in bancos && c !== vista).slice(0, 4)
@@ -1145,11 +1149,12 @@ const Derecha = (() => {
       html += cs.map(b => `<button class="der-tab ${b === vista ? "active" : ""}" data-vista="${esc(b)}" title="Paleta de botones">${esc((nombres[b] || b).toUpperCase())}</button>`).join("");
     }
     $("derTabs").innerHTML = html;
+    $("tandaLista").hidden = vista !== "tanda";
     $("historial").hidden = vista !== "hist";
     $("voiceTracker").hidden = vista !== "vt";
-    $("cartuchera").hidden = vista === "hist" || vista === "vt";
+    $("cartuchera").hidden = especial(vista);
     if (vista === "vt") { if (typeof VoiceTracker !== "undefined") VoiceTracker.mostrar(); }
-    else if (vista !== "hist") pintarCart();
+    else if (!especial(vista)) pintarCart();
   }
 
   // ── Selector de paletas (para cuando hay decenas) ──
@@ -1206,6 +1211,10 @@ const Derecha = (() => {
     const lista = $("tandaLista");
     // Tanda ya cargada (esperando al operador o sonando): las cuñas que faltan, en orden
     const enCola = st?.cunas_en_cola ?? [];
+    if ((enCola.length > 0) !== tandaLista) {                       // el botón TANDA parpadea mientras haya un bloque cargado
+      tandaLista = enCola.length > 0;
+      document.querySelector('#derTabs [data-vista="tanda"]')?.classList.toggle("tanda-lista-on", tandaLista);
+    }
     if (enCola.length) {
       lista.innerHTML = `<div class="tl-tit">${espera ? "EN ESPERA" : "SONANDO"} · FALTAN ${enCola.length}</div>` + enCola.map((c, n) =>
         `<div class="tl"><span class="tl-n">${n + 1}</span><span class="tl-t"><b>${esc(c.cliente || "Cuña")}</b></span><span class="tl-d">${fmt(c.duracion)}</span></div>`).join("");
@@ -1282,7 +1291,7 @@ const Derecha = (() => {
       const d = await api("/api/v1/cartuchera");
       bancos = d.bancos ?? {}; slots = d.slots ?? {}; nombres = d.nombres ?? {};
       if (!(banco in bancos)) banco = Object.keys(bancos)[0];
-      if (vista !== "hist" && !(vista in bancos)) vista = "hist";
+      if (!especial(vista) && !(vista in bancos)) vista = "hist";
       pintarVista();
     } catch { /* aviso de conexión */ }
   }
@@ -1331,12 +1340,13 @@ const Derecha = (() => {
     const t = e.target.closest(".der-tab");
     if (!t) return;
     if (t.dataset.selector) { abrirSelector(); return; }
-    if (t.dataset.vista === "hist" || t.dataset.vista === "vt") {
+    if (especial(t.dataset.vista)) {
       vista = t.dataset.vista;
       try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
       cerrarSelector(); pintarVista();
     } else irA(t.dataset.vista);
   });
+  new MutationObserver(() => marcarEfectos()).observe($("cartuchera"), { childList: true });
   $("cartuchera").addEventListener("click", e => {
     const n = e.target.closest("[data-nav]");
     if (n) { vecina(+n.dataset.nav); return; }
@@ -1386,14 +1396,38 @@ const Derecha = (() => {
   });
   /** Atajo 1–8: botón n del banco que se está viendo */
   function dispararSlot(n) {
-    if (vista === "hist" || vista === "vt") { toast("Abre una paleta para usar los números 1–9", "info", 2000); return; }
+    if (especial(vista)) { toast("Abre una paleta para usar los números 1–9", "info", 2000); return; }
     const slot = (paginas[banco] ?? 0) * PAG + n;
     const b = $("cartuchera").querySelector(`.cart-btn[data-slot="${slot}"]`);
     if (b) disparar(b);
     else toast(`El botón ${slot} de la cartuchera está vacío`, "info", 2000);
   }
 
-  return { tanda, cuentaTanda, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector, pagina };
+  $("tandaBox").addEventListener("click", () => {
+    vista = "tanda";
+    try { localStorage.setItem("onix_vista_der", vista); } catch { /* sin almacenamiento */ }
+    cerrarSelector(); pintarVista();
+  });
+  /** Efectos de la cartuchera sonando (botón exacto «banco/slot»): se marcan también al cambiar de paleta */
+  function marcarEfectos() {
+    let alguno = false;
+    document.querySelectorAll("#cartuchera .cart-btn").forEach(b => {
+      const e = efectosSonando.get(`${banco}/${b.dataset.slot}`);
+      if (e) alguno = true;
+      b.classList.toggle("sonando", !!e);
+      if (e) b.style.setProperty("--prog", `${Math.min(100, Math.max(0, (1 - (e.fin - performance.now()) / e.total) * 100)).toFixed(1)}%`);
+      else b.style.removeProperty("--prog");
+    });
+    $("cartuchera").classList.toggle("hay-sonando", alguno);       // los demás botones se atenúan: el que suena salta a la vista
+  }
+  function efecto(boton, audioId, activo, segundos) {
+    const clave = boton || `?/${audioId}`;
+    if (activo) efectosSonando.set(clave, { audio_id: audioId, fin: performance.now() + (segundos || 0) * 1000, total: Math.max(0.1, (segundos || 0) * 1000) });
+    else efectosSonando.delete(clave);
+    marcarEfectos();
+  }
+  setInterval(() => { if (efectosSonando.size) { for (const [k, e] of efectosSonando) if (e.fin < performance.now() - 400) efectosSonando.delete(k); marcarEfectos(); } }, 100);
+  return { tanda, cuentaTanda, efecto, marcarEfectos, historial, agregarHistorial, cartuchera, dispararSlot, vecina, abrirSelector, pagina };
 })();
 
 /* ─────────────────────────── vúmetro ───────────────────────────
@@ -1622,17 +1656,17 @@ const _cuenta = { timer: null, fin: 0, audio: null };
 function _cuentaPintar(seg) { const el = $("cartCuenta"); if (el) { el.textContent = CartEditor.seg(seg); el.classList.toggle("activa", seg > 0); } }
 function _cuentaParar() { clearInterval(_cuenta.timer); _cuenta.timer = null; _cuenta.audio = null; _cuentaPintar(0); }
 WS.on("effect_fired", d => {
-  _botonesDe(d.audio_id).forEach(b => b.classList.add("sonando"));
+  Derecha.efecto(d.boton, d.audio_id, true, d.duracion);
   clearInterval(_cuenta.timer);
   _cuenta.audio = d.audio_id; _cuenta.fin = performance.now() + (d.duracion || 0) * 1000;
   _cuenta.timer = setInterval(() => {
     const queda = (_cuenta.fin - performance.now()) / 1000;
-    if (queda <= 0) { _botonesDe(_cuenta.audio).forEach(b => b.classList.remove("sonando")); _cuentaParar(); }
+    if (queda <= 0) _cuentaParar();
     else _cuentaPintar(queda);
   }, 100);
 });
 WS.on("effect_stopped", d => {
-  _botonesDe(d.audio_id).forEach(b => b.classList.remove("sonando"));
+  Derecha.efecto(d.boton, d.audio_id, false);
   if (_cuenta.audio === d.audio_id) _cuentaParar();
 });
 WS.on("engine_stopped", () => toast("⚠ Motor de audio detenido o desconectado", "error", 8000));
